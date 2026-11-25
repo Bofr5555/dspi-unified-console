@@ -147,6 +147,37 @@ export function limitValue(text: string, range: { min: number; max: number; unit
   return Math.min(max, Math.max(min, v));
 }
 
+// -- WP REVEFIX -- (REVE §3.1) Qt's Installer: a limit's check box and stepper
+/** What a limit shows while it is off, and takes when it is checked: Qt's defaults (InstallerPage.qml), in range. */
+export const LIMIT_DEFAULTS: Readonly<Record<string, number>> = {
+  masterVolumeMaxDb: -10,
+  maxPeqBoostDb: 6,
+  maxGainDb: 0,
+  limiterCeilingDb: -1,
+  highpassMinHz: 80,
+  highpassMinSlopeDb: 12,
+  delayMinMs: 0,
+  delayMaxMs: 10,
+};
+
+export function limitDefault(key: string, range: { min: number; max: number } | null): number {
+  const v = LIMIT_DEFAULTS[key] ?? 0;
+  return range ? Math.min(range.max, Math.max(range.min, v)) : v;
+}
+
+/** `v` one step (`by` −1 or +1) on, by the range's step (1 without one), kept in range. */
+export function stepLimit(v: number, by: number, range: { min: number; max: number; step?: number } | null): number {
+  const step = range?.step && range.step > 0 ? range.step : 1;
+  const next = Math.round((v + by * step) / step) * step;
+  const rounded = Math.round(next * 1000) / 1000;
+  return range ? Math.min(range.max, Math.max(range.min, rounded)) : rounded;
+}
+
+/** Whether the profile limits anything (Remove All Limits is off otherwise, as Qt's). */
+export function hasLimits(p: LimitsProfile): boolean {
+  return p.masterVolumeMaxDb !== undefined || p.maxPeqBoostDb !== undefined || (p.outputs ?? []).some((o) => OUTPUT_FIELDS.some((f) => o[f.key] !== undefined));
+}
+
 /** One output's limit as the field shows it: "" for none. */
 export function limitText(v: number | undefined): string {
   return v === undefined ? "" : String(Math.round(v * 100) / 100);

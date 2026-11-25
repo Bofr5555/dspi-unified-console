@@ -109,7 +109,7 @@ async function openHub(page: Page, hub: OwnHub): Promise<Locator> {
   }
   const entry = session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: DEMO.slice(-8) });
   await entry.getByRole("button", { name: "Open" }).click();
-  await expect(session.locator(".device-meta")).toContainText(DEMO);
+  await expect(session).toHaveAttribute("data-serial", new RegExp(DEMO));
   return session;
 }
 
@@ -146,12 +146,16 @@ test.describe("HUBADMIN on a hub", () => {
     const otherErrors = errorsOf(other);
     const second = await openHub(other, hub);
     await installerPage(second, other);
-    const otherPeq = second.getByRole("region", { name: "Limits" }).getByLabel(/^EQ boost at most/);
-    await expect(otherPeq).toHaveValue("");
+    // -- WP REVEFIX -- (REVE §3.1, Qt's) a limit is its check box and a stepper: off, Qt's default shown
+    const otherPeq = second.getByRole("region", { name: "Limits" }).getByLabel(/^EQ boost at most.*\(dB\)$/);
+    const otherPeqOn = second.getByRole("region", { name: "Limits" }).getByRole("checkbox", { name: /^EQ boost at most/ });
+    await expect(otherPeqOn).not.toBeChecked();
 
     // The profile: a limit and the note, kept by the hub, never in this browser's own storage.
     const limits = session.getByRole("region", { name: "Limits" });
-    const peq = limits.getByLabel(/^EQ boost at most/);
+    const peq = limits.getByLabel(/^EQ boost at most.*\(dB\)$/);
+    await limits.getByRole("checkbox", { name: /^EQ boost at most/ }).check();
+    await expect.poll(() => limitsKept(hub!)?.maxPeqBoostDb).toBe(6);
     await peq.fill("3");
     await peq.dispatchEvent("change");
     await expect.poll(() => limitsKept(hub!)?.maxPeqBoostDb).toBe(3);
@@ -208,7 +212,7 @@ test.describe("HUBADMIN on a hub", () => {
     // Remove All Limits: the hub keeps none.
     await session.getByRole("region", { name: "Limits" }).getByRole("button", { name: "Remove All Limits" }).click();
     await expect.poll(() => limitsKept(hub!)).toBe(null);
-    await expect(otherPeq).toHaveValue("");
+    await expect(otherPeqOn).not.toBeChecked();
     expect(errors).toEqual([]);
     expect(otherErrors).toEqual([]);
   });
@@ -235,8 +239,8 @@ test.describe("HUBADMIN on a hub", () => {
     await expect(ro).toContainText("uconsole hub role <cid> admin");
     await expect(session.locator(".hub-role")).toContainText("Control");
     const limits = session.getByRole("region", { name: "Limits" });
-    await expect(limits.getByLabel(/^EQ boost at most/)).toHaveValue("4");
-    await expect(limits.getByLabel(/^EQ boost at most/)).toBeDisabled();
+    await expect(limits.getByLabel(/^EQ boost at most.*\(dB\)$/)).toHaveValue("4");
+    await expect(limits.getByLabel(/^EQ boost at most.*\(dB\)$/)).toBeDisabled();
     await expect(limits.getByLabel("Note", { exact: true })).toHaveValue("Kept by the hub.");
     await expect(limits.getByLabel("Note", { exact: true })).toBeDisabled();
     await expect(limits.getByRole("button", { name: "Load Profile…" })).toBeDisabled();
@@ -270,7 +274,7 @@ test("HUBADMIN direct: the demo DSPi edits this console's copy, with no hub part
   await expect(session.getByRole("region", { name: "Hub installer PIN" })).toHaveCount(0);
   await expect(session.getByRole("region", { name: "Pinned modes" })).toHaveCount(0);
   await expect(session.getByRole("region", { name: "Installer lock" })).toContainText("No installer PIN is set: nothing is locked.");
-  await expect(session.getByRole("region", { name: "Limits" }).getByLabel(/^EQ boost at most/)).toBeEnabled();
+  await expect(session.getByRole("region", { name: "Limits" }).getByRole("checkbox", { name: /^EQ boost at most/ })).toBeEnabled(); // -- WP REVEFIX -- its check box (the stepper is off while not limited)
   await noSidewaysScroll(page);
   expect(errors).toEqual([]);
 });
