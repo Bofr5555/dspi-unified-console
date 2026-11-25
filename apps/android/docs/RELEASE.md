@@ -166,8 +166,9 @@ Answers specific to this app. Verify each against the build you upload
 
 - **Privacy policy (URL required, in the listing and in the app).** Done:
   [`PRIVACY.md`](../PRIVACY.md), public at
-  https://github.com/Bofr5555/dspi-android/blob/main/PRIVACY.md; the app links
-  it from Settings › About › Licence. Enter that URL in Play Console (App
+  https://github.com/Bofr5555/dspi-unified-console/blob/main/apps/android/PRIVACY.md
+  (from 0.15.0; up to 0.14.0 the app linked the archived dspi-android copy); the
+  app links it from Settings › About › Licence. Enter that URL in Play Console (App
   content → Privacy policy). Keep it in step with what the app does.
 - **Data safety.** *DSPi Link (approved by the owner 2026-11-06, together with
   the new `PRIVACY.md`); for builds with DSPi Link the answer below replaces

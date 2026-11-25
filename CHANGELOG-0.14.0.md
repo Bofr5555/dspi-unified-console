@@ -129,8 +129,8 @@ Developer ID, and not notarised, so macOS refuses it the first time: check the
 download, then Control-click the app and choose Open, or allow it under System
 Settings > Privacy & Security (Open Anyway), or run
 `xattr -dr com.apple.quarantine "/Applications/uConsole for DSPi.app"`. It has
-been run on an Intel Mac on the demo device; Apple silicon and a real DSPi on a
-Mac are not tested yet.
+been run on an Intel Mac, with a real DSPi over USB (reading, a setting change
+and live statistics) and on the demo device; Apple silicon is not tested yet.
 
 ## Android
 
