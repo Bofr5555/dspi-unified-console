@@ -63,20 +63,23 @@ async function openDemo(page: Page) {
   return session;
 }
 
-test("WB6F rail: the device, the preset and its unsaved changes, the two cores' load, health OK", async ({ page }) => {
+test("WB6F rail: health OK on the rail's one line; the two cores' load in the dock; the device and its unsaved preset in the top bar", async ({ page }) => {
+  // -- WP REVEFIX -- (REVE §3.1, F8) the rail is one line: the device and the preset are the top bar's (the tab, the
+  // preset button and its one dirty marker), the cores' load the dock's right end, as Qt's
   const errors = errorsOf(page);
   const session = await openDemo(page);
   const r = rail(session);
   const snap = (await core(page, "state")) as { device: { name: string }; state: { activePresetSlot: number } };
-  await expect(r.getByLabel("Device")).toHaveText(snap.device.name);
-  await expect(r.getByLabel("Preset")).toContainText(`Preset ${snap.state.activePresetSlot + 1}:`);
-  await expect(r.getByLabel("Core load")).toHaveText(/^C0 \d+% · C1 \d+%$/);
+  await expect(session.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab", { selected: true })).toContainText(snap.device.name);
+  await expect(r.getByLabel("Device")).toHaveCount(0);
+  await expect(r.getByLabel("Preset")).toHaveCount(0);
+  await expect(session.locator(".dock").getByLabel("Core load")).toHaveText(/^C0 \d+%C1 \d+%$/);
   await expect(healthButton(session)).toHaveText("Health: OK");
   await expect(panel(session)).toHaveCount(0);
-  // A change makes the preset unsaved (an output trim, as main.spec.ts): the rail says so.
-  await expect(r.getByLabel("Preset")).not.toContainText("unsaved");
+  // A change makes the preset unsaved (an output trim, as main.spec.ts): the preset button says so.
+  await expect(session.getByRole("button", { name: /^Presets: / })).not.toHaveAccessibleName(/unsaved/);
   await setOutputGain(session, -6); // -- WP INTD -- on Delay & gain
-  await expect(r.getByLabel("Preset")).toContainText("unsaved changes");
+  await expect(session.getByRole("button", { name: /^Presets: / })).toHaveAccessibleName(/, unsaved changes$/);
   // The panel opens on request, empty.
   await healthButton(session).click();
   await expect(panel(session)).toContainText("No problems.");
@@ -193,7 +196,7 @@ test("WB6F health: a lost DSPi Link in CG10's words, kept after the reconnect un
   const session = page.getByRole("article");
   const entry = session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: SERIAL.slice(-8) });
   await entry.getByRole("button", { name: "Open" }).click();
-  await expect(session.locator(".device-meta")).toContainText(SERIAL);
+  await expect(session).toHaveAttribute("data-serial", new RegExp(SERIAL));
   await expect(healthButton(session)).toHaveText("Health: OK");
 
   await fault(request, id, "refuse 503");

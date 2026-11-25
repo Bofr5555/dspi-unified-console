@@ -347,6 +347,12 @@ interface DspiBridge {
      */
     fun outputCards(): List<OutputCard>
 
+    /**
+     * -- WP REVEFIX -- No input is routed to output [output] (`OutputLabel.unused`, owner 2026-11-24): a view that
+     * only shows (the Home's cards) leaves it out; one that edits it shows its label, "3 · None". False with no labels.
+     */
+    fun outputUnused(output: Int): Boolean = false
+
     /** Hex colour from the channel palette (ChannelPalette). */
     fun channelColor(ch: Int): String
 

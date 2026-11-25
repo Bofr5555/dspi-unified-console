@@ -112,7 +112,7 @@ test.describe("P3WHB on a hub", () => {
     const picker = page.getByRole("navigation", { name: "DSPi devices" });
     await picker.getByRole("listitem").filter({ hasText: "· online" }).getByRole("button", { name: "Connect" }).click();
     const session = page.getByRole("article").last();
-    await expect(session.locator(".device-meta")).toContainText(DEMO);
+    await expect(session).toHaveAttribute("data-serial", new RegExp(DEMO));
     await setMode(session, page, "Advanced");
     await openPage(session, "Hub");
 

@@ -229,7 +229,7 @@ test("P5WAT: through the hub as Control: a document filed and renamed on the hub
     await session.getByLabel("PIN").fill(hub.pin);
     await session.getByRole("button", { name: "Pair" }).click();
     await session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: DEMO.slice(-8) }).getByRole("button", { name: "Open" }).click();
-    await expect(session.locator(".device-meta")).toContainText(DEMO);
+    await expect(session).toHaveAttribute("data-serial", new RegExp(DEMO));
     await openPage(session, "Measure");
     const screen = session.getByRole("region", { name: "Measure" });
     await partsOf(screen, "Measurement").getByRole("tab", { name: "Documents" }).click();

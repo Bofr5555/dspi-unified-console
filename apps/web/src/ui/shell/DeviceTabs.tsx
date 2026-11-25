@@ -1,5 +1,7 @@
 // -- WP WEBM1 -- The open devices as tabs (MPLAN 1.2 item 7): the state's dot, where the device is
-// and what it is called, how it is reached, an unsaved mark, a close button; "+" opens another.
+// and what it is called, how it is reached, a close button; "+" opens another.
+// -- WP REVEFIX -- (REVE §3.1, Qt's DeviceTab) two lines: the name, then how it is reached and its
+// firmware ("Demo · firmware 1.1.6"); no unsaved mark (the preset button has the one dirty marker).
 
 import { useEffect, useRef } from "preact/hooks";
 import { sessionName, TabLabel, useSessionState } from "../components";
@@ -80,9 +82,13 @@ function DeviceTab(props: { session: Session; on: boolean; stop: boolean; onChoo
   const name = sessionName(st); // -- WP WEB2 --
   const unsaved = st.unsaved.length > 0;
   const transport = transportName(s.source);
+  const snap = st.snapshot;
+  // -- WP REVEFIX -- the second line: a document's file, else the transport and the firmware
+  const meta = snap && st.document ? `${transport} · ${st.document.fileName || st.document.name}` : snap ? `${transport} · firmware ${snap.device.firmware}` : transport;
+  const serial = snap && !st.document ? snap.device.serial : "";
   // -- WP FEATUI -- an AI agent works on this device (its hub's `presence`): marked, as the desktop's tabs
   const agent = usePresence(s).some((p) => p.serial && p.serial === st.snapshot?.device.serial);
-  const where = [transport, st.hubName, STATE_WORDS[state], unsaved ? "unsaved changes" : "", agent ? "an AI agent is working on it" : ""].filter(Boolean).join(" · ");
+  const where = [meta, serial, st.hubName, STATE_WORDS[state], unsaved ? "unsaved changes" : "", agent ? "an AI agent is working on it" : ""].filter(Boolean).join(" · ");
   return (
     <div class="device-tab" role="presentation">
       <button
@@ -99,18 +105,17 @@ function DeviceTab(props: { session: Session; on: boolean; stop: boolean; onChoo
         onContextMenu={props.onMenu /* -- WP WEBM4 -- */}
       >
         <span class={`dot dot-${state}`} aria-hidden="true" />
-        <span class="device-tab-name">
-          <TabLabel session={s} />
+        <span class="device-tab-text">
+          <span class="device-tab-name">
+            <TabLabel session={s} />
+          </span>
+          <span class="device-tab-kind device-meta">{meta}</span>
         </span>
-        <span class="device-tab-kind">{transport}</span>
         {agent ? (
           <span class="device-tab-agent" aria-label="AI agent working" title="An AI agent is working on this device">
             AI
           </span>
         ) : null}
-        <span class={`device-tab-unsaved${unsaved ? " on" : ""}`} aria-hidden="true">
-          •
-        </span>
       </button>
       {/* -- WP WEBM2 -- (RB) reachable by Tab: after the tab on show, before the next control */}
       <button type="button" class="device-tab-close" aria-label={`Close ${name}`} title={`Close ${name}`} tabIndex={props.stop ? 0 : -1} onClick={props.onClose}>
