@@ -29,7 +29,7 @@ import {
 } from "./model";
 // -- WP WEB7 -- Qt's look: each part a group with its icon and DemiBold title outside the panel,
 // the facts as Qt's settings rows (the name at the left, the value at the right edge)
-import { Group, Lucide } from "../settings/group";
+import { Group, Lucide } from "../../ui/Group";
 import "./device.css";
 
 const CHIP = (

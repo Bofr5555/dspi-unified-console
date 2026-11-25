@@ -12,7 +12,7 @@ import type { Session } from "../../ui/session";
 import { Dialog } from "../main/Dialog";
 import { durationText, soakMinutes, voltsText } from "./model";
 import type { ComponentChildren } from "preact";
-import { Icon } from "./icons"; // -- WP WEB7 --
+import { Icon } from "../../ui/icons"; // -- WP WEB7 --
 
 /** -- WP WEB7 -- A group as Qt's SettingsGroup (group.css), named as a `group` for assistive technology. */
 function VGroup(props: { title: string; icon: string; children: ComponentChildren }) {

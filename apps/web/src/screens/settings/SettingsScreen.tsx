@@ -34,8 +34,8 @@ import { PageParts, usePart } from "../../ui/shell/Parts"; // -- WP WEB7 -- Qt's
 import { placeOf } from "../../ui/shell/places"; // -- WP WEB7 --
 import { SurfacesPage, SurfacesSaveBar, csPagesOf, useCsDesk } from "../surfaces/SurfacesScreen"; // -- WP WEB7 --
 import type { CsPage } from "../surfaces/model";
-import { Group } from "./group";
-import { Icon } from "./icons";
+import { Group } from "../../ui/Group";
+import { Icon } from "../../ui/icons";
 import {
   PART_TITLES,
   SETTINGS_PAGE_DEFS,

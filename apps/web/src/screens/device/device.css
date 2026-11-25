@@ -1,4 +1,4 @@
-/* -- WP WEB7 -- The Device page as Qt's groups (screens/settings/group.tsx): the facts as Qt's settings rows,
+/* -- WP WEB7 -- The Device page as Qt's groups (ui/Group.tsx): the facts as Qt's settings rows,
    the name at the left in the text colour and the value at the right edge; the 760 px column. */
 .dspi-web .device-screen { display: flex; flex-direction: column; gap: 0; max-width: var(--content-max); }
 .dspi-web .device-screen .device-facts { display: flex; flex-direction: column; gap: 6px; }

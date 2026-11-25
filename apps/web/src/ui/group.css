@@ -1,4 +1,4 @@
-/* -- WP WEB7 -- Qt's SettingsGroup (screens/settings/group.tsx): icon 14 muted + 13 DemiBold title above
+/* -- WP WEB7 -- Qt's SettingsGroup (ui/Group.tsx): icon 14 muted + 13 DemiBold title above
    the panel (6 px apart), the panel radius 8 with 12 px inset and 12 px between rows, the footnote 11 muted. */
 .dspi-web .group { display: flex; flex-direction: column; gap: 6px; min-width: 0; margin: 0; }
 .dspi-web .group + .group { margin-top: 18px; }

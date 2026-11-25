@@ -1,8 +1,8 @@
 // -- WP WEB7 -- The Lucide icons the Settings and Control Surfaces pages use (Qt's names, from
-// apps/desktop/qt/icons/lucide, ISC licence as there), drawn by group.tsx's `Lucide`.
+// apps/desktop/qt/icons/lucide, ISC licence as there), drawn by ui/Group.tsx's `Lucide` (INTE: moved from screens/settings/).
 
 import type { ComponentChildren } from "preact";
-import { Lucide } from "./group";
+import { Lucide } from "./Group";
 
 const ICONS: Record<string, ComponentChildren> = {
   info: (

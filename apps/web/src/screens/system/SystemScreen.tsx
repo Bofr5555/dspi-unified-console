@@ -12,7 +12,7 @@ import type { ScreenProps } from "../../ui/screens";
 import { ZoneVolume } from "./ZoneVolume"; // -- WP FEATUI --
 import type { Session } from "../../ui/session";
 import { NoticeRow } from "../../ui/design"; // -- WP WEB7 --
-import { Group } from "../settings/group"; // -- WP WEB7 --
+import { Group } from "../../ui/Group"; // -- WP WEB7 --
 import { NotOnHub } from "./pages"; // -- WP WEB7 --
 import type { FeedState, SystemFeed } from "./feed";
 import { NO_ALINK, NO_USB_DIRECT, alinkRoleWord, lockWord, roomsView, slotWord, topology, type TopoNode, type UnitView } from "./model";

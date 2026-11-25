@@ -22,8 +22,8 @@ import type { Ask } from "../../ui/screens";
 import type { Session } from "../../ui/session";
 import { CsDesk } from "./desk";
 import { EmptyState, rangeFill } from "../../ui/design"; // -- WP WEB2 --
-import { Group } from "../settings/group"; // -- WP WEB7 --
-import { Icon } from "../settings/icons"; // -- WP WEB7 --
+import { Group } from "../../ui/Group"; // -- WP WEB7 --
+import { Icon } from "../../ui/icons"; // -- WP WEB7 --
 import "./surfaces.css"; // -- WP WEB7 --
 import {
   TY,

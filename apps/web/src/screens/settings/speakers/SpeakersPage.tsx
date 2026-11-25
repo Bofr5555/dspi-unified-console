@@ -10,8 +10,8 @@ import { outputLabel } from "../../main/model";
 import { noticeRow } from "../../../ui/texts";
 import { CLASS_WORDS, ROLE_WORDS, TWEETER_RULE, bannerOf, baseOf, evidenceWords, pillOf, stampWords, withRow, withoutRow, type SpeakerLayoutOutputRecord, type SpeakerLayoutRecord } from "./model";
 import { useSpeakerLayout } from "./use-layout";
-import { Group } from "../group"; // -- WP WEB7 --
-import { Icon } from "../icons"; // -- WP WEB7 --
+import { Group } from "../../../ui/Group"; // -- WP WEB7 --
+import { Icon } from "../../../ui/icons"; // -- WP WEB7 --
 
 const ROLE_IDS = Object.keys(ROLE_WORDS) as SpeakerLayoutOutputRecord["role"][];
 

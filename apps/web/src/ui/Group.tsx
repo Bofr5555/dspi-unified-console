@@ -2,10 +2,11 @@
 // the group's icon and DemiBold title OUTSIDE the card, anything beside the title (a switch, a
 // refresh button) at its right, the rows on the panel, an optional footnote under it. `flat`
 // drops the panel (DESIGN-LANGUAGE §8: a page whose one group would frame everything). Used by
-// the Settings, Control Surfaces, System, Devices, Library and Measure pages.
+// the Settings, Control Surfaces, System, Devices, Library and Measure pages (INTE: moved here
+// from screens/settings/, as several screens share it).
 
 import type { ComponentChildren } from "preact";
-import { Glyph } from "../../ui/design";
+import { Glyph } from "./design";
 import "./group.css";
 
 /** A Lucide icon from its strokes (24 px box), for icons `ui/design`'s Glyph has not. */
