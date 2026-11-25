@@ -154,7 +154,11 @@ Page tools (the buttons at the right of the tab row) are secondary buttons with 
 - A **card** (`Card.qml`, `Theme.panel`, radius 8, 12 px padding, no border) is used when the content is a self-contained
   unit that is read as one thing: an Overview tile, a settings group of rows, a tool's preview. Never nest a card in a
   card; never put one card alone on a page as a frame around everything (Snapshots, Events, the AI Agents activity).
-- A card's title, when it has one, is a section label inside the card at the top left.
+- A card's title, when it has one, is outside the card, 6 px above it: the group's 16 px Lucide icon in `textMuted`
+  and its name in `fontBody` DemiBold (`text`), as Qt's Settings and Installer pages draw it (owner default
+  2026-11-24, REVEFIX; this replaces "a section label inside the card"). The card holds the rows; an on/off of a row
+  is a switch at the row's right edge, a limit that can be off is a check box at the left with its stepper at the
+  right.
 
 ## 9. Tables and lists
 
