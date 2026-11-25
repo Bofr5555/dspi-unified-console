@@ -2642,7 +2642,10 @@ static DETECT: Tool = Tool {
                   from the top down, and finds which outputs reach a driver and which drive a \
                   tweeter. Each output is played only above 1 kHz (or the floor) at most -24 \
                   dBFS; only an output whose response says it is not a tweeter is played lower, \
-                  at most -50 dBFS. The levels are fixed: no argument changes them. Whatever \
+                  at most -50 dBFS (the shaped descent); one still flat 2.5 octaves under the \
+                  floor there, which no tweeter is, then gets the free descent to 20 Hz at the \
+                  level its top was heard at, at most -24 dBFS (status `stage` \"descent\" for \
+                  both). The levels are fixed: no argument changes them. Whatever \
                   cannot be told apart is a tweeter. Outputs that are off or muted are not \
                   probed. The roles it finds guard the outputs as a confirmed setup would \
                   (roles_from: speaker_setup_auto_detected) until the user confirms or \
@@ -2776,7 +2779,8 @@ static DETECT: Tool = Tool {
         let what = format!(
             "Play quiet test sweeps on {} to find which outputs reach a driver and which drive \
              a tweeter, from {mic} (above {floor} at most {ceiling}; below it at most \
-             {below} and only where the response is not a tweeter's)",
+             {below} and only where the response is not a tweeter's, then a woofer down \
+             to 20 Hz at most {ceiling})",
             outs_range_words(&on)
         );
         let off_words = if off.is_empty() {
@@ -2792,8 +2796,9 @@ static DETECT: Tool = Tool {
         let detect = format!(
             "Speaker detection: {}{off_words}. Each output is first played only above {floor}, \
              at most {ceiling}. Only an output whose response says it is not a tweeter \
-             is played lower, and then at most {below}. Whatever cannot be told apart \
-             is treated as a tweeter.",
+             is played lower, and then at most {below}; one still flat well below \
+             {floor} there, as no tweeter is, is then played down to 20 Hz at most \
+             {ceiling}. Whatever cannot be told apart is treated as a tweeter.",
             outs_range_words(&on)
         );
         policy::require_detect(

@@ -813,8 +813,10 @@ QString SpeakersController::detectQuestion() const {
                                  : tr(" (%1 are off and are not probed)").arg(outsWords(off));
     //: %1 the outputs ("Out 1–2"), %2 those that are off, with a space before them, or ""; %3 and %4 levels ("−24 dBFS", "−50 dBFS")
     parts << QStringLiteral("• ") +
+                 // -- WP SHOWFIX -- and the free descent, as the core plays it (measure/detect.rs C2)
                  tr("Speaker detection: %1%2. Each output is first played only above 1 kHz, at most %3. Only an output whose "
-                    "response says it is not a tweeter is played lower, and then at most %4. Whatever cannot be told apart "
+                    "response says it is not a tweeter is played lower, and then at most %4; one still flat well below 1 kHz "
+                    "there, as no tweeter is, is then played down to 20 Hz at most %3. Whatever cannot be told apart "
                     "is treated as a tweeter.")
                      .arg(list, offWords, headphones ? QStringLiteral("−36 dBFS") : QStringLiteral("−24 dBFS"),
                           headphones ? QStringLiteral("−60 dBFS") : QStringLiteral("−50 dBFS"));

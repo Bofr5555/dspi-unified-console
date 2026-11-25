@@ -513,7 +513,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>An agent may then find out what is wired to a DSPi&apos;s outputs by playing quiet test sweeps on each output in turn, without asking you first. Each output is first played only above 1 kHz, at most −24 dBFS. Only an output whose response says it is not a tweeter is played lower, and then at most −50 dBFS. Whatever cannot be told apart is treated as a tweeter.</source>
+        <source>An agent may then find out what is wired to a DSPi&apos;s outputs by playing quiet test sweeps on each output in turn, without asking you first. Each output is first played only above 1 kHz, at most −24 dBFS. Only an output whose response says it is not a tweeter is played lower, and then at most −50 dBFS; one still flat well below 1 kHz there, as no tweeter is, is then played down to 20 Hz at most −24 dBFS. Whatever cannot be told apart is treated as a tweeter.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -17553,7 +17553,7 @@ Save before continuing?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Speaker detection: %1%2. Each output is first played only above 1 kHz, at most %3. Only an output whose response says it is not a tweeter is played lower, and then at most %4. Whatever cannot be told apart is treated as a tweeter.</source>
+        <source>Speaker detection: %1%2. Each output is first played only above 1 kHz, at most %3. Only an output whose response says it is not a tweeter is played lower, and then at most %4; one still flat well below 1 kHz there, as no tweeter is, is then played down to 20 Hz at most %3. Whatever cannot be told apart is treated as a tweeter.</source>
         <extracomment>%1 the outputs (&quot;Out 1–2&quot;), %2 those that are off, with a space before them, or &quot;&quot;; %3 and %4 levels (&quot;−24 dBFS&quot;, &quot;−50 dBFS&quot;)</extracomment>
         <translation type="unfinished"></translation>
     </message>
