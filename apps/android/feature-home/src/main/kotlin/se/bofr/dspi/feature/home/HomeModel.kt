@@ -271,10 +271,11 @@ sealed interface DashboardCard {
         /**
          * `DashboardOverview.cards`: the input pair, then each S/PDIF pair
          * (one side alone when the other is disabled), then PDM when enabled.
+         * -- WP REVEFIX -- An [unused] output counts as disabled (owner 2026-11-24).
          */
-        fun cards(numOutputs: Int, outputEnabled: List<Boolean>): List<DashboardCard> {
+        fun cards(numOutputs: Int, outputEnabled: List<Boolean>, unused: (Int) -> Boolean = { false }): List<DashboardCard> {
             if (numOutputs <= 0) return listOf(Input)
-            fun en(i: Int) = outputEnabled.getOrElse(i) { false }
+            fun en(i: Int) = outputEnabled.getOrElse(i) { false } && !unused(i)
             val items = mutableListOf<DashboardCard>(Input)
             for (pair in 0 until (numOutputs - 1) / 2) {
                 val l = pair * 2
@@ -294,8 +295,14 @@ sealed interface DashboardCard {
          * -- BUG1 -- The input pair, then the core's output cards (`DspiCore.outputCards`: paired by
          * the crossfeed pair map when the device has one, else by slot); [cards] when there are none.
          */
-        fun cards(core: List<OutputCard>, numOutputs: Int, outputEnabled: List<Boolean>): List<DashboardCard> {
-            if (core.isEmpty()) return cards(numOutputs, outputEnabled)
+        fun cards(
+            core: List<OutputCard>,
+            numOutputs: Int,
+            outputEnabled: List<Boolean>,
+            unused: (Int) -> Boolean = { false }
+        ): List<DashboardCard> {
+            // -- WP REVEFIX -- the core's cards leave the unused outputs out; so does the fallback
+            if (core.isEmpty()) return cards(numOutputs, outputEnabled, unused)
             return listOf<DashboardCard>(Input) + core.map { c ->
                 val r = c.right
                 // A phone's narrow columns: the short headings ("Woofers L" | "R", "R · Low")
