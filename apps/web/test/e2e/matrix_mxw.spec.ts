@@ -300,3 +300,41 @@ test("MXW inspector: an output's column, an input's row; their switches and chip
   await tools.getByRole("button", { name: "Dense" }).click();
   await expect(matrix.locator("tfoot")).toHaveCount(1);
 });
+
+// -- WP INTE -- (REVE C1) the tile's editor writes only what was typed: opened by Enter (the gain shown, all
+// chosen), Enter or leaving it with nothing typed writes nothing; typed, it writes the typed gain
+test("INTE C1: the tile's gain editor writes nothing until something is typed", async ({ page }) => {
+  const { matrix } = await openMatrix(page);
+  await cell(matrix, 0, 2).click();
+  await expect.poll(() => route(page, 0, 2)).toBe(true);
+  await page.waitForTimeout(400);
+  await page.evaluate(() => {
+    const g = globalThis as unknown as { dspiClients: Client[]; xpWrites: number };
+    const c = g.dspiClients[0]!;
+    const call = c.call.bind(c);
+    g.xpWrites = 0;
+    c.call = (m: string, p: unknown) => {
+      if (m === "crosspoint") g.xpWrites++;
+      return call(m, p);
+    };
+  });
+  const writes = () => page.evaluate(() => (globalThis as unknown as { xpWrites: number }).xpWrites);
+  const editor = matrix.getByRole("textbox", { name: / level$/ });
+  await cell(matrix, 0, 2).focus();
+  await page.keyboard.press("Enter");
+  await expect(editor).toBeFocused();
+  await editor.press("Enter");
+  await expect(editor).toHaveCount(0);
+  await cell(matrix, 0, 2).focus();
+  await page.keyboard.press("Enter");
+  await expect(editor).toBeFocused();
+  await editor.blur();
+  await expect(editor).toHaveCount(0);
+  expect(await writes()).toBe(0);
+  await cell(matrix, 0, 2).focus();
+  await page.keyboard.press("Enter");
+  await editor.fill("-3");
+  await editor.press("Enter");
+  await expect.poll(async () => (await core(page)).matrixGain[0]![2]).toBe(-3);
+  expect(await writes()).toBe(1);
+});

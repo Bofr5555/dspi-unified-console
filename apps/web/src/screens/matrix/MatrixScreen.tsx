@@ -741,6 +741,9 @@ function TileEditor(props: { label: string; text: string; all: boolean; commit: 
   const [text, setText] = useState(props.text);
   const [bad, setBad] = useState(false);
   const done = useRef(false);
+  // -- WP INTE -- (REVE C1) only typed text is written: opened by a typed character it is typed; by Gain…, Enter
+  // or a double click (the gain shown, all chosen) not until something is typed
+  const typed = useRef(!props.all);
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -750,7 +753,7 @@ function TileEditor(props: { label: string; text: string; all: boolean; commit: 
   }, []);
   const finish = (keep: boolean, refocus: boolean) => {
     if (done.current) return;
-    if (keep) {
+    if (keep && typed.current) {
       const v = readNumber(text, ["db"]);
       if (v === null && refocus) {
         setBad(true);
@@ -774,6 +777,7 @@ function TileEditor(props: { label: string; text: string; all: boolean; commit: 
       value={text}
       onInput={(e) => {
         setBad(false);
+        typed.current = true;
         setText((e.target as HTMLInputElement).value);
       }}
       onKeyDown={(e) => {
