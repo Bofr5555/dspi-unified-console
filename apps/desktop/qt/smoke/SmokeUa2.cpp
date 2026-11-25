@@ -51,6 +51,9 @@ bool inView(QQuickWindow *w, QQuickItem *item) {
     return r.left() >= 0 && r.top() >= 0 && r.right() <= w->width() && r.bottom() <= w->height();
 }
 
+// Where an item is in the window now (its top), to see that the page did not move
+qreal sceneTop(QQuickItem *item) { return item ? item->mapToScene(QPointF(0, 0)).y() : -1e9; }
+
 // The flickable of the Auto-tune tab's page
 QQuickItem *tuneFlick(SmokeDriver &d, QQuickWindow *w) {
     QQuickItem *page = d.item(QStringLiteral("MeasureTune.page"), w->contentItem());
@@ -299,6 +302,7 @@ void measureBarSection(SmokeDriver &d) {
                 const qreal at = std::min<qreal>(room, 160);
                 flick->setProperty("contentY", at);
                 d.spin(100);
+                const qreal graphAt = sceneTop(item("MeasureTune.graph"));
                 steps.clear();
                 press(item("MeasureTune.sumCheckRun"));
                 bool checkBar = false;
@@ -309,9 +313,9 @@ void measureBarSection(SmokeDriver &d) {
                     return false;
                 }) && d.waitFor(5000, [&] { return !mc->running(); });
                 d.spin(400);
-                const qreal now = flick->property("contentY").toReal();
-                d.check(QStringLiteral("ua2: the summed check runs in the bar and keeps the page where it was (%1 → %2)").arg(at).arg(now),
-                        ran && checkBar && std::abs(now - at) < 1.0);
+                const qreal now = sceneTop(item("MeasureTune.graph"));
+                d.check(QStringLiteral("ua2: the summed check runs in the bar and keeps the page where it was (the graph at %1 → %2)").arg(graphAt).arg(now),
+                        ran && checkBar && std::abs(now - graphAt) < 1.0);
             } else {
                 d.notRun(QStringLiteral("ua2: the page kept across the summed check"), QStringLiteral("the page does not scroll"));
                 tc->sumCheckRun();
@@ -328,6 +332,7 @@ void measureBarSection(SmokeDriver &d) {
         const qreal at = std::min<qreal>(std::max<qreal>(room, 0), 160);
         if (flick && room > 40) flick->setProperty("contentY", at);
         d.spin(150);
+        const qreal graphWas = sceneTop(item("MeasureTune.graph"));
         steps.clear();
         apply = item("MeasureTune.apply");
         press(apply);
@@ -340,8 +345,9 @@ void measureBarSection(SmokeDriver &d) {
         const bool applied = step(QStringLiteral("apply"), 15000) && d.waitIdle() && d.waitFor(3000, [&] { return tc->applied(); });
         d.spin(400);
         if (flick && room > 40) {
-            const qreal now = flick->property("contentY").toReal();
-            d.check(QStringLiteral("ua2: Apply keeps the page where it was (%1 → %2)").arg(at).arg(now), std::abs(now - at) < 1.0);
+            const qreal now = sceneTop(item("MeasureTune.graph"));
+            d.check(QStringLiteral("ua2: Apply keeps the page where it was (the proposal's graph at %1 → %2)").arg(graphWas).arg(now),
+                    std::abs(now - graphWas) < 1.0);
         } else {
             d.notRun(QStringLiteral("ua2: the page kept across Apply"), QStringLiteral("the page does not scroll"));
         }
