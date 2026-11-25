@@ -63,6 +63,8 @@ test("WEB7: the fill bars as Qt's: a pair per S/PDIF or I2S slot, the core's fil
   ]);
   const core = fillRows(tick({}, [{ fillPct: 37.5, minPct: 38, maxPct: 38, band: "good" }]), () => false);
   assert.deepEqual([core[0]!.fill, core[0]!.min, core[0]!.band], [37.5, 38, "good"]);
+  // -- WP INTE -- (owner 2026-11-24) a pair whose two outputs are unused leaves the view
+  assert.deepEqual(fillRows(tick(), () => false, (pair) => pair === 0).map((r) => r.title), ["Out 3/4 (SPDIF)"]);
   const pdm = fillRows(tick({ pdmActive: true }), () => false);
   assert.deepEqual(pdm.slice(2).map((r) => [r.title, r.band, r.dashed]), [
     ["PDM DMA", "good", false],

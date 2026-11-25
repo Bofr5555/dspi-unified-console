@@ -49,7 +49,10 @@ function num(s: string): number | null {
 }
 
 export function LiveTab(props: MeasureTabProps) {
-  const { desk, outputs, outputName } = props;
+  const { desk, outputName } = props;
+  // -- WP INTE -- (owner 2026-11-24) the live view leaves out an output nothing is routed to; Setup keeps them all
+  const labels = props.session.state.snapshot?.outputLabels;
+  const outputs = props.outputs.filter((o) => labels?.[o]?.unused !== true);
   const [d, setD] = useState<LiveDraft>(() => ({ output: outputs[0] ?? 0, role: "full", mode: "sweep", placement: livePlaceOf(desk.draft), coupler: desk.draft?.coupler ?? "iec60318_4", smoothing: 6, averaging: "slow" }));
   const [frame, setFrame] = useState<MeasureLiveFrameRecord | null>(null);
   const [at, setAt] = useState("");

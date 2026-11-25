@@ -125,11 +125,14 @@ function pdmRingBand(pct: number): FillRow["band"] {
  * Qt's fill rows (StatsController::fillRows): one per output pair the firmware feeds by S/PDIF or
  * I2S ("Out 1/2 (SPDIF)"), from the core's fills on the ring's scale when it has them, else the
  * pair's DMA buffer; then the PDM DMA and ring while the subwoofer plays. `i2s(pair)`: the pair is I2S.
+ * -- WP INTE -- `unused(pair)`: nothing is routed to either output of the pair, which this view leaves out
+ * (owner 2026-11-24).
  */
-export function fillRows(t: StatsTickRecord, i2s: (pair: number) => boolean): FillRow[] {
+export function fillRows(t: StatsTickRecord, i2s: (pair: number) => boolean, unused: (pair: number) => boolean = () => false): FillRow[] {
   const b = t.buffers;
   const rows: FillRow[] = [];
   for (let i = 0; i < b.numSpdif; i++) {
+    if (unused(i)) continue;
     const f: OutputFillRecord | undefined = t.fills?.[i];
     const d = b.spdif[i];
     const fill = f ? f.fillPct : (d?.fillPct ?? 0);

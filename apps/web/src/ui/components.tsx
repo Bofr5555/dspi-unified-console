@@ -13,7 +13,7 @@ import type { Session } from "./session";
 import { aboutData, linkText } from "./texts";
 // -- WP WB6a --
 import { Screens } from "./screens";
-import { meterNames } from "../screens/main/model";
+import { meterHidden, meterNames } from "../screens/main/model";
 import { SenderScreen } from "../screens/device/DeviceScreen"; // -- WP PGWEB --
 // -- WP WEBM1 -- the Modern shell
 import type { ComponentChildren } from "preact";
@@ -334,7 +334,7 @@ export function SessionView(props: { session: Session; onClose: () => void; shel
     <article class="session" aria-label={snap?.device.name ?? "DSPi"} data-status={st.status} data-serial={(snap && !st.document && snap.device.serial) || undefined} data-file={st.document ? st.document.fileName || st.document.name : undefined}>
       {open && !sender ? (
         // -- WP WB6a -- the session's screens (WB6 slices); the skeleton's volume is the main window's now
-        <Screens session={s} shell={props.shell} strip={strip} meters={<Meters session={s} names={meterNames(open.state, open.outputLabels)} />} />
+        <Screens session={s} shell={props.shell} strip={strip} meters={<Meters session={s} names={meterNames(open.state, open.outputLabels)} hidden={meterHidden(open.state, open.outputLabels)} />} />
       ) : sender ? (
         <BareFrame shell={props.shell} strip={strip}>
           <SenderScreen session={s} />
@@ -489,7 +489,7 @@ function LostLinkBanner(props: { phase: { phase: Parameters<typeof linkText>[0];
 }
 
 /** Polls only while the page is visible: nothing runs for a hidden tab. */
-function Meters(props: { session: Session; names: string[] }) {
+function Meters(props: { session: Session; names: string[]; hidden?: boolean[] }) {
   const [levels, setLevels] = useState<number[]>([]);
   // -- WP P1WB2 -- (S8) not a fresh reading (Link): since when, greyed
   const [staleSince, setStaleSince] = useState<number | null>(null);
@@ -524,6 +524,7 @@ function Meters(props: { session: Session; names: string[] }) {
     ) : null}
     <ul class={staleSince !== null ? "meters stale" : "meters"} aria-label="Levels">
       {props.names.map((n, i) => {
+        if (props.hidden?.[i]) return null; // -- WP INTE -- an unused output has no meter (owner 2026-11-24)
         const db = levels[i] ?? -90;
         const pct = Math.max(0, Math.min(100, ((db + 90) / 90) * 100));
         return (

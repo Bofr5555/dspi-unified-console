@@ -13,6 +13,8 @@ import { analyserFor, barsOf, channelName, channelsOf, columnsFor, followingText
 export interface TapNames {
   inputs: string[];
   outputs: string[];
+  /** -- WP INTE -- the outputs nothing is routed to (owner 2026-11-24), by channel */
+  unused?: boolean[];
 }
 
 /** Re-render on every change of the session's analyser. */
@@ -168,6 +170,8 @@ export function SpectrumStrip(props: { session: Session; names: TapNames; want?:
             {Array.from({ length: Math.min(16, count) }, (_, ch) => {
               const name = channelName(a.choice.tap, ch, a.choice.tap === TAP_OUTPUT ? props.names.outputs : props.names.inputs);
               const pressed = (a.choice.mask & (1 << ch)) !== 0;
+              // -- WP INTE -- an unused output is left out of this view, unless it is being analysed (as SpectrumPage)
+              if (a.choice.tap === TAP_OUTPUT && props.names.unused?.[ch] === true && !pressed) return null;
               return (
                 <button key={ch} type="button" aria-pressed={pressed} onClick={() => a.setChoice({ mask: a.choice.mask ^ (1 << ch) })}>
                   {name}
@@ -240,5 +244,6 @@ export function tapNames(s: DspState, labels?: OutputLabel[]): TapNames {
   for (const r of inputRows(s, s.numInputChannels || 2)) inputs[r.index] = `${r.descriptor} ${r.name}`;
   const outputs: string[] = [];
   for (const r of outputRows(s, labels)) outputs[r.index] = `${r.descriptor} ${r.name}`;
-  return { inputs, outputs };
+  const unused = (labels ?? []).map((l) => l.unused === true); // -- WP INTE --
+  return { inputs, outputs, unused };
 }

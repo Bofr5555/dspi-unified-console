@@ -147,11 +147,15 @@ export function StatsPage(props: ScreenProps) {
   );
   const labels = st.snapshot?.outputLabels;
   const i2s = (pair: number) => (labels?.[2 * pair]?.slotName ?? "").startsWith("I2S");
+  // -- WP INTE -- (owner 2026-11-24) a pair whose two outputs nothing is routed to is left out of this view
+  const unused = (pair: number) => labels?.[2 * pair]?.unused === true && labels?.[2 * pair + 1]?.unused === true;
+  const unusedNow = useRef(unused); // the poll's closure reads the labels of now
+  unusedNow.current = unused;
   usePoll(
     async () => {
       const t = await session.core.call("statsTick", undefined);
       setFast(t);
-      setHistory((h) => withHistory(h, fillRows(t, i2s)));
+      setHistory((h) => withHistory(h, fillRows(t, i2s, (pair) => unusedNow.current(pair))));
     },
     FAST_MS,
     open,
@@ -172,7 +176,7 @@ export function StatsPage(props: ScreenProps) {
     }
   };
   const b = fast?.buffers;
-  const fills = fast ? fillRows(fast, i2s) : [];
+  const fills = fast ? fillRows(fast, i2s, unused) : [];
   const colourOf = (r: FillRow) => (r.series === "pdm" ? PDM_COLOUR : (OUTPUT_COLOURS[r.series] ?? OUTPUT_COLOURS[0]!));
   const total = slow?.counters.starvationTotal;
   const slots = slow ? slow.starvation.slice(0, b?.numSpdif ?? slow.starvation.length) : [];
@@ -226,14 +230,16 @@ export function StatsPage(props: ScreenProps) {
                     <b>{typeof total === "number" ? total : "-"}</b>
                   </dd>
                 </div>
-                {slots.map((v, i) => (
-                  <div key={i} class="nerb-row nerb-sub">
-                    <dt>
-                      Out {2 * i + 1}/{2 * i + 2}
-                    </dt>
-                    <dd>{typeof v === "number" ? v : "-"}</dd>
-                  </div>
-                ))}
+                {slots.map((v, i) =>
+                  unused(i) ? null : (
+                    <div key={i} class="nerb-row nerb-sub">
+                      <dt>
+                        Out {2 * i + 1}/{2 * i + 2}
+                      </dt>
+                      <dd>{typeof v === "number" ? v : "-"}</dd>
+                    </div>
+                  ),
+                )}
                 <div class="nerb-row nerb-sub">
                   <dt>Time since last event</dt>
                   <dd>{s.at ? elapsed(now - s.at) : "-"}</dd>
