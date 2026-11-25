@@ -728,3 +728,50 @@ fn wp_inti_a_scene_with_a_preset_load_is_judged_as_an_agents_load() {
     crate::tools::library::HUB_LOADS.with(|h| h.set(false));
     hub.stop();
 }
+
+// -- WP FIN015 -- (REVF S4) a unit's speakers and an upstream's output count
+// from 1 as every other number does: read from 1, given from 1, 0 refused.
+#[test]
+fn wp_fin015_the_installations_outputs_count_from_1() {
+    let hub = hub("fin015");
+    let (set, _) = open_a(&hub);
+    let mut s = server(&set, ConfirmMode::AskRisky);
+    let c = s.connect();
+    let v = ok(&mut s, c, "dspi_installation_view", json!({}));
+    let unit = |site: &Value, id: &str| {
+        site["units"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|u| u["id"] == json!(id))
+            .cloned()
+            .unwrap()
+    };
+    assert_eq!(unit(&v["site"], "A")["output"], json!(1), "{v}");
+    assert_eq!(v["site"]["fan_outs"][0]["output"], json!(2), "{v}");
+    let e = err(
+        &mut s,
+        c,
+        "dspi_installation_draft",
+        json!({"edits": [{"op": "setUnitSpeakers", "id": "A",
+                          "speakers": [{"output": 0, "distanceM": 3.0}]}]}),
+    );
+    assert!(e.contains("counts from 1"), "{e}");
+    ok(
+        &mut s,
+        c,
+        "dspi_installation_draft",
+        json!({"edits": [
+            {"op": "setUnitSpeakers", "id": "A", "speakers": [{"output": 2, "distanceM": 3.0}]},
+            {"op": "setUnitUpstream", "id": "B", "upstream": "fan", "output": 3}
+        ]}),
+    );
+    let d = ok(&mut s, c, "dspi_installation_diff", json!({}));
+    assert_eq!(
+        unit(&d["site"], "A")["speakers"][0]["output"],
+        json!(2),
+        "{d}"
+    );
+    assert_eq!(unit(&d["site"], "B")["output"], json!(3), "{d}");
+    hub.stop();
+}

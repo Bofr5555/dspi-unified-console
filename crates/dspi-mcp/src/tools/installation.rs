@@ -232,9 +232,33 @@ mod tools {
         Ok(())
     }
 
+    /// -- WP FIN015 -- (REVF S4) a unit's speakers' outputs and the output
+    /// of an upstream element (a unit's, a fan-out's) count from 1 too.
+    fn outputs(model: &mut Value, f: impl Fn(u64) -> Option<u64> + Copy) {
+        for key in ["units", "fanOuts"] {
+            for e in model
+                .get_mut(key)
+                .and_then(Value::as_array_mut)
+                .into_iter()
+                .flatten()
+            {
+                let _ = renumber(e, "output", f);
+                for sp in e
+                    .get_mut("speakers")
+                    .and_then(Value::as_array_mut)
+                    .into_iter()
+                    .flatten()
+                {
+                    let _ = renumber(sp, "output", f);
+                }
+            }
+        }
+    }
+
     /// The model's numbers as the agent reads them, from 1.
     fn numbered_out(model: &mut Value) {
         let up = |n: u64| Some(n.saturating_add(1));
+        outputs(model, up);
         for s in model
             .get_mut("scenes")
             .and_then(Value::as_array_mut)
@@ -298,6 +322,20 @@ mod tools {
                             .map_err(|()| bad("a preset_load's or out_delay's `arg`"))?;
                     }
                 }
+            }
+            // -- WP FIN015 -- (REVF S4)
+            Some("setUnitSpeakers") => {
+                for sp in edit
+                    .get_mut("speakers")
+                    .and_then(Value::as_array_mut)
+                    .into_iter()
+                    .flatten()
+                {
+                    renumber(sp, "output", down).map_err(|()| bad("a speaker's `output`"))?;
+                }
+            }
+            Some("setUnitUpstream" | "addFanOut") => {
+                renumber(edit, "output", down).map_err(|()| bad("the upstream's `output`"))?;
             }
             Some("setProgrammeSource" | "addProgrammeSource") if unit_inputs(edit) => {
                 if let Some(list) = edit.get_mut("inputs").and_then(Value::as_array_mut) {

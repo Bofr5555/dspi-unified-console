@@ -351,7 +351,9 @@ fn slot(c: &UserChange) -> String {
 /// Where a path's indices are, in words, and into `target`: `output`,
 /// `input`, `band` (a PEQ band) or `crossover_slot`, each counted from 1 as
 /// the app shows them (-- WP SHOWFIX --); a path of another shape gives its
-/// `indices`, each from 1 too.
+/// `indices`, each from 1 too. -- WP FIN015 -- (REVF S6) codes stay codes:
+/// an input source's name gives its `source` code (0 is USB), a physical
+/// output slot's pin or bus its `pin_slot` (the slot's code, from 0).
 pub(crate) fn place(path: &str, ix: &[u8], n_in: u8, target: &mut Map<String, Value>) -> String {
     let nth = |n: u8| u16::from(n).saturating_add(1);
     let mut channel = |ch: u8| -> String {
@@ -389,6 +391,15 @@ pub(crate) fn place(path: &str, ix: &[u8], n_in: u8, target: &mut Map<String, Va
         ("pre", [i]) => {
             target.insert("input".into(), json!(nth(*i)));
             format!("In {}", nth(*i))
+        }
+        // -- WP FIN015 -- (REVF S6) codes, not counts
+        ("in.name", [source]) => {
+            target.insert("source".into(), json!(source));
+            String::new()
+        }
+        ("out.pin" | "out.type", [slot]) => {
+            target.insert("pin_slot".into(), json!(slot));
+            String::new()
         }
         (p, [0xFF]) if p.starts_with("limit.") => {
             target.insert("output".into(), json!("all"));

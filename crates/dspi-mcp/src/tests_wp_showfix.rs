@@ -162,3 +162,93 @@ fn wp_showfix_output_1_is_out_1_on_the_screen_and_wire_output_0() {
         "{e}"
     );
 }
+
+// -- WP FIN015 -- (REVF S3, probe P3) a preset copy echoes the presets as the
+// agent named them, and the core's refusal names the preset from 1.
+#[test]
+fn wp_fin015_a_preset_copy_counts_from_1() {
+    let (set, core) = demo("fin015-copy");
+    let mut s = server_of(&set, ConfirmMode::NeverAsk);
+    let c = s.connect();
+    ok(&mut s, c, "dspi_preset_save", json!({"slot": 1}));
+    assert_eq!(core.get_state().active_preset_slot, 0);
+    let r = ok(
+        &mut s,
+        c,
+        "dspi_preset_copy",
+        json!({"source": 1, "dest": 6}),
+    );
+    assert_eq!((&r["source"], &r["dest"]), (&json!(1), &json!(6)), "{r}");
+    // On the wire it is slot 5
+    assert_ne!(
+        core.get_preset_directory().unwrap().occupied_mask & (1 << 5),
+        0
+    );
+    let e = err(
+        &mut s,
+        c,
+        "dspi_preset_copy",
+        json!({"source": 3, "dest": 6}),
+    );
+    assert!(e.contains("preset 3 is not the active preset"), "{e}");
+}
+
+// -- WP FIN015 -- (REVF S3, probe P4) the limits profile's outputs count from
+// 1 in dspi_get_limits, as everything else the agent reads does.
+#[test]
+fn wp_fin015_the_limits_profile_names_its_outputs_from_1() {
+    let (set, core) = demo("fin015-limits");
+    let mut s = server_of(&set, ConfirmMode::NeverAsk);
+    let c = s.connect();
+    core.limits_apply_profile(
+        json!({"schemaVersion": 1, "meta": {"kind": "limits", "name": "Limits profile"},
+               "limits": {"outputs": [{"output": 2, "highpassMinHz": 2000.0}]}})
+        .to_string(),
+    )
+    .unwrap();
+    let r = ok(&mut s, c, "dspi_get_limits", json!({}));
+    let row = &r["profile"]["limits"]["outputs"][0];
+    assert_eq!(row["output"], json!(3), "{r}");
+    assert_eq!(row["highpassMinHz"], json!(2000.0), "{r}");
+    // The core keeps it on wire output 2 (Out 3)
+    assert!(core.limits_profile_document().contains("\"output\": 2"));
+}
+
+// -- WP FIN015 -- (REVF S6) the user's changes keep codes as codes: an input
+// source's name gives its code, a physical output slot's pin its slot code.
+#[test]
+fn wp_fin015_a_users_change_keeps_codes_as_codes() {
+    let mut m = serde_json::Map::new();
+    let words = crate::user::place("in.name", &[2], 4, &mut m);
+    assert_eq!((words.as_str(), &m["source"]), ("", &json!(2)), "{m:?}");
+    assert!(
+        !m.contains_key("indices") && !m.contains_key("input"),
+        "{m:?}"
+    );
+    let mut m = serde_json::Map::new();
+    let words = crate::user::place("out.pin", &[1], 4, &mut m);
+    assert_eq!((words.as_str(), &m["pin_slot"]), ("", &json!(1)), "{m:?}");
+    assert!(!m.contains_key("output"), "{m:?}");
+    // An output's own setting is still Out N from 1.
+    let mut m = serde_json::Map::new();
+    assert_eq!(crate::user::place("out.gain", &[1], 4, &mut m), "Out 2");
+}
+
+// -- WP FIN015 -- (REVF S9) a slot the device names past the last is none
+// known (null), never preset 256; (REVF S10) the guide names the documents
+// that keep their file's numbers.
+#[test]
+fn wp_fin015_an_unknown_slot_is_null_and_the_guide_names_the_file_numbers() {
+    use crate::tools::read::shown_slot;
+    assert_eq!(shown_slot(0), Some(1));
+    assert_eq!(shown_slot(9), Some(10));
+    assert_eq!(shown_slot(10), None);
+    assert_eq!(shown_slot(255), None);
+    let g = crate::resources::GUIDE;
+    assert!(
+        g.contains("keeps that format's fields, which count from 0")
+            && g.contains("`dspi_snapshot_export`")
+            && g.contains("(`pin_slot`)"),
+        "the guide's numbers"
+    );
+}

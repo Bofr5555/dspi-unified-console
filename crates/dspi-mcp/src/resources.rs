@@ -97,8 +97,13 @@ device the app shows is used. A device that is not open may be a known one
   are the app's, wire channel 1 is the first input, and `change 1` in a
   `dspi_apply_changes` error is the first change. Texts say \"Out N\", \"In N\" and
   \"preset N\" with the same numbers. Codes are not counts and stay as they are: an input
-  source (`source`: 0 is USB), audio link channels and slots (0..63, 255 silent), ids,
-  cursors and masks (`output_pairs`, `pair_map`).
+  source (`source`: 0 is USB), a physical output slot (`pin_slot`), audio link channels and
+  slots (0..63, 255 silent), ids, cursors and masks (`output_pairs`, `pair_map`). A document
+  in a file's own format keeps that format's fields, which count from 0 (output 0 there is
+  Out 1): a snapshot's `document` (`dspi_snapshot_export`), a template (`dspi_get_template`),
+  a configuration document for `dspi_config_preview` or `dspi_config_import`, and a filter
+  file's text. Read their numbers as the file's; the tools' own arguments and results count
+  from 1 (`dspi_get_limits` names its profile's outputs from 1).
 - What an agent may change, and what the user must confirm in the app, is in
   `dspi_get_overview`'s `agent_may`. A change that is louder, a big boost, a long delay step
   or a lowered tweeter high-pass may be held for the user: the result then says

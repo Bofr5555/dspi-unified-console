@@ -16,14 +16,16 @@ pub fn known_slot(active: Option<u8>) -> Option<u8> {
 }
 
 /// Why a copy from `source` must not go, when `active` is the slot the device
-/// names active (`None`: unknown): `None` when it may.
+/// names active (`None`: unknown): `None` when it may. -- WP FIN015 -- (REVF
+/// S3) the words name the preset from 1, as every app and agent counts it.
 pub fn copy_refusal(source: u8, active: Option<u8>) -> Option<String> {
     if known_slot(active) == Some(source) {
         return None;
     }
     Some(format!(
-        "preset {source} is not the active preset: a copy saves the current settings, \
-         so it can only copy from the active preset"
+        "preset {} is not the active preset: a copy saves the current settings, \
+         so it can only copy from the active preset",
+        u16::from(source).saturating_add(1)
     ))
 }
 
@@ -37,6 +39,12 @@ mod tests {
         assert!(copy_refusal(2, Some(5)).is_some());
         assert!(copy_refusal(0, None).is_some(), "unknown is not slot 0");
         assert!(copy_refusal(255, Some(255)).is_some(), "past the last slot");
+        // -- WP FIN015 -- the words count from 1: wire slot 2 is preset 3
+        let why = copy_refusal(2, Some(0)).unwrap();
+        assert!(
+            why.starts_with("preset 3 is not the active preset"),
+            "{why}"
+        );
         assert_eq!(known_slot(Some(9)), Some(9));
         assert_eq!(known_slot(Some(10)), None);
         assert_eq!(known_slot(Some(255)), None);

@@ -100,7 +100,10 @@ impl Confirmation {
     }
 
     /// As JSON, for the app's sheet and the agent: numbers and the server's
-    /// words only.
+    /// words only. -- WP FIN015 -- (REVF S8) two counting origins, on
+    /// purpose: `risks[].output` counts from 1, as the risk's words and the
+    /// agent do; `roles.rows[].output` is the wire output, from 0 (the app
+    /// shows it as Out N+1), as the app's own speaker rows are.
     pub fn to_json(&self) -> Value {
         json!({
             "confirmation_id": self.id,

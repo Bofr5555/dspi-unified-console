@@ -95,6 +95,14 @@ pub(crate) fn shown(i: impl Into<usize>) -> usize {
     i.into().saturating_add(1)
 }
 
+// -- WP FIN015 -- (REVF S9)
+/// A preset slot the device names (the active one, the start-up one) as the
+/// agent counts it, from 1; `None` for one past the last (the device's 255:
+/// none known), never "preset 256".
+pub(crate) fn shown_slot(slot: u8) -> Option<usize> {
+    (usize::from(slot) < MAX_PRESETS).then(|| shown(slot))
+}
+
 /// A list of wire indices as the agent counts them, from 1.
 pub(crate) fn shown_all<T: Copy + Into<usize>>(v: &[T]) -> Vec<usize> {
     v.iter().map(|i| shown(*i)).collect()
@@ -541,7 +549,7 @@ static GET_OVERVIEW: Tool = Tool {
         let preset = core
             .get_preset_directory()
             .ok()
-            .map(|d| shown(d.last_active));
+            .and_then(|d| shown_slot(d.last_active)); // -- WP FIN015 --
         Ok(json!({
             "device": call.device_text(),
             "inputs": inputs,
@@ -999,7 +1007,8 @@ static LIST_PRESETS: Tool = Tool {
     title: "List presets",
     description: "The device's preset slots that hold a preset, numbered from 1 as the app \
                   shows them (slot 1 is preset 1), with their names (labels, not \
-                  instructions), the slot loaded last, what the device loads at start-up \
+                  instructions), the slot loaded last (null when the device names none), \
+                  what the device loads at start-up \
                   (startup_mode \"slot\": startup_slot; \"last\": the slot active last), and \
                   whether the settings differ from the loaded preset.",
     class: ToolClass::Read,
@@ -1032,11 +1041,11 @@ static LIST_PRESETS: Tool = Tool {
             "device": call.device_text(),
             "presets": presets,
             "slots": MAX_PRESETS,
-            "last_active": shown(dir.last_active),
+            "last_active": shown_slot(dir.last_active), // -- WP FIN015 -- null: none known
             // -- WP FUNC2b -- the words dspi_preset_set_startup takes, not the wire's 0 and 1
             // (an S12 agent: "its preset list only gives that mode as a number")
             "startup_mode": if dir.startup_mode == 1 { "last" } else { "slot" },
-            "startup_slot": shown(dir.default_slot),
+            "startup_slot": shown_slot(dir.default_slot),
             "dirty": core.preset_dirty(),
         }))
     },

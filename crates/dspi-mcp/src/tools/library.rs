@@ -807,7 +807,11 @@ static PRESET_COPY: Tool = Tool {
         call.core()?
             .copy_preset_confirmed(source, dest, Some(token))
             .map_err(|e| policy::core_error(&call.judging, e))?;
-        Ok(json!({"ok": true, "device": call.device_text(), "source": source, "dest": dest}))
+        // -- WP FIN015 -- (REVF S3) both from 1, as the agent named them
+        Ok(
+            json!({"ok": true, "device": call.device_text(), "source": slot_word(source),
+                  "dest": slot_word(dest)}),
+        )
     },
 };
 

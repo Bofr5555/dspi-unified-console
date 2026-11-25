@@ -953,10 +953,12 @@ fn bit(slot: u8) -> u16 {
     1u16.checked_shl(u32::from(slot)).unwrap_or(0)
 }
 
+/// -- WP FIN015 -- (REVF S3) the preset named from 1, as the apps count it.
 fn unconfirmed(what: &str, slot: u8) -> DspiError {
     DspiError::Transfer {
         msg: format!(
-            "the device did not confirm the {what} preset {slot} within {} ms",
+            "the device did not confirm the {what} preset {} within {} ms",
+            u16::from(slot).saturating_add(1),
             CONFIRM_WITHIN.as_millis()
         ),
     }
@@ -2493,10 +2495,11 @@ mod tests {
         core.set_input_preamp(0, -6.0).unwrap();
         let token = Some(core.confirm_token(ConfirmOp::CopyPreset));
         let mark = probe.mark();
-        assert!(matches!(
-            core.copy_preset_confirmed(3, 5, token.clone()),
-            Err(DspiError::InvalidArgument { .. })
-        ));
+        let e = core.copy_preset_confirmed(3, 5, token.clone());
+        assert!(matches!(e, Err(DspiError::InvalidArgument { .. })));
+        // -- WP FIN015 -- (REVF S3) the words name it as the apps do: preset 4
+        let why = e.unwrap_err().to_string();
+        assert!(why.contains("preset 4 is not the active preset"), "{why}");
         assert!(probe.since(mark).is_empty(), "{:?}", probe.since(mark));
         let s = core.get_state();
         assert_eq!(s.active_preset_slot, 0);
@@ -2505,6 +2508,13 @@ mod tests {
         // The token was not spent: the same one copies from the active slot.
         core.copy_preset_confirmed(0, 5, token).unwrap();
         assert_eq!(core.get_state().active_preset_slot, 0);
+    }
+
+    // -- WP FIN015 -- (REVF S3)
+    #[test]
+    fn fin015_an_unconfirmed_save_names_the_preset_from_1() {
+        let why = unconfirmed("save to", 2).to_string();
+        assert!(why.contains("the save to preset 3 within"), "{why}");
     }
 
     #[test]
