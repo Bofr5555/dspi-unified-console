@@ -245,6 +245,9 @@ test("WEB6: the Spectrum page draws curves, bars or both, says how the analyser 
   await expect.poll(async () => (await call<{ snapshot: { tap: number } }>(page, "analyserView")).snapshot.tap).toBe(1);
   await expect(legend.getByRole("button", { pressed: true })).toHaveCount(1);
   await expect(legend.getByRole("button", { pressed: true })).toContainText("Out 1");
+  // Unused outputs (no input routed) are not offered: the legend has only the routed ones
+  const labels = (await call<{ outputLabels: { unused: boolean }[] }>(page, "state")).outputLabels;
+  await expect(legend.getByRole("button")).toHaveCount(labels.filter((l) => !l.unused).length);
   // The choice is kept: the page comes back as it was left
   await page.reload();
   const again = await connect(page);
