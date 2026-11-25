@@ -82,6 +82,20 @@ pub(crate) fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
+// -- WP FIN015 -- (REVF D2)
+/// How a connection reached the device, in words after "Connected": the
+/// transport's id (`Opened::transport`, kept as the record's `source`) is
+/// not a word for a person ("over fake").
+fn over(transport: &str) -> String {
+    match transport {
+        "usb" => "over USB".to_owned(),
+        "midi" => "over USB MIDI".to_owned(),
+        "link" => "through a hub".to_owned(),
+        "fake" => "to the demo".to_owned(),
+        other => format!("over {other}"),
+    }
+}
+
 /// What the event log wants to know of a connection that just opened.
 pub(crate) struct Opened {
     pub(crate) serial: String,
@@ -224,8 +238,8 @@ impl Store {
             EventKind::Connected,
             t,
             match &o.fw {
-                Some(fw) => format!("Connected over {} (firmware {fw})", o.transport),
-                None => format!("Connected over {}", o.transport),
+                Some(fw) => format!("Connected {} (firmware {fw})", over(&o.transport)),
+                None => format!("Connected {}", over(&o.transport)),
             },
         );
         r.source = Some(o.transport.clone());
