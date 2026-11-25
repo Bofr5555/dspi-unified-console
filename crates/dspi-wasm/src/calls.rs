@@ -53,6 +53,10 @@ pub struct CallError {
     /// The core error's notice key, for `noticeFor`; `None` for the binding's
     /// own refusals.
     pub notice_key: Option<String>,
+    // -- WP INTE -- (SHOWFIX finding 1) the core's words for the person
+    /// `DspiError::user_text`, the reply's `text`; `None` for the binding's
+    /// own refusals.
+    pub text: Option<String>,
 }
 
 impl CallError {
@@ -62,6 +66,7 @@ impl CallError {
             message: message.into(),
             // -- WP P1NT --
             notice_key: None,
+            text: None,
         }
     }
 }
@@ -98,6 +103,7 @@ impl From<DspiError> for CallError {
         let notice_key = Some(e.notice_key());
         Self {
             notice_key,
+            text: Some(e.user_text()), // -- WP INTE --
             ..Self::new(code, e.to_string())
         }
     }
@@ -165,6 +171,10 @@ fn reply(r: CallResult) -> Vec<u8> {
             // -- WP P1NT -- the core error's notice key, for `noticeFor`
             if let (Some(key), Some(fields)) = (e.notice_key, v.as_object_mut()) {
                 fields.insert("noticeKey".to_owned(), Value::String(key));
+            }
+            // -- WP INTE -- (SHOWFIX finding 1) the core's words for the person
+            if let (Some(text), Some(fields)) = (e.text, v.as_object_mut()) {
+                fields.insert("text".to_owned(), Value::String(text));
             }
             v
         }
@@ -1095,6 +1105,24 @@ mod tests {
         assert_eq!(ok(h, "history", json!({ "n": 1 }))[0]["source"], "redo");
         ok(h, "close", Value::Null);
         assert_eq!(code(&run(h, "undo", Value::Null)), "not_open");
+        session_free(h).unwrap();
+    }
+
+    // -- WP INTE -- (SHOWFIX finding 1) a core failure's reply carries the core's
+    // words for the person; the binding's own refusals do not
+    #[test]
+    fn wp_inte_a_core_failure_carries_the_user_text() {
+        let h = session_new().unwrap();
+        let r = run(h, "undo", Value::Null);
+        assert_eq!(code(&r), "not_open");
+        assert_eq!(
+            r["text"].as_str(),
+            Some(DspiError::Disconnected.user_text().as_str()),
+            "{r}"
+        );
+        let r = run(h, "setDragging", Value::Null);
+        assert_eq!(code(&r), "invalid");
+        assert!(r.get("text").is_none(), "{r}");
         session_free(h).unwrap();
     }
 

@@ -202,6 +202,8 @@ export function valueText(v: ParamValue | null, path: string): string {
 /** One change in Qt's words: its title ("Gain, Out 1, band 3") and its values ("0.0 dB → −1.5 dB"). */
 export function describeEntry(e: HistoryEntry, names: HistoryNames, fallback: (path: string) => string): { title: string; detail: string } {
   const { path, indices } = e;
+  // -- WP INTE -- (SHOWFIX finding 5) a measurement's generator rows, folded by the core into one: its words
+  if (path === "sig.run" && e.label) return { title: e.label, detail: "" };
   const first = indices.length ? indices[0]! : -1;
   const crossover = path.startsWith("eq.") && indices.length > 1 && indices[1]! >= XOVER_BAND_BASE;
   let title = labelOf(path, fallback);

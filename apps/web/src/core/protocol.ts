@@ -353,6 +353,8 @@ export interface HistoryEntry {
   source: string;
   atMs: number;
   undoable: boolean;
+  /** -- WP INTE -- the undo group's label; for a folded measurement (`sig.run`, SHOWFIX) the row's words */
+  label?: string | null;
 }
 
 /** What `undo` or `redo` did (`dspi_core::HistoryMove`). */
@@ -1049,6 +1051,8 @@ export interface CoreError {
   message: string;
   /** -- WP P1WB1 -- the core's notice key (P1NT, `noticeFor`), when it has one. */
   noticeKey?: string;
+  /** -- WP INTE -- (SHOWFIX finding 1) the core's words for the person (`DspiError::user_text`), when it has them. */
+  text?: string;
 }
 
 export type Reply =
@@ -1071,6 +1075,8 @@ export class CoreCallError extends Error {
     message: string,
     // -- WP P1WB1 -- the core's notice key (P1NT), when the failure has one
     readonly noticeKey?: string,
+    // -- WP INTE -- (SHOWFIX finding 1) the core's words for the person, when it has them
+    readonly text?: string,
   ) {
     super(message);
     this.name = "CoreCallError";

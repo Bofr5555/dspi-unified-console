@@ -210,6 +210,12 @@ export class MeasureDesk {
   }
 
   fail(e: unknown): void {
+    // -- WP INTE -- (SHOWFIX finding 1) the core's words for the person first, as Qt's measure session
+    if (e instanceof CoreCallError && e.text) {
+      this.error = e.text;
+      this.changed();
+      return;
+    }
     const n = noticeOf(e);
     this.error = n ? `${n.title}: ${n.detail || n.reason}` : e instanceof Error ? e.message : String(e);
     this.changed();

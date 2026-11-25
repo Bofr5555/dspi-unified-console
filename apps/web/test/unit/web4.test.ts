@@ -41,6 +41,9 @@ test("WEB4: History's presets by slot, the generator in words, effects' settings
   assert.deepEqual(describeEntry(e("sig.control", [], { choice: 0 }, { choice: 1 }), names, raw), { title: "Signal generator started", detail: "" });
   assert.equal(describeEntry(e("sig.control", [], { choice: 1 }, { choice: 2 }), names, raw).title, "Signal generator stopped at once");
   assert.equal(describeEntry(e("sig.control", [], { choice: 1 }, { choice: 0 }), names, raw).title, "Signal generator stopped");
+  // -- WP INTE -- (SHOWFIX finding 5) the core's one row for a measurement, by its words
+  const run = { ...e("sig.run", [], null, { int: 13 }), label: "Measurement: Centre woofer, Sub, 13 sweeps" };
+  assert.deepEqual(describeEntry(run, names, raw), { title: "Measurement: Centre woofer, Sub, 13 sweeps", detail: "" });
   assert.equal(labelOf("loud.ref", raw), "Loudness › Reference level");
   assert.equal(labelOf("loud.enable", raw), "Loudness");
   assert.equal(labelOf("vol.master", raw), "Master volume");

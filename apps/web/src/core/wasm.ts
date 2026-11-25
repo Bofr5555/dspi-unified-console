@@ -166,10 +166,10 @@ export class WasmModule {
     if (n === CALL_BUSY) throw new CoreCallError("busy", "the core is already running a call");
     if (n === CALL_DEAD) throw new CoreCallError("dead", this.deadReason || "the core stopped after an internal error");
     const text = new TextDecoder().decode(new Uint8Array(this.x.memory.buffer, this.x.dspi_reply_ptr(), n));
-    const reply = JSON.parse(text) as { ok: true; value: unknown } | { ok: false; code: string; error: string; noticeKey?: string };
+    const reply = JSON.parse(text) as { ok: true; value: unknown } | { ok: false; code: string; error: string; noticeKey?: string; text?: string };
     if (!reply.ok) {
       if (reply.code === "dead") this.deadReason = reply.error;
-      throw new CoreCallError(reply.code, reply.error, reply.noticeKey); // -- WP P1WB1 -- with its notice key
+      throw new CoreCallError(reply.code, reply.error, reply.noticeKey, reply.text); // -- WP P1WB1 -- with its notice key
     }
     return reply.value;
   }
