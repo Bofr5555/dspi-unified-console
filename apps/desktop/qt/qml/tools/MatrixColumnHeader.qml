@@ -9,6 +9,9 @@ import UConsole
 // output dims its name and pill. On a page a click selects the output, which
 // the inspector shows; in a window there is nothing to select. The name turns
 // into a field while it is renamed (MatrixPanel.renaming).
+// -- WP UA1 -- (UXP A1) Modern names it as its pages do: the name over the OUTn
+// pill, which is its number ("Left woofer" over OUT1), and "Left woofer · 1"
+// where the pill is not (its tip, its accessible names); Classic keeps the label.
 Item {
     id: header
     required property int index
@@ -17,7 +20,9 @@ Item {
     readonly property bool dense: view ? view.dense : false
     readonly property bool on: col ? col.enabled === true : true
     readonly property bool muted: col ? col.muted === true : false
-    property string shownName: col ? col.label : ""
+    property string shownName: !col ? "" : LayoutController.modern && named.title.length ? named.title : col.label
+    readonly property string headName: !col ? "" : LayoutController.modern && named.name.length ? named.name : col.label
+    ChannelInfo { id: named; channel: header.col && header.col.channel !== undefined ? header.col.channel : -1 }
 
     objectName: "Matrix.header." + index
 
@@ -59,8 +64,9 @@ Item {
             visible: !header.dense && header.view !== null && header.view.renaming !== header.index
             width: parent.width
             height: 2 * Math.ceil(metrics.height)
+            objectName: "Matrix.header." + header.index + ".name"
             textFormat: Text.PlainText
-            text: header.shownName
+            text: header.headName
             font: Theme.fontSmall
             color: select.current || select.hovered ? Theme.text : Theme.textMuted
             opacity: header.on ? 1 : Theme.dim(0.45)
