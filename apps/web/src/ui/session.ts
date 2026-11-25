@@ -95,6 +95,9 @@ export interface SessionState {
   // -- WP UWN -- (UXP A15)
   /** Where the device is, as its view learnt it: the hub's location for it, its unit's name on the audio link ("" for none). */
   place?: { location: string; unit: string };
+  // -- WP UWN -- (UXP A16)
+  /** While the link reconnects: another hub (a new identity) answers at its address, so the core will never bind again. */
+  otherHub?: boolean;
 }
 
 // -- WP WB6a --
@@ -157,6 +160,16 @@ export class Session {
   // -- WP WEBM3 --
   /** The console's other session that has the DSPi `serial` (set by the page), null when none has: views that span units use its core. */
   heldBy: ((serial: string) => HeldUnit | null) | null = null;
+  // -- WP UWN -- (UXP A16)
+  /** Close this session and open its source again in a new one (Try Again, Connect Again); set by the page, null where it cannot. */
+  reopen: (() => void) | null = null;
+  /** Close this session and take its hub off the page's list (Remove); set by the page where the list may change. */
+  forget: (() => void) | null = null;
+
+  /** Whether the session's DSPi is open but its link is away (reconnecting, the DSPi gone from the hub): nothing is written then. */
+  get away(): boolean {
+    return this.state.status === "open" && !!this.state.link && this.state.link.phase !== "bound";
+  }
 
   constructor(
     readonly id: string,
@@ -480,6 +493,7 @@ export class Session {
    * shown. -- WP WB6a -- Answers whether the write went through.
    */
   async write(path: string, value: ParamValue, indices?: number[], token?: string): Promise<boolean> {
+    if (this.away) return false; // -- WP UWN -- (UXP A16) fenced while the link is away: the strip says why, no failure notice
     if (this.readOnlyReason) {
       this.set({ error: this.readOnlyReason });
       return false;
@@ -516,6 +530,7 @@ export class Session {
    * `write`. Refused while read only. Answers whether it went through.
    */
   async change<M extends ChangeMethod>(method: M, params: CoreMethods[M]["params"]): Promise<boolean> {
+    if (this.away) return false; // -- WP UWN -- (UXP A16) fenced while the link is away: the strip says why, no failure notice
     if (this.readOnlyReason) {
       this.set({ error: this.readOnlyReason });
       return false;
@@ -550,6 +565,7 @@ export class Session {
    * the error shows; answers whether all went through.
    */
   async writeAll(writes: Write[]): Promise<boolean> {
+    if (this.away) return false; // -- WP UWN -- (UXP A16) fenced while the link is away: the strip says why, no failure notice
     if (this.readOnlyReason) {
       this.set({ error: this.readOnlyReason });
       return false;
@@ -621,7 +637,7 @@ export class Session {
 
   /** Step back (`forward` false) or forward through the core's journal, then the read-back. */
   async step(forward: boolean): Promise<void> {
-    if (this.readOnlyReason || this.state.status !== "open") return;
+    if (this.readOnlyReason || this.state.status !== "open" || this.away) return; // -- WP UWN -- away
     try {
       const m = await this.core.call(forward ? "redo" : "undo", undefined);
       const snapshot = await this.core.call("state", undefined);
@@ -744,6 +760,8 @@ export class Session {
   }
 
   async close(): Promise<void> {
+    clearTimeout(this.otherHubTimer); // -- WP UWN --
+    this.otherHubTimer = undefined;
     this.unsubscribe();
     await this.core.dispose();
     this.set({ status: "closed" });
@@ -775,7 +793,10 @@ export class Session {
       if (e.phase === "bound" && this.state.link?.phase === "reconnecting") void this.readSecurity(); // -- WP SECWEB --
       // -- WP PGWEB -- a reconnect is a new connection: the generation may have changed (a re-flash behind the hub)
       if (e.phase === "bound" && this.state.link?.phase === "reconnecting") void this.readProtocol().then((protocol) => this.set({ protocol }));
-      this.set({ link: { phase: e.phase, pinSource: e.pinSource } });
+      // -- WP UWN -- (UXP A16) bound again: what failed while the link was away is not true any more
+      const back = e.phase === "bound" && !!this.state.link && this.state.link.phase !== "bound";
+      this.set({ link: { phase: e.phase, pinSource: e.pinSource }, ...(back ? { error: "", otherHub: false } : {}) });
+      this.watchOtherHub();
       // -- WP WB4b -- the hub's list may have changed (a DSPi came or went)
       if (this.state.status === "choosing") this.refreshDevices();
     }
@@ -784,6 +805,36 @@ export class Session {
     else if (e.event === "hubAdmin") this.onHubAdmin(e.events);
     // -- WP P2WB1 -- the hub's own families' events, to whoever follows them
     else if (e.event === "hubServer") for (const l of [...this.hubListeners]) l(e.events);
+  }
+
+  // -- WP UWN -- (UXP A16)
+  private otherHubTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /**
+   * While the link reconnects, look at why each redial failed (`linkStatus`'s reason, the core's words): when another
+   * hub answers at the address (a hub restarted with a new identity), the core goes on trying for ever, so the strip
+   * says so with Connect Again. Every 3 s while reconnecting; nothing otherwise.
+   */
+  private watchOtherHub(): void {
+    const reconnecting = this.state.link?.phase === "reconnecting" && this.state.status === "open";
+    if (!reconnecting) {
+      clearTimeout(this.otherHubTimer);
+      this.otherHubTimer = undefined;
+      return;
+    }
+    if (this.otherHubTimer !== undefined) return;
+    this.otherHubTimer = setTimeout(() => {
+      this.otherHubTimer = undefined;
+      void this.core.call("linkStatus", undefined).then(
+        (st) => {
+          if (this.state.link?.phase !== "reconnecting") return;
+          const other = isOtherHub(st?.closeReason ?? "");
+          if (other !== !!this.state.otherHub) this.set({ otherHub: other });
+          this.watchOtherHub();
+        },
+        () => this.watchOtherHub(),
+      );
+    }, 3000);
   }
 
   // -- WP P2WB1 --
@@ -841,6 +892,12 @@ function message(e: unknown): string {
 /** A lock state as the core answers it (a test's fake core may answer anything). */
 function isLock(v: unknown): v is LockStateRecord {
   return !!v && typeof v === "object" && typeof (v as LockStateRecord).pinSet === "boolean";
+}
+
+// -- WP UWN -- (UXP A16)
+/** Whether a redial's failure (`linkStatus.closeReason`) is the core's "another hub answers at this address". */
+export function isOtherHub(reason: string): boolean {
+  return /another hub answers/i.test(reason);
 }
 
 function sameLines(a: string[], b: string[]): boolean {

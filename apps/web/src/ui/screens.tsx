@@ -473,6 +473,7 @@ export function Screens(props: {
   // -- WP WEBM1 -- the scenes and the preset slots are the Overview's and their own pages' (the bar's picker recalls on every page)
   const section = sectionOf(page);
   const pro = mode !== "simple" && !lockedUser;
+  const away = session.away; // -- WP UWN -- (UXP A16)
   return (
     <Frame
       root={root}
@@ -528,7 +529,12 @@ export function Screens(props: {
           <HealthRail session={session} feed={health} />
         </StatusRail>
       }
-      dock={<Dock session={session} state={st} locked={lockedUser} meters={props.meters} load={<CoreLoad feed={health} /> /* -- WP REVEFIX -- */} />}
+      dock={
+        // -- WP UWN -- (UXP A16) the link away: nothing here writes (the strip says why), as the hub page fences itself
+        <fieldset class="link-fence" disabled={away}>
+          <Dock session={session} state={st} locked={lockedUser} meters={props.meters} load={<CoreLoad feed={health} /> /* -- WP REVEFIX -- */} />
+        </fieldset>
+      }
     >
       {/* -- WP SW3 -- on an installation, the scene bar */}
       {pro && (section === "overview" || section === "system") ? <SceneBar feed={system} session={session} ask={ask} /> : null}
@@ -536,7 +542,10 @@ export function Screens(props: {
       {page === CONNECT ? (
         shell.connect
       ) : (
-        <screen.View key={`${screen.id}:${jump}` /* -- WP WEBM4 -- */} session={session} ask={ask} unsaved={unsaved} system={system} mode={mode} desk={desk} open={openAt} target={target} hub={hub} /* -- WP P2WB1 -- */ go={setCurrent} /* -- WP INTD -- */ />
+        // -- WP UWN -- (UXP A16) fenced while the link is away; the fieldset is always there, so a screen keeps its state
+        <fieldset class="link-fence" disabled={away} aria-disabled={away || undefined} title={away ? "The DSPi is not reached now: nothing can be changed until the link is back" : undefined}>
+          <screen.View key={`${screen.id}:${jump}` /* -- WP WEBM4 -- */} session={session} ask={ask} unsaved={unsaved} system={system} mode={mode} desk={desk} open={openAt} target={target} hub={hub} /* -- WP P2WB1 -- */ go={setCurrent} /* -- WP INTD -- */ />
+        </fieldset>
       )}
       {shortcutsOpen ? <ShortcutsDialog screens={shownIds} onClose={() => setShortcutsOpen(false)} /> : null}
       {question ? (

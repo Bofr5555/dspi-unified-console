@@ -288,6 +288,9 @@ export function SessionView(props: { session: Session; onClose: () => void; shel
   const st = useSessionState(s);
   const snap = st.snapshot;
   const ro = s.readOnlyReason;
+  // -- WP UWN -- (UXP A16) a hub that could not be reached when connecting: Devices with its row's Try Again / Remove,
+  // no second strip and no red line over it
+  const connectFailed = s.source.kind === "hub" && st.status === "failed" && !snap;
   // -- WP WEBM1 -- the parts of the shell's frame (ui/shell/Frame.tsx) that are the same whatever the session shows
   // -- WP REVEFIX -- (REVE §3.1) no bar of its own: the device's name, firmware and state are its tab's (Qt's
   // TopBar), Disconnect is the tab's ×, read only is said in the strip; the demo says so there, as Qt's strip does
@@ -300,13 +303,15 @@ export function SessionView(props: { session: Session; onClose: () => void; shel
           <span>This is the demo DSPi, a simulated device: nothing you change here reaches a real DSPi.</span>
         </div>
       ) : null}
-      {st.link && st.link.phase !== "bound" ? <LostLinkBanner phase={st.link} onClose={props.onClose} /> : null}
+      {st.link && st.link.phase !== "bound" ? <LostLinkBanner phase={st.link} session={s} otherHub={!!st.otherHub && st.link.phase === "reconnecting"} onClose={props.onClose} /> : null}
       {ro ? <p class="note read-only-reason">{ro}</p> : null}
-      {st.error ? (
+      {st.error && !connectFailed ? (
         // -- WP P1WB2 -- with its notice row (P1NT) when the core's table has one: title, reason, what to do
         st.errorNotice ? (
           <p class={`error notice notice-${st.errorNotice.kind}`} role="alert" data-key={st.errorNotice.key}>
-            <strong>{st.errorNotice.title}.</strong> {st.errorNotice.reason} <span class="notice-detail">{st.error}</span>{" "}
+            {/* -- WP UWN -- (UXP A16) the core's title, reason and what to do as one line; its detail only when it adds something */}
+            <strong>{st.errorNotice.title}.</strong> {st.errorNotice.reason}{" "}
+            {detailAdds(st.errorNotice, st.error) ? <span class="notice-detail">{st.error} </span> : null}
             <span class="notice-action">{st.errorNotice.action}</span>
           </p>
         ) : (
@@ -336,10 +341,12 @@ export function SessionView(props: { session: Session; onClose: () => void; shel
           key={st.status === "failed" || st.status === "closed" ? "none" : "on-the-way" /* a fresh frame once it has failed */}
           shell={props.shell}
           connecting={st.status === "opening" || st.status === "pairing" || st.status === "choosing"}
+          start={connectFailed ? CONNECT : undefined /* -- WP UWN -- */}
+          connectNote={connectFailed && s.source.kind === "hub" ? <HubFailure session={s} url={s.source.url} error={st.error} /> : null}
           strip={
             <>
               {strip}
-              {st.status === "failed" || st.status === "closed" ? <NoDeviceStrip openDemo={props.shell.openDemo} /> : null}
+              {(st.status === "failed" || st.status === "closed") && !connectFailed ? <NoDeviceStrip openDemo={props.shell.openDemo} /> : null}
             </>
           }
           empty={(overview) =>
@@ -510,9 +517,27 @@ export function chooserRows(devices: readonly LinkDeviceRecord[], inventory: rea
   return out;
 }
 
-/** CG10's wording; a lost link always offers the way out (owner's rule). */
-function LostLinkBanner(props: { phase: { phase: Parameters<typeof linkText>[0]; pinSource?: string }; onClose: () => void }) {
+/**
+ * CG10's wording; a lost link always offers the way out (owner's rule). -- WP UWN -- (UXP A16) when the redials reach
+ * another hub (a new identity at the address), the core would try for ever: say so, with Connect Again and Close.
+ */
+function LostLinkBanner(props: { phase: { phase: Parameters<typeof linkText>[0]; pinSource?: string }; session: Session; otherHub: boolean; onClose: () => void }) {
   const t = linkText(props.phase.phase, props.phase.pinSource);
+  const src = props.session.source;
+  if (props.otherHub && src.kind === "hub")
+    return (
+      <div class="banner banner-error other-hub" role="alert">
+        <span>The hub at {hostOf(src.url)} now answers as a different hub: this DSPi is not reached through it any more.</span>
+        {props.session.reopen ? (
+          <button type="button" onClick={props.session.reopen}>
+            Connect Again
+          </button>
+        ) : null}
+        <button type="button" onClick={props.onClose}>
+          Close
+        </button>
+      </div>
+    );
   return (
     <div class={`banner banner-${t.phase}`} role="status" data-key={t.key}>
       <span>{t.text}</span>
@@ -523,6 +548,36 @@ function LostLinkBanner(props: { phase: { phase: Parameters<typeof linkText>[0];
       ) : null}
     </div>
   );
+}
+
+// -- WP UWN -- (UXP A16)
+/** A hub that could not be reached: one line naming it, the core's reason after it, Try Again and Remove. */
+function HubFailure(props: { session: Session; url: string; error: string }) {
+  return (
+    <div class="banner banner-error hub-failure" role="alert" aria-label={`Could not connect to ${hostOf(props.url)}`}>
+      <span>
+        <strong>Could not connect to {hostOf(props.url)}.</strong> <span class="notice-detail">{props.error}</span>
+      </span>
+      {props.session.reopen ? (
+        <button type="button" onClick={props.session.reopen}>
+          Try Again
+        </button>
+      ) : null}
+      {props.session.forget ? (
+        <button type="button" onClick={props.session.forget}>
+          Remove
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+/** Whether a failure's detail says more than its notice's title (the core's "Device not connected" under "Not connected" does not). */
+export function detailAdds(n: { title: string; reason: string }, detail: string): boolean {
+  const d = detail.trim().toLowerCase().replace(/[.:]+$/, "");
+  if (!d) return false;
+  const t = n.title.trim().toLowerCase();
+  return !(d.includes(t) || t.includes(d) || n.reason.toLowerCase().includes(d));
 }
 
 /** Polls only while the page is visible: nothing runs for a hidden tab. */
