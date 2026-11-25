@@ -292,12 +292,15 @@ export function AutoEqScreen(props: ScreenProps) {
             {curves.length && freqs ? (
               <div class="aeq-ticks" aria-hidden="true">
                 {TICKS_HZ.map((f) => (
-                  <span key={f} style={{ left: `${(xOf(f) / PLOT.w) * 100}%` }}>
+                  <span key={f} class="aeq-hz" style={{ left: `${(xOf(f) / PLOT.w) * 100}%` }}>
                     {f >= 1000 ? `${f / 1000}k` : f}
                   </span>
                 ))}
-                <span class="aeq-db top">+{span / 2}</span>
-                <span class="aeq-db bottom">−{span / 2}</span>
+                {[span / 2, -span / 2].map((d) => (
+                  <span key={d} class="aeq-dbl" style={{ top: `${(yOf(d, span) / PLOT.h) * 100}%` }}>
+                    {d > 0 ? `+${d}` : `−${-d}`}
+                  </span>
+                ))}
               </div>
             ) : null}
           </figure>

@@ -19,9 +19,8 @@
 .dspi-web .aeq-curve { fill: none; stroke: var(--accent); stroke-width: 2; }
 .dspi-web .aeq-curve.second { stroke-dasharray: 5 4; opacity: 0.8; }
 .dspi-web .aeq-ticks { position: absolute; inset: 0; pointer-events: none; font: 10.5px var(--mono); color: var(--eq-text); }
-.dspi-web .aeq-ticks > span { position: absolute; bottom: 4px; transform: translateX(4px); }
-.dspi-web .aeq-ticks > .aeq-db { left: 6px; transform: none; }
-.dspi-web .aeq-ticks > .aeq-db.top { top: 4px; bottom: auto; }
+.dspi-web .aeq-ticks > .aeq-hz { position: absolute; bottom: 4px; transform: translateX(4px); }
+.dspi-web .aeq-ticks > .aeq-dbl { position: absolute; left: 6px; transform: translateY(-120%); }
 .dspi-web .aeq-preview { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
 .dspi-web .aeq-preview p { margin: 0; }
 .dspi-web .aeq-search input { width: 15rem; max-width: 40vw; height: 28px; }

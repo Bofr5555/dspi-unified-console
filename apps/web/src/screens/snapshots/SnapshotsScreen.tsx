@@ -289,8 +289,8 @@ function Compare(props: { desk: SnapshotDesk; st: ReturnType<typeof useDesk> }) 
             <Segments
               label="On the device now"
               options={[
-                { value: "a", text: `A: ${st.ab.aName}` },
-                { value: "b", text: `B: ${st.ab.bName}` },
+                { value: "a", text: sideName("A", st.ab.aName) },
+                { value: "b", text: sideName("B", st.ab.bName) },
               ]}
               value={st.ab.side === "b" ? "b" : "a"}
               choose={(v) => v !== st.ab.side && void desk.abToggle()}
@@ -350,6 +350,11 @@ function Compare(props: { desk: SnapshotDesk; st: ReturnType<typeof useDesk> }) 
       )}
     </div>
   );
+}
+
+/** -- WP WEB7 -- a compare's side as Qt names it: "B: Evening", or just "A" when that is its name. */
+function sideName(side: string, name: string): string {
+  return name && name !== side ? `${side}: ${name}` : side;
 }
 
 /** -- WP WEB7 -- when a snapshot was saved: the time today, the date and time before (Qt's value column). */
