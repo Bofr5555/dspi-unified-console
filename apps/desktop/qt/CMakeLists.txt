@@ -13,7 +13,7 @@
 # lists below are the base's. A work package lists its own files in its own
 # cmake/wp/<wp>.cmake (see "Work packages' files"); it does not edit this file.
 cmake_minimum_required(VERSION 3.21)
-project(uconsole-for-dspi VERSION 0.14.0 LANGUAGES C CXX)
+project(uconsole-for-dspi VERSION 0.15.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

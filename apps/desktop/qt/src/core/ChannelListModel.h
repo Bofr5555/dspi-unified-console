@@ -36,6 +36,9 @@ public:
         // -- WP INTE -- (owner 2026-11-24) outputs: nothing is routed to it
         // (dspi_output_labels' `unused`); a view that only shows leaves it out
         UnusedRole,
+        // -- WP FIN015 -- (REVF R1) unused, and no test signal plays on it
+        // (dspi_output_labels' `hidden`): what a view that only shows leaves out
+        HiddenRole,
     };
     Q_ENUM(Role)
 
@@ -82,10 +85,12 @@ private:
         QString displayName; // -- WP SHOWFIX --
         QString shortName;   // -- WP SHOWFIX --
         bool unused = false; // -- WP INTE --
+        bool hidden = false; // -- WP FIN015 --
         bool operator==(const Row &o) const {
             return output == o.output && index == o.index && channel == o.channel && name == o.name &&
                    label == o.label && enabled == o.enabled && userNamed == o.userNamed && pdm == o.pdm &&
-                   displayName == o.displayName && shortName == o.shortName && unused == o.unused;
+                   displayName == o.displayName && shortName == o.shortName && unused == o.unused &&
+                   hidden == o.hidden;
         }
     };
     QVector<Row> m_rows;

@@ -151,13 +151,14 @@ Rectangle {
                     id: channelMeter
                     required property string kind
                     required property bool outputEnabled
-                    required property bool unused
+                    required property bool hidden
                     required property string label
                     required channel
                     objectName: "Dock.meter." + channel
                     // -- WP INTE -- (owner 2026-11-24) an output nothing is routed
-                    // to has no meter: the dock only shows
-                    visible: kind === "input" || (outputEnabled && !unused)
+                    // to has no meter: the dock only shows. -- WP FIN015 -- (REVF R1)
+                    // one the generator plays on keeps it: it is loud
+                    visible: kind === "input" || (outputEnabled && !hidden)
                     orientation: Qt.Vertical
                     segmented: false
                     implicitWidth: 6
