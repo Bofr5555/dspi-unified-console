@@ -173,6 +173,7 @@ public:
     bool connected() const;
     QString playBlocker() const;
     QVariantList outputs() const { return m_outputs; }
+    QVariantList liveOutputs() const; // -- WP INTE --
 
     bool simAvailable() const { return m_simAvailable; }
     QString simLabel() const { return m_simLabel; }

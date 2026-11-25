@@ -62,6 +62,7 @@ struct Pages {
         d.check(QStringLiteral("qp2: %1 exists").arg(field), o != nullptr);
         if (!o) return;
         o->setProperty("text", text);
+        QMetaObject::invokeMethod(o, "textEdited"); // -- WP INTE -- (REVE C1) as typed: Enter writes only typed text
         QMetaObject::invokeMethod(o, "accepted");
         d.waitIdle();
     }

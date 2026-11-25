@@ -96,6 +96,8 @@ Item {
                 if (header.col && t.trim() !== header.col.name)
                     MatrixController.renameOutput(header.index, t)
             }
+            // -- WP INTE -- Enter with the name as it was: nothing to write, the field closes
+            onEnteredUntyped: if (header.view.renaming === header.index) header.view.renaming = -1
             Keys.onEscapePressed: header.view.renaming = -1
             onActiveFocusChanged: if (!activeFocus && header.view.renaming === header.index)
                 Qt.callLater(() => { if (header.view.renaming === header.index) header.view.renaming = -1 })

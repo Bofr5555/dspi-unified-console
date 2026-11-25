@@ -391,6 +391,15 @@ QString MeasureSession::issueWords(const QJsonObject &i) const {
     return where + (msg.isEmpty() ? key : msg);
 }
 
+// -- WP INTE -- (owner 2026-11-24) the Live tab only shows: the outputs
+// something is routed to (the Setup tab, an edit view, lists them all)
+QVariantList MeasureSession::liveOutputs() const {
+    QVariantList out;
+    for (const QVariant &v : m_outputs)
+        if (!v.toMap().value(QStringLiteral("unused")).toBool()) out.append(v);
+    return out;
+}
+
 QString MeasureSession::outputName(int output) const {
     for (const QVariant &v : m_outputs) {
         const QVariantMap m = v.toMap();
@@ -771,8 +780,13 @@ void MeasureSession::onSnapshot() {
     ch->update(model()->snapshot(), model()->platformName());
     for (int r = 0; r < ch->rowCount(); ++r) {
         if (ch->get(r, QStringLiteral("kind")).toString() != QLatin1String("output")) continue;
+        // -- WP INTE -- (SHOWFIX leftover) named by the core's channel words, as
+        // the Tune tab's rows are ("Centre woofer", else "Out 3"); `unused`:
+        // nothing is routed to it (owner 2026-11-24), left out of the Live tab
+        const QString word = ch->get(r, QStringLiteral("shortName")).toString();
         outs.append(QVariantMap{ { QStringLiteral("output"), ch->get(r, QStringLiteral("number")) },
-                                 { QStringLiteral("label"), ch->get(r, QStringLiteral("label")) } });
+                                 { QStringLiteral("label"), word.isEmpty() ? ch->get(r, QStringLiteral("label")) : QVariant(word) },
+                                 { QStringLiteral("unused"), ch->get(r, QStringLiteral("unused")) } });
     }
     const QString serial = connected() ? model()->serial() : QString();
     const bool changedDevice = serial != m_serial;

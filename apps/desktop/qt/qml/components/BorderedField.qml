@@ -19,11 +19,17 @@ import UConsole
 // already has the focus places the cursor, and a drag selects part of it.
 //
 // -- WP DL0 -- Modern: no outline, radius 6; the focus ring is the only line.
+//
+// -- WP INTE -- (REVE C1) Enter writes only typed text too: with nothing typed
+// it commits nothing and the field keeps the text it shows (it wrote the shown,
+// rounded value back); `enteredUntyped` says so, for an editor that closes on
+// Enter (a rename).
 TextField {
     id: field
     property string label
     property bool selectAllOnFocus: false
     signal committed(string text)
+    signal enteredUntyped() // -- WP INTE --
 
     property string _start
     property bool _selectOnRelease: false
@@ -59,8 +65,11 @@ TextField {
     }
     onAccepted: {
         _start = text
+        // -- WP INTE -- (REVE C1) only what was typed is written
+        const typed = _edited
         _edited = false   // -- WP USR1 --
-        committed(text)
+        if (typed) committed(text)
+        else enteredUntyped()
     }
     Keys.onEscapePressed: {
         _edited = false   // -- WP USR1 --

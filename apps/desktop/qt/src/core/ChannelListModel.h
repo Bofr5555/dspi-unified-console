@@ -33,6 +33,9 @@ public:
         DisplayNameRole,             // what a list of channels shows: the speaker layout's
                                      // "Centre woofer", else the label (the Overview's name)
         ShortNameRole,               // what a sentence names it by: "Centre woofer", "LFE", "Out 3"
+        // -- WP INTE -- (owner 2026-11-24) outputs: nothing is routed to it
+        // (dspi_output_labels' `unused`); a view that only shows leaves it out
+        UnusedRole,
     };
     Q_ENUM(Role)
 
@@ -71,10 +74,11 @@ private:
         bool pdm = false;
         QString displayName; // -- WP SHOWFIX --
         QString shortName;   // -- WP SHOWFIX --
+        bool unused = false; // -- WP INTE --
         bool operator==(const Row &o) const {
             return output == o.output && index == o.index && channel == o.channel && name == o.name &&
                    label == o.label && enabled == o.enabled && userNamed == o.userNamed && pdm == o.pdm &&
-                   displayName == o.displayName && shortName == o.shortName;
+                   displayName == o.displayName && shortName == o.shortName && unused == o.unused;
         }
     };
     QVector<Row> m_rows;

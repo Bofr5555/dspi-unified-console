@@ -113,8 +113,12 @@ FocusScope {
             else text = field.format(field.value)
         }
         onAccepted: {
+            // -- WP INTE -- (REVE C1) only what was typed is written: Enter with
+            // nothing typed shows the value again (it parsed the rounded text and
+            // wrote that rounded value over the device's)
+            const typed = edited
             edited = false   // -- WP USR1 --
-            const r = field.parse(text, field.value)
+            const r = typed ? field.parse(text, field.value) : { ok: false }
             if (r.ok) field.commit(r.value, r.limited)
             else text = field.format(field.value)
             selectAll()

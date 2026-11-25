@@ -118,6 +118,7 @@ ItemDelegate {
                 SidebarController.renameChannel(row.channel, value)
                 row.renameFinished()
             }
+            onEnteredUntyped: row.renameFinished()   // -- WP INTE -- Enter with the name as it was
             onActiveFocusChanged: if (!activeFocus && row.renaming) row.renameFinished()
         }
         // The level meter: the channel's peak, a red mark at its end while it clips

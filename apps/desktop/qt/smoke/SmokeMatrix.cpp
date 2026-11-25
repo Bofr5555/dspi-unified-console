@@ -55,6 +55,7 @@ struct Matrix {
         d.check(QStringLiteral("qp6: %1 exists").arg(name), o != nullptr);
         if (!o) return;
         o->setProperty("text", text);
+        QMetaObject::invokeMethod(o, "textEdited"); // -- WP INTE -- (REVE C1) as typed: Enter writes only typed text
         QMetaObject::invokeMethod(o, "accepted");
         d.waitIdle();
     }
@@ -386,6 +387,7 @@ void headerMenu(Matrix &m) {
                     m.device->channels()->get(m.device->channels()->rowOfChannel(ch), QStringLiteral("name")).toString());
     if (field) {
         field->setProperty("text", QStringLiteral("  Sub Left  "));
+        QMetaObject::invokeMethod(field, "textEdited"); // -- WP INTE -- (REVE C1) as typed: Enter writes only typed text
         QMetaObject::invokeMethod(field, "accepted");
     }
     d.waitIdle();

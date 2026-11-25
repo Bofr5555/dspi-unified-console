@@ -210,6 +210,7 @@ void checkRename(SmokeDriver &d) {
     d.check(QStringLiteral("qp1: Alt+click does not select the row"), Registrar::instance<SidebarController>()->selectedChannel() == -1);
     if (!field) return;
     field->setProperty("text", QStringLiteral("  QP1 Rename  "));
+    QMetaObject::invokeMethod(field, "textEdited"); // -- WP INTE -- (REVE C1) as typed: Enter writes only typed text
     QTest::keyClick(d.mainWindow(), Qt::Key_Return);
     d.check(QStringLiteral("qp1: Enter renames the channel, trimmed"),
             d.waitFor(5000, [&]() { return shownName(d.item(QStringLiteral("Sidebar.channel.3"))) == QLatin1String("QP1 Rename"); }));

@@ -94,6 +94,7 @@ bool choose(QQuickItem *choice, const QString &id) {
 bool type(QQuickItem *field, const QString &text) {
     if (!field || !field->isVisible() || !field->isEnabled()) return false;
     field->setProperty("text", text);
+    QMetaObject::invokeMethod(field, "textEdited"); // -- WP INTE -- (REVE C1) as typed: Enter writes only typed text
     return QMetaObject::invokeMethod(field, "accepted");
 }
 

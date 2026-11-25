@@ -494,9 +494,23 @@ void TuneSession::setProposal(const QJsonObject &p) {
     MeasureSession *m = measure();
     m_proposal = p;
     m_writes.clear();
+    // -- WP INTE -- (SHOWFIX leftover) the core's line begins "Out 3 (L high): ...":
+    // that output is named as everywhere else ("Centre woofer (L high): ..."),
+    // by the core's channel words, where it has a word of its own
+    const QJsonArray outputWords = m && m->model() ? m->model()->snapshot().channelWords.value(QLatin1String("outputs")).toArray()
+                                                   : QJsonArray();
+    const auto named = [&outputWords](const QString &words, int output) -> QString {
+        if (output < 0) return words;
+        const QString number = QStringLiteral("Out %1").arg(output + 1);
+        const QString word = outputWords.at(output).toString();
+        if (word.isEmpty() || word == number || !words.startsWith(number)) return words;
+        const QChar next = words.size() > number.size() ? words.at(number.size()) : QChar();
+        if (next != QLatin1Char(' ') && next != QLatin1Char(':')) return words; // "Out 1" is not "Out 12"
+        return word + words.mid(number.size());
+    };
     for (const QJsonValue &v : p.value(QLatin1String("writes")).toArray()) {
         const QJsonObject w = v.toObject();
-        m_writes.append(QVariantMap{ { QStringLiteral("words"), str(w, "words") },
+        m_writes.append(QVariantMap{ { QStringLiteral("words"), named(str(w, "words"), w.value(QLatin1String("output")).toInt(-1)) },
                                      { QStringLiteral("timing"), w.value(QLatin1String("timing")).toBool() },
                                      { QStringLiteral("kind"), str(w, "kind") },
                                      { QStringLiteral("output"), w.value(QLatin1String("output")).toInt() } });

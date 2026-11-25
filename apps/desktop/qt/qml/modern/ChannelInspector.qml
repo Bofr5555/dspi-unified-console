@@ -81,7 +81,10 @@ ColumnLayout {
             objectName: "ChannelInspector.title"
             Layout.fillWidth: true
             textFormat: Text.PlainText
-            text: info.label
+            // -- WP INTE -- (SHOWFIX leftover) on the Equaliser the speaker layout's
+            // "Centre woofer", as its channel list says; beside the matrix (no
+            // routing link: the page is about wiring) the core's label
+            text: inspector.routingLink ? (info.displayName || info.label) : info.label
             font: Theme.fontTitle
             color: Theme.text
             elide: Text.ElideRight

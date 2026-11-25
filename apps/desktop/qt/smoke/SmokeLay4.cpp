@@ -407,6 +407,7 @@ void inspectorPart(Eq &e) {
         QQuickItem *f = e.shown("Linkwitz.fp.field");
         if (!f) return false;
         f->setProperty("text", QString::fromLatin1(value));
+        QMetaObject::invokeMethod(f, "textEdited"); // -- WP INTE -- (REVE C1) as typed: Enter writes only typed text
         QMetaObject::invokeMethod(f, "accepted");
         e.settle();
         return true;

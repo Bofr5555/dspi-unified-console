@@ -267,6 +267,7 @@ void installationSection(SmokeDriver &d) {
     d.check("instq: a unit is renamed in place", deckName != nullptr);
     if (!deckName) return;
     deckName->setProperty("text", QStringLiteral("Garden deck"));
+    QMetaObject::invokeMethod(deckName, "textEdited"); // -- WP INTE -- (REVE C1) as typed: Enter writes only typed text
     QMetaObject::invokeMethod(deckName, "accepted");
     d.spin(100);
     d.check("instq: renamed, its row the same one", in("Installation.name.Deck") == deckName

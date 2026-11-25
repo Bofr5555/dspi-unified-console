@@ -36,6 +36,9 @@ class MeasureController : public QObject {
     Q_PROPERTY(QString playBlocker READ playBlocker NOTIFY deviceChanged)
     // The device's outputs: [{ output, label }]
     Q_PROPERTY(QVariantList outputs READ outputs NOTIFY deviceChanged)
+    // -- WP INTE -- (owner 2026-11-24) the Live tab's: the outputs something is
+    // routed to (an unused one is left out of a view that only shows)
+    Q_PROPERTY(QVariantList liveOutputs READ liveOutputs NOTIFY deviceChanged)
 
     // ---- The microphone ----
     // The demo's simulated microphone is offered (the demo DSPi only)
@@ -210,6 +213,7 @@ public:
     bool connected() const { return session()->connected(); }
     QString playBlocker() const { return session()->playBlocker(); }
     QVariantList outputs() const { return session()->outputs(); }
+    QVariantList liveOutputs() const { return session()->liveOutputs(); } // -- WP INTE --
 
     bool simAvailable() const { return session()->simAvailable(); }
     QString simLabel() const { return session()->simLabel(); }

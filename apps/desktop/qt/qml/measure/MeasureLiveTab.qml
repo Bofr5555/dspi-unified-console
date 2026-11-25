@@ -40,7 +40,9 @@ ScrollView {
     }
 
     // The draft
-    property int output: mc.outputs.length ? mc.outputs[0].output : 0
+    // -- WP INTE -- (owner 2026-11-24) the outputs something is routed to: the
+    // live view only shows (the Setup tab lists them all)
+    property int output: mc.liveOutputs.length ? mc.liveOutputs[0].output : 0
     property string role: "full"
     // -- WP ROLEQ -- the output's role from the speaker layout (else the
     // suggestion); a change here is written back to it
@@ -62,8 +64,14 @@ ScrollView {
             tab.placementChoice = ""
             tab.couplerChoice = ""
             tab.at = tab.from = tab.to = ""
-            tab.output = tab.mc.outputs.length ? tab.mc.outputs[0].output : 0
+            tab.output = tab.mc.liveOutputs.length ? tab.mc.liveOutputs[0].output : 0
             tab.layoutRole()
+        }
+        // -- WP INTE -- the chosen output had its routes taken away: the first
+        // one still offered, so the box and the draft agree (not while it plays)
+        function onDeviceChanged() {
+            const outs = tab.mc.liveOutputs
+            if (!tab.active && outs.length && outs.findIndex(o => o.output === tab.output) < 0) tab.output = outs[0].output
         }
     }
     property string mode: "sweep"
@@ -175,10 +183,10 @@ ScrollView {
                 objectName: "MeasureLive.output"
                 label: qsTr("Live output")
                 enabled: tab.editable
-                model: mc.outputs
+                model: mc.liveOutputs   // -- WP INTE --
                 textRole: "label"
-                currentIndex: Math.max(0, mc.outputs.findIndex(o => o.output === tab.output))
-                onActivated: index => tab.output = mc.outputs[index].output
+                currentIndex: Math.max(0, mc.liveOutputs.findIndex(o => o.output === tab.output))
+                onActivated: index => tab.output = mc.liveOutputs[index].output
             }
             AppComboBox {
                 objectName: "MeasureLive.role"
