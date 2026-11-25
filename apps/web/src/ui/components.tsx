@@ -8,6 +8,8 @@ import type { Installation, Source } from "../fleet/types";
 import { sourceKey } from "../fleet/types";
 import type { PageEnv, UsbChoice } from "../fleet/env";
 import { shortSerial } from "../core/usb-ids";
+import type { HubDeviceRecord, LinkDeviceRecord } from "../core/protocol"; // -- WP UWN --
+import { shortTime } from "../screens/hub/model"; // -- WP UWN --
 import { peakDb } from "../core/protocol";
 import type { Session } from "./session";
 import { aboutData, linkText } from "./texts";
@@ -119,7 +121,8 @@ function SourceRow(props: { src: Source; env: PageEnv; open: boolean; onOpen: ()
       {offline ? (
         <span class="unavailable">Not attached to the hub</span>
       ) : avail.ok ? (
-        <button type="button" disabled={props.open} onClick={props.onOpen}>
+        // -- WP UWN -- (UXP A15) a name that says which: "Connect Demo DSPi", not three buttons named "Connect"
+        <button type="button" disabled={props.open} aria-label={props.open ? `${label} is open` : `Connect ${label}`} onClick={props.onOpen}>
           {props.open ? "Open" : "Connect"}
         </button>
       ) : (
@@ -170,7 +173,7 @@ function UsbSource(props: { env: PageEnv; isOpen: (s: Source) => boolean; onOpen
     <>
       <li class="source source-usb">
         <span class="source-name">DSPi on USB</span>
-        <button type="button" onClick={() => void choose()}>
+        <button type="button" aria-label="Connect a DSPi on USB" onClick={() => void choose()}>
           Connect
         </button>
         {error ? (
@@ -278,18 +281,6 @@ export function sessionName(st: { snapshot: { device: { name: string } } | null;
   if (st.status === "failed") return "Not connected";
   if (st.status === "closed") return "Closed";
   return "Connecting";
-}
-
-/** A tab's name: where the device is, then what it is called once it answers. */
-export function TabLabel(props: { session: Session }) {
-  const st = useSessionState(props.session);
-  return (
-    <>
-      {/* -- WP WEBM5 -- the site's part is left to screen readers where the top bar is narrow */}
-      <span class="device-tab-site">{props.session.installationName} · </span>
-      {sessionName(st)}
-    </>
-  );
 }
 
 export function SessionView(props: { session: Session; onClose: () => void; shell: ShellProps }) {
@@ -447,30 +438,76 @@ function PinEntry(props: { session: Session; error: string }) {
   );
 }
 
-/** The hub's DSPis (Link's choose_device step): open one in this session. */
+/**
+ * The hub's DSPis (Link's choose_device step): open one in this session. -- WP UWN -- (UXP A15) rows you can tell
+ * apart: the name, then the hub's location for it, its state and the distinguishing part of its serial whole; the
+ * DSPis the hub remembers but does not have now greyed, with when it last saw them (its inventory, when it has one).
+ */
 function HubChooser(props: { session: Session }) {
   const st = useSessionState(props.session);
+  const [inventory, setInventory] = useState<HubDeviceRecord[]>([]);
+  useEffect(() => {
+    let alive = true;
+    // An upstream hub has no inventory: the Link list alone
+    void props.session.core.call("hubInventory", undefined).then(
+      (l) => alive && Array.isArray(l) && setInventory(l),
+      () => undefined,
+    );
+    return () => {
+      alive = false;
+    };
+  }, [props.session, st.devices.length]);
+  const rows = chooserRows(st.devices, inventory);
   return (
     <ul class="hub-devices" aria-label={st.hubName ? `DSPis on ${st.hubName}` : "DSPis on the hub"}>
-      {st.devices.map((d) => {
-        const online = d.state === "online";
-        return (
-          <li key={d.serial} class="source">
-            <span class="source-name" title={d.serial}>
-              {d.name || "DSPi"} · {shortSerial(d.serial)}
+      {rows.map((r) => (
+        <li key={r.serial} class={r.online ? "source" : "source source-offline"}>
+          <span class="source-text">
+            <span class="source-name" title={r.serial}>
+              {r.name}
             </span>
-            {online ? (
-              <button type="button" onClick={() => void props.session.choose(d.serial)}>
-                Open
-              </button>
-            ) : (
-              <span class="unavailable">{d.state}</span>
-            )}
-          </li>
-        );
-      })}
+            <span class="source-meta">{r.meta}</span>
+          </span>
+          {r.online ? (
+            <button type="button" aria-label={`Open ${r.spoken}`} onClick={() => void props.session.choose(r.serial)}>
+              Open
+            </button>
+          ) : null}
+        </li>
+      ))}
     </ul>
   );
+}
+
+// -- WP UWN -- (UXP A15)
+/** The part of a serial that tells units apart, whole: its last two "-" parts ("ALINK-A"), else its last 8 characters. */
+export function serialPart(serial: string): string {
+  const parts = serial.split("-").filter(Boolean);
+  return parts.length > 1 ? parts.slice(-2).join("-") : shortSerial(serial);
+}
+
+/** One row of the hub chooser: the name, what tells it apart (`meta`), and the whole for a screen reader. */
+export interface ChooserRow {
+  serial: string;
+  name: string;
+  online: boolean;
+  meta: string;
+  spoken: string;
+}
+
+/** The chooser's rows: the hub's Link list with its inventory's locations, then the remembered DSPis it lacks now. */
+export function chooserRows(devices: readonly LinkDeviceRecord[], inventory: readonly HubDeviceRecord[]): ChooserRow[] {
+  const row = (serial: string, name: string, state: string, location: string, lastSeen: string): ChooserRow => {
+    const online = state === "online";
+    const words = online ? "online" : state === "offline" || !state ? `offline${lastSeen ? `, last seen ${shortTime(lastSeen)}` : ""}` : state;
+    const meta = [location, words, serialPart(serial)].filter(Boolean).join(" · ");
+    const shown = name || "DSPi";
+    return { serial, name: shown, online, meta, spoken: [shown, location, serialPart(serial)].filter(Boolean).join(", ") };
+  };
+  const inv = new Map(inventory.map((d) => [d.serial, d]));
+  const out = devices.map((d) => row(d.serial, d.name, d.state, inv.get(d.serial)?.location ?? "", inv.get(d.serial)?.lastSeen ?? ""));
+  for (const d of inventory) if (!devices.some((x) => x.serial === d.serial) && !d.online) out.push(row(d.serial, d.name, "offline", d.location, d.lastSeen));
+  return out;
 }
 
 /** CG10's wording; a lost link always offers the way out (owner's rule). */

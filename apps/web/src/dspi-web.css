@@ -114,6 +114,10 @@
 .dspi-web .pin-entry input { width: 8rem; }
 .dspi-web .pin-entry .error { flex-basis: 100%; }
 .dspi-web ul.hub-devices { list-style: none; margin: 0.75rem 0; padding: 0; } /* -- WP INTE -- the picker's list, not the hub page's card */
+/* -- WP UWN -- (UXP A15) a chooser row: the name over where it is, its state and its serial's part; one the hub lacks now greyed */
+.dspi-web .source-text { display: flex; flex-direction: column; min-width: 0; }
+.dspi-web .source-meta { color: var(--muted); font-size: 0.85rem; overflow-wrap: anywhere; }
+.dspi-web .source-offline .source-name { color: var(--muted); }
 
 .dspi-web .device-meta { color: var(--muted); font-size: 0.85rem; }
 .dspi-web .dot { width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--muted); }
@@ -2482,3 +2486,10 @@
 }
 /* -- WP REVEFIX -- the bar's and the dock's controls in the text's colour, whatever a host page sets on buttons */
 .dspi-web.dspi-web :where(.top, .dock) button { color: var(--text); }
+
+/* -- WP UWN -- (UXP A15) the skip links: out of sight until focused, then over the top bar's left end */
+.dspi-web .skip-links { position: absolute; left: 0; top: 0; z-index: 50; }
+.dspi-web .skip-link { position: absolute; left: -10000px; top: 4px; white-space: nowrap; padding: 6px 12px; border-radius: 6px; background: var(--panel); color: var(--accent-text); }
+.dspi-web .skip-link:focus { left: 8px; }
+.dspi-web .skip-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dspi-web .page:focus { outline: none; }

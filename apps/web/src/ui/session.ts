@@ -92,6 +92,9 @@ export interface SessionState {
    * Null before it is read, or when the core could not say it.
    */
   protocol?: DeviceProtocolRecord | null;
+  // -- WP UWN -- (UXP A15)
+  /** Where the device is, as its view learnt it: the hub's location for it, its unit's name on the audio link ("" for none). */
+  place?: { location: string; unit: string };
 }
 
 // -- WP WB6a --
@@ -208,6 +211,15 @@ export class Session {
     } catch (e) {
       this.set({ error: message(e) });
     }
+  }
+
+  // -- WP UWN -- (UXP A15)
+  /** What the device's view learnt of where it is (the hub's inventory, the audio link's units): its tab says it. */
+  setPlace(place: { location: string; unit: string }): void {
+    const was = this.state.place;
+    if (was && was.location === place.location && was.unit === place.unit) return;
+    if (!was && !place.location && !place.unit) return;
+    this.set({ place });
   }
 
   /** Show `text` as the session's error line, or clear it with "". */

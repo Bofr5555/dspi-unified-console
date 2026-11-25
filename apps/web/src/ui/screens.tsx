@@ -299,6 +299,11 @@ export function Screens(props: {
   const modes = (manifest?.modes ?? []).filter((m) => isMode(m.id)).map((m) => ({ id: m.id as Mode, label: m.label }));
   const [unlocking, setUnlocking] = useState(false);
   const hubCaps = useHubCaps(session, st.link?.phase ?? "").caps; // -- WP P2WB2 --
+  // -- WP UWN -- (UXP A15) where this device is, for its tab: the hub's location for it, its unit's name on the audio link
+  const here = st.snapshot?.device.serial ?? "";
+  const location = (here && hubView?.devices.find((d) => d.serial === here)?.location) || "";
+  const unit = (here && feed.kind === "hub" && feed.model?.units.find((u) => u.serial === here)?.name) || "";
+  useEffect(() => session.setPlace({ location, unit }), [session, location, unit]);
   const shown = lockedUser ? lockedScreens() : withDeviceScreen(withHubSettings(withHubScreen(screensFor(mode, feed.kind === "hub"), mode, hubScreenShown(hubView?.caps ?? null)), mode, hubSettingsShown(hubCaps), HUB_SETTINGS_DEF)); // -- WP P2WB1 -- the hub screen; -- WP P2WB2 -- withHubSettings; -- WP PGWEB -- withDeviceScreen
   // -- WP WEBM1 -- the page is the session's, not the view's; the devices' page is the shell's
   const place = useMemo(() => placeOf(session), [session]);
