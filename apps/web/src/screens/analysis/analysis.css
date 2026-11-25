@@ -5,7 +5,7 @@
 /* -- WP WEB6 -- The Spectrum page as Qt's (SpectrumPanel): the head row (tap, the channels as a legend,
    Curves/Bars/Both at the right), the plot over the page on the panel tone with its marks inside, the
    status line in mono at the foot. The graph tones are the Equaliser graph's. */
-.dspi-web .sp-page { --sp-grid: #dcdcdc; --sp-zero: rgba(0, 0, 0, 0.3); --sp-text: #5e5e5e; display: flex; flex-direction: column; gap: 8px; min-width: 0; height: max(24rem, calc(100vh - 17.5rem)); }
+.dspi-web .sp-page { --sp-grid: #dcdcdc; --sp-zero: rgba(0, 0, 0, 0.3); --sp-text: #5e5e5e; display: flex; flex-direction: column; gap: 8px; min-width: 0; height: max(24rem, calc(100vh - 14rem)); }
 @media (prefers-color-scheme: dark) {
   .dspi-web:not([data-theme="light"]) .sp-page { --sp-grid: #3a3a3a; --sp-zero: rgba(255, 255, 255, 0.3); --sp-text: #a7a7a7; }
 }
