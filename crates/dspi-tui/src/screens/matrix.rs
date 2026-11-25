@@ -717,7 +717,16 @@ impl MatrixPanel {
         let (area, theme, state) = (p.area, p.theme, p.state);
         for (n, &o) in cols.iter().enumerate() {
             let x = area.x + self.label_w + n as u16 * self.col_w;
-            let name = super::channel_label(state, output_channel(state, o));
+            // -- WP UTM -- (UXP A14) two spaces at least between two columns'
+            // names ("Out 1 · L Out 2 · R 3 · None" ran together): the short
+            // label when the whole one does not fit
+            let room = (self.col_w as usize).saturating_sub(3);
+            let channel = output_channel(state, o);
+            let name = match super::channel_label(state, channel) {
+                full if full.chars().count() <= room => full,
+                _ => super::channel_short_label(state, channel),
+            };
+            let name = crate::widgets::text::truncate(&name, room);
             // `DESIGN.md` 7.7: "Column headers in the output colour". Both
             // header rows name the same column, so both take it.
             let color = column_color(state, theme, o, o == self.col);
@@ -1529,6 +1538,26 @@ mod tests {
             let want = t.channel_of(channel, 8, 9);
             assert_eq!(f[(x, 0)].fg, want, "the name row of column {col}");
             assert_eq!(f[(x, 1)].fg, want, "the descriptor row of column {col}");
+        }
+    }
+
+    // -- WP UTM -- (UXP A14) "Out 1 · L Out 2 · R 3 · None" ran together
+    #[test]
+    fn utm_column_names_keep_two_spaces_between_them() {
+        for width in [100u16, 120, 200] {
+            let f = draw(&mut panel(), &fixture::state(), width, 34);
+            let col_w = col_width(width, 9);
+            let label_w = label_width(width);
+            let cols = ((width - label_w) / col_w).min(9);
+            for n in 0..cols {
+                let x = label_w + n * col_w;
+                assert_eq!(f[(x, 0)].symbol(), " ", "{width}: column {n} starts blank");
+                assert_eq!(
+                    f[(x + col_w - 2, 0)].symbol(),
+                    " ",
+                    "{width}: column {n} ends blank"
+                );
+            }
         }
     }
 

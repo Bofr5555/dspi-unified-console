@@ -23,6 +23,10 @@ pub struct ChannelItem {
     pub inactive: bool,
     /// The unified channel index, for the screens.
     pub index: u8,
+    // -- WP UTM -- (UXP A14)
+    /// An output nothing is routed to: folded under "N unused" in the
+    /// sidebar (`screens::channel_unused`).
+    pub unused: bool,
 }
 
 /// The sidebar selection, which drives the detail region.

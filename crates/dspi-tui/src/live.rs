@@ -1042,6 +1042,7 @@ impl Live {
                 clipped: s.is_clipped(ch),
                 inactive,
                 index: ch as u8,
+                unused: screens::channel_unused(s, ch), // -- WP UTM --
             };
         let active_inputs = s.meters.active_inputs as usize;
         m.inputs = (0..ni)

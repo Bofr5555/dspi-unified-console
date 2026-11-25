@@ -258,6 +258,11 @@ impl PopupList {
         self
     }
 
+    // -- WP UTM -- (UXP A14)
+    /// An item's prefix for a disabled one: unpickable like a `#` heading, but
+    /// drawn as an item ("SET AS DEFAULT" read as a heading).
+    pub const DISABLED: &str = "#  ";
+
     fn is_header(&self, i: usize) -> bool {
         self.items.get(i).is_some_and(|s| s.starts_with('#'))
     }
@@ -424,7 +429,13 @@ impl Widget for &PopupList {
         for (row, &i) in vis.iter().enumerate().skip(start).take(rows) {
             let _ = row;
             let text = &self.items[i];
-            let (text, style) = if let Some(h) = text.strip_prefix('#') {
+            // -- WP UTM -- `#  ` is a disabled item, indented as the items are
+            let (text, style) = if let Some(item) = text.strip_prefix(PopupList::DISABLED) {
+                (
+                    format!("  {item}"),
+                    Style::default().add_modifier(Modifier::DIM),
+                )
+            } else if let Some(h) = text.strip_prefix('#') {
                 (h.to_string(), Style::default().add_modifier(Modifier::DIM))
             } else if i == self.cursor {
                 (
@@ -479,7 +490,10 @@ impl PopupList {
         let start = pos.saturating_sub(rows - 1);
         for &i in vis.iter().skip(start).take(rows) {
             let text = &self.items[i];
-            let (text, style) = if let Some(h) = text.strip_prefix('#') {
+            // -- WP UTM -- `#  ` is a disabled item: dim, not a heading
+            let (text, style) = if let Some(item) = text.strip_prefix(PopupList::DISABLED) {
+                (format!("  {item}"), theme.label())
+            } else if let Some(h) = text.strip_prefix('#') {
                 (h.to_uppercase(), theme.section())
             } else if i == self.cursor {
                 (format!("▸ {text}"), theme.pill(theme.accent))
