@@ -56,6 +56,13 @@ public:
     Q_INVOKABLE int rowOfChannel(int channel) const;
     // A row's role by name, for QML code outside a delegate ("label", "channel", ...)
     Q_INVOKABLE QVariant get(int row, const QString &role) const;
+    // -- WP FIN015 -- (REVF D1) one channel, one name on a page. An output's
+    // name where it is not "Out N" ("Centre woofer"), else "" (output from 0)
+    Q_INVOKABLE QString outputName(int output) const;
+    // The core's words as a person reads them beside the pages: each "Out N"
+    // followed by the output's name, "Out 1 (Centre woofer)". For the shown
+    // text only (Events, the AI question sheet); an agent gets the core's.
+    Q_INVOKABLE QString withNames(const QString &text) const;
 
     void update(const DeviceSnapshot &snap, const QString &platform);
 

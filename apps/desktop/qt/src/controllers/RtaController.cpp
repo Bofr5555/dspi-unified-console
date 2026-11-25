@@ -514,7 +514,9 @@ QVariantMap RtaController::channelInfo(int tap, int channel) const {
     const ChannelListModel *rows = m_ctx.device->channels();
     const int row = rows ? rows->rowOfChannel(wire) : -1;
     if (row >= 0) {
-        const QString label = rows->get(row, QStringLiteral("label")).toString();
+        // -- WP FIN015 -- (REVF D1) the name the other pages use ("Centre woofer"), else the label
+        const QString shown = rows->get(row, QStringLiteral("displayName")).toString();
+        const QString label = shown.isEmpty() ? rows->get(row, QStringLiteral("label")).toString() : shown;
         if (!label.isEmpty()) m.insert(QStringLiteral("name"), label);
         m.insert(QStringLiteral("number"), rows->get(row, QStringLiteral("number")));
         m.insert(QStringLiteral("pdm"), rows->get(row, QStringLiteral("pdm")));

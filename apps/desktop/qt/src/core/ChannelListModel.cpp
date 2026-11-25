@@ -4,6 +4,7 @@
 
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QRegularExpression>
 
 int ChannelListModel::rowCount(const QModelIndex &parent) const { return parent.isValid() ? 0 : int(m_rows.size()); }
 
@@ -57,6 +58,35 @@ QVariant ChannelListModel::get(int row, const QString &role) const {
     for (auto it = roles.cbegin(); it != roles.cend(); ++it)
         if (it.value() == name) return data(index(row), it.key());
     return QVariant();
+}
+
+// -- WP FIN015 -- (REVF D1)
+QString ChannelListModel::outputName(int output) const {
+    for (const Row &r : m_rows) {
+        if (!r.output || r.index != output) continue;
+        // "Out 1", "Out 1 · R · Low": the number's own word says it already
+        static const QRegularExpression own(QStringLiteral("^Out (\\d+)(?!\\d)"));
+        const QRegularExpressionMatch m = own.match(r.displayName);
+        if (r.displayName.isEmpty() || (m.hasMatch() && m.captured(1).toInt() == output + 1)) return {};
+        return r.displayName;
+    }
+    return {};
+}
+
+QString ChannelListModel::withNames(const QString &text) const {
+    // "Out N" as the core's words say it, not one already followed by its name
+    static const QRegularExpression word(QStringLiteral("\\bOut (\\d+)(?!\\d)(?! \\()"));
+    QString out;
+    qsizetype at = 0;
+    QRegularExpressionMatchIterator it = word.globalMatch(text);
+    while (it.hasNext()) {
+        const QRegularExpressionMatch m = it.next();
+        out += text.mid(at, m.capturedEnd() - at);
+        const QString name = outputName(m.captured(1).toInt() - 1);
+        if (!name.isEmpty()) out += QStringLiteral(" (%1)").arg(name);
+        at = m.capturedEnd();
+    }
+    return out + text.mid(at);
 }
 
 // -- WP QPI2 -- The input strips the source feeds (the Mac's

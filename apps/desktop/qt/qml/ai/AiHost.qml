@@ -98,7 +98,10 @@ Item {
                     required property int index
                     objectName: "AiConfirmSheet.risk." + index
                     leftPadding: Theme.spacing
-                    text: "• " + modelData
+                    // -- WP FIN015 -- (REVF D1) on the open device, "Out 1 (Centre woofer)" as its pages
+                    // name it; the agent's words stay the core's
+                    text: "• " + (host.front && host.front.deviceId === DeviceRegistry.activeId && DeviceModel.revision >= 0
+                                  ? DeviceModel.channels.withNames(modelData) : modelData)
                 }
             }
             SheetText {

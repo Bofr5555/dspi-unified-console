@@ -123,10 +123,12 @@ Panel {
                 objectName: "Events.row." + index
                 width: ListView.view.width
                 rowIndex: index
+                // -- WP FIN015 -- (REVF D1) "Out 1 (Centre woofer)", as the pages name it; shown only
+                readonly property string said: DeviceModel.revision < 0 ? modelData.text : DeviceModel.channels.withNames(modelData.text)
                 title: modelData.count > 1
                        //: An event and how many times it happened in a row
-                       ? qsTr("%1 (×%2)").arg(modelData.text).arg(modelData.count)
-                       : modelData.text
+                       ? qsTr("%1 (×%2)").arg(said).arg(modelData.count)
+                       : said
                 // -- WP SHOWFIX -- (finding 2) the device's own record on demand:
                 // under the chosen row, and in the tooltip
                 readonly property string raw: modelData.raw ?? ""
@@ -216,10 +218,13 @@ Panel {
                             Text {
                                 Layout.fillWidth: true
                                 textFormat: Text.PlainText
+                                // -- WP FIN015 -- (REVF D1) "Out 1 (Centre woofer)", shown only
+                                readonly property string said: DeviceModel.revision < 0 ? row.modelData.text
+                                                                                         : DeviceModel.channels.withNames(row.modelData.text)
                                 text: row.modelData.count > 1
                                       //: An event and how many times it happened in a row
-                                      ? qsTr("%1 (×%2)").arg(row.modelData.text).arg(row.modelData.count)
-                                      : row.modelData.text
+                                      ? qsTr("%1 (×%2)").arg(said).arg(row.modelData.count)
+                                      : said
                                 font: Theme.fontBody
                                 color: Theme.text
                                 wrapMode: Text.Wrap

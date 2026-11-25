@@ -92,7 +92,8 @@ Rectangle {
             Text {
                 Layout.fillWidth: true
                 textFormat: Text.PlainText
-                text: info.label
+                // -- WP FIN015 -- (REVF D1) the name the page's list and header use ("Centre woofer")
+                text: info.displayName || info.label
                 font: Theme.fontBody
                 color: Theme.text
                 elide: Text.ElideRight
