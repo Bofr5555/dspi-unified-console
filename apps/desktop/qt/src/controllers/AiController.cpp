@@ -173,6 +173,9 @@ AiController::AiController(const AppContext &ctx, QObject *parent) : QObject(par
         const FollowAt at = std::exchange(m_followPendingAt, FollowAt());   // -- WP SHOWFIX --
         if (!device.isEmpty()) followTo(device, at);
     });
+    // -- WP SHOWFIX -- (finding 10) a question's device, once an input rests
+    m_questionTimer.setSingleShot(true);
+    connect(&m_questionTimer, &QTimer::timeout, this, &AiController::followQuestion);
     // -- WP SHOWFIX -- (finding 3) the channel and band of a change followed to
     m_showTimer.setInterval(50);
     connect(&m_showTimer, &QTimer::timeout, this, [this] {
@@ -782,6 +785,7 @@ void AiController::readConfirmations() {
                  // Only a change: the rows' buttons are armed anew with each
                  if (list == m_waiting) return;
                  m_waiting = list;
+                 followQuestion();   // -- WP SHOWFIX -- before its sheet opens
                  emit confirmationsChanged();
                  emit secondsChanged();
                  emit stateChanged();
@@ -797,6 +801,7 @@ QVariantList AiController::confirmations() const {
             { QStringLiteral("client"), w.client },
             { QStringLiteral("title"), w.title },
             { QStringLiteral("device"), deviceTitle(w.device) },
+            { QStringLiteral("deviceId"), w.device },   // -- WP SHOWFIX --
             { QStringLiteral("risks"), w.risks },
             { QStringLiteral("riskLines"), w.riskLines },   // -- WP LAY8 --
             { QStringLiteral("sound"), w.sound },           // -- WP FEATUI --
@@ -845,6 +850,7 @@ void AiController::answer(double id, bool allow) {
     const quint64 n = quint64(id);
     if (m_answered.contains(n)) return;
     m_answered.insert(n);
+    followQuestion();   // -- WP SHOWFIX -- the next question's device
     emit confirmationsChanged();
     emit stateChanged();
     FfiMcp *mcp = m_mcp;
@@ -1333,8 +1339,10 @@ int AiController::inputIdleLeftMs() const {
 
 bool AiController::inputBusy() const { return inputIdleLeftMs() > 0; }
 
-bool AiController::userInteracting() const {
-    if (inputBusy()) return true;   // -- WP INTI --
+bool AiController::userInteracting() const { return inputBusy() || userAt(true); }
+
+// -- WP SHOWFIX -- (finding 10) `questionSheets`: an agent's question open counts
+bool AiController::userAt(bool questionSheets) const {
     for (DeviceSession *s : m_ctx.registry->sessions())
         if (s->model() && s->model()->dragging()) return true;
     if (m_ctx.device && m_ctx.device->dragging()) return true;
@@ -1345,7 +1353,9 @@ bool AiController::userInteracting() const {
         if (!window->isVisible()) continue;
         const QList<QObject *> all = window->findChildren<QObject *>();
         for (const QObject *o : all)
-            if (o->inherits("QQuickPopup") && o->property("opened").toBool() && !o->property("aiPassive").toBool()) return true;
+            if (o->inherits("QQuickPopup") && o->property("opened").toBool() && !o->property("aiPassive").toBool()
+                && (questionSheets || !o->property("aiQuestion").toBool()))
+                return true;
     }
     return false;
 }
@@ -1408,6 +1418,38 @@ void AiController::followTo(const QString &device, const FollowAt &at) {
     }
     if (!at.section.isEmpty()) emit followSection(at.section, at.tab);
     showFollowed(device, at);
+}
+
+// -- WP SHOWFIX -- (finding 10) The question in front (the sheet shows the first one
+// not answered): its device's tab comes to the front as it opens, so that it is not
+// asked over another device's page. Not the rate limit of changes: the question
+// takes the user's eyes anyway. Not while the user is at a control, a text field
+// or another dialog (the sheet names the device then); after an input once it rests.
+void AiController::followQuestion() {
+    m_questionTimer.stop();
+    const Waiting *front = nullptr;
+    for (const Waiting &w : std::as_const(m_waiting))
+        if (!m_answered.contains(w.id)) {
+            front = &w;
+            break;
+        }
+    if (!front || front->id == m_questionFollowed) return;
+    if (!m_followAgent || front->device.isEmpty() || front->device == m_ctx.registry->activeId()
+        || !m_ctx.registry->session(front->device) || !m_pairing.isEmpty()) {
+        m_questionFollowed = front->id;
+        return;
+    }
+    if (userAt(false)) {
+        m_questionFollowed = front->id;
+        return;
+    }
+    if (inputBusy()) {
+        m_questionTimer.start(inputIdleLeftMs() + 50);
+        return;
+    }
+    m_questionFollowed = front->id;
+    m_lastFollow = QDateTime::currentDateTimeUtc();
+    m_ctx.registry->activate(front->device);
 }
 
 // -- WP SHOWFIX -- The device shown, and Modern's section (none in Classic)

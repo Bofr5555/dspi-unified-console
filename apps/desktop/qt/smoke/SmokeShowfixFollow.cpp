@@ -4,6 +4,8 @@
 //   on the Equaliser's tab of the change, a PEQ band selected;
 // - finding 14: the app's first change by an agent is followed; an agent's
 //   measurement asked for right after a key or click, once the input rests;
+// - finding 10: a question about the device not shown brings its tab to the
+//   front as the sheet opens; with following off, the sheet names the device;
 // the user who went elsewhere is left there.
 #include "SmokeDriver.h"
 
@@ -240,6 +242,44 @@ void showfixFollowSection(SmokeDriver &d) {
             s.ok("dspi_measure_stop", { { QStringLiteral("device"), b->id() } });
             d.waitFor(10000, [&] { return !mc->measuring(); });
         }
+
+        // ---- Finding 10: a question about the other device brings its tab to the
+        // front as the sheet opens; with following off, the sheet still names it
+        const auto louder = [&](double db) {
+            return s.call("dspi_set_gain", { { QStringLiteral("device"), b->id() }, { QStringLiteral("output"), 0 },
+                                             { QStringLiteral("gain_db"), db } });
+        };
+        s.result(louder(-24));
+        ai->setConfirmMode(QStringLiteral("ask_risky"));
+        const auto ask = [&](double db, bool follows) {
+            registry->activate(a);
+            d.goTo(QStringLiteral("overview/overview"));
+            d.spin(AiController::kFollowMs + 300);
+            auto held = louder(db);
+            const bool asked = d.waitFor(5000, [&] { return !ai->confirmations().isEmpty(); });
+            const QVariantMap q = ai->confirmations().value(0).toMap();
+            d.check(follows ? QStringLiteral("showfix 10: the question about the other device is asked")
+                            : QStringLiteral("showfix 10: asked again, following off"), asked);
+            d.check(QStringLiteral("showfix 10: it carries the device's id"), q.value(QStringLiteral("deviceId")).toString() == b->id());
+            if (follows)
+                d.check(QStringLiteral("showfix 10: its device's tab is in front as the sheet opens"),
+                        d.waitFor(1000, [&] { return registry->active() == b; }));
+            else {
+                d.spin(1000);
+                d.check(QStringLiteral("showfix 10: following off, the tab stays"), registry->active() == a);
+            }
+            QObject *who = d.object(QStringLiteral("AiConfirmSheet.who"));
+            d.check(QStringLiteral("showfix 10: the sheet names the device"),
+                    d.waitFor(2000, [&] { return who && who->property("text").toString().contains(b->title()); }));
+            ai->answer(q.value(QStringLiteral("id")).toDouble(), false);
+            s.result(held);
+            d.waitFor(3000, [&] { return ai->confirmations().isEmpty(); });
+        };
+        ask(-12, true);
+        ai->setFollowAgent(false);
+        ask(-10, false);
+        ai->setFollowAgent(true);
+        ai->setConfirmMode(QStringLiteral("never_ask"));
 
         registry->close(b->id());
         d.waitFor(5000, [&] { return registry->sessions().size() == 1; });

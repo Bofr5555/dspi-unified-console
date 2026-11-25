@@ -509,6 +509,14 @@ private:
     QElapsedTimer m_showFor;
     void showFollowed(const QString &device, const FollowAt &at);
     bool showFollowedStep();   // true: done or given up
+    // -- WP SHOWFIX -- (finding 10) A question about a device not shown brings its
+    // tab to the front as its sheet opens (with followAgent; not while the user is
+    // at a control, a text field or another dialog); each question once
+    quint64 m_questionFollowed = 0;
+    QTimer m_questionTimer;   // an input in flight: tried again once it rests
+    void followQuestion();
+    // userInteracting(), with the agents' own question sheets left out or not
+    bool userAt(bool questionSheets) const;
     bool stillAt(const QString &device, const QString &section) const;
     // -- WP INTI -- (review RF7) the user's input, stamped by the application's event filter
     QElapsedTimer m_lastInput;  // the last key, click, wheel or touch
