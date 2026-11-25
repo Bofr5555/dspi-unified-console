@@ -576,6 +576,8 @@ export interface CoreMethods extends HubFleetMethods /* -- WP P3CC -- */, AlinkM
   effectStartingPoints: { params: { effect: "psybass" | "subharm" | "tube" }; result: EffectStartingPoint[] };
   /** The tube picture's family of tube type `type` (0..9). */
   tubeFamily: { params: { type: number }; result: number };
+  /** The upmixer's live status: running, why parked (1 off, 2 not stereo, 3 above 48 kHz), correlation -1..1, the derived gains 0..1. */
+  upmixStatus: { params: undefined; result: { active: boolean; parkedReason: number; correlation: number; balance: number; centerGain: number; lsGain: number; rsGain: number } };
   /** The subharmonic synthesizer's headroom cost as the device reports it, dB (0: none). */
   subharmHeadroom: { params: undefined; result: number };
 }

@@ -186,5 +186,14 @@ test("WEB6: the upmixer's status, Presence under Centre Width, the engines Off f
   const sliders = await centre.getByRole("slider").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")));
   expect(sliders.slice(0, 3)).toEqual(["Upmixer Strength", "Upmixer Centre Width", "Upmixer Presence"]);
   await expect(up.getByRole("group", { name: "Upmixer Centre", exact: true }).getByRole("button")).toHaveText(["Off", "Sinner", "Logician"]);
+  // On: the device's status (the core's upmixStatus) and Qt's gauges while it runs; none while idle
+  const status = up.getByRole("region", { name: "Status" });
+  await expect(status.getByRole("group", { name: "Upmixer gauges" })).toHaveCount(0);
+  await up.locator(".fx-intro").getByRole("switch", { name: "Upmixer", exact: true }).click();
+  await expect(status).toContainText("Active - processing audio");
+  await expect(status.getByRole("meter", { name: "Correlation" })).toBeVisible();
+  await up.locator(".fx-intro").getByRole("switch", { name: "Upmixer", exact: true }).click();
+  await expect(status).toContainText("Idle: upmixer disabled");
+  await expect(status.getByRole("group", { name: "Upmixer gauges" })).toHaveCount(0);
   expect(errors).toEqual([]);
 });

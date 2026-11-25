@@ -574,10 +574,9 @@ function UpmixStatusBlock(props: { ctx: BlockContext }) {
     }
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    // `upmixStatus` is not every core's call: without it the line says only what the mirror knows
-    const call = session.core.call as unknown as (m: string, p: unknown) => Promise<UpmixLive>;
+    // An older core without `upmixStatus`: the line says only what the mirror knows
     const poll = () => {
-      call("upmixStatus", undefined).then(
+      session.core.call("upmixStatus", undefined).then(
         (v) => {
           if (!alive) return;
           setLive(v);
@@ -593,13 +592,41 @@ function UpmixStatusBlock(props: { ctx: BlockContext }) {
     };
   }, [session, on]);
   const text = upmixStatusText(on, live);
+  // -- WP WEB6 -- Qt's gauges while it runs: the correlation, the centre's gain unless the centre is
+  // off, the surrounds' while they are on
+  const centreOff = Math.round(props.ctx.value("up.center_mode")) === 2;
+  const surroundOn = Math.round(props.ctx.value("up.surround_mode")) > 0;
+  const pct = (v: number) => `${Math.round(v * 100)}%`;
+  const corr = live?.correlation ?? 0;
   return (
     <Section label="Status" class="fx-group">
       <p class="fx-status" role="status">
         <span class={`status-dot ${live?.active ? "ok" : "warn"}`} aria-hidden="true" />
         {text}
       </p>
+      {live?.active ? (
+        <div class="fx-gauges" aria-label="Upmixer gauges" role="group">
+          <Gauge label="Correlation" level={(corr + 1) / 2} figure={`${corr >= 0 ? "+" : ""}${corr.toFixed(2)}`} tone="accent" />
+          {centreOff ? null : <Gauge label="Centre gain" level={live.centerGain} figure={pct(live.centerGain)} tone="ok" />}
+          {surroundOn ? <Gauge label="Ls gain" level={live.lsGain} figure={pct(live.lsGain)} tone="warn" /> : null}
+          {surroundOn ? <Gauge label="Rs gain" level={live.rsGain} figure={pct(live.rsGain)} tone="bad" /> : null}
+        </div>
+      ) : null}
     </Section>
+  );
+}
+
+/** -- WP WEB6 -- One live gauge (Qt's): its name, a bar, the figure. */
+function Gauge(props: { label: string; level: number; figure: string; tone: "accent" | "ok" | "warn" | "bad" }) {
+  const level = Math.min(1, Math.max(0, Number.isFinite(props.level) ? props.level : 0));
+  return (
+    <div class="fx-gauge">
+      <span class="fx-gauge-name">{props.label}</span>
+      <span class={`fx-gauge-bar fx-gauge-${props.tone}`} role="meter" aria-label={props.label} aria-valuemin={0} aria-valuemax={1} aria-valuenow={level}>
+        <span style={{ width: `${level * 100}%` }} />
+      </span>
+      <span class="fx-gauge-figure">{props.figure}</span>
+    </div>
   );
 }
 

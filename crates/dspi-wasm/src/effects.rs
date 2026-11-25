@@ -190,6 +190,21 @@ pub fn starting_points(core: &DspiCore, p: StartingParams) -> Result<Value, Call
     Ok(json!(rows))
 }
 
+/// `upmixStatus`: whether the upmixer runs, why it is parked (1 off, 2 not
+/// stereo, 3 above 48 kHz), the measured correlation and the derived
+/// channels' gains (0..1).
+pub fn upmix_status(s: &dspi_core::UpmixStatus) -> Value {
+    crate::calls::tidy(&json!({
+        "active": s.active,
+        "parkedReason": s.parked_reason,
+        "correlation": s.correlation,
+        "balance": s.balance,
+        "centerGain": s.center_gain,
+        "lsGain": s.ls_gain,
+        "rsGain": s.rs_gain,
+    }))
+}
+
 /// `tubeFamily {type}`: the picture's family of a tube type (0..9).
 #[derive(Debug, Deserialize)]
 pub struct FamilyParams {
@@ -289,9 +304,17 @@ mod tests_wp_web6 {
             "invalid"
         );
         assert_eq!(run(h, "subharmHeadroom", Value::Null)["code"], "not_open");
+        assert_eq!(run(h, "upmixStatus", Value::Null)["code"], "not_open");
         ok(h, "open", json!({ "kind": "demo" }));
         let sub = ok(h, "effectStartingPoints", json!({ "effect": "subharm" }));
         assert_eq!(sub[3]["writes"][3], json!(["sub.top", -30.0]));
+        let up = ok(h, "upmixStatus", Value::Null);
+        assert!(
+            up["active"].is_boolean()
+                && up["parkedReason"].is_number()
+                && up["centerGain"].is_number(),
+            "{up}"
+        );
         let t = ok(h, "effectStartingPoints", json!({ "effect": "tube" }));
         assert_eq!(t[0]["writes"][0], json!(["tube.type", 1.0]));
         assert!(ok(h, "subharmHeadroom", Value::Null).is_number());

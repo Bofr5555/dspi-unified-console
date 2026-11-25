@@ -569,6 +569,12 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         "effectGraph" => crate::effects::effect_graph(params(req.params)?),
         "effectStartingPoints" => crate::effects::starting_points(&core, params(req.params)?),
         "tubeFamily" => Ok(crate::effects::tube_family(params(req.params)?)),
+        // -- WP WEB6 -- the upmixer's live status (`fetch_upmix_status`, as Qt's Status section polls it)
+        "upmixStatus" => {
+            need_open(&core)?;
+            core.link_service();
+            Ok(crate::effects::upmix_status(&core.fetch_upmix_status()?))
+        }
         "subharmHeadroom" => {
             need_open(&core)?;
             core.link_service();
