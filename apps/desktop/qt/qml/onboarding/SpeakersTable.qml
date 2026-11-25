@@ -78,8 +78,8 @@ ColumnLayout {
                 enabled: table.editable
                 checked: row.modelData.included
                 onToggled: {
+                    table.changedByUser()   // -- WP UA4 -- first: the edit rebuilds this row
                     table.sc.setIncluded(row.modelData.output, checked)
-                    table.changedByUser()   // -- WP UA4 --
                 }
                 Accessible.name: qsTr("%1 is in the layout").arg(row.modelData.label)
             }
@@ -92,8 +92,8 @@ ColumnLayout {
                 textRole: "text"
                 currentIndex: table.indexOf(row.modelData.role)
                 onActivated: index => {
+                    table.changedByUser()   // -- WP UA4 -- first: the edit rebuilds this row
                     table.sc.setRole(row.modelData.output, table.roles[index].id)
-                    table.changedByUser()   // -- WP UA4 --
                 }
             }
             // -- WP ADETQ -- (AUTODES 5.1) whose word the role is, how sure a detection was
@@ -142,11 +142,13 @@ ColumnLayout {
                 placeholderText: qsTr("Not set")   // -- INTC (DL7 fold) -- Measure's placeholder (was "Speaker")
                 text: row.modelData.speaker
                 onCommitted: t => {
-                    table.sc.setSpeaker(row.modelData.output, t)
-                    // -- WP UA4 -- the same speaker is one group: it joins the other row's
-                    const group = table.groupOfSpeaker(t, row.modelData.output)
-                    if (group >= 0 && group !== row.modelData.group) table.sc.setGroup(row.modelData.output, group)
-                    table.changedByUser()
+                    // -- WP UA4 -- the same speaker is one group: it joins the other row's.
+                    // Read before the first edit, which rebuilds this row
+                    const owner = table, output = row.modelData.output, was = row.modelData.group
+                    const group = owner.groupOfSpeaker(t, output)
+                    owner.changedByUser()
+                    owner.sc.setSpeaker(output, t)
+                    if (group >= 0 && group !== was) owner.sc.setGroup(output, group)
                 }
             }
             AppSpinBox {
@@ -159,8 +161,8 @@ ColumnLayout {
                 realTo: 16
                 realValue: row.modelData.group + 1
                 onCommitted: value => {
+                    table.changedByUser()   // first: the edit rebuilds this row
                     table.sc.setGroup(row.modelData.output, Math.round(value) - 1)
-                    table.changedByUser()
                 }
             }
         }
