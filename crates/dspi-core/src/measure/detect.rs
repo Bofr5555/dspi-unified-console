@@ -23,12 +23,16 @@
 //! - **Top holds** (the 1.5–3 kHz mean less the 10–16 kHz mean under
 //!   [`PROBE_TOP_FALL_DB`]): a tweeter, a dome midrange or a full-range
 //!   driver; no descent.
-//! - **C1, the shaped descent:** segments from `floor/√2^k`, k = 1..5, each
-//!   two octaves up, at the shaped level, no ramp; stops when a segment's
-//!   new half octave is not heard or falls [`PROBE_STOP_DB`] under the
-//!   loudest point so far. **C2, the free descent** (125, 63, 32, 20 Hz, at
-//!   the presence level, at most the ceiling) only for an output that
-//!   reached 177 Hz (for a 1 kHz floor) in C1 without a stop: no tweeter does.
+//! - **C1, the shaped descent:** segments from `floor/√2^k`, k = 1..5, and
+//!   for a raised floor then the 1 kHz floor's steps under those, down to
+//!   [`PROBE_FREE_GATE_HZ`] (177 Hz), each two octaves up, at the shaped
+//!   level, no ramp; stops when a segment's new band is not heard or falls
+//!   [`PROBE_STOP_DB`] under the loudest point so far.
+//!   **C2, the free descent** (125, 63, 32, 20 Hz, never under the limits
+//!   profile's `highpass_min_hz` for the output, at the level its top was
+//!   heard at, at most the ceiling; at the shaped level when its top was
+//!   never heard) only for an output that C1 took down to 177 Hz without a
+//!   stop, whatever its floor: no tweeter does. -- WP FIN015 --
 //! - The class from `f_low` (the −6 dB point) and the 1–2 kHz level.
 //!
 //! **The layout** is written as each output completes (its row `detected`);
@@ -111,7 +115,13 @@ pub const PROBE_SUB_TOP_DB: f64 = 20.0;
 /// 1 kHz floor; scaled with the floor).
 pub const PROBE_TWEETER_SURE_HZ: f64 = 354.0;
 /// The shaped descent's steps below the floor: `floor/√2^k`, k = 1 to this.
+/// -- WP FIN015 -- a raised floor then takes the 1 kHz floor's steps under
+/// them, down to [`PROBE_FREE_GATE_HZ`].
 pub const PROBE_SHAPED_STEPS: u32 = 5;
+/// -- WP FIN015 -- The free descent's gate, Hz, the same for every floor:
+/// only an output the shaped descent took down to here without a stop is
+/// free-descended (2.5 octaves under the 1 kHz floor, `1000/√2^5`).
+pub const PROBE_FREE_GATE_HZ: f32 = PROBE_FLOOR_MIN_HZ / (4.0 * std::f32::consts::SQRT_2);
 /// The free descent's steps, Hz.
 pub const PROBE_FREE_STEPS: [f32; 4] = [125.0, 63.0, 32.0, 20.0];
 /// The lowest floor, and the highest a caller may name, Hz.
@@ -392,12 +402,29 @@ pub(crate) fn top_holds_confidence(s: &Shape) -> DetectConfidence {
     }
 }
 
-/// The descent's segment starts below `floor`: the shaped ones, then the
-/// free ones under the last shaped one.
+/// The descent's shaped segment starts below `floor`: `floor/√2^k`, k = 1
+/// to [`PROBE_SHAPED_STEPS`]; -- WP FIN015 -- then, for a raised floor, the
+/// 1 kHz floor's steps under the last of those (2 kHz: 250, 177 Hz; 2.5 kHz:
+/// 354, 250, 177 Hz). The gate is absolute: every floor's shaped descent
+/// ends with the 1 kHz floor's bands, at the shaped level, at 177 Hz.
 pub(crate) fn shaped_steps(floor: f32) -> Vec<f32> {
-    (1..=PROBE_SHAPED_STEPS)
-        .map(|k| floor / std::f32::consts::SQRT_2.powi(i32::try_from(k).unwrap_or(1)))
-        .collect()
+    let at =
+        |base: f32, k: u32| base / std::f32::consts::SQRT_2.powi(i32::try_from(k).unwrap_or(1));
+    let mut steps: Vec<f32> = (1..=PROBE_SHAPED_STEPS).map(|k| at(floor, k)).collect();
+    let last = steps.last().copied().unwrap_or(floor);
+    steps.extend(
+        (1..=PROBE_SHAPED_STEPS)
+            .map(|k| at(PROBE_FLOOR_MIN_HZ, k))
+            .filter(|f| *f < last * 0.99 && *f >= PROBE_FREE_GATE_HZ * 0.999),
+    );
+    steps
+}
+
+// -- WP FIN015 --
+/// The shaped descent has reached the free descent's gate at `f` Hz (within
+/// rounding: 2 kHz/√2^7 is 1 kHz/√2^5).
+pub(crate) fn at_gate(f: f32) -> bool {
+    f <= PROBE_FREE_GATE_HZ * 1.001
 }
 
 /// The sweep of the descent segment that judges the half octave above
@@ -408,11 +435,15 @@ pub(crate) fn segment_band(f_k: f32) -> (f32, f32) {
     (f1, (f1 * PROBE_SPAN).min(20_000.0))
 }
 
-pub(crate) fn free_steps(shaped_last: f32) -> Vec<f32> {
+/// The free descent's starts under the last shaped one, `shaped_last`; --
+/// WP FIN015 -- none whose segment would begin under `lowest` Hz (the
+/// limits profile's high-pass minimum for the output, else 20 Hz).
+pub(crate) fn free_steps(shaped_last: f32, lowest: f32) -> Vec<f32> {
     PROBE_FREE_STEPS
         .iter()
         .copied()
         .filter(|f| *f < shaped_last / 2f32.powf(EDGE_OCT as f32))
+        .filter(|f| segment_band(*f).0 >= lowest)
         .collect()
 }
 
@@ -672,6 +703,9 @@ struct Work {
     steps: Vec<f32>,
     /// The shaped steps' count (C2 starts after them).
     shaped: usize,
+    /// -- WP FIN015 -- The free descent's lowest start, Hz: the limits
+    /// profile's high-pass minimum for the output, else 20 Hz.
+    free_floor: f32,
     heard: DetectHeard,
     /// The presence level, peak dBFS.
     level: Option<f32>,
@@ -699,6 +733,7 @@ impl Work {
             step: Step::Top,
             shaped: steps.len(),
             steps,
+            free_floor: 20.0, // -- WP FIN015 --
             heard: DetectHeard::Never,
             level: None,
             pts: Vec::new(),
@@ -712,12 +747,26 @@ impl Work {
         }
     }
 
+    // -- WP FIN015 --
+    /// The same, its free descent never under `profile_hz` (the limits
+    /// profile's high-pass minimum for the output; 0 for none).
+    fn free_from(mut self, profile_hz: f32) -> Work {
+        self.free_floor = profile_hz.max(20.0);
+        self
+    }
+
     // -- WP ROLES --
     /// `output`'s check of its stated `role` (never below `floor`).
     fn checking(output: u8, floor: f32, role: MeasureRole) -> Work {
+        let mut w = Work::new(output, floor);
+        // -- WP FIN015 -- a check silent above the floor keeps the 1 kHz
+        // floor's count of shaped steps (it never free-descends)
+        w.steps
+            .truncate(usize::try_from(PROBE_SHAPED_STEPS).unwrap_or(5));
+        w.shaped = w.steps.len();
         Work {
             check: Some(role),
-            ..Work::new(output, floor)
+            ..w
         }
     }
 
@@ -735,6 +784,17 @@ impl Work {
             floor_hz: self.floor,
             at_ms: crate::events::now_ms(),
             filters_hide_top: self.hidden,
+        }
+    }
+
+    // -- WP FIN015 --
+    /// The level of the descent segment it is at, peak dBFS: the shaped
+    /// level (`below`) in C1; in the free descent the level its top was heard
+    /// at, at most `ceiling`, and the shaped level when it was never heard.
+    fn descent_level(&self, below: f32, ceiling: f32) -> f32 {
+        match self.step {
+            Step::Descent(k) if k >= self.shaped => self.level.map_or(below, |l| l.min(ceiling)),
+            _ => self.level.unwrap_or(below).min(below),
         }
     }
 
@@ -901,10 +961,12 @@ impl Work {
         self.bands.push(band);
         let stop = band.mean.is_none_or(|m| m <= reference - PROBE_STOP_DB);
         if !stop {
-            if next == self.shaped && self.steps.len() == self.shaped {
-                // Flat (or rising) 2.5 octaves under the floor at the shaped
-                // level: no tweeter. The free descent.
-                self.steps.extend(free_steps(f_k));
+            // -- WP FIN015 -- the gate is absolute: the shaped steps of a
+            // raised floor go on to 177 Hz first
+            if next == self.shaped && self.steps.len() == self.shaped && at_gate(f_k) {
+                // Flat (or rising) down to 177 Hz at the shaped level: no
+                // tweeter. The free descent.
+                self.steps.extend(free_steps(f_k, self.free_floor));
             }
             if next < self.steps.len() {
                 self.step = Step::Descent(next);
@@ -982,7 +1044,9 @@ pub(crate) struct Detect {
     /// A session runs.
     running: bool,
     /// The outputs to probe, in order, and the one now.
-    queue: Vec<(u8, f32)>,
+    /// -- WP FIN015 -- each with its floor and its limits profile's
+    /// high-pass minimum (0 for none).
+    queue: Vec<(u8, f32, f32)>,
     at: usize,
     work: Option<Work>,
     detection: Detection,
@@ -1208,7 +1272,7 @@ impl DspiCore {
                 .max(profile_floor)
                 .clamp(PROBE_FLOOR_MIN_HZ, PROBE_FLOOR_MAX_HZ);
             if on {
-                queue.push((*o, floor));
+                queue.push((*o, floor, profile_floor));
                 detection.outputs.push(DetectedOutput {
                     output: *o,
                     class: DetectClass::Unknown,
@@ -1247,7 +1311,7 @@ impl DspiCore {
         // filters hide its top end: it stays unchecked, and says why
         let mut hidden_checks: Vec<RoleCheck> = Vec::new();
         if setup.check {
-            queue.retain(|(o, f)| {
+            queue.retain(|(o, f, _)| {
                 if !self.top_hidden(*o) {
                     return true;
                 }
@@ -1275,7 +1339,7 @@ impl DspiCore {
                 .map(|l| {
                     queue
                         .iter()
-                        .filter_map(|(o, _)| l.output(*o).map(|r| (*o, r.role)))
+                        .filter_map(|(o, _, _)| l.output(*o).map(|r| (*o, r.role)))
                         .collect()
                 })
                 .unwrap_or_default()
@@ -1285,7 +1349,7 @@ impl DspiCore {
         let role_of_check = |o: u8| check_roles.iter().find(|(c, _)| *c == o).map(|(_, r)| *r);
         let off_checks: Vec<RoleCheck> = if setup.check {
             outs.iter()
-                .filter(|o| !queue.iter().any(|(q, _)| q == *o))
+                .filter(|o| !queue.iter().any(|(q, _, _)| q == *o))
                 .filter(|o| !hidden_checks.iter().any(|c| c.output == **o))
                 .filter_map(|o| {
                     let role = layout.as_ref()?.output(*o)?.role;
@@ -1326,9 +1390,9 @@ impl DspiCore {
             return Ok(self.detect_publish(&d));
         }
         let first = d.queue.first().copied();
-        d.work = first.map(|(o, f)| match role_of_check(o) {
+        d.work = first.map(|(o, f, p)| match role_of_check(o) {
             Some(role) => Work::checking(o, f, role), // -- WP ROLES --
-            None => Work::new(o, f),
+            None => Work::new(o, f).free_from(p),
         });
         if let Err(e) = self.detect_session(&mut d) {
             *d = Detect::default();
@@ -1505,10 +1569,11 @@ impl DspiCore {
         };
         let mut plan = Plan::new(&base)?;
         // The free descent is for an output the shaped one showed is no
-        // tweeter: its floor is the plan's 20 Hz, the ceiling still holds.
+        // tweeter: its floor is the plan's 20 Hz (-- WP FIN015 -- or the
+        // limits profile's high-pass minimum), the ceiling still holds.
         let free = matches!(w.step, Step::Descent(k) if k >= w.shaped);
         plan.probe = Some(Probe {
-            floor_hz: if free { 20.0 } else { w.floor },
+            floor_hz: if free { w.free_floor } else { w.floor },
             below_dbfs: below,
             ceiling_dbfs: ceiling,
         });
@@ -1524,11 +1589,7 @@ impl DspiCore {
                 });
             }
             Step::Descent(_) => {
-                let level = if free {
-                    w.level.unwrap_or(ceiling).min(ceiling)
-                } else {
-                    w.level.unwrap_or(below).min(below)
-                };
+                let level = w.descent_level(below, ceiling);
                 plan.start_db = level;
                 plan.ceiling_db = level;
                 plan.fixed_level = true;
@@ -1772,7 +1833,7 @@ impl DspiCore {
         d.checks.push(rec);
         d.at = d.at.saturating_add(1);
         match d.queue.get(d.at).copied() {
-            Some((o, f)) => {
+            Some((o, f, _)) => {
                 let role = d
                     .base
                     .as_ref()
@@ -1804,7 +1865,7 @@ impl DspiCore {
         d.at = d.at.saturating_add(1);
         self.detect_write_layout(d);
         match d.queue.get(d.at).copied() {
-            Some((o, f)) => self.detect_next(d, Work::new(o, f)),
+            Some((o, f, p)) => self.detect_next(d, Work::new(o, f).free_from(p)),
             None => self.detect_finish(d),
         }
     }

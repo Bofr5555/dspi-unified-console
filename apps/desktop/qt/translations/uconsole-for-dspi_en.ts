@@ -513,7 +513,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>An agent may then find out what is wired to a DSPi&apos;s outputs by playing quiet test sweeps on each output in turn, without asking you first. Each output is first played only above 1 kHz, at most −24 dBFS. Only an output whose response says it is not a tweeter is played lower, and then at most −50 dBFS; one still flat well below 1 kHz there, as no tweeter is, is then played down to 20 Hz at most −24 dBFS. Whatever cannot be told apart is treated as a tweeter.</source>
+        <source>An agent may then find out what is wired to a DSPi&apos;s outputs by playing quiet test sweeps on each output in turn, without asking you first. Each output is first played only above 1 kHz, at most −24 dBFS. Only an output whose response says it is not a tweeter (or that is not heard above its floor) is played lower, and then at most −50 dBFS, no lower than 157 Hz; one still flat at 177 Hz there, as no tweeter is, whatever the floor, is then played down to 20 Hz (never under your limits profile&apos;s high-pass minimum for it) at the level its top was heard at, at most −24 dBFS (−50 dBFS when its top was not heard). Whatever cannot be told apart is treated as a tweeter.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -997,6 +997,10 @@ An output&apos;s short name: %1 is its number</extracomment>
         </translation>
     </message>
     <message>
+        <source>Nothing is known about these outputs yet. A tweeter wired where the probe expects a woofer could receive a few seconds of sweep below its floor at −50 dBFS (more with a raised floor): below 1 kHz less than a hundredth of what a 1 kHz crossover lets through from music, but not nothing. Only a driver still playing flat at 177 Hz under that quiet sweep, as no tweeter does, is then swept down to 20 Hz at up to −24 dBFS. Keep the volume where it is and stay by Stop. Afterwards check the result in Settings › Speakers and confirm or correct it: until you do, the detected roles guard your speakers in place of a confirmed setup.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Undo</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1008,10 +1012,6 @@ An output&apos;s short name: %1 is its number</extracomment>
     <message>
         <source>The measurement %1 asked for was stopped: a setting was changed while it ran, so its result would not be valid.</source>
         <extracomment>%1 is an AI agent&apos;s name</extracomment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Nothing is known about these outputs yet. A tweeter wired where the probe expects a woofer could receive a few seconds of sweep below 1 kHz at −50 dBFS: less than a hundredth of what a 1 kHz crossover lets through from music, but not nothing. Keep the volume where it is and stay by Stop. Afterwards check the result in Settings › Speakers and confirm or correct it: until you do, the detected roles guard your speakers in place of a confirmed setup.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -17553,7 +17553,7 @@ Save before continuing?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Speaker detection: %1%2. Each output is first played only above 1 kHz, at most %3. Only an output whose response says it is not a tweeter is played lower, and then at most %4; one still flat well below 1 kHz there, as no tweeter is, is then played down to 20 Hz at most %3. Whatever cannot be told apart is treated as a tweeter.</source>
+        <source>Speaker detection: %1%2. Each output is first played only above 1 kHz, at most %3. Only an output whose response says it is not a tweeter (or that is not heard above its floor) is played lower, and then at most %4, no lower than 157 Hz; one still flat at 177 Hz there, as no tweeter is, is then played down to 20 Hz (never under the limits profile&apos;s high-pass minimum for it) at the level its top was heard at, at most %3 (%4 when its top was not heard). Whatever cannot be told apart is treated as a tweeter.</source>
         <extracomment>%1 the outputs (&quot;Out 1–2&quot;), %2 those that are off, with a space before them, or &quot;&quot;; %3 and %4 levels (&quot;−24 dBFS&quot;, &quot;−50 dBFS&quot;)</extracomment>
         <translation type="unfinished"></translation>
     </message>

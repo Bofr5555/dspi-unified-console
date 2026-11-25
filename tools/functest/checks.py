@@ -407,7 +407,8 @@ def more_adets(k, e, now, before):
     if k == "envelope":
         # The probe's order and levels per output (AUTODES 7.2.6): no shaped segment before the
         # output's top was looked at, no free segment before the shaped descent reached its last
-        # step, the shaped ones at or under the sub-floor level, the free ones from 20 Hz.
+        # step, the shaped ones at or under the sub-floor level, the free ones from 20 Hz (or the
+        # limits profile's high-pass minimum: -- WP FIN015 --).
         # -- RGFIX -- `floors` = {device: {n from 1: Hz}}: those outputs probed from that floor or above
         hp = e.get("headphones", False)
         floors = {(d, int(n) - 1): hz for d, outs in e.get("floors", {}).items() for n, hz in outs.items()}
@@ -422,6 +423,14 @@ def more_adets(k, e, now, before):
                 bad.append(f"{d} {o + 1}: began with {stages[0]}")
             if "free" in stages and stages.count("shaped") < e.get("shaped_steps", 5):
                 bad.append(f"{d} {o + 1}: free descent after {stages.count('shaped')} shaped segments")
+            # -- WP FIN015 -- the gate is absolute: the shaped descent reached 177 Hz (its segment from
+            # 157 Hz) before any free segment, whatever the floor; nothing free under the floor held to
+            shaped_low = min((x["f1"] for x in seq if x["stage"] == "shaped"), default=None)
+            if "free" in stages and (shaped_low is None or shaped_low > 158.0):
+                bad.append(f"{d} {o + 1}: free descent before the shaped one reached 177 Hz ({shaped_low} Hz)")
+            for x in seq:
+                if x["stage"] == "free" and x["f1"] < x["floorHz"] - 0.5:
+                    bad.append(f"{d} {o + 1}: free from {x['f1']:.0f} Hz under its floor {x['floorHz']:.0f}")
             for x in seq:
                 if x["levelDbfs"] > (below if x["stage"] == "shaped" else ceiling) + 0.05:
                     bad.append(f"{d} {o + 1}: {x['stage']} at {x['levelDbfs']} dBFS")

@@ -164,10 +164,15 @@ pub const DETECT_CONFIRMED_TEXT: &str = "the user has confirmed the speaker layo
 // -- WP ADET1 --
 /// The speaker detection's warning on the mechanism (AUTODES 4.1): the
 /// confirmation sheet shows it with the grouped question.
+/// -- WP FIN015 -- the worst cases as the core plays them: the quiet probe
+/// below a tweeter's floor, and the free descent only for a driver still
+/// flat at 177 Hz under it (measure/detect.rs, the absolute gate).
 pub const DETECT_WARNING: &str = "Nothing is known about these outputs yet. A tweeter wired \
-     where the probe expects a woofer could receive a few seconds of sweep below 1 kHz at −50 \
-     dBFS: less than a hundredth of what a 1 kHz crossover lets through from music, but not \
-     nothing. Keep the volume where it is and stay by Stop. Afterwards check the result in \
+     where the probe expects a woofer could receive a few seconds of sweep below its floor at \
+     −50 dBFS (more with a raised floor): below 1 kHz less than a hundredth of what a 1 kHz \
+     crossover lets through from music, but not nothing. Only a driver still playing flat at \
+     177 Hz under that quiet sweep, as no tweeter does, is then swept down to 20 Hz at up to \
+     −24 dBFS. Keep the volume where it is and stay by Stop. Afterwards check the result in \
      Settings › Speakers and confirm or correct it: until you do, the detected roles guard your \
      speakers in place of a confirmed setup.";
 
@@ -2641,11 +2646,14 @@ static DETECT: Tool = Tool {
                   speaker_setup_unconfirmed): it plays quiet test sweeps on each output in turn, \
                   from the top down, and finds which outputs reach a driver and which drive a \
                   tweeter. Each output is played only above 1 kHz (or the floor) at most -24 \
-                  dBFS; only an output whose response says it is not a tweeter is played lower, \
-                  at most -50 dBFS (the shaped descent); one still flat 2.5 octaves under the \
-                  floor there, which no tweeter is, then gets the free descent to 20 Hz at the \
-                  level its top was heard at, at most -24 dBFS (status `stage` \"descent\" for \
-                  both). The levels are fixed: no argument changes them. Whatever \
+                  dBFS; only an output whose response says it is not a tweeter (or that is not \
+                  heard above the floor) is played lower, at most -50 dBFS (the shaped descent, \
+                  down to 157 Hz whatever the floor); one still flat at 177 Hz there, which no \
+                  tweeter is, then gets the free descent to 20 Hz (never under the limits \
+                  profile's high-pass minimum for that output) at the level its top was heard \
+                  at, at most -24 dBFS, or at most -50 dBFS when its top was not heard (status \
+                  `stage` \"descent\" for both). The levels are fixed: no argument changes \
+                  them, and a raised floor never starts the free descent sooner. Whatever \
                   cannot be told apart is a tweeter. Outputs that are off or muted are not \
                   probed. The roles it finds guard the outputs as a confirmed setup would \
                   (roles_from: speaker_setup_auto_detected) until the user confirms or \
@@ -2680,9 +2688,13 @@ static DETECT: Tool = Tool {
         m.insert(
             "floor_hz".into(),
             json!({"type": "number", "minimum": PROBE_FLOOR_MIN_HZ, "maximum": PROBE_FLOOR_MAX_HZ,
-                   "description": "Nothing but the quiet probe plays below this, Hz (default \
-                                   1000; it may only be raised, and the limits profile may raise \
-                                   an output's further)"}),
+                   "description": "The floor, Hz (default 1000; it may only be raised, and \
+                                   the limits profile may raise an output's further). Above it \
+                                   each output plays at most -24 dBFS; below it only the quiet \
+                                   probe (at most -50 dBFS, down to 157 Hz), and for an output \
+                                   the quiet probe still finds flat at 177 Hz the free descent \
+                                   down to 20 Hz at most -24 dBFS. A raised floor never starts \
+                                   the free descent sooner"}),
         );
         m.insert(
             "microphone".into(),
@@ -2779,8 +2791,8 @@ static DETECT: Tool = Tool {
         let what = format!(
             "Play quiet test sweeps on {} to find which outputs reach a driver and which drive \
              a tweeter, from {mic} (above {floor} at most {ceiling}; below it at most \
-             {below} and only where the response is not a tweeter's, then a woofer down \
-             to 20 Hz at most {ceiling})",
+             {below} and only where the response is not a tweeter's; only one still flat \
+             at 177 Hz then down to 20 Hz at most {ceiling})",
             outs_range_words(&on)
         );
         let off_words = if off.is_empty() {
@@ -2796,9 +2808,12 @@ static DETECT: Tool = Tool {
         let detect = format!(
             "Speaker detection: {}{off_words}. Each output is first played only above {floor}, \
              at most {ceiling}. Only an output whose response says it is not a tweeter \
-             is played lower, and then at most {below}; one still flat well below \
-             {floor} there, as no tweeter is, is then played down to 20 Hz at most \
-             {ceiling}. Whatever cannot be told apart is treated as a tweeter.",
+             (or that is not heard above {floor}) is played lower, and then at most \
+             {below}, no lower than 157 Hz; one still flat at 177 Hz there, as no \
+             tweeter is, is then played down to 20 Hz (never under the limits profile's \
+             high-pass minimum for it) at the level its top was heard at, at most \
+             {ceiling} ({below} when its top was not heard). Whatever cannot be told \
+             apart is treated as a tweeter.",
             outs_range_words(&on)
         );
         policy::require_detect(

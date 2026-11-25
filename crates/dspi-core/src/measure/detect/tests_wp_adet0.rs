@@ -153,8 +153,14 @@ fn measured_raw(d: &Driver, f1: f64, f2: f64) -> Vec<(f64, f64)> {
 
 /// One detection of `d` by the pure stage decisions, as the driver runs
 /// them: the class, the work, and every sweep played `(f1, f2, level)`.
+/// -- WP FIN015 -- a top heard is heard at the ceiling (the worst case), and
+/// each descent segment plays at the driver's own level.
 fn probe_model(d: &Driver, floor: f32) -> (Next, Work, Vec<(f32, f32, f32)>) {
-    let mut w = Work::new(0, floor);
+    probe_model_from(d, Work::new(0, floor))
+}
+
+fn probe_model_from(d: &Driver, mut w: Work) -> (Next, Work, Vec<(f32, f32, f32)>) {
+    let floor = w.floor;
     let mut played = Vec::new();
     for _ in 0..32 {
         let next = match w.step {
@@ -167,7 +173,7 @@ fn probe_model(d: &Driver, floor: f32) -> (Next, Work, Vec<(f32, f32, f32)>) {
                 played.push((lo, hi, PROBE_CEILING_DBFS));
                 if measured(d, f64::from(lo), f64::from(hi)).len() >= 2 {
                     played.push((floor, 20_000.0, PROBE_CEILING_DBFS));
-                    w.level = Some(PROBE_START_DBFS);
+                    w.level = Some(PROBE_CEILING_DBFS);
                     w.after_shape(measured_raw(d, f64::from(floor), 20_000.0))
                         .unwrap()
                 } else {
@@ -176,11 +182,7 @@ fn probe_model(d: &Driver, floor: f32) -> (Next, Work, Vec<(f32, f32, f32)>) {
             }
             Step::Descent(k) => {
                 let (f1, f2) = segment_band(w.steps[k]);
-                let level = if k >= w.shaped {
-                    w.level.unwrap_or(PROBE_CEILING_DBFS)
-                } else {
-                    PROBE_BELOW_FLOOR_DBFS
-                };
+                let level = w.descent_level(PROBE_BELOW_FLOOR_DBFS, PROBE_CEILING_DBFS);
                 played.push((f1, f2, level));
                 w.played(f1);
                 w.after_segment(measured(d, f64::from(f1), f64::from(f2)))
@@ -317,6 +319,173 @@ fn wp_adet0_a_raised_floor_moves_every_band() {
     }
 }
 
+// -- WP FIN015 -- (REVF S2, probe P2) the free descent's gate is absolute: a
+// raised floor (the agent's floor_hz, the limits profile's high-pass minimum)
+// takes the shaped descent on down to 177 Hz at -50 dBFS before any free
+// segment, so a tweeter or a horn flat to 600-700 Hz under a 2-8 kHz floor
+// never gets the free descent's level below 1 kHz.
+
+/// Nothing below 1 kHz plays above the shaped level before the shaped
+/// descent has played its segment at 177 Hz; the free descent only after it.
+fn gate_held(name: &str, w: &Work, played: &[(f32, f32, f32)]) {
+    if w.steps.len() > w.shaped {
+        assert!(at_gate(w.steps[w.shaped - 1]), "{name}: {:?}", w.steps);
+    }
+    let gate = segment_band(*shaped_steps(w.floor).last().unwrap()).0;
+    let mut reached = false;
+    for (f1, _, level) in played {
+        if *f1 < 1_000.0 && !reached {
+            assert!(*level <= PROBE_BELOW_FLOOR_DBFS, "{name}: {played:?}");
+        }
+        reached |= (*f1 - gate).abs() < 0.5;
+        assert!(*level <= PROBE_CEILING_DBFS, "{name}: {played:?}");
+    }
+}
+
+#[test]
+fn wp_fin015_a_raised_floor_never_loosens_the_free_descents_gate() {
+    let mut drivers: Vec<(String, Driver)> = [400.0, 500.0, 700.0, 900.0, 1_100.0, 1_400.0]
+        .into_iter()
+        .map(|fs| (format!("Fs {fs}"), driver(fs, 0.9, 3_000.0, 0.7, None)))
+        .collect();
+    // Horn compression drivers flat to about 600-700 Hz.
+    drivers.push(("horn 600".into(), driver(600.0, 0.7, 2_500.0, 0.7, None)));
+    drivers.push(("horn 700".into(), driver(700.0, 0.7, 2_500.0, 0.7, None)));
+    let mut descents = 0;
+    for floor in [2_000.0, 2_500.0, 4_000.0, 8_000.0] {
+        // The shaped steps end at 177 Hz, not 2.5 octaves under this floor,
+        // with the 1 kHz floor's bands.
+        let shaped = shaped_steps(floor);
+        let tail = &shaped[shaped.len() - 2..];
+        assert!(
+            (tail[0] - 250.0).abs() < 0.1 && (tail[1] - 176.8).abs() < 0.1,
+            "{floor}: {shaped:?}"
+        );
+        let last = *shaped.last().unwrap();
+        assert!(at_gate(last) && last > 150.0, "{floor}: {shaped:?}");
+        assert!(!at_gate(shaped[shaped.len() - 2]), "{floor}: {shaped:?}");
+        for (name, d) in &drivers {
+            let name = format!("{name} at {floor} Hz");
+            let (next, w, played) = probe_model(d, floor);
+            assert!(
+                matches!(next, Next::Done(DetectClass::Tweeter, _)),
+                "{name}: {next:?} {w:?}"
+            );
+            assert_eq!(
+                w.steps.len(),
+                w.shaped,
+                "{name}: entered the free descent: {played:?}"
+            );
+            assert!(
+                played
+                    .iter()
+                    .filter(|(f1, _, _)| *f1 < 1_000.0)
+                    .all(|(_, _, l)| *l <= PROBE_BELOW_FLOOR_DBFS),
+                "{name}: {played:?}"
+            );
+            gate_held(&name, &w, &played);
+            if w.stopped_at.is_some() {
+                descents += 1;
+            }
+        }
+        // Every model of the appendix: the free descent only past 177 Hz.
+        for (name, d, _, _) in models() {
+            let (_, w, played) = probe_model(&d, floor);
+            gate_held(&format!("{name} at {floor} Hz"), &w, &played);
+        }
+    }
+    assert!(
+        descents >= 8,
+        "the drivers' tops fall: they descend ({descents})"
+    );
+    // A woofer still reaches the free descent from a raised floor, past 177 Hz.
+    let (next, w, _) = probe_model(&func1_woofer(), 4_000.0);
+    assert!(matches!(next, Next::Done(DetectClass::Woofer, _)), "{w:?}");
+    assert!(
+        w.steps.len() > w.shaped && w.lowest_hz == Some(20.0),
+        "{w:?}"
+    );
+}
+
+// -- WP FIN015 -- (REVF S2) an output whose top was never heard free-descends
+// at the shaped level, never at the ceiling; one heard plays its own level,
+// at most the ceiling; the free descent's floor is the plan's 20 Hz or the
+// limits profile's high-pass minimum.
+#[test]
+fn wp_fin015_an_unheard_top_free_descends_at_the_shaped_level() {
+    let core = DspiCore::new();
+    let mut d = Detect {
+        setup: Some(DetectSetup::default()),
+        ..Detect::default()
+    };
+    // Silent above the floor (the ramp from the top and from the floor),
+    // heard by the shaped descent all the way down: a sub.
+    let sub = centre_sub();
+    let mut w = Work::new(0, 1_000.0).free_from(0.0);
+    assert!(matches!(w.after_top(Vec::new()), Next::Session));
+    assert!(matches!(w.after_top(Vec::new()), Next::Session));
+    for _ in 0..16 {
+        let Step::Descent(k) = w.step else {
+            unreachable!()
+        };
+        if k >= w.shaped {
+            break;
+        }
+        let plan = core.detect_plan(&d, &w).unwrap();
+        assert_eq!(plan.start_db, PROBE_BELOW_FLOOR_DBFS, "shaped {k}");
+        let (f1, f2) = segment_band(w.steps[k]);
+        assert!(matches!(
+            w.after_segment(measured(&sub, f64::from(f1), f64::from(f2))),
+            Next::Session
+        ));
+    }
+    assert!(matches!(w.step, Step::Descent(k) if k >= w.shaped), "{w:?}");
+    assert_eq!((w.heard, w.level), (DetectHeard::BelowFloor, None));
+    let plan = core.detect_plan(&d, &w).unwrap();
+    assert_eq!(plan.start_db, PROBE_BELOW_FLOOR_DBFS, "never the ceiling");
+    assert_eq!(plan.ceiling_db, PROBE_BELOW_FLOOR_DBFS);
+    assert_eq!(plan.probe.unwrap().floor_hz, 20.0);
+    d.headphones = true;
+    let plan = core.detect_plan(&d, &w).unwrap();
+    assert_eq!(plan.start_db, PROBE_BELOW_FLOOR_HEADPHONES_DBFS);
+    d.headphones = false;
+    // A top heard at -30 dBFS: the free descent at -30; one heard louder
+    // than the ceiling (never: the ramp stops there) at the ceiling.
+    w.level = Some(-30.0);
+    assert_eq!(core.detect_plan(&d, &w).unwrap().start_db, -30.0);
+    w.level = Some(-10.0);
+    assert_eq!(
+        core.detect_plan(&d, &w).unwrap().start_db,
+        PROBE_CEILING_DBFS
+    );
+    // The limits profile's high-pass minimum is the free descent's floor.
+    w.free_floor = 100.0;
+    assert_eq!(
+        core.detect_plan(&d, &w).unwrap().probe.unwrap().floor_hz,
+        100.0
+    );
+}
+
+// -- WP FIN015 -- (REVF S2) the free descent never goes under the output's
+// limits-profile high-pass minimum; one at or over 177 Hz leaves none.
+#[test]
+fn wp_fin015_the_free_descent_keeps_the_profiles_highpass_minimum() {
+    let (next, w, played) =
+        probe_model_from(&func1_woofer(), Work::new(0, 1_000.0).free_from(100.0));
+    assert!(matches!(next, Next::Done(DetectClass::Woofer, _)), "{w:?}");
+    assert!(w.steps.len() > w.shaped, "{w:?}");
+    assert!(played.iter().all(|(f1, _, _)| *f1 >= 100.0), "{played:?}");
+    let (_, w, played) = probe_model_from(&func1_woofer(), Work::new(0, 1_000.0).free_from(200.0));
+    assert_eq!(w.steps.len(), w.shaped, "{w:?}");
+    assert!(
+        played
+            .iter()
+            .filter(|(f1, _, _)| *f1 < 1_000.0)
+            .all(|(_, _, l)| *l <= PROBE_BELOW_FLOOR_DBFS),
+        "{played:?}"
+    );
+}
+
 // ── Pure pieces ─────────────────────────────────────────────────────────
 
 #[test]
@@ -380,8 +549,11 @@ fn wp_adet0_the_judgement_pieces() {
         s.iter().zip(want).all(|(a, b)| (a - b).abs() < 0.2),
         "{s:?}"
     );
-    assert_eq!(free_steps(176.8), vec![125.0, 63.0, 32.0, 20.0]);
-    assert_eq!(free_steps(441.9), vec![125.0, 63.0, 32.0, 20.0]);
+    assert_eq!(free_steps(176.8, 20.0), vec![125.0, 63.0, 32.0, 20.0]);
+    assert_eq!(free_steps(441.9, 20.0), vec![125.0, 63.0, 32.0, 20.0]);
+    // -- WP FIN015 -- never a segment under the profile's high-pass minimum
+    assert_eq!(free_steps(176.8, 100.0), vec![125.0]);
+    assert_eq!(free_steps(176.8, 200.0), Vec::<f32>::new());
     let old = vec![(1000.0, 0.0), (1200.0, 0.0), (1500.0, 0.0)];
     let new = vec![(800.0, -3.0), (1000.0, 3.0), (1200.0, 3.0), (1500.0, 3.0)];
     let a = align(&old, new);
@@ -775,8 +947,11 @@ impl Starts {
     /// (AUTODES 1.8): a sweep; at most the ceiling; below `floor` at most
     /// -50 dBFS and two octaves, until the shaped descent has reached its
     /// last step (only then the free descent, still under the ceiling).
+    /// -- WP FIN015 -- its last step is at 177 Hz whatever the floor.
     fn envelope_holds(&self, output: u8, floor: f32) {
-        let last_shaped = segment_band(floor / 2f32.sqrt().powi(5)).0;
+        let last = *shaped_steps(floor).last().unwrap();
+        assert!(at_gate(last) && last > 150.0, "{last}");
+        let last_shaped = segment_band(last).0;
         let mut shaped_done = false;
         for c in self.of(output) {
             assert_eq!(c.signal_type, SIG_LOG_SWEEP, "{c:?}");
@@ -1198,6 +1373,61 @@ fn rgfix_sim_the_profiles_highpass_minimum_is_the_detections_floor() {
         starts.of(0)
     );
     starts.envelope_holds(0, 1_000.0);
+}
+
+// -- WP FIN015 -- (REVF S2) on the demo: a limits profile's high-pass
+// minimum under the floor (100 Hz on a woofer's output) keeps the free
+// descent at or over it; the woofer is still a woofer.
+#[test]
+fn wp_fin015_sim_the_free_descent_keeps_the_profiles_highpass_minimum() {
+    use dspi_session::limits::{LimitsProfile, OutputLimits};
+    let core = demo(vec![func1_woofer()]);
+    // Its flat crossover slot at 20 Hz: the profile's hold makes it the
+    // 100 Hz high-pass the profile asks for (not one at the slot's 1 kHz).
+    let n_in = core.get_state().num_input_channels;
+    core.set_crossover(
+        n_in,
+        0,
+        FilterParams {
+            filter_type: 0,
+            bypass: true,
+            freq: 20.0,
+            q: 0.707,
+            gain: 0.0,
+            qp: 0.0,
+        },
+    )
+    .unwrap();
+    settle(&core);
+    core.limits_set_dir(scratch("fin015").to_string_lossy().into())
+        .unwrap();
+    let profile = LimitsProfile {
+        outputs: vec![OutputLimits {
+            output: 0,
+            highpass_min_hz: Some(100.0),
+            highpass_min_slope_db: Some(12),
+            ..OutputLimits::default()
+        }],
+        ..LimitsProfile::default()
+    };
+    core.limits_apply_profile(profile.to_document()).unwrap();
+    let mut starts = Starts::default();
+    core.detect_start(DetectSetup::default()).unwrap();
+    let st = detect(&core, &mut starts, None);
+    assert_eq!(st.stage, DetectStage::Done, "{st:#?}");
+    assert_eq!(class_of(&st, 0).0, DetectClass::Woofer, "{st:#?}");
+    starts.envelope_holds(0, 1_000.0);
+    assert!(
+        starts.of(0).iter().all(|c| c.p[0].min(c.p[1]) >= 100.0),
+        "{:?}",
+        starts.of(0)
+    );
+    // It reached the free descent (125 Hz's segment, from 111 Hz).
+    assert!(
+        starts.of(0).iter().any(|c| c.p[0].min(c.p[1]) < 120.0),
+        "{:?}",
+        starts.of(0)
+    );
 }
 
 // ── -- WP ROLES -- roles an agent set from the user's words ────────────

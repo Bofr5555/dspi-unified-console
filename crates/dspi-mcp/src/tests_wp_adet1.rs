@@ -411,6 +411,68 @@ fn wp_adet1_one_grouped_question_with_the_warning_and_a_grant_for_detections() {
     let _ = core;
 }
 
+// -- WP FIN015 -- (REVF S2) the texts say what the core plays: the free
+// descent's gate at 177 Hz whatever the floor (a raised floor never starts it
+// sooner), its level for a top never heard, the profile's minimum under it,
+// and the warning's worst case with it.
+#[test]
+fn wp_fin015_the_detections_texts_state_the_absolute_gate() {
+    let (set, _id, _core) = demo();
+    let (mut s, _) = server(&set, ConfirmMode::AskRisky);
+    let c = s.connect();
+    let cid = held_at(&mut s, c, 1_000, DETECT, json!({"floor_hz": 4000}));
+    let sheet = s.confirmation(cid).unwrap().to_json();
+    let detect = sheet["risks"][1]["what"].as_str().unwrap();
+    assert!(
+        detect.contains("above 4 kHz")
+            && detect.contains("still flat at 177 Hz")
+            && detect.contains("no lower than 157 Hz")
+            && detect.contains("high-pass minimum")
+            && detect.contains("(−50 dBFS when its top was not heard)")
+            && !detect.contains("well below"),
+        "{detect}"
+    );
+    let warning = sheet["warning"].as_str().unwrap();
+    assert!(
+        warning.contains("below its floor at −50 dBFS")
+            && warning.contains("flat at 177 Hz")
+            && warning.contains("down to 20 Hz at up to −24 dBFS"),
+        "{warning}"
+    );
+    let r = s
+        .handle_value(
+            c,
+            0,
+            json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {"_meta": {
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/clientInfo": {"name": "fin015-agent", "version": "1"}}}}),
+        )
+        .unwrap();
+    let tool = r["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["name"] == json!(DETECT))
+        .unwrap()
+        .clone();
+    let what = tool["description"].as_str().unwrap();
+    assert!(
+        what.contains("still flat at 177 Hz")
+            && what.contains("never starts the free descent sooner")
+            && !what.contains("2.5 octaves"),
+        "{what}"
+    );
+    let floor = tool["inputSchema"]["properties"]["floor_hz"]["description"]
+        .as_str()
+        .unwrap();
+    assert!(
+        !floor.contains("Nothing but the quiet probe")
+            && floor.contains("the free descent down to 20 Hz at most -24 dBFS"),
+        "{floor}"
+    );
+}
+
 #[test]
 fn wp_adet1_a_revoke_stops_a_running_detection_at_once() {
     let (set, _id, core) = demo();

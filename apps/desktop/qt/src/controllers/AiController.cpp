@@ -1784,11 +1784,14 @@ void AiController::setAgentDetect(bool on) {
 // agent's question carries the server's copy; the app's own Detect… and the
 // never-ask switch show this one
 QString AiController::detectWarning() {
+    // -- WP FIN015 -- with the free descent's worst case (the core's absolute gate)
     return tr("Nothing is known about these outputs yet. A tweeter wired where the probe expects a woofer could receive "
-              "a few seconds of sweep below 1 kHz at −50 dBFS: less than a hundredth of what a 1 kHz crossover lets "
-              "through from music, but not nothing. Keep the volume where it is and stay by Stop. Afterwards check the "
-              "result in Settings › Speakers and confirm or correct it: until you do, the detected roles guard your "
-              "speakers in place of a confirmed setup.");
+              "a few seconds of sweep below its floor at −50 dBFS (more with a raised floor): below 1 kHz less than a "
+              "hundredth of what a 1 kHz crossover lets through from music, but not nothing. Only a driver still playing "
+              "flat at 177 Hz under that quiet sweep, as no tweeter does, is then swept down to 20 Hz at up to −24 dBFS. "
+              "Keep the volume where it is and stay by Stop. Afterwards check the result in Settings › Speakers and "
+              "confirm or correct it: until you do, the detected roles guard your speakers in place of a confirmed "
+              "setup.");
 }
 
 void AiController::applySplCap() {
