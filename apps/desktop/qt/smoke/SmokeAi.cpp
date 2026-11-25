@@ -377,8 +377,34 @@ void aiSection(SmokeDriver &d) {
         armed();
         d.grab(main, QStringLiteral("modern-ai-confirm.png"));
         // -- WP LAY8 -- each risk with its kind
+        // -- WP UAG -- (UXP A6) the change heads the sheet; its row in the screen's words
+        const auto textOf = [](QObject *o) { return o ? o->property("text").toString() : QString(); };
         QQuickItem *risk = overlay("AiConfirmSheet.risk.0");
-        d.check("lay8: the sheet names the risk's kind", risk && risk->property("text").toString().contains(QStringLiteral("Louder: Out %1").arg(out + 1)));
+        const QVariantMap asked = ai->confirmations().value(0).toMap();
+        const QVariantMap row = asked.value(QStringLiteral("batch")).toList().value(0).toMap();
+        d.check("uag: the sheet is headed by the change, without the AI mark",
+                d.object(QStringLiteral("AiConfirmSheet"))->property("heading").toString().startsWith(QLatin1String("Fake agent wants to make "))
+                    && d.object(QStringLiteral("AiConfirmSheet"))->property("heading").toString().contains(QLatin1String(" louder")));
+        d.check("uag: its row is the asked change in the screen's words, from → to",
+                risk && row.value(QStringLiteral("risky")).toBool() && risk->property("text").toString() == row.value(QStringLiteral("said")).toString()
+                    && risk->property("text").toString().contains(QStringLiteral("→")) && !risk->property("text").toString().contains(QLatin1String("Louder:")));
+        d.check("uag: it promises the Undo the activity has",
+                textOf(d.object(QStringLiteral("AiConfirmSheet.after"))).contains(QLatin1String("undo it afterwards")));
+        click(overlay("AiConfirmSheet.deny"));
+        agent.result(*e);
+        // -- WP UAG -- (UXP A6, C11) a flash write: no "(flash)", and no Undo promised
+        e = agent.call("dspi_preset_set_startup", { { QStringLiteral("mode"), QStringLiteral("slot") }, { QStringLiteral("slot"), 2 } });
+        d.check("uag: a flash write is asked", sheetOpen());
+        armed();
+        d.check("uag: its row names the preset without (flash)", d.waitFor(2000, [&] {
+            QQuickItem *r = overlay("AiConfirmSheet.risk.0");
+            return r && r->property("text").toString().startsWith(QLatin1String("Start with preset 2")) && !r->property("text").toString().contains(QLatin1String("flash"));
+        }));
+        d.check("uag: and says Undo cannot take it back",
+                textOf(d.object(QStringLiteral("AiConfirmSheet.after"))).contains(QLatin1String("Undo cannot take it back"))
+                    && !textOf(d.object(QStringLiteral("AiConfirmSheet.after"))).contains(QLatin1String("undo it afterwards")));
+        d.check("uag: and what happens if nobody answers", textOf(d.object(QStringLiteral("AiConfirmSheet.left"))).contains(QLatin1String("nothing is changed and the agent is told so")));
+        d.grab(main, QStringLiteral("uag-flash-question.png"));
         click(overlay("AiConfirmSheet.deny"));
         agent.result(*e);
         // -- WP LAY8 -- The AI button and its popover, on the real server

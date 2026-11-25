@@ -744,6 +744,12 @@ void AiController::readConfirmations() {
                      w.title = str(c, "title");
                      w.device = str(c, "device");
                      for (const QJsonValue &r : c.value(QLatin1String("risks")).toArray()) {
+                         // -- WP UAG -- (UXP A6) the change in the screen's words: the first asked one heads the sheet
+                         if (w.heading.isEmpty())
+                             w.heading = questionHeading(w.client, str(r.toObject(), "kind"), str(r.toObject(), "channel"),
+                                                         deviceTitle(w.device));
+                         w.flash = w.flash || str(r.toObject(), "kind") == QLatin1String("flash_write")
+                                   || str(r.toObject(), "kind") == QLatin1String("installation_save");
                          w.risks << str(r.toObject(), "what");
                          w.sound = w.sound || str(r.toObject(), "kind") == QLatin1String("test_signal");   // -- WP FEATUI --
                          w.wholesale = w.wholesale || str(r.toObject(), "kind") == QLatin1String("recall");   // -- WP FUNC2c --
@@ -757,6 +763,10 @@ void AiController::readConfirmations() {
                          //: %1 is a kind of change ("Louder"), %2 the change ("Out 1 gain up from -12 dB to -3 dB")
                          w.riskLines << (label.isEmpty() || named ? w.risks.constLast() : tr("%1: %2").arg(label, w.risks.constLast()));
                      }
+                     // -- WP UAG -- the whole call, the asked rows first (said: the app's words, never an agent's)
+                     for (const QJsonValue &b : c.value(QLatin1String("batch")).toArray())
+                         w.batch << QVariantMap{ { QStringLiteral("said"), str(b.toObject(), "said") },
+                                                 { QStringLiteral("risky"), b.toObject().value(QLatin1String("risky")).toBool() } };
                      w.grant = c.value(QLatin1String("grant")).toObject();   // -- WP ODEC --
                      w.warning = str(c, "warning");   // -- WP ADETQ --
                      // -- WP ROLES -- the whole table of speaker roles from the person's words
@@ -815,9 +825,57 @@ QVariantList AiController::confirmations() const {
             // -- WP ROLES -- speaker roles from the person's words: the table, then the rest
             { QStringLiteral("roleCells"), w.roleCells },
             { QStringLiteral("rolesAfter"), w.rolesAfter },
+            // -- WP UAG -- (UXP A6)
+            { QStringLiteral("heading"), w.heading },
+            { QStringLiteral("batch"), w.batch },
+            { QStringLiteral("flash"), w.flash },
+            { QStringLiteral("agent"), agentName(w.client) },
         });
     }
     return out;
+}
+
+// -- WP UAG -- (UXP A6) The question's heading: the change in one line, as the first asked
+// row is ("Claude Code wants to make Right tweeter louder (Fronts)")
+QString AiController::questionHeading(const QString &client, const QString &kind, const QString &channel,
+                                      const QString &device) {
+    const QString agent = agentName(client);
+    const bool named = !channel.isEmpty();
+    //: In an AI agent's question, an output it does not name
+    const QString output = named ? channel : tr("an output");
+    QString line;
+    // %1 is the agent's name, %2 an output's name ("Right tweeter")
+    if (kind == QLatin1String("louder"))
+        line = named ? tr("%1 wants to make %2 louder").arg(agent, channel) : tr("%1 wants to make the sound louder").arg(agent);
+    else if (kind == QLatin1String("unmute"))
+        line = named ? tr("%1 wants to unmute %2").arg(agent, channel) : tr("%1 wants to unmute the volume").arg(agent);
+    else if (kind == QLatin1String("enable"))
+        line = tr("%1 wants to turn on %2").arg(agent, output);
+    else if (kind == QLatin1String("new_route"))
+        line = tr("%1 wants to send a new input to %2").arg(agent, output);
+    else if (kind == QLatin1String("boost"))
+        line = named ? tr("%1 wants to boost the EQ of %2").arg(agent, channel) : tr("%1 wants to boost an EQ band").arg(agent);
+    else if (kind == QLatin1String("delay_step"))
+        line = named ? tr("%1 wants to move the delay of %2 a long way").arg(agent, channel)
+                     : tr("%1 wants to move a delay a long way").arg(agent);
+    else if (kind == QLatin1String("tweeter_crossing"))
+        line = tr("%1 wants to lower the tweeter protection of %2").arg(agent, output);
+    else if (kind == QLatin1String("test_signal"))
+        line = tr("%1 wants to play test signals").arg(agent);
+    else if (kind == QLatin1String("recall"))
+        line = tr("%1 wants to replace the settings").arg(agent);
+    else if (kind == QLatin1String("flash_write"))
+        line = tr("%1 wants to save on the device").arg(agent);
+    else if (kind == QLatin1String("installation_save"))
+        line = tr("%1 wants to save the installation").arg(agent);
+    else if (kind == QLatin1String("source"))
+        line = tr("%1 wants to change the input source").arg(agent);
+    else if (kind == QLatin1String("system"))
+        line = tr("%1 wants to change every unit").arg(agent);
+    else
+        line = tr("%1 wants to change the settings").arg(agent);
+    //: An AI agent's question's heading: %1 the change ("Claude Code wants to make Sub louder"), %2 a device's name
+    return device.isEmpty() ? line : tr("%1 (%2)").arg(line, device);
 }
 
 // -- WP ODEC -- The grouped question's sentence: what Allow grants beyond this call

@@ -120,7 +120,9 @@ impl Confirmation {
             "risks": self.risks.iter().map(|r| {
                 let mut v = r.to_json();
                 if let Some(o) = v.as_object_mut() {
-                    o.insert("said".into(), json!(r.said)); // -- WP UAG --
+                    // -- WP UAG --
+                    o.insert("said".into(), json!(r.said));
+                    o.insert("channel".into(), json!(r.channel));
                 }
                 v
             }).collect::<Vec<_>>(),

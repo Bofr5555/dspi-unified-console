@@ -431,11 +431,17 @@ private:
         QString warning;         // -- WP ADETQ -- the server's warning on the mechanism, "" for none
         QVariantList roleCells;  // -- WP ROLES -- speaker roles from the person's words: output, speaker, role per row
         QString rolesAfter;      // -- WP ROLES -- the question's words after the table
+        // -- WP UAG -- (UXP A6) the change in the screen's words: the heading, the whole call, a flash write
+        QString heading;
+        QVariantList batch;      // {said, risky} per row, the asked ones first
+        bool flash = false;      // written to the device's memory: no Undo
         QDateTime ends;
         bool operator==(const Waiting &o) const { return id == o.id; }   // a question never changes
     };
     QList<Waiting> m_waiting;
     QString grantText(const Waiting &w) const;   // -- WP ODEC --, ADETQ
+    static QString questionHeading(const QString &client, const QString &kind, const QString &channel,
+                                   const QString &device);   // -- WP UAG --
     QSet<quint64> m_answered;   // answered here, not read as ended yet
     QJsonArray m_activity;      // oldest first, as the server gives it
     QHash<QString, QPair<QString, QString>> m_undo;   // row key: its undo state and note

@@ -88,6 +88,7 @@ fn wp_uag_the_question_names_the_channel_and_shows_the_whole_call() {
         json!("Right woofer: gain \u{2212}5.0 dB \u{2192} \u{2212}2.0 dB"),
         "{sh}"
     );
+    assert_eq!(risk["channel"], json!("Right woofer"), "{sh}");
     let batch = sh["batch"].as_array().unwrap();
     assert_eq!(batch.len(), 2, "{sh}");
     assert_eq!(batch[0]["risky"], json!(true));
@@ -127,7 +128,9 @@ fn wp_uag_said_never_reaches_an_agent() {
         );
         let text = r.to_string();
         assert!(
-            !text.contains("said") && !text.contains("batch") && !text.contains("Right woofer"),
+            !text.contains("said")
+                && !text.contains("batch")
+                && !text.contains("Right woofer"),
             "{text}"
         );
         assert!(
@@ -172,6 +175,7 @@ fn wp_uag_identical_rows_of_several_channels_fold() {
         output: Some(o),
         keys: Vec::new(),
         said: said.to_owned(),
+        channel: String::new(),
     };
     let mut t = Confirmations::default();
     let batch = |t: &mut Confirmations, risks| {

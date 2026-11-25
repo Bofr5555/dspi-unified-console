@@ -255,6 +255,10 @@ pub struct Risk {
     /// call had no device. It may hold names the user or a device wrote, so
     /// it is never in [`Risk::to_json`], which agents read.
     pub said: String,
+    /// The name of [`Risk::output`] as the screens show it ("Right
+    /// tweeter"), "" for none: the sheet's heading. The app's alone, as
+    /// [`Risk::said`].
+    pub channel: String,
 }
 
 impl Risk {
@@ -529,6 +533,7 @@ fn require_keyed(
         &mut j,
         Risk {
             said: String::new(), // -- WP UAG --
+            channel: String::new(),
             kind,
             what: what.to_owned(),
             output: None,
@@ -588,6 +593,7 @@ pub fn require_detect(
         &mut j,
         Risk {
             said: String::new(), // -- WP UAG --
+            channel: String::new(),
             kind: RiskKind::TestSignal,
             what: signal.to_owned(),
             output: None,
@@ -598,6 +604,7 @@ pub fn require_detect(
         &mut j,
         Risk {
             said: String::new(), // -- WP UAG --
+            channel: String::new(),
             kind: RiskKind::Detect,
             what: detect.to_owned(),
             output: None,
@@ -656,6 +663,7 @@ pub fn require_roles(
         &mut j,
         Risk {
             said: String::new(), // -- WP UAG --
+            channel: String::new(),
             kind: RiskKind::SpeakerRoles,
             what: what.to_owned(),
             output: None,
@@ -685,6 +693,7 @@ pub fn require_change(cell: &JudgingCell, what: &str, indices: &[u8]) -> Result<
         &mut j,
         Risk {
             said: String::new(), // -- WP UAG --
+            channel: String::new(),
             kind: RiskKind::Change,
             what: what.to_owned(),
             output: None,
@@ -827,6 +836,7 @@ pub fn judge(state: &DspState, writes: &[WriteKey], j: &Judging) -> Verdict {
     if mode == ConfirmMode::AskEverything && risks.is_empty() {
         risks.push(Risk {
             said: String::new(), // -- WP UAG --
+            channel: String::new(),
             kind: RiskKind::Change,
             what: summary(state, writes),
             output: None,
@@ -937,6 +947,9 @@ fn screen_words(core: &DspiCore) -> ScreenWords {
 /// Ask the user about `r`, with its words for the app.
 fn push_asked(j: &mut Judging, mut r: Risk) {
     r.said = said_of(r.kind, &r.what, j.words.as_ref());
+    if let (Some(o), Some(w)) = (r.output, j.words.as_ref()) {
+        r.channel = w.channels.output(usize::from(o));
+    }
     j.asked.push(r);
 }
 
@@ -1368,6 +1381,7 @@ fn judge_values(before: &DspState, after: &DspState, writes: &[WriteKey], risks:
         let mut push = |kind, what: String, output| {
             risks.push(Risk {
                 said: String::new(), // -- WP UAG --
+                channel: String::new(),
                 kind,
                 what,
                 output,
@@ -2093,6 +2107,7 @@ pub fn agent_out(o: u8) -> String {
 fn highpass_verdict(o: u8, ch: u8, writes: &[WriteKey], risks: &mut Vec<Risk>) {
     risks.push(Risk {
         said: String::new(), // -- WP UAG --
+        channel: String::new(),
         kind: RiskKind::TweeterCrossing,
         what: format!(
             "{} has a high-pass at {TWEETER_FLOOR_HZ} Hz or above (a tweeter): this \
@@ -2335,6 +2350,7 @@ fn judge_effects(before: &DspState, after: &DspState, writes: &[WriteKey], risks
         };
         risks.push(Risk {
             said: String::new(), // -- WP UAG --
+            channel: String::new(),
             kind: RiskKind::Louder,
             what,
             output: None,
@@ -2367,6 +2383,7 @@ fn judge_effects(before: &DspState, after: &DspState, writes: &[WriteKey], risks
         };
         risks.push(Risk {
             said: String::new(), // -- WP UAG --
+            channel: String::new(),
             kind: RiskKind::Louder,
             what,
             output: Some(o),
@@ -2432,6 +2449,7 @@ fn judge_masks(before: &DspState, after: &DspState, writes: &[WriteKey], risks: 
             }
             risks.push(Risk {
                 said: String::new(), // -- WP UAG --
+                channel: String::new(),
                 kind: RiskKind::Louder,
                 what: format!("{word} now also on {} (it adds level)", out_word(o)),
                 output: Some(o),
@@ -2445,6 +2463,7 @@ fn judge_masks(before: &DspState, after: &DspState, writes: &[WriteKey], risks: 
     {
         risks.push(Risk {
             said: String::new(), // -- WP UAG --
+            channel: String::new(),
             kind: RiskKind::Enable,
             what: "Turn on the upmixer (it plays on the centre and surround outputs)".to_owned(),
             output: None,
