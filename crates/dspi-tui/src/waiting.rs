@@ -189,12 +189,24 @@ impl Waiting {
             row += 2;
         }
         if let Some(report) = &self.doctor {
+            // Wrapped under their own indent: a fix is a sentence or two.
+            let width = card_w.saturating_sub(1) as usize;
             for line in report.lines() {
-                if row >= bottom {
-                    break;
+                let text = line.trim_start();
+                let indent = line.len() - text.len();
+                let room = width.saturating_sub(indent).max(8);
+                let mut parts = crate::widgets::text::wrap(text, room, 8);
+                if parts.is_empty() {
+                    parts.push(String::new());
                 }
-                buf.set_string(x + 1, row, fit_left(line, card_w as usize), t.value());
-                row += 1;
+                for part in parts {
+                    if row >= bottom {
+                        break;
+                    }
+                    let shown = format!("{}{part}", " ".repeat(indent));
+                    buf.set_string(x + 1, row, fit_left(&shown, width), t.value());
+                    row += 1;
+                }
             }
         }
     }
@@ -306,11 +318,17 @@ mod tests {
 
     #[test]
     fn utm_question_mark_shows_the_doctors_report_on_the_page() {
-        let doctor = || "  FAIL  no DSPi found (looking for 2E8B:FEAA)".to_string();
+        let doctor = || {
+            "  FAIL  no DSPi found (looking for 2E8B:FEAA)\n          Check the cable and that \
+             the device is powered. If it is plugged in and still not listed, it may be in \
+             bootloader mode, which enumerates as RPI-RP2 instead."
+                .to_string()
+        };
         let mut p = page();
         assert_eq!(p.handle(key(KeyCode::Char('?')), &doctor), None);
         let f = frame(&p);
         assert!(f.contains("FAIL  no DSPi found"), "{f}");
+        assert!(f.contains("RPI-RP2 instead."), "wrapped, not cut: {f}");
         p.handle(key(KeyCode::Char('?')), &doctor);
         assert!(p.doctor.is_none(), "? again hides it");
     }

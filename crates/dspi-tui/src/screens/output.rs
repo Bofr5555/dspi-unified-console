@@ -1184,7 +1184,10 @@ mod tests {
         );
         // `x` switches the tab and puts the cursor in its bands.
         p.header = Some(1);
-        assert_eq!(p.handle(key(KeyCode::Char('x')), &state), ScreenEvent::Handled);
+        assert_eq!(
+            p.handle(key(KeyCode::Char('x')), &state),
+            ScreenEvent::Handled
+        );
         assert_eq!(p.list.mode, FilterMode::Xo);
         assert_eq!(p.header, None, "in the XO bands, off the routing rows");
     }

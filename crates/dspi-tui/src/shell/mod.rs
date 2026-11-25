@@ -985,9 +985,6 @@ impl Shell {
                 s.keys().to_vec()
             }
         };
-        // -- WP UTM -- (UXP A14)
-        keys.push(KeyHelp::new("[ ]", "volume"));
-        keys.push(KeyHelp::new("m", "mute"));
         keys.push(KeyHelp::new("Tab", "region"));
         keys.push(KeyHelp::new("?", "help"));
         keys.push(KeyHelp::new(":", "command"));
@@ -1482,11 +1479,33 @@ impl Shell {
 
     fn draw_keys(&mut self, area: Rect, buf: &mut Buffer, t: &Theme) {
         let keys = self.key_line();
+        // -- WP UTM -- (UXP A14) the volume keys hold the right end of the
+        // line on every page, whatever the page's own keys take
+        const VOLUME_HINT: [(&str, &str); 2] = [("[ ]", "volume"), ("m", "mute")];
+        let tail_w = VOLUME_HINT
+            .iter()
+            .map(|(k, d)| k.chars().count() + d.chars().count() + 1)
+            .sum::<usize>() as u16
+            + 3;
+        let end = if area.width >= tail_w + 24 {
+            let mut x = area.x + area.width - tail_w;
+            for (i, (k, d)) in VOLUME_HINT.iter().enumerate() {
+                if i > 0 {
+                    buf.set_string(x - 2, area.y, "·", t.chrome_style());
+                }
+                buf.set_string(x, area.y, *k, t.focused());
+                buf.set_string(x + k.chars().count() as u16 + 1, area.y, *d, t.label());
+                x += (k.chars().count() + d.chars().count()) as u16 + 4;
+            }
+            area.x + area.width - tail_w - 2
+        } else {
+            area.x + area.width
+        };
         let mut x = area.x + 1;
         for (i, k) in keys.iter().enumerate() {
             let text = format!("{} {}", k.key, k.does);
             let w = text.chars().count() as u16 + 3;
-            if x + w - 3 > area.x + area.width {
+            if x + w - 3 > end {
                 break;
             }
             // -- WP UTM -- the dot goes between two keys, never after the last

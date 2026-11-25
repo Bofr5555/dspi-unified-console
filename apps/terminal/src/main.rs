@@ -1138,17 +1138,23 @@ fn cmd_tui(target: &Target, flags: &[&str], palette: dspi_tui::theme::Palette) -
     // groups); a switch or a reconnect opens the same way.
     // One bulk read seeds everything the packet covers, so the first frame
     // shows the person's tuning rather than a flat line.
+    // -- WP UTM -- the target opened: the one chosen on the waiting page
+    let mut chosen = target.clone();
     let opened = match core_route::open_core(target, &pro::Stores::default_dirs(), &prompt_pin) {
         Ok(o) => o,
         // -- WP UTM -- (UXP A13) no device yet: the page that waits for one
         Err(e) if e.is_no_device() && *target == (Target::Usb { serial: None }) => {
             match wait_for_device(palette) {
-                Ok(o) => o,
+                Ok((o, t)) => {
+                    chosen = t;
+                    o
+                }
                 Err(code) => return code,
             }
         }
         Err(e) => return e.report(),
     };
+    let target = &chosen;
     let mut c = match core_route::connected_on(&opened) {
         Ok(c) => c,
         Err(e) => return fail_open(e),
@@ -1173,9 +1179,11 @@ fn cmd_tui(target: &Target, flags: &[&str], palette: dspi_tui::theme::Palette) -
 // -- WP UTM -- (UXP A13)
 /// The interface's page before there is a device: wait for one, or open the
 /// demo or a hub the person chooses there. A choice that does not open goes
-/// back to the page with the reason on it. `Err`: the exit code (a quit is
-/// not a failure).
-fn wait_for_device(palette: dspi_tui::theme::Palette) -> Result<core_route::OpenedCore, u8> {
+/// back to the page with the reason on it. Answers the core and the target it
+/// opened; `Err`: the exit code (a quit is not a failure).
+fn wait_for_device(
+    palette: dspi_tui::theme::Palette,
+) -> Result<(core_route::OpenedCore, Target), u8> {
     let theme = dspi_tui::Theme::new(
         palette,
         dspi_tui::theme::ColorDepth::detect(),
@@ -1206,7 +1214,7 @@ fn wait_for_device(palette: dspi_tui::theme::Palette) -> Result<core_route::Open
             },
         };
         match core_route::open_core(&target, &pro::Stores::default_dirs(), &prompt_pin) {
-            Ok(o) => return Ok(o),
+            Ok(o) => return Ok((o, target)),
             // Gone again before it opened: keep waiting.
             Err(e) if e.is_no_device() => page.note = None,
             Err(e) => page.note = Some(format!("{}: {}", target.via(), e.words())),

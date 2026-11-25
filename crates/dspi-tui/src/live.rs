@@ -956,12 +956,18 @@ impl Live {
 
     // -- WP UTM --
     /// Run the shell verb [`Live::shell_run`] holds, with the terminal already
-    /// handed back by the run loop; then re-read what it may have changed.
-    pub fn run_shell_verb(&mut self, session: &mut Session, words: &[String]) -> u8 {
-        let Some(run) = self.shell_verbs.clone() else {
-            return 0;
-        };
-        let code = run(words, self.target.as_ref());
+    /// handed back by the run loop. Answers its exit code.
+    pub fn run_shell_verb(&mut self, words: &[String]) -> u8 {
+        match self.shell_verbs.clone() {
+            Some(run) => run(words, self.target.as_ref()),
+            None => 0,
+        }
+    }
+
+    // -- WP UTM --
+    /// Back from a shell verb: re-read what it may have changed, and say how
+    /// it ended.
+    pub fn shell_verb_done(&mut self, session: &mut Session, words: &[String], code: u8) {
         self.refresh(session);
         self.refresh_presets(session);
         let line = words.join(" ");
@@ -970,7 +976,6 @@ impl Live {
         } else {
             format!(":{line} ended with code {code}")
         });
-        code
     }
 
     // -- WP TMCORE --
@@ -4027,10 +4032,12 @@ pub fn run(mut live: Live, session: &mut Session) -> io::Result<()> {
             if let Some(words) = live.shell_run.take() {
                 live.flush_writes(session, true);
                 ratatui::restore();
-                let code = live.run_shell_verb(session, &words);
+                println!("\r\n:{}", words.join(" "));
+                let code = live.run_shell_verb(&words);
                 back_to_the_interface(code)?;
                 terminal = ratatui::try_init()?;
                 terminal.clear()?;
+                live.shell_verb_done(session, &words, code);
             }
             // The event wait is shorter than the write interval, so a held
             // write goes out on time.
@@ -5232,8 +5239,9 @@ mod tests {
         l.run_command(&mut s, "snapshot list");
         let words = l.shell_run.take().expect("handed to the run loop");
         assert_eq!(words, ["snapshot", "list"]);
-        assert_eq!(l.run_shell_verb(&mut s, &words), 0);
+        assert_eq!(l.run_shell_verb(&words), 0);
         assert_eq!(*ran.borrow(), ["snapshot", "list"]);
+        l.shell_verb_done(&mut s, &words, 0);
         assert_eq!(l.shell.model.status.as_deref(), Some("Ran :snapshot list"));
         // Measuring stays a one-shot; the documents run here.
         l.run_command(&mut s, "measure run");
