@@ -1068,7 +1068,9 @@ impl Live {
                 clipped: s.is_clipped(ch),
                 inactive,
                 index: ch as u8,
-                unused: screens::channel_unused(s, ch), // -- WP UTM --
+                // -- WP UTM -- folded as the views that show levels hide it: an
+                // unused output a test signal plays on stays (FIN015 R1)
+                unused: screens::channel_hidden(s, ch),
             };
         let active_inputs = s.meters.active_inputs as usize;
         m.inputs = (0..ni)
@@ -5239,6 +5241,21 @@ mod tests {
         let p = l.prompt.as_ref().expect("the : line");
         assert!(!p.palette);
         assert_eq!(p.input, "vol.mute ");
+    }
+
+    /// UXP A14 with FIN015 R1: an unused output folds in the sidebar, unless
+    /// a test signal plays on it (an output that plays is never hidden).
+    #[test]
+    fn utm_the_sidebar_folds_an_unused_output_unless_it_plays() {
+        let (mut l, _, _) = live();
+        let ni = usize::from(l.state.caps.num_inputs);
+        let o = (0..l.shell.model.outputs.len())
+            .find(|o| screens::channel_unused(&l.state, ni + o))
+            .expect("the packet has an unused output");
+        assert!(l.shell.model.outputs[o].unused);
+        l.state.siggen_outputs = 1 << o;
+        l.sync_model();
+        assert!(!l.shell.model.outputs[o].unused, "it plays: not folded");
     }
 
     /// `:help` is `?`.

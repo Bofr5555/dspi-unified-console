@@ -195,7 +195,12 @@ impl Waiting {
                 let text = line.trim_start();
                 let indent = line.len() - text.len();
                 let room = width.saturating_sub(indent).max(8);
-                let mut parts = crate::widgets::text::wrap(text, room, 8);
+                // A line that fits keeps its spacing (the report's columns).
+                let mut parts = if text.chars().count() <= room {
+                    vec![text.to_string()]
+                } else {
+                    crate::widgets::text::wrap(text, room, 8)
+                };
                 if parts.is_empty() {
                     parts.push(String::new());
                 }
