@@ -275,7 +275,13 @@ function ApplyRow(props: { desk: CsDesk; rec: CsRec; ready?: boolean; hint?: str
       <button type="button" disabled={!dirty || rec.applying} onClick={() => desk.revertRecord(rec.key)}>
         Revert
       </button>
-      <button type="button" class="primary" disabled={!dirty || !ready || rec.applying || desk.busy > 0 || !desk.writable} onClick={() => void desk.apply(rec.key)}>
+      {/* -- WP WEB7 -- the accent only when there is something to apply (no blue button on a clean card) */}
+      <button
+        type="button"
+        class={dirty && ready ? "primary" : undefined}
+        disabled={!dirty || !ready || rec.applying || desk.busy > 0 || !desk.writable}
+        onClick={() => void desk.apply(rec.key)}
+      >
         Apply
       </button>
     </div>
