@@ -855,6 +855,16 @@ impl Screen for OutputPage {
                 self.header = None;
                 self.list.handle(key, state)
             }
+            // -- WP UTM -- (UXP A14) the tab switched and the cursor in its bands,
+            // so the next Down or Enter is a band's, not a routing row's
+            KeyCode::Char('x') => {
+                let mode = self.list.mode;
+                let ev = self.list.handle(key, state);
+                if self.list.mode != mode {
+                    self.header = None;
+                }
+                ev
+            }
             _ => {
                 let ev = self.list.handle(key, state);
                 if matches!(ev, ScreenEvent::Dialog(_) | ScreenEvent::Popup(_)) {
@@ -1172,6 +1182,11 @@ mod tests {
             p.handle(key(KeyCode::Char(' ')), &state),
             ScreenEvent::Command("mix 1 0 on 0".into())
         );
+        // `x` switches the tab and puts the cursor in its bands.
+        p.header = Some(1);
+        assert_eq!(p.handle(key(KeyCode::Char('x')), &state), ScreenEvent::Handled);
+        assert_eq!(p.list.mode, FilterMode::Xo);
+        assert_eq!(p.header, None, "in the XO bands, off the routing rows");
     }
 
     #[test]
