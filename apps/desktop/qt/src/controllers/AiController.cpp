@@ -1551,7 +1551,9 @@ void AiController::tell(const QList<QJsonObject> &rows) {
         readBehind(device, str(e, "tool"), write);
         if (!write) continue;
         // -- WP ODEC -- the screens follow it (the newest change of this read)
-        if (!first) {
+        // -- WP SHOWFIX -- (finding 14) the first read's too: the server's activity
+        // starts empty with the app, and a first read of more is no news (above)
+        {
             const QJsonArray touched = e.value(QLatin1String("touched")).toArray();
             FollowAt at;   // -- WP SHOWFIX -- where it is: the section, tab, channel and band
             for (const QJsonValue &v : touched)

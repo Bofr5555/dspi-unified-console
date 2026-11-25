@@ -2,26 +2,37 @@
 // agent over HTTP against the real server, in Modern with two demo devices:
 // - finding 3: a change on a channel's EQ, crossover or delay shows that channel
 //   on the Equaliser's tab of the change, a PEQ band selected;
+// - finding 14: the app's first change by an agent is followed; an agent's
+//   measurement asked for right after a key or click, once the input rests;
 // the user who went elsewhere is left there.
 #include "SmokeDriver.h"
 
 #include "AiController.h"
 #include "ChannelController.h"
+#include "Core.h"
+#include "CoreWorker.h"
 #include "DeviceModel.h"
 #include "DeviceRegistry.h"
 #include "DeviceSession.h"
+#include "MeasureController.h"
 #include "PeqEditorController.h"
 #include "Registrar.h"
 #include "Shell.h"
 #include "SidebarController.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QKeyEvent>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <memory>
+
+extern "C" {
+#include "dspi_core.h"
+}
 
 namespace {
 
@@ -89,6 +100,7 @@ void showfixFollowSection(SmokeDriver &d) {
     auto *sidebar = Registrar::instance<SidebarController>();
     auto *peq = Registrar::instance<PeqEditorController>();
     auto *channels = Registrar::instance<ChannelController>();
+    auto *mc = Registrar::instance<MeasureController>();
     auto *registry = DeviceRegistry::instance();
     Shell *shell = d.app().shell;
     d.check("showfix: the controllers exist", ai && sidebar && peq && channels && registry);
@@ -110,6 +122,7 @@ void showfixFollowSection(SmokeDriver &d) {
     // ---- An agent, never asked
     const QString mode = ai->confirmMode();
     const bool followWas = ai->followAgent();
+    const bool capOn = ai->agentSplCapOn();
     const QString store = QDir(d.outDir()).filePath(QStringLiteral("showfix-store"));
     QDir().mkpath(store);
     ai->setStoreDir(store);
@@ -117,6 +130,7 @@ void showfixFollowSection(SmokeDriver &d) {
     ai->setPort(s.port);
     ai->setConfirmMode(QStringLiteral("never_ask"));
     ai->setFollowAgent(false);
+    ai->setAgentSplCapOn(false);   // the simulated microphone reads no dB SPL
     ai->setEnabled(true);
     d.check("showfix: the server runs", d.waitFor(5000, [&] { return ai->running() && !ai->busy(); }));
     ai->addClient(QStringLiteral("Showfix agent"));
@@ -142,9 +156,8 @@ void showfixFollowSection(SmokeDriver &d) {
         d.goTo(QStringLiteral("overview/overview"));
         d.spin(AiController::kFollowMs + 300);
         ai->setFollowAgent(true);
-        // The agent looks first (the app's first read of the activity is no news)
-        s.ok("dspi_list_devices");
-        d.spin(500);
+        // Finding 14: the agent's first call is this change; in a run of this section
+        // alone it is the app's first read of the activity, followed too
 
         // ---- Finding 3: a PEQ band on input C of the other device: that device, the
         // Equaliser's PEQ tab, input C, the band selected
@@ -193,6 +206,41 @@ void showfixFollowSection(SmokeDriver &d) {
         d.spin(800);
         d.check("showfix 3: the user who left is left where they went", registry->active() == a && section() == QLatin1String("overview"));
 
+        // ---- Finding 14: an agent's measurement on the other device, asked for right
+        // after a key (as right after a click on the question's Allow): followed once
+        // the keyboard rests, to that device's Measure
+        if (mc) {
+            registry->activate(b);
+            d.waitIdle();
+            d.app().device->write(QLatin1String("showfix volume"), [](FfiCore *c) { return dspi_set_user_volume(c, -20.0f); });
+            d.waitIdle();
+            const QByteArray layoutJson = QJsonDocument(QJsonObject{
+                { QStringLiteral("outputs"), QJsonArray{ QJsonObject{ { QStringLiteral("output"), 0 }, { QStringLiteral("role"), QStringLiteral("low") },
+                                                                     { QStringLiteral("speaker"), QStringLiteral("L") }, { QStringLiteral("group"), 0 } } } },
+                { QStringLiteral("confirmedByUser"), true } }).toJson(QJsonDocument::Compact);
+            bool set = false;
+            d.app().core->worker()->call(&d, [layoutJson](FfiCore *c) {
+                QByteArray buf(1 << 16, '\0');
+                return dspi_speaker_layout_set(c, layoutJson.constData(), buf.data(), uint32_t(buf.size())) > 0;
+            }, [&](bool) { set = true; });
+            d.waitFor(5000, [&] { return set; });
+            registry->activate(a);
+            d.goTo(QStringLiteral("overview/overview"));
+            d.spin(AiController::kFollowMs + 300);
+            QObject sink;
+            QKeyEvent key(QEvent::KeyPress, Qt::Key_Right, Qt::NoModifier);
+            QCoreApplication::sendEvent(&sink, &key);
+            auto run = s.call("dspi_measure_start", { { QStringLiteral("device"), b->id() }, { QStringLiteral("outputs"), QJsonArray{ 0 } },
+                                                      { QStringLiteral("sweep_ms"), 5000 }, { QStringLiteral("passes"), 8 } });
+            d.check("showfix 14: the measurement starts", !s.result(run).value(QLatin1String("isError")).toBool(true));
+            d.check("showfix 14: its device and Measure come up once the keyboard rests",
+                    d.waitFor(AiController::kInputIdleMs + 4000, [&] {
+                        return registry->active() == b && section() == QLatin1String("measure");
+                    }));
+            s.ok("dspi_measure_stop", { { QStringLiteral("device"), b->id() } });
+            d.waitFor(10000, [&] { return !mc->measuring(); });
+        }
+
         registry->close(b->id());
         d.waitFor(5000, [&] { return registry->sessions().size() == 1; });
     }
@@ -202,6 +250,7 @@ void showfixFollowSection(SmokeDriver &d) {
     d.waitFor(10000, [&] { return !ai->running() && !ai->busy(); });
     ai->setFollowAgent(followWas);
     ai->setConfirmMode(mode);
+    ai->setAgentSplCapOn(capOn);
     ai->setPort(AiController::kDefaultPort);
     ai->revoke(ai->clients().value(0).toMap().value(QStringLiteral("id")).toDouble());
     d.switchLayout("classic");

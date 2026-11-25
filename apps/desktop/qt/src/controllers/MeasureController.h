@@ -14,6 +14,7 @@
 #include <QPointer>
 #include <QVariantList>
 #include <QVariantMap>
+#include <functional>   // -- WP SHOWFIX --
 #include <QtQml/qqmlregistration.h>
 
 #include "MeasureSession.h"
@@ -197,6 +198,11 @@ public:
     // parts ("measure", "tune", "units"...); the shown panel takes it with
     // takePart(), "" when nothing was asked
     void showPart(const QString &part);
+    // -- WP SHOWFIX -- (finding 14) An agent's run on `device` brought forward through
+    // AiController's gate: the device's tab, then Measure on `part`. A click or key
+    // just before it (the question's Allow) holds it off only until the input rests,
+    // as long as `going` says the run still goes.
+    void followAgentRun(const QString &device, const QString &part, const std::function<bool()> &going, int tries = 3);
     Q_INVOKABLE QString takePart();
     // -- WP RBFIX -- The devices stopAll() would stop something on ("" for none)
     QString runsOn() const;
