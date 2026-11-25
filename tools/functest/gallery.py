@@ -385,13 +385,13 @@ def pages_set():
         probe = Probe()
         t.join(30)
         settle(1)
-        probe.call_async("dspi_set_gain", device=centre, output=0, gain_db=-2.0)
+        probe.call_async("dspi_set_gain", device=centre, output=1, gain_db=-2.0)  # -- WP INTE -- Out 1: agents count from 1 (SHOWFIX 9)
         wait_for("question", lambda: bool(ctl.get("AiController", "confirmations")), 20)
         shot("ai-question", "An agent's question sheet (a write under ask everything)")
         for q in ctl.get("AiController", "confirmations"):
             ctl.call("AiController", "answer", q["id"], False)
         settle(1)
-        probe.call_async("dspi_measure_start", device=centre, outputs=[0])
+        probe.call_async("dspi_measure_start", device=centre, outputs=[1])  # -- WP INTE -- Out 1 (SHOWFIX 9)
         try:
             wait_for("question", lambda: bool(ctl.get("AiController", "confirmations")), 20)
             shot("ai-question-signal", "Question sheet for a test signal (with the 10-minute grant)")

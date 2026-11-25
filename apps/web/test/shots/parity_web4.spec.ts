@@ -79,7 +79,8 @@ test("Measure, Analyse and Library, empty and with content", async ({ page }) =>
 
   // Measure: the placement, a short sweep, Check, the run, its results
   await go(session, "Measure", undefined, "Measure");
-  await maybe("placement", () => session.getByRole("radio", { name: "Listening position" }).first().click(T));
+  // -- WP INTE -- the placement is a combo since WEB7 (Qt's MeasureSetupTab)
+  await maybe("placement", () => session.getByLabel("Placement", { exact: true }).selectOption("listeningPosition", T));
   await maybe("sweep", () => session.getByLabel("Sweep length").fill("1", T));
   await maybe("check", () => session.getByRole("button", { name: "Check", exact: true }).click(T));
   await page.waitForTimeout(800);
