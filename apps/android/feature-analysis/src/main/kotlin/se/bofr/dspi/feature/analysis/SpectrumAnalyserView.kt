@@ -106,10 +106,22 @@ data class SpectrumUiState(
     /** What is drawn: the device's channels while following another console, else [selection] (AN17). */
     val drawn: RtaChannelSelection = selection,
     /** Another console drives the analyser (CG5 ownership). */
-    val following: Boolean = false
+    val following: Boolean = false,
+    // -- WP INTE -- owner's rule 2026-11-24: the chips skip unused outputs; the view passes them in
+    /** The channel chips at [drawn]'s side: see [spectrumChipChannels]. */
+    val chips: List<Int> = available.union(drawn.channels).sorted()
 ) {
     val supported: Boolean get() = connected && caps?.supported == true
 }
+
+// -- WP INTE -- owner's rule 2026-11-24: an output nothing is routed to is hidden outside edit views
+/**
+ * The Spectrum page's channel chips at [tap]: the channels that can be
+ * analysed there, less the outputs nothing is routed to ([unused]), plus
+ * every channel [selected] holds, so one being analysed can still be dropped.
+ */
+internal fun spectrumChipChannels(tap: Int, available: List<Int>, selected: List<Int>, unused: (Int) -> Boolean): List<Int> =
+    available.filter { tap != DspiConstants.RTA_TAP_OUTPUT || !unused(it) }.union(selected).sorted()
 
 /**
  * The Spectrum Analyser page. Subscribes to the device's analyser while it is
@@ -137,16 +149,18 @@ fun SpectrumAnalyserView(bridge: DspiBridge, modifier: Modifier = Modifier, stor
     val ownership by rta.ownership.collectAsState()
     val followed = RtaChannelSelection.followed(ownership)
     val drawn = RtaChannelSelection.drawn(selection, followed)
+    val available = rta.availableChannels(drawn.tap)
     val state =
         SpectrumUiState(
             connected = bridgeStatus.connected,
             caps = caps,
             selection = selection,
-            available = rta.availableChannels(drawn.tap),
+            available = available,
             mode = mode,
             prefs = prefs,
             drawn = drawn,
-            following = followed != null
+            following = followed != null,
+            chips = spectrumChipChannels(drawn.tap, available, drawn.channels, bridge::outputUnused) // -- WP INTE --
         )
 
     // Watch while on screen (Swift RtaWatch): the newest request picks the tap
@@ -356,7 +370,7 @@ private fun SpectrumHeader(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            for (ch in state.available.union(sel.channels).sorted()) {
+            for (ch in state.chips) { // -- WP INTE -- unused outputs left out (spectrumChipChannels)
                 val on = ch in sel.channels
                 val color = channelColor(sel.tap, ch)
                 Row(

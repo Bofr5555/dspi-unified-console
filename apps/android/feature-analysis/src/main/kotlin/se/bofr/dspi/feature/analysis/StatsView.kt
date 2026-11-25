@@ -109,7 +109,10 @@ data class StatsUiState(
     val ringHealth: RingHealth?,
     /** Trace colours: S/PDIF slot i takes its pair's left output colour, PDM the sub's. */
     val slotColors: List<Color>,
-    val pdmColor: Color
+    val pdmColor: Color,
+    // -- WP INTE -- owner's rule 2026-11-24
+    /** Output pairs with no buffer or starvation row: nothing is routed to either output ([statsUnusedPairs]). */
+    val unusedPairs: Set<Int> = emptySet()
 ) {
     val hasInterfaceSections: Boolean get() = spdifRx != null || lg != null || adat != null || i2sSlave != null
 }
@@ -125,6 +128,8 @@ fun StatsView(bridge: DspiBridge, modifier: Modifier = Modifier) {
     val stats = bridge.stats
     val bridgeStatus by bridge.status.collectAsState()
     val bridgeState by bridge.state.collectAsState()
+    // -- WP INTE -- read so a routing change (outputUnused) recomposes the pair rows
+    val revision = bridge.stateRevision.collectAsState().value
     val info by stats.info.collectAsState()
     val reconnects by stats.reconnects.collectAsState()
     val ringHealth by stats.ringHealth.collectAsState()
@@ -224,7 +229,8 @@ fun StatsView(bridge: DspiBridge, modifier: Modifier = Modifier) {
             i2sSlave = i2s,
             ringHealth = ringHealth,
             slotColors = List(4) { i -> channelColorOf(bridge, 2 + i * 2) },
-            pdmColor = channelColorOf(bridge, 1 + outputs)
+            pdmColor = channelColorOf(bridge, 1 + outputs),
+            unusedPairs = remember(revision, bridgeState) { statsUnusedPairs(bridge::outputUnused) } // -- WP INTE --
         )
     StatsContent(
         state,
@@ -431,7 +437,8 @@ private fun StarvationSection(state: StatsUiState, buffers: StateFlow<BufferStat
                 color = if (state.starvationTotal > 0) MacColors.red else MaterialTheme.colorScheme.onSurface
             )
         }
-        for (i in 0 until minOf(starvationInstanceCount(numSpdif), 4)) {
+        // -- WP INTE -- no row for a pair nothing is routed to (owner 2026-11-24)
+        for (i in (0 until minOf(starvationInstanceCount(numSpdif), 4)).filter { it !in state.unusedPairs }) {
             val v = state.counters.starvationInstance(i)
             Row(Modifier.fillMaxWidth().padding(vertical = 1.dp)) {
                 Text(starvationInstanceLabel(i), Modifier.weight(1f), fontSize = 13.sp, color = secondaryText())
@@ -497,7 +504,8 @@ private fun BufferFillSection(
     }
     val stats = b ?: return
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        for (i in 0 until minOf(stats.numSpdif, 4)) {
+        // -- WP INTE -- no row for a pair nothing is routed to (owner 2026-11-24)
+        for (i in (0 until minOf(stats.numSpdif, 4)).filter { it !in state.unusedPairs }) {
             val r = outputFillReading(stats.spdif.getOrNull(i), fills.getOrNull(i))
             BufferFillRow(
                 title = bufferSlotTitle(i, state.outputSlotTypes.getOrElse(i) { 0 }),

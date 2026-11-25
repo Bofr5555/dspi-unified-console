@@ -44,6 +44,11 @@ data class MatrixOutput(val index: Int, val name: String, val descriptor: String
             out += MatrixOutput(2 * pairs, "PDM", "OUT${2 * pairs + 1}", true)
             return out
         }
+
+        // -- WP INTE -- owner's rule 2026-11-24: an output nothing is routed to is hidden outside edit views
+        /** Home's output meters row: the [visible] outputs that are enabled and not [unused]. */
+        fun metered(platform: String, slotTypes: List<Int>, outputEnabled: List<Boolean>, unused: (Int) -> Boolean): List<MatrixOutput> =
+            visible(platform, slotTypes).filter { outputEnabled.getOrElse(it.index) { false } && !unused(it.index) }
     }
 }
 
