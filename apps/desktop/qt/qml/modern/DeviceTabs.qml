@@ -227,6 +227,7 @@ Item {
                 // Except during a hub session (behaviour.md §3)
                 "device.reconnect": { enabled: () => tab.active && !DeviceModel.remote },
                 "device.firmwareUpdate": { enabled: () => tab.active },
+                "device.factoryReset": { enabled: () => tab.active },   // -- WP UFW -- (UXP A10) the shown device's only
                 "device.close": {
                     enabled: () => !tab.none,
                     why: () => tab.pinned,
