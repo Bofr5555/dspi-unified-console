@@ -43,7 +43,7 @@ async function openTwo(page: Page, second: "Venue A" | "Venue B" = "Venue B") {
   await one.getByRole("region", { name: second }).getByRole("button", { name: "Connect" }).click();
   const tabs = one.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab");
   await expect(tabs).toHaveCount(2);
-  await expect(session.locator(".device-meta")).toBeVisible();
+  await expect(session).toHaveAttribute("data-status", "open");
   return { one, session, tabs };
 }
 
@@ -98,7 +98,9 @@ test("WEBM1: a tab's close button shows its device and asks about unsaved change
   await tabs.nth(0).click();
   // -- WP INTD -- an output's gain on Delay & gain (the Overview's level cards are gone)
   await setOutputGain(session, -1);
-  await expect(one.locator(".device-tab").nth(0).locator(".device-tab-unsaved.on")).toHaveCount(1);
+  // -- WP REVEFIX -- (REVE §3.1) one dirty marker: the preset button's dot, not the tab's
+  await expect(session.locator(".bar-preset-dot.on")).toHaveCount(1);
+  await expect(one.locator(".device-tab-unsaved")).toHaveCount(0);
   await expect(session.getByRole("group", { name: "Device actions" }).locator(".bar-count.on")).toHaveText(/^[1-9]/);
   // From the other tab, and while the devices are shown: the question comes on its own device.
   await tabs.nth(1).click();
@@ -117,7 +119,7 @@ test("WEBM1: a tab's close button shows its device and asks about unsaved change
   await expect(session.getByText("You can view this DSPi but not change it").first()).toBeVisible();
   // Nothing unsaved: closed at once; with none open, the devices.
   await closes.nth(0).click();
-  await expect(one.getByText("Choose a DSPi to connect to.")).toBeVisible();
+  await expect(one.getByText("No DSPi is connected. Connect one over USB, or try the demo device.")).toBeVisible();
   await expect(tabs).toHaveCount(0);
   expect(errors).toEqual([]);
 });
@@ -154,7 +156,7 @@ test("WEBM1: the sections, their pages and the page last open in each; the dock 
   await expect(session.locator(".volume-value")).toHaveText("-12.0 dB");
   await session.getByRole("group", { name: "Undo and Redo" }).getByRole("button", { name: "Undo" }).click();
   await expect(session.locator(".volume-value")).toHaveText("0.0 dB");
-  await session.getByRole("button", { name: /^Save to device/ }).click();
+  await session.getByRole("button", { name: /^Save to Device/ }).click();
   await expect(page.getByRole("dialog", { name: "Save Preset" })).toBeVisible();
   await page.getByRole("dialog", { name: "Save Preset" }).getByRole("button", { name: "Cancel" }).click();
   // The dock's source, read back.
@@ -176,7 +178,7 @@ test("WEBM1: what limits a device is above its page; the dock and the bars never
   const strip = (await session.locator(".read-only-reason").boundingBox())!;
   const head = (await session.locator(".page-head").boundingBox())!;
   expect(strip.y + strip.height).toBeLessThanOrEqual(head.y + 0.5);
-  await expect(session.getByRole("button", { name: /^Save to device/ })).toBeDisabled();
+  await expect(session.getByRole("button", { name: /^Save to Device/ })).toBeDisabled();
   await expect(session.getByRole("combobox", { name: "Source", exact: true })).toBeDisabled();
   // -- WP INTD -- the presets' popover opens (to look), its actions are off
   await presetsButton(session).click();
@@ -223,7 +225,7 @@ test("WEBM1: 375 px in every browser: one row of sections, the dock in two lines
   expect(dock.height).toBeLessThan(112); // -- WP WEBM2 -- two lines of 44 px tap targets (RB)
   // The device's actions stay in one line.
   const actions = (await session.getByRole("group", { name: "Device actions" }).boundingBox())!;
-  expect(actions.height).toBeLessThan(40);
+  expect(actions.height).toBeLessThan(50); // -- WP REVEFIX -- one line of 44 px tap targets, in the top bar's second line
   expect(dock.y + dock.height).toBeLessThanOrEqual(800.5);
   // The section on show is scrolled into sight in its row.
   await openPage(session, "Settings");

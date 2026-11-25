@@ -41,15 +41,15 @@ async function open(page: Page, two = false): Promise<{ one: Locator; session: L
   await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article").first();
   await expect(rail(session)).toBeVisible();
-  await expect(session.locator(".device-meta")).toBeVisible();
+  await expect(session).toHaveAttribute("data-status", "open");
   if (two) {
     await openDevices(one);
     await one.getByRole("region", { name: "Venue B" }).getByRole("button", { name: "Connect" }).click();
     const tabs = one.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab");
     await expect(tabs).toHaveCount(2);
-    await expect(session.locator(".device-meta")).toBeVisible();
+    await expect(session).toHaveAttribute("data-status", "open");
     await tabs.first().click();
-    await expect(session.locator(".device-meta")).toBeVisible();
+    await expect(session).toHaveAttribute("data-status", "open");
   }
   return { one, session };
 }
@@ -128,7 +128,7 @@ test("WEBM4: the top bar's search; greyed rows say why; other devices are a swit
   const tabs = one.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab");
   await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
   // Venue B is view only: its writes are listed greyed, with why, and not chosen
-  await expect(session.locator(".badge.read-only")).toBeVisible();
+  await expect(session.locator(".read-only-reason")).toBeVisible(); // -- WP REVEFIX -- said in the strip (the badge is gone with the session bar)
   await page.keyboard.press(`${mod}+k`);
   await field(page).fill("commit");
   const commit = option(page, /^Commit Parameters…/);
@@ -193,8 +193,10 @@ test("WEBM4: context menus of a channel, a device tab and a preset slot, by the 
   const slot = session.getByRole("dialog", { name: "Presets" }).getByRole("listitem", { name: /^2: / });
   await slot.getByRole("button", { name: "More" }).click();
   const slotMenu = slot.getByRole("menu");
-  for (const item of ["Recall", "Save Current Settings Here", "Rename…", "Set as Startup Preset", "Copy to…", "Clear…", "Clear All Slots…"])
+  // -- WP REVEFIX -- (REVE B1, D8) Copy to… is the active slot's only; Clear names its slot
+  for (const item of ["Recall", "Save Current Settings Here", "Rename…", "Set as Startup Preset", /^Clear ".+"…$/, "Clear All Slots…"])
     await expect(slotMenu.getByRole("menuitem", { name: item, exact: true })).toBeVisible();
+  await expect(slotMenu.getByRole("menuitem", { name: "Copy to…" })).toHaveCount(0);
   await page.keyboard.press("Escape");
   await page.keyboard.press("Escape");
 
@@ -245,14 +247,15 @@ test("WEBM4: Settings › Appearance arranges the shell at once and keeps it in 
   await card.getByRole("radio", { name: "At the top of the rail" }).check();
   await expect(root).toHaveAttribute("data-device-tabs", "rail");
   await expect(rail(session).getByRole("tablist", { name: "Open DSPi" }).getByRole("tab")).toHaveCount(2);
-  await expect(one.locator("header.top").getByRole("tablist", { name: "Open DSPi" })).toHaveCount(0);
+  await expect(one.locator("header.top, .device-row").getByRole("tablist", { name: "Open DSPi" })).toHaveCount(0);
   await noSidewaysScroll(page);
   await shot(page, "devices-in-rail");
   // Tabs along the top: no rail, so the device tabs go back to the top bar
   await card.getByRole("radio", { name: "Tabs along the top" }).check();
   await expect(root).toHaveAttribute("data-nav", "tabs");
   await expect(root).not.toHaveAttribute("data-device-tabs", "rail");
-  await expect(one.locator("header.top").getByRole("tablist", { name: "Open DSPi" })).toBeVisible();
+  // -- WP REVEFIX -- two devices: their own row over the top bar (Qt's device row)
+  await expect(one.locator(".device-row").getByRole("tablist", { name: "Open DSPi" })).toBeVisible();
   await expect(card.getByRole("radio", { name: "In the top bar" })).toBeDisabled();
   // The theme
   await card.getByRole("radio", { name: "Dark" }).check();
@@ -263,7 +266,7 @@ test("WEBM4: Settings › Appearance arranges the shell at once and keeps it in 
   await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
   await expect(root).toHaveAttribute("data-nav", "tabs");
   await expect(root).toHaveAttribute("data-theme", "dark");
-  await expect(session.locator(".device-meta")).toBeVisible();
+  await expect(session).toHaveAttribute("data-status", "open");
   expect(errors).toEqual([]); // before a close (see the context menus' test)
   // With no device open, Settings… in the app menu has the same
   await one.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab").first().click({ button: "right" });

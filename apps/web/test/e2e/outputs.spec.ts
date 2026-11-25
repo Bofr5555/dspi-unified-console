@@ -34,7 +34,7 @@ type G = { dspiClients: Client[]; dspiLog: [string, unknown][] };
 
 // -- BUG1 -- An output's name on the page is its label ("Out 3 · R"), which follows the
 // routing and the filters while the device keeps the slot's default name: matched by its number.
-const OUT = (o: number) => `Out ${o + 1}(?: · [^·]+){0,2}`;
+const OUT = (o: number) => `(?:Out ${o + 1}(?: · [^·]+){0,2}|${o + 1} · None)`; // -- WP REVEFIX -- an unused output is "3 · None"
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const re = (s: string) => new RegExp(`^${s}$`);
 

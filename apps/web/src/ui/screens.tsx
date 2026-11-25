@@ -51,7 +51,7 @@ import type { ChainTarget } from "../screens/system/chain";
 
 // -- WP WB6F -- the status rail's health row and panel
 import { HealthFeed } from "./status-rail/feed";
-import { HealthRail } from "./status-rail/HealthRail";
+import { CoreLoad, HealthRail } from "./status-rail/HealthRail";
 
 // -- WP WB6G -- the input pages
 import { InputsScreen } from "../screens/inputs/InputsScreen";
@@ -83,7 +83,7 @@ import { HistoryScreen } from "../screens/history/HistoryScreen"; // -- WP WEBM3
 // -- WP WEBM1 -- the Modern shell
 import { Frame } from "./shell/Frame";
 import { Dock } from "./shell/Dock";
-import { SessionBar } from "./shell/SessionBar";
+import { useSessionBar } from "./shell/SessionBar";
 import { CONNECT, sectionOf, sectionsFor } from "./shell/sections";
 import { placeOf } from "./shell/places";
 import { watchFollow } from "./follow-agent"; // -- WP ODEC --
@@ -239,8 +239,7 @@ export function Screens(props: {
   session: Session;
   // -- WP WEBM1 --
   shell: ShellProps;
-  /** The session's own part of its bar (name, Disconnect), and of the status strip (the link, an error). */
-  head: ComponentChildren;
+  /** The session's own part of the status strip (the demo, the link, an error). */
   strip: ComponentChildren;
   meters: ComponentChildren;
 }) {
@@ -449,6 +448,8 @@ export function Screens(props: {
   const board = shell.board;
   useEffect(() => () => board?.clearSession(session.id), [board, session]);
 
+  // -- WP REVEFIX -- the device's parts of the top bar
+  const bar = useSessionBar({ session, state: st, desk, ask, unsaved, locked: lockedUser, onUnlock: () => setUnlocking(true) });
   // -- WP WEBM1 -- the scenes and the preset slots are the Overview's and their own pages' (the bar's picker recalls on every page)
   const section = sectionOf(page);
   const pro = mode !== "simple" && !lockedUser;
@@ -456,12 +457,7 @@ export function Screens(props: {
     <Frame
       root={root}
       screens
-      bar={
-        <>
-          {props.head}
-          <SessionBar session={session} state={st} desk={desk} ask={ask} unsaved={unsaved} locked={lockedUser} onUnlock={() => setUnlocking(true)} />
-        </>
-      }
+      bar={shell.top(bar) /* -- WP REVEFIX -- the one top bar (Qt's TopBar) with this device's parts */}
       strip={
         <>
           {/* -- WP FEATUI -- an AI agent working on this hub's devices, first as the desktop's strip */}
@@ -516,7 +512,7 @@ export function Screens(props: {
           <HealthRail session={session} feed={health} />
         </StatusRail>
       }
-      dock={<Dock session={session} state={st} locked={lockedUser} meters={props.meters} />}
+      dock={<Dock session={session} state={st} locked={lockedUser} meters={props.meters} load={<CoreLoad feed={health} /> /* -- WP REVEFIX -- */} />}
     >
       {/* -- WP SW3 -- on an installation, the scene bar */}
       {pro && (section === "overview" || section === "system") ? <SceneBar feed={system} session={session} ask={ask} /> : null}

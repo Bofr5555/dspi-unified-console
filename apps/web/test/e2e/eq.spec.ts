@@ -190,6 +190,8 @@ test("WB6b chip and list: change type and Q, bypass a band (chip, Alt-click, lis
   await list.getByRole("checkbox", { name: `Band ${slot + 1} bypass` }).uncheck();
   await expect.poll(async () => (await out1(page))[slot]!.bypass).toBe(false);
   const b = (await out1(page))[slot]!;
+  // -- WP REVEFIX -- the graph in the middle of the view first: the demo's strip moves it down, under the dock
+  await graph.evaluate((e) => e.scrollIntoView({ block: "center" }));
   // A 1st-order shelf's dot is at about half its gain.
   const dot = await at(graph, b.freq, b.gain / 2);
   await page.keyboard.down("Alt");
@@ -362,11 +364,11 @@ test("WB6b unsaved: the session's state survives a screen switch; the host page 
   expect(await page.evaluate(() => (globalThis as unknown as { dspiUnsavedChanges: boolean[] }).dspiUnsavedChanges)).toEqual([true]);
   // The session bar's presets show it too (-- WP INTD -- on every page); Disconnect asks from the EQ screen as well.
   await expect(session.getByRole("button", { name: /^Presets: .*, unsaved changes$/ })).toBeVisible();
-  await session.getByRole("button", { name: "Disconnect" }).click();
+  await session.getByRole("tablist", { name: "Open DSPi" }).getByRole("button", { name: /^Close / }).click(); // -- WP REVEFIX -- the tab's ×
   const prompt = page.getByRole("dialog", { name: "Unsaved Changes" });
   await expect(prompt).toBeVisible();
   await prompt.getByRole("button", { name: "Save" }).click();
-  await expect(two.getByText("Choose a DSPi to connect to.")).toBeVisible();
+  await expect(two.getByText("No DSPi is connected. Connect one over USB, or try the demo device.")).toBeVisible();
   await expect.poll(unsaved).toBe(false);
   // No leave prompt for this console: the page closes without asking.
   let asked = false;

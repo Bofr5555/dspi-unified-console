@@ -38,7 +38,7 @@ type State = {
  */
 // -- BUG1 -- An output's name on the page is its label ("Out 3 · R"), which follows the
 // routing and the filters while the device keeps the slot's default name: matched by its number.
-const OUT = (o: number) => `Out ${o + 1}(?: · [^·]+){0,2}`;
+const OUT = (o: number) => `(?:Out ${o + 1}(?: · [^·]+){0,2}|${o + 1} · None)`; // -- WP REVEFIX -- an unused output is "3 · None"
 const re = (s: string) => new RegExp(`^${s}$`);
 
 async function coreState(page: Page, n = 0): Promise<State> {
@@ -101,7 +101,7 @@ test("WB6a volume: user and master volume, reset, mute and bypass write and read
   await expect.poll(async () => (await coreState(page)).userVolumeDb).toBe(-12);
 
   // The master volume, on the firmware's taper: 100 steps of 0.1 dB below 0 is -10 dB.
-  await vol.getByRole("combobox", { name: "Volume shown" }).selectOption("master");
+  await vol.getByRole("group", { name: "Volume shown" }).getByRole("button", { name: "Master" }).click(); // -- WP REVEFIX -- segments
   const master = vol.getByRole("slider", { name: "Master volume", exact: true });
   await setRange(master, 148);
   await expect(vol.locator(".volume-value")).toHaveText("-10.0 dB");
@@ -131,7 +131,7 @@ test("WB6a volume: user and master volume, reset, mute and bypass write and read
   // The volume shown is this viewer's choice and kept (the Console's sidebar mode).
   await page.reload();
   await page.locator("#one").getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
-  await expect(page.locator("#one").getByRole("combobox", { name: "Volume shown" })).toHaveValue("master");
+  await expect(page.locator("#one").getByRole("group", { name: "Volume shown" }).getByRole("button", { name: "Master" })).toHaveAttribute("aria-pressed", "true");
   expect(errors).toEqual([]);
 });
 
@@ -197,9 +197,9 @@ test("WB6a presets: switching asks about unsaved changes (Cancel, Discard, Save)
   await recallIn(start + 1);
   await prompt.getByRole("button", { name: "Save" }).click();
   await expect(presetsButton(session)).toHaveAccessibleName(new RegExp(`^Presets: ${start + 1}: `));
-  const st = await coreState(page);
-  expect(st.activePresetSlot).toBe(start);
-  expect(st.presetOccupied & (1 << other)).not.toBe(0);
+  // -- WP REVEFIX -- (REVE T1) the core polled, not read at once
+  await expect.poll(async () => (await coreState(page)).activePresetSlot).toBe(start);
+  await expect.poll(async () => (await coreState(page)).presetOccupied & (1 << other)).not.toBe(0);
   // And it is there when that slot is loaded again (no prompt: nothing unsaved).
   await recallIn(other + 1);
   await expect(presetsButton(session)).toHaveAccessibleName(new RegExp(`^Presets: ${other + 1}: `));
@@ -268,13 +268,14 @@ test("WB6a presets: the slot menu renames, sets the startup slot, copies and cle
   await expect.poll(async () => (await coreState(page)).presetOccupied & (1 << here)).not.toBe(0);
 
   // Clear…: asks, then empties the slot.
-  await slotMenu(session, n, "Clear…");
+  await slotMenu(session, n, `Clear "${n}: Stage"…`); // -- WP REVEFIX -- (REVE D8) Qt's words
   const clear = page.getByRole("dialog", { name: "Clear Preset?" });
   await expect(clear).toContainText(`Clear "${n}: Stage"`);
   await expect(clear).toContainText("This cannot be undone.");
   await clear.getByRole("button", { name: "Clear" }).click();
   await expect.poll(async () => (await coreState(page)).presetOccupied & (1 << active)).toBe(0);
-  await expect(slotRow(await openPresets(session), n)).toHaveAccessibleName(new RegExp(`^${n}: Empty`));
+  // -- WP REVEFIX -- (REVE D8) the active slot, now empty, reads "Preset N" as Qt's
+  await expect(slotRow(await openPresets(session), n)).toHaveAccessibleName(new RegExp(`^${n}: Preset ${n}`));
 
   // Clear All Slots…: every slot.
   await slotMenu(session, dest + 1, "Clear All Slots…");
@@ -284,7 +285,7 @@ test("WB6a presets: the slot menu renames, sets the startup slot, copies and cle
   await expect(slotRow(pop, dest + 1)).toHaveAccessibleName(`${dest + 1}: Empty`);
   // With nothing stored, the Clear rows are off.
   await slotRow(pop, dest + 1).getByRole("button", { name: "More" }).click();
-  for (const item of ["Clear…", "Clear All Slots…"]) await expect(slotRow(pop, dest + 1).getByRole("menuitem", { name: item })).toBeDisabled();
+  for (const item of [/^Clear "/, "Clear All Slots…"]) await expect(slotRow(pop, dest + 1).getByRole("menuitem", { name: item })).toBeDisabled();
   await page.keyboard.press("Escape");
   st = await coreState(page);
   expect(st.presetOccupied).toBe(0);
@@ -298,7 +299,7 @@ test("WB6a tools: Save to device, Revert to Saved and Factory Reset ask first, t
   // Save to device: the live state into the active slot.
   await setOutputGain(session, -2);
   await unsavedShown(session);
-  await session.getByRole("button", { name: /^Save to device/ }).click();
+  await session.getByRole("button", { name: /^Save to Device/ }).click();
   const commit = page.getByRole("dialog", { name: "Save Preset" });
   await expect(commit).toContainText(`preset slot ${(await coreState(page)).activePresetSlot + 1}`);
   await commit.getByRole("button", { name: "Save" }).click();
@@ -319,11 +320,11 @@ test("WB6a tools: Save to device, Revert to Saved and Factory Reset ask first, t
   await expect(gain).toHaveValue("-2.0 dB");
 
   // Factory Reset: the defaults (bypass off, trims at 0). // -- WP WB6L -- exact: the quick strip has "Bypass Master EQ"
-  await session.getByRole("button", { name: "Bypass", exact: true }).click();
+  await session.getByRole("button", { name: "Bypass EQ", exact: true }).click();
   await expect.poll(async () => (await coreState(page)).bypass).toBe(true);
   await saveMenu(session, "Factory Reset…");
   await page.getByRole("dialog", { name: "Factory Reset" }).getByRole("button", { name: "Reset" }).click();
-  await expect(session.getByRole("button", { name: "Bypass", exact: true })).toHaveAttribute("aria-pressed", "false");
+  await expect(session.getByRole("button", { name: "Bypass EQ", exact: true })).toHaveAttribute("aria-pressed", "false");
   const st = await coreState(page);
   expect(st.bypass).toBe(false);
   expect(st.outputGainDb[0]).toBe(0);
@@ -370,13 +371,13 @@ test("WB6a: Disconnect with unsaved changes asks first", async ({ page }) => {
   const session = await openControl(page);
   await setOutputGain(session, -5);
   await unsavedShown(session);
-  await session.getByRole("button", { name: "Disconnect" }).click();
+  await session.getByRole("tablist", { name: "Open DSPi" }).getByRole("button", { name: /^Close / }).click(); // -- WP REVEFIX -- the tab's ×
   const prompt = page.getByRole("dialog", { name: "Unsaved Changes" });
   await prompt.getByRole("button", { name: "Cancel" }).click();
   await expect(session).toBeVisible();
-  await session.getByRole("button", { name: "Disconnect" }).click();
+  await session.getByRole("tablist", { name: "Open DSPi" }).getByRole("button", { name: /^Close / }).click(); // -- WP REVEFIX -- the tab's ×
   await prompt.getByRole("button", { name: "Discard" }).click();
-  await expect(page.locator("#one").getByText("Choose a DSPi to connect to.")).toBeVisible();
+  await expect(page.locator("#one").getByText("No DSPi is connected. Connect one over USB, or try the demo device.")).toBeVisible();
 });
 
 test("WB6a read only: a view-only session shows the Overview with every control off", async ({ page }) => {
@@ -391,9 +392,9 @@ test("WB6a read only: a view-only session shows the Overview with every control 
   const pop = await openPresets(session);
   for (const b of await pop.getByRole("button", { name: /^(Recall .*|Save|Copy Here)$/ }).all()) await expect(b).toBeDisabled();
   await page.keyboard.press("Escape");
-  for (const name of ["Mute", "Bypass"]) await expect(session.getByRole("button", { name, exact: true })).toBeDisabled();
+  for (const name of ["Mute", "Bypass EQ"]) await expect(session.getByRole("button", { name, exact: true })).toBeDisabled();
   // Which volume is shown is the viewer's own choice, not a write.
-  await expect(session.getByRole("combobox", { name: "Volume shown" })).toBeEnabled();
+  await expect(session.getByRole("group", { name: "Volume shown" }).getByRole("button", { name: "User" })).toBeEnabled();
 });
 
 test.describe("375 px, in every browser", () => {
@@ -439,7 +440,7 @@ test.describe("375 px, in every browser", () => {
     expect(box.x).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width).toBeLessThanOrEqual(375);
     expect(await overflow()).toEqual([]);
-    await expect(pop.getByRole("button").first()).toBeFocused();
+    await expect(pop.locator("li[aria-current=true]")).toBeFocused(); // -- WP REVEFIX -- (REVE D8) the active row first
     await page.keyboard.press("Escape");
     await expect(presetsButton(session)).toBeFocused();
   });

@@ -94,7 +94,7 @@ async function openHub(page: Page, hub: OwnHub): Promise<Locator> {
   }
   const entry = session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: DEMO.slice(-8) });
   await entry.getByRole("button", { name: "Open" }).click();
-  await expect(session.locator(".device-meta")).toContainText(DEMO);
+  await expect(session).toHaveAttribute("data-serial", new RegExp(DEMO));
   return session;
 }
 

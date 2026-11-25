@@ -92,7 +92,7 @@ async function openUnit(page: Page, hub: OwnHub, serial: string, pair = !!hub.pi
   }
   const entry = session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: serial.slice(-8) });
   await entry.getByRole("button", { name: "Open" }).click();
-  await expect(session.locator(".device-meta")).toContainText(serial);
+  await expect(session).toHaveAttribute("data-serial", new RegExp(serial));
   return session;
 }
 
@@ -100,7 +100,7 @@ async function openDemo(page: Page): Promise<Locator> {
   await page.goto("/");
   await picker(page).getByRole("listitem").filter({ hasText: "Demo DSPi" }).getByRole("button", { name: "Connect" }).click();
   const session = page.getByRole("article").last();
-  await expect(session.locator(".device-meta")).toBeVisible();
+  await expect(session).toHaveAttribute("data-status", "open");
   return session;
 }
 
@@ -219,7 +219,7 @@ test.describe("snapshots and files on the core's demo", () => {
     await openDevices(page);
     await page.getByRole("region", { name: "Files" }).filter({ has: page.getByLabel("File to open") }).first().getByLabel("File to open").setInputFiles(mac);
     const doc = page.getByRole("article").last();
-    await expect(page.locator(".device-meta").filter({ hasText: "File: mac-swift-v32.dspipreset" })).toBeVisible();
+    await expect(page.locator(`article[data-file="mac-swift-v32.dspipreset"]`)).toBeVisible(); // -- WP REVEFIX --
     await expect(doc).toBeVisible();
     await shot(page, "offline-file");
   });
@@ -401,8 +401,9 @@ test.describe("P1WB2: the Installer page, AutoEQ, the lock", () => {
     const limits = session.getByRole("region", { name: "Limits" });
     await expect(limits).toBeVisible();
     await shot(page, "demo-installer-page");
-    const out2 = limits.getByRole("group", { name: /^OUT2/ });
+    const out2 = limits.getByRole("group", { name: /^Out 2\b/ }); // -- WP REVEFIX -- the core's label alone (REVE D2)
     const highest = out2.getByLabel("Gain at most (dB)");
+    await out2.getByRole("checkbox", { name: "Gain at most" }).check(); // -- WP REVEFIX -- Qt's check box per limit
     await highest.fill("-3");
     await highest.dispatchEvent("change");
     await expect(limits.getByRole("status", { name: "Limits report" })).toContainText("Held to the new limits");
