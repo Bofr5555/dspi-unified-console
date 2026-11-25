@@ -189,7 +189,9 @@ test.describe("snapshots and files on the core's demo", () => {
     await expect(screen.getByRole("list", { name: "Held snapshots" }).getByRole("listitem")).toHaveCount(2);
     await shot(page, "demo-snapshots");
     const row = (n: string) => screen.getByRole("list", { name: "Held snapshots" }).getByRole("listitem", { name: n });
-    await row("Evening").getByRole("button", { name: "Compare" }).click();
+    // -- WP UWN -- (UXP A17) Compare is in the row's menu (WEB7, Qt's sheet)
+    await screen.getByRole("button", { name: "More, Evening" }).first().click();
+    await session.getByRole("menu", { name: "More, Evening" }).getByRole("menuitem", { name: "Compare with Current" }).click();
     const bar = session.getByRole("group", { name: "A/B compare" });
     await bar.getByRole("button", { name: /switch/ }).click();
     await expect(bar).toContainText("Now B");
@@ -200,7 +202,10 @@ test.describe("snapshots and files on the core's demo", () => {
     await shot(page, "demo-ab-bar", { of: bar });
     await bar.getByRole("button", { name: "Keep A" }).click();
     await expect(bar).toHaveCount(0);
-    await row("Bright").getByRole("button", { name: "Recall with Rollback" }).click();
+    // -- WP UWN -- (UXP A17) Recall with rollback is the page's switch, then the row's Recall (WEB7, Qt's)
+    const rollback = screen.getByRole("switch", { name: "Recall with rollback" });
+    if ((await rollback.getAttribute("aria-checked")) !== "true") await rollback.click();
+    await row("Bright").getByRole("button", { name: "Recall", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Recall Snapshot" });
     const guard = session.getByRole("alert", { name: "Safe apply" });
     // Asked first when the settings are unsaved.
