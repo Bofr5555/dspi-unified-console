@@ -251,12 +251,14 @@ void saveStateSection(SmokeDriver &d) {
     QQuickItem *tabC = t.shown(t.tabs + QStringLiteral(".tab.") + c->id());
     QObject *tipC = nullptr;
     if (tabC)
-        for (QObject *o : tabC->findChildren<QObject *>())
+        for (QObject *o : tabC->findChildren<QObject *>(Qt::FindDirectChildrenOnly))   // its own, not a button's
             if (o->inherits("QQuickToolTip")) tipC = o;
+    t.check("the tab's tooltip is there", tipC != nullptr);
+    if (Ua3::opened(switcher)) t.close(switcher);
     if (tabC) QTest::mouseMove(t.main, t.point(tabC, 0.3));
     d.spin(900);
-    t.check("a tab that shows all of it has no tooltip",
-            tabC && tipC && !tabC->property("elided").toBool() && !tipC->property("visible").toBool());
+    t.check("a tab that shows all of it has no tooltip", tabC && tipC && tabC->property("hovered").toBool()
+                                                             && !tabC->property("elided").toBool() && !tipC->property("visible").toBool());
     QTest::mouseMove(t.main, QPoint(t.main->width() / 2, t.main->height() / 2));
     t.settle();
 
