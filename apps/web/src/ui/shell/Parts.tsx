@@ -30,7 +30,7 @@ export function PartsSlot() {
 export interface Part {
   id: string;
   label: string;
-  /** A dot after the label: on (true) or off (false); none when undefined. */
+  /** A dot before the label: on (true) or off (false); none when undefined. */
   on?: boolean;
 }
 
@@ -56,13 +56,10 @@ export function PageParts(props: { label: string; parts: readonly Part[]; curren
           tabIndex={i === Math.max(0, at) ? 0 : -1}
           onClick={() => props.onPart(p.id)}
         >
+          {/* -- WP REVEFIX -- (REVE D3, §6) the state's dot before the label, as Qt's tabs */}
+          {p.on === undefined ? null : <span class={`part-dot${p.on ? " on" : ""}`} aria-hidden="true" title={p.on ? "On" : "Off"} />}
           {p.label}
-          {p.on === undefined ? null : (
-            <>
-              <span class={`part-dot${p.on ? " on" : ""}`} aria-hidden="true" title={p.on ? "On" : "Off"} />
-              <span class="visually-hidden"> {p.on ? "On" : "Off"}</span>
-            </>
-          )}
+          {p.on === undefined ? null : <span class="visually-hidden"> {p.on ? "On" : "Off"}</span>}
         </button>
       ))}
     </div>

@@ -14,10 +14,11 @@ import { recall, store } from "../../screens/scenebar/model";
 import { ActionMenuButton } from "../menus/ActionMenu";
 import { menuItems } from "../menus/actions";
 import { Popover } from "../Popover";
+import { Glyph } from "../design"; // -- WP REVEFIX --
 import type { Ask, Unsaved } from "../screens";
 import type { Session, SessionState } from "../session";
 
-export function PresetPopover(props: { session: Session; state: SessionState; ask: Ask; unsaved: () => Promise<Unsaved>; disabled: boolean }) {
+export function PresetPopover(props: { session: Session; state: SessionState; ask: Ask; unsaved: () => Promise<Unsaved>; disabled: boolean; locked?: boolean }) {
   const { session, state, ask, unsaved } = props;
   const [busy, setBusy] = useState(false);
   const [renaming, setRenaming] = useState<number | null>(null);
@@ -27,7 +28,12 @@ export function PresetPopover(props: { session: Session; state: SessionState; as
   // -- WP REVEFIX -- (REVE B1) a slot the device has not said (255 while it does not know): no row is active, nothing copies
   const active = s.activePresetSlot < PRESET_SLOTS ? s.activePresetSlot : -1;
   const dirty = state.unsaved.length > 0 && !ro;
-  const off = !!ro || busy || props.disabled;
+  // -- WP REVEFIX -- (REVE C3) the installer's lock lets preset loads through and nothing else (limits/lock.rs):
+  // a locked user's popover recalls, every other action is off and says why
+  const lockedWhy = props.locked ? "Locked by the installer: presets can be recalled, not changed." : "";
+  const recallOff = !!ro || busy || props.disabled;
+  const off = recallOff || !!props.locked;
+  const why = ro || lockedWhy;
   const startupSlot = s.presetStartupMode === 0 ? s.presetDefaultSlot : -1;
   const verbs = { session, ask, unsaved };
 
@@ -112,27 +118,41 @@ export function PresetPopover(props: { session: Session; state: SessionState; as
   /** The slot's menu (actions.json's `slot`); each row closes the popover first, as Qt's does. */
   const slotMenu = (slot: number, close: (refocus?: boolean) => void) => {
     const stored = occupied(s, slot);
-    const w = (f: () => unknown, enabled = true) => ({
+    const w = (f: () => unknown, enabled = true, recalls = false) => ({
       run: () => {
-        close(false);
+        close();
         void f();
       },
-      enabled: !off && enabled,
-      reason: ro || undefined,
+      enabled: !(recalls ? recallOff : off) && enabled,
+      reason: (recalls ? ro : why) || undefined,
     });
     return menuItems("slot", {
-      "slot.recall": w(() => run(() => recall(verbs, slot)), stored && (slot !== active || dirty)),
+      "slot.recall": w(() => run(() => recall(verbs, slot)), stored && (slot !== active || dirty), true),
       "slot.save": w(() => run(() => store(verbs, slot))),
       "slot.rename": w(() => setRenaming(slot), stored),
       "slot.startup": w(() => run(() => session.write("preset.startup", { bytes: [0, slot] })), stored && startupSlot !== slot),
       // -- WP REVEFIX -- (REVE B1) the device copies the active slot: on its row only, as Qt's menu
       ...(slot === active ? { "slot.copyTo": w(() => askCopy()) } : {}),
-      "slot.clear": { ...w(() => clear(slot), stored), danger: true },
-      "slot.clearAll": { ...w(() => clearAll(), s.presetOccupied !== 0), danger: true },
+      // -- WP REVEFIX -- (REVE D8) Qt's words, `Clear "1: Demo"…`, and plain as Qt's menu (they ask first)
+      "slot.clear": { ...w(() => clear(slot), stored), text: `Clear "${presetLabel(s, slot)}"…` },
+      "slot.clearAll": w(() => clearAll(), s.presetOccupied !== 0),
     });
   };
 
-  const activeText = active < 0 ? "–" : presetLabel(s, active);
+  // -- WP REVEFIX -- (REVE D8) an empty slot that is active is "Preset N", as Qt; the button shows the name (Qt's)
+  const nameOf = (slot: number) => (slot === active && !occupied(s, slot) ? `Preset ${slot + 1}` : presetName(s, slot));
+  const activeText = active < 0 ? "–" : `${active + 1}: ${nameOf(active)}`;
+  const shownName = active < 0 ? "–" : nameOf(active);
+  /** Up and Down between the rows (each row takes the focus; Tab goes into its actions). */
+  const rowKeys = (e: KeyboardEvent) => {
+    if ((e.key !== "ArrowDown" && e.key !== "ArrowUp") || e.defaultPrevented || (e.target as HTMLElement).closest("[role=menu]")) return;
+    const rows = [...((e.currentTarget as HTMLElement).querySelectorAll<HTMLElement>(":scope > li"))];
+    const at = rows.findIndex((r) => r.contains(document.activeElement));
+    const to = rows[Math.min(rows.length - 1, Math.max(0, at + (e.key === "ArrowDown" ? 1 : -1)))];
+    if (!to) return;
+    e.preventDefault();
+    to.focus();
+  };
   return (
     <>
       <Popover
@@ -143,41 +163,53 @@ export function PresetPopover(props: { session: Session; state: SessionState; as
         title={dirty ? "Preset (unsaved changes)" : "Preset"}
         button={
           <>
-            <span class="bar-preset-text">{activeText}</span>
+            <span class="bar-preset-text">{shownName}</span>
             <span class={`bar-preset-dot${dirty ? " on" : ""}`} aria-hidden="true" />
-            <span class="bar-preset-chevron" aria-hidden="true">
-              ▾
-            </span>
+            <Glyph name="chevrons-up-down" class="bar-preset-chevron" />
           </>
         }
       >
         {(close) => (
           <>
-            <ul class="preset-rows" aria-label="Preset slots" aria-busy={busy}>
+            <ul class="preset-rows" aria-label="Preset slots" aria-busy={busy} onKeyDown={rowKeys}>
               {Array.from({ length: PRESET_SLOTS }, (_, slot) => {
                 const stored = occupied(s, slot);
                 const isActive = slot === active;
                 const empty = !stored && !isActive;
-                const name = empty ? "Empty" : presetName(s, slot);
-                const note = [isActive ? (dirty ? "Active, with unsaved changes" : "Active") : "", slot === startupSlot ? "Startup" : ""]
-                  .filter(Boolean)
-                  .join(" · ");
+                const name = empty ? "Empty" : nameOf(slot);
+                const state = isActive ? (dirty ? "Active, with unsaved changes" : "Active") : "";
+                const startup = slot === startupSlot;
+                const note = [state, startup ? "Startup" : ""].filter(Boolean).join(" · ");
                 const label = `${slot + 1}: ${name}`;
                 return (
-                  <li key={slot} class={`preset-row${isActive ? " active" : ""}${empty ? " empty" : ""}`} aria-label={note ? `${label}, ${note}` : label} aria-current={isActive ? "true" : undefined}>
+                  // -- WP REVEFIX -- (REVE D8) a row takes the focus (the active one first); its actions show on it, on hover
+                  // and on focus (Qt's ListRow); the startup slot has Qt's power icon
+                  <li
+                    key={slot}
+                    class={`preset-row${isActive ? " active" : ""}${empty ? " empty" : ""}`}
+                    aria-label={note ? `${label}, ${note}` : label}
+                    aria-current={isActive ? "true" : undefined}
+                    tabIndex={isActive || (active < 0 && slot === 0) ? 0 : -1}
+                    data-autofocus={isActive || (active < 0 && slot === 0) ? "" : undefined}
+                  >
                     <span class="pr-n">{slot + 1}</span>
                     <span class="pr-text">
                       <span class="pr-name">{name}</span>
-                      {note ? <span class="pr-note">{note}</span> : null}
+                      {state ? <span class="pr-note">{state}</span> : null}
                     </span>
+                    {startup ? (
+                      <span class="pr-startup" title="Startup preset">
+                        <Glyph name="power" />
+                      </span>
+                    ) : null}
                     {isActive ? (
                       <button
                         type="button"
                         class={dirty ? "primary" : undefined}
                         disabled={off}
-                        title={ro || "Save the current settings in this slot"}
+                        title={why || "Save the current settings in this slot"}
                         onClick={() => {
-                          close(false);
+                          close();
                           void run(() => session.savePreset(slot));
                         }}
                       >
@@ -187,10 +219,10 @@ export function PresetPopover(props: { session: Session; state: SessionState; as
                       <button
                         type="button"
                         aria-label={`Recall ${label}`}
-                        disabled={off}
+                        disabled={recallOff}
                         title={ro || undefined}
                         onClick={() => {
-                          close(false);
+                          close();
                           void run(() => recall(verbs, slot));
                         }}
                       >
@@ -200,9 +232,9 @@ export function PresetPopover(props: { session: Session; state: SessionState; as
                       <button
                         type="button"
                         disabled={off || active < 0}
-                        title={ro || "Copy the current settings into this slot"}
+                        title={why || "Copy the current settings into this slot"}
                         onClick={() => {
-                          close(false);
+                          close();
                           void copy(slot);
                         }}
                       >

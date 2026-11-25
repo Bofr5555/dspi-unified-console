@@ -12,7 +12,7 @@ import { PartsArea, PartsSlot } from "./Parts";
 export function Frame(props: {
   root?: RefObject<HTMLDivElement | null>;
   screens?: boolean;
-  /** The session's bar, above the rail and the page. */
+  /** The top bar, above the rail and the page. */
   bar: ComponentChildren;
   /** What limits what can be done now, above the page. */
   strip: ComponentChildren;
@@ -31,7 +31,7 @@ export function Frame(props: {
   const section = props.sections.find((s) => s.pages.some((p) => p.id === props.page)) ?? props.sections[0]!;
   return (
     <div class={`shell${props.screens ? " session-screens" : ""}`} ref={props.root}>
-      <div class="session-bar">{props.bar}</div>
+      {props.bar /* -- WP REVEFIX -- the top bar itself (Qt's TopBar), not a session bar under it */}
       <div class="shell-body">
         <Rail sections={props.sections} current={section.id} onSection={(s) => props.onPage(pageToOpen(s, props.last))} />
         <div class="shell-main">

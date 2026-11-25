@@ -7,6 +7,7 @@
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { openPage } from "../nav";
+import { setOutputGain } from "../presets"; // -- WP REVEFIX --
 
 type Band = { filterType: number; bypass: boolean; freq: number; q: number; gain: number };
 type Clients = { dspiClients: { call(m: string, p: unknown): Promise<unknown> }[] };
@@ -252,16 +253,24 @@ test("WEBM2: at 375 px: stacked, the band bar under the graph, 44 px targets, th
   await expect(close).toBeFocused();
 });
 
-test("WEBM2: Save to device takes its colours from the theme's tokens", async ({ page }) => {
-  const { one } = await openEq(page);
+test("WEBM2: Save to Device takes its colours from the theme's tokens: the bar's control tone while nothing is unsaved, the accent's fill once something is", async ({ page }) => {
+  // -- WP REVEFIX -- (REVE D1, C6) Qt's `primary: unsaved`; one blue in both schemes; the dark scheme's --line is the separator
+  const { one, session } = await openEq(page);
   const save = one.locator(".bar-save");
   const bg = () => save.evaluate((e) => getComputedStyle(e).backgroundColor);
-  const token = () => save.evaluate((e) => getComputedStyle(e).getPropertyValue("--save-bg").trim());
-  await page.emulateMedia({ colorScheme: "light" });
-  expect(await token()).toBe("#2563eb");
-  expect(await bg()).toBe("rgb(37, 99, 235)");
-  await page.emulateMedia({ colorScheme: "dark" });
-  expect(await token()).toBe("#2f6fdb");
-  expect(await bg()).toBe("rgb(47, 111, 219)");
+  const token = (name: string) => save.evaluate((e, name) => getComputedStyle(e).getPropertyValue(name).trim(), name);
+  const rgb = (hex: string) => `rgb(${[1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(", ")})`;
+  for (const scheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    expect(await token("--line")).toBe(await token("--separator"));
+    expect(await token("--save-bg")).toBe("#2563eb");
+    expect(await bg()).toBe(rgb(await token("--bar-control")));
+  }
+  await setOutputGain(session, -2);
+  await expect(save).toHaveClass(/primary/);
+  for (const scheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    expect(await bg()).toBe("rgb(37, 99, 235)");
+  }
   await page.emulateMedia({ colorScheme: null });
 });

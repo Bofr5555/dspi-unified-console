@@ -19,7 +19,7 @@ async function openDemo(page: Page): Promise<Locator> {
   await page.goto("/");
   await picker(page).getByRole("listitem").filter({ hasText: "Demo DSPi" }).getByRole("button", { name: "Connect" }).click();
   const session = page.getByRole("article").last();
-  await expect(session.locator(".device-meta")).toBeVisible();
+  await expect(session).toHaveAttribute("data-status", "open");
   return session;
 }
 
@@ -104,7 +104,7 @@ test("no device", async ({ page }) => {
   await shot(page, "nodevice-devices");
   // A DSPi that went away: its tab stays, with nothing to show but the way back
   const session = await openDemo(page);
-  await session.getByRole("button", { name: "Disconnect" }).click();
+  await session.getByRole("tablist", { name: "Open DSPi" }).getByRole("button", { name: /^Close / }).click(); // -- WP REVEFIX -- the tab's ×
   await page.waitForTimeout(400);
   await shot(page, "nodevice-closed");
   // A hub that does not answer: the session's tab with no device behind it

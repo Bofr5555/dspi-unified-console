@@ -52,7 +52,7 @@ async function openDemo(page: Page): Promise<Locator> {
   await page.getByRole("listitem").filter({ hasText: "Demo DSPi" }).getByRole("button", { name: "Connect" }).click();
   const session = page.getByRole("article").first();
   await expect(rail(session)).toBeVisible();
-  await expect(session.locator(".device-meta")).toBeVisible();
+  await expect(session).toHaveAttribute("data-status", "open");
   return session;
 }
 
@@ -63,14 +63,14 @@ async function openVenues(page: Page, two = false): Promise<{ one: Locator; sess
   await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article").first();
   await expect(rail(session)).toBeVisible();
-  await expect(session.locator(".device-meta")).toBeVisible();
+  await expect(session).toHaveAttribute("data-status", "open");
   const tabs = one.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab");
   if (two) {
     await openDevices(one);
     await one.getByRole("region", { name: "Venue B" }).getByRole("button", { name: "Connect" }).click();
     await expect(tabs).toHaveCount(2);
     await tabs.first().click();
-    await expect(session.locator(".device-meta")).toBeVisible();
+    await expect(session).toHaveAttribute("data-status", "open");
   }
   return { one, session, tabs };
 }
@@ -272,13 +272,13 @@ test("WEBM5: devices opened and closed in turn, from the tab's ✕ and its menu:
     await openDevices(one);
     await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
     await expect(tabs).toHaveCount(2);
-    await expect(session.locator(".device-meta")).toBeVisible();
+    await expect(session).toHaveAttribute("data-status", "open");
   }
   for (let n = 2; n > 0; n--) {
     await one.getByRole("button", { name: /^Close / }).first().click();
     await expect(tabs).toHaveCount(n - 1);
   }
-  await expect(one.getByText("Choose a DSPi to connect to.")).toBeVisible();
+  await expect(one.getByText("No DSPi is connected. Connect one over USB, or try the demo device.")).toBeVisible();
   // A Worker's end is reported a moment after the close, if at all
   await page.waitForTimeout(500);
   expect(errors).toEqual([]);

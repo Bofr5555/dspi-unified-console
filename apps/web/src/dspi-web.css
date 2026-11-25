@@ -33,13 +33,11 @@
     --selection: #3b3b3b;
     --text: #e8e8e8;
     --muted: #a6a6a6;
-    --line: #404040;
     --accent: #7aaeff;
     --ok: #4cc27f;
     --warn: #e0a030;
     --bad: #ff7468;
     --meter: #4cc27f;
-    --save-bg: #2f6fdb; /* -- WP WEBM2 -- */
     --save-text: #ffffff;
     --save-line: rgb(255 255 255 / 0.3);
   }
@@ -51,13 +49,11 @@
   --selection: #3b3b3b;
   --text: #e8e8e8;
   --muted: #a6a6a6;
-  --line: #404040;
   --accent: #7aaeff;
   --ok: #4cc27f;
   --warn: #e0a030;
   --bad: #ff7468;
   --meter: #4cc27f;
-  --save-bg: #2f6fdb; /* -- WP WEBM2 -- */
   --save-text: #ffffff;
   --save-line: rgb(255 255 255 / 0.3);
 }
@@ -2279,3 +2275,136 @@
 @media (pointer: coarse), (max-width: 40rem) {
   .dspi-web .preset-row > button, .dspi-web .preset-row .menu > button { height: 44px; min-width: 44px; }
 }
+
+/* -- WP REVEFIX -- REVE's fix-before-main design items and the shell as Qt Modern's (REVE §3.1): one 40 px top
+   bar (TopBar.qml: the app menu, the device's tab, its presets, the search, Undo and Redo, Save to Device, the bell),
+   a device row over it only with several devices open, the demo and no-device strips, the dock with User | Master
+   segments and icons, the status rail one quiet line. `--bar-control` is Qt's Theme.barControl: the control tone on
+   a sidebar-tone bar (in light the control tone is 1.03:1 against it, REVE D6). */
+.dspi-web {
+  --top-h: 40px;
+  --bar-h: 0px;
+  --dock-h: 44px;
+  --bar-control: var(--panel);
+  --bar-control-hover: var(--bg);
+  --chevrons: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235e5e5e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 15 5 5 5-5M7 9l5-5 5 5'/%3E%3C/svg%3E");
+}
+@media (prefers-color-scheme: dark) {
+  .dspi-web:not([data-theme="light"]) {
+    --bar-control: var(--control);
+    --bar-control-hover: var(--control-hover);
+    --chevrons: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a7a7a7' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 15 5 5 5-5M7 9l5-5 5 5'/%3E%3C/svg%3E");
+  }
+}
+.dspi-web[data-theme="dark"] {
+  --bar-control: var(--control);
+  --bar-control-hover: var(--control-hover);
+  --chevrons: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a7a7a7' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 15 5 5 5-5M7 9l5-5 5 5'/%3E%3C/svg%3E");
+}
+
+/* The top bar: 40 px, the sidebar tone, its controls 28 px in the bar's control tone */
+.dspi-web .top { height: var(--top-h); gap: 6px; padding: 0 8px; }
+.dspi-web .top .device-tabs { align-self: center; padding-top: 0; }
+.dspi-web .top .device-tab, .dspi-web .device-row .device-tab { height: 34px; border-radius: var(--radius-control); background: none; }
+.dspi-web .top .device-tab:has([aria-selected="true"]), .dspi-web .device-row .device-tab:has([aria-selected="true"]) { background: var(--bar-control); }
+.dspi-web .top .device-tab:not(:has([aria-selected="true"])):hover, .dspi-web .device-row .device-tab:not(:has([aria-selected="true"])):hover { background: var(--bar-control-hover); }
+.dspi-web .device-tab > [role="tab"] { border-radius: var(--radius-control) 0 0 var(--radius-control); padding: 0 4px 0 8px; width: 13rem; max-width: 15rem; }
+.dspi-web .device-tab-text { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; line-height: 1.25; }
+.dspi-web .device-tab-name { max-width: 100%; font-size: 13px; }
+.dspi-web .device-tab-kind { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--muted); }
+.dspi-web .device-tab .dot { align-self: center; }
+.dspi-web .device-row { display: flex; align-items: center; height: 38px; padding: 0 8px; background: var(--chrome); min-width: 0; }
+.dspi-web .device-row .device-tabs { padding-top: 0; }
+.dspi-web .top .preset-control { flex: 0 1 auto; min-width: 0; }
+.dspi-web .top .bar-preset { width: 150px; height: 28px; padding: 0 6px 0 8px; gap: 4px; background: var(--bar-control); border-radius: var(--radius-control); }
+.dspi-web .top .bar-preset:hover:not(:disabled), .dspi-web .top .bar-preset[aria-expanded="true"] { background: var(--bar-control-hover); }
+.dspi-web .bar-preset-chevron { flex: none; width: 12px; height: 12px; color: var(--muted); }
+.dspi-web .top-search { width: 240px; height: 28px; min-height: 28px; padding: 0 8px; gap: 6px; border: 0; background: var(--bar-control); color: var(--muted); font-size: 13px; }
+.dspi-web .top-search:hover { background: var(--bar-control-hover); color: var(--muted); }
+.dspi-web .top-search svg { flex: none; width: 14px; height: 14px; }
+.dspi-web .top-search-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.dspi-web .top-search-key { flex: none; border: 0; background: none; padding: 0; font-size: 11px; }
+.dspi-web .top .session-actions { gap: 6px; }
+.dspi-web .top .session-actions button { height: 28px; }
+.dspi-web .undo-redo { gap: 2px; }
+.dspi-web .top .undo-redo button { display: inline-grid; place-items: center; width: 28px; padding: 0; background: none; color: var(--text); }
+.dspi-web .top .undo-redo button:hover:not(:disabled) { background: var(--bar-control-hover); }
+.dspi-web .undo-redo .shell-icon { width: 16px; height: 16px; stroke-width: 1.75; }
+/* Save to Device (REVE D1): the bar's control tone until something is unsaved (Qt's `primary: unsaved`), then the accent */
+.dspi-web .save-split .bar-save, .dspi-web .save-split .menu > button { background: var(--bar-control); color: var(--text); font-weight: 400; }
+.dspi-web .save-split .menu > button { border-left: 1px solid var(--chrome); }
+.dspi-web .save-split:not(.primary) .bar-save:hover:not(:disabled), .dspi-web .save-split:not(.primary) .menu > button:hover:not(:disabled) { background: var(--bar-control-hover); }
+.dspi-web .save-split.primary .bar-save, .dspi-web .save-split.primary .menu > button { background: var(--accent-fill); color: var(--on-accent); font-weight: 600; }
+.dspi-web .save-split.primary .menu > button { border-left-color: var(--save-line); }
+.dspi-web .save-split.primary .bar-save:hover:not(:disabled), .dspi-web .save-split.primary .menu > button:hover:not(:disabled) { background: color-mix(in srgb, var(--accent-fill) 88%, #000); }
+.dspi-web .bar-save .shell-icon { width: 16px; height: 16px; }
+.dspi-web .bell { min-width: 28px; min-height: 28px; }
+@container top (max-width: 1240px) {
+  .dspi-web .top-search { width: 28px; justify-content: center; padding: 0; }
+  .dspi-web .top-search-text, .dspi-web .top-search-key { display: none; }
+}
+/* A narrow console: the bar takes two lines, the device's presets and actions on the second */
+@container top (max-width: 720px) {
+  .dspi-web .top { flex-wrap: wrap; height: auto; min-height: var(--top-h); padding-top: 2px; padding-bottom: 4px; row-gap: 4px; }
+  .dspi-web .top .top-fill { order: 9; flex: 1 0 100%; height: 0; }
+  .dspi-web .top .preset-control { order: 10; flex: 1 1 6rem; }
+  .dspi-web .top .bar-preset { width: 100%; }
+  .dspi-web .top .session-actions { order: 11; }
+  .dspi-web .top .bar-preset, .dspi-web .top .session-actions button { min-height: 44px; }
+  .dspi-web .top .undo-redo button { width: 44px; }
+  .dspi-web .device-tab > [role="tab"] { width: auto; }
+}
+
+/* The status strip's lines (§14): 32 px, the kind's tint and edge, an icon; the demo's and the no-device line are info */
+.dspi-web .status-strip > .banner { margin: 0; min-height: 32px; padding: 4px 8px 4px 10px; gap: 8px; font-size: 13px; background: color-mix(in srgb, var(--edge, var(--warn)) 12%, var(--panel)); }
+.dspi-web .banner-info { --edge: var(--accent); }
+.dspi-web .banner .banner-icon { flex: none; width: 16px; height: 16px; color: var(--edge, var(--warn)); }
+
+/* The dock (Qt's Dock): 44 px, the source a combo, User | Master as segments, the speaker, Mute and Bypass EQ with icons, the load at the end */
+.dspi-web .dock { min-height: var(--dock-h); padding: 6px 12px; gap: 6px 12px; }
+.dspi-web .dock button, .dspi-web .dock select { height: 28px; background-color: var(--bar-control); }
+.dspi-web .dock button:hover:not(:disabled) { background-color: var(--bar-control-hover); }
+.dspi-web .dock-source { appearance: none; -webkit-appearance: none; width: 7.5rem; padding: 0 24px 0 8px; background: var(--bar-control) var(--chevrons) no-repeat right 8px center / 12px 12px; }
+.dspi-web .dock .segments { padding: 2px; background: var(--bar-control); }
+.dspi-web .dock .segments > button { height: 24px; min-height: 0; padding: 0 10px; background: none; color: var(--text); font-size: 13px; }
+.dspi-web .dock .segments > button[aria-pressed="true"] { background: var(--selection); color: var(--accent-text); }
+.dspi-web .dock .volume-icon { flex: none; width: 16px; height: 16px; color: var(--muted); }
+.dspi-web .dock .volume-value { min-width: 5rem; font-family: var(--mono); font-size: 12px; }
+.dspi-web .dock .toggle { display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; }
+.dspi-web .dock .toggle .shell-icon { width: 16px; height: 16px; stroke-width: 1.75; }
+.dspi-web .dock-load { display: inline-flex; gap: 12px; flex: none; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+@container console (max-width: 720px) {
+  .dspi-web .dock .volume-icon, .dspi-web .dock-load { display: none; }
+  .dspi-web .dock-source { width: 100%; }
+}
+
+/* The status rail: one quiet 32 px line under the page, no card (REVE §3.1, F8); its panels under it */
+.dspi-web .shell-main > .sys-rail { display: flex; flex-wrap: wrap; align-items: center; gap: 0 16px; min-height: 32px; margin: 0; padding: 0; border: 0; border-radius: 0; background: none; font-size: 12px; color: var(--muted); }
+.dspi-web .shell-main > .sys-rail > .sys-rail-row { display: contents; }
+.dspi-web .shell-main > .sys-rail > :not(.sys-rail-row) { flex: 1 1 100%; }
+.dspi-web .shell-main > .sys-rail button.sys-rail-item { font-size: 12px; min-height: 24px; }
+.dspi-web .shell-main > .sys-rail .health-sum { margin-left: auto; }
+
+/* An off switch (REVE D6, Qt's AppSwitch): the border's tone with a white knob, in both schemes */
+.dspi-web button.switch { background: var(--border); }
+.dspi-web button.switch::after { background: var(--on-accent); }
+
+/* Notice rows and empty states (REVE D7): the body's 13 px; the title 15 DemiBold, centred in the page's height */
+.dspi-web .notice-row { font-size: 13px; }
+.dspi-web .empty-state .empty-title { font-size: 15px; font-weight: 600; }
+.dspi-web .page > .empty-state { min-height: max(16rem, calc(100vh - var(--top-h) - var(--dock-h) - 12rem)); }
+
+/* The presets' popover (REVE D8): stripes; a row's actions on it, on hover and on focus (Qt's ListRow); the edge in
+   dark the separator's tone */
+.dspi-web .preset-row:nth-child(even):not(.active):not(:hover):not(:focus-within) { background: var(--stripe); }
+.dspi-web .preset-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.dspi-web .preset-row .pr-startup { flex: none; display: inline-grid; place-items: center; color: var(--muted); }
+.dspi-web .preset-row .pr-startup .shell-icon { width: 14px; height: 14px; }
+@media (hover: hover) {
+  .dspi-web .preset-row:not(.active):not(:hover):not(:focus-within) > button,
+  .dspi-web .preset-row:not(.active):not(:hover):not(:focus-within) .menu > button { opacity: 0; }
+}
+@media (prefers-color-scheme: dark) {
+  .dspi-web:not([data-theme="light"]) .popover { box-shadow: var(--shadow), 0 0 0 1px var(--separator); }
+}
+.dspi-web[data-theme="dark"] .popover { box-shadow: var(--shadow), 0 0 0 1px var(--separator); }

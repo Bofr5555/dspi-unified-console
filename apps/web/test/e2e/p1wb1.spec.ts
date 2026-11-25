@@ -183,7 +183,7 @@ test("P1WB1 offline: Open File… and New from Template… open sessions with no
   const filesSide = one.getByRole("region", { name: "Files" }).first();
   await filesSide.getByLabel("File to open").setInputFiles(MAC_PATH.pathname);
   const doc = one.getByRole("article").first();
-  await expect(doc.locator(".device-meta")).toContainText("File: mac-swift-v32.dspipreset");
+  await expect(doc).toHaveAttribute("data-file", "mac-swift-v32.dspipreset");
   await expect(doc.getByRole("button", { name: /^Presets: / })).toBeVisible(); // -- WP INTD -- the session bar's presets (DL5)
   await doc.getByRole("complementary", { name: "Status" }).getByText("a file").waitFor();
 
@@ -192,7 +192,7 @@ test("P1WB1 offline: Open File… and New from Template… open sessions with no
   await filesSide.getByRole("list", { name: "Templates" }).getByRole("button", { name: /Open template/ }).first().click();
   await expect(one.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab")).toHaveCount(2);
   const tpl = one.getByRole("article").first();
-  await expect(tpl.locator(".device-meta")).toContainText(/File: .*\.dspipreset/);
+  await expect(tpl).toHaveAttribute("data-file", /.*\.dspipreset/);
   // An edit, then Save File: the document as it stands.
   await openPage(tpl, "Files");
   const [dl] = await Promise.all([page.waitForEvent("download"), tpl.getByRole("button", { name: "Save File" }).click()]);
@@ -279,7 +279,7 @@ test.describe("over DSPi Link", () => {
     await row.getByRole("button", { name: "Connect" }).click();
     const session = page.getByRole("article").last();
     await session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").first().getByRole("button", { name: "Open" }).click();
-    await expect(session.locator(".device-meta")).toContainText("DEMO");
+    await expect(session).toHaveAttribute("data-serial", /DEMO/);
     await openPage(session, "Snapshots");
     const screen = session.getByRole("region", { name: "Snapshots" });
     await expect(screen).toContainText("Every recall here can be taken back");
