@@ -210,14 +210,14 @@ test("WEB6: Crossover sits in the Equaliser's frame, lists every output, keeps t
   expect(errors).toEqual([]);
 });
 
-test("WEB6 (REVE C1): tabbing through Delay & gain's fields writes nothing; typing writes", async ({ page }) => {
+test("WEB6 (REVE C1): tabbing through Delay & Gain's fields writes nothing; typing writes", async ({ page }) => {
   const errors = errorsOf(page);
   const { session } = await openEq(page);
   await call(page, "write", { path: "out.delay", indices: [0], value: { float: 4.1234 } });
   await call(page, "endGroup");
   const before = (await core(page)).outputDelayMs[0]!;
   expect(before).toBeCloseTo(4.1234, 3);
-  await openPage(session, "Delay & gain");
+  await openPage(session, "Delay & Gain");
   const row = session.getByRole("region", { name: "Delay and gain of every output" }).getByRole("row", { name: /^OUT1 / });
   await expect(row.getByRole("textbox", { name: /delay$/ })).toHaveValue(/^4\.1/);
   // Through gain, delay and distance (the distance's rounded "1.41 m" once wrote 4.1108 ms back)

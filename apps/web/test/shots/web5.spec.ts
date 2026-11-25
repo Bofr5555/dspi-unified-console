@@ -105,7 +105,7 @@ async function openOnHub(page: Page, hub: OwnHub, scheme: "http" | "https"): Pro
     await s.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: DEMO.slice(-8) }).getByRole("button", { name: "Open" }).click();
   }
   const session = page.getByRole("article").last();
-  await expect(session.locator(".device-meta")).toContainText(DEMO);
+  await expect(session).toHaveAttribute("data-serial", new RegExp(DEMO));
   return session;
 }
 
@@ -114,7 +114,7 @@ test("the installer on the demo DSPi (this console's copy)", async ({ page }) =>
   await page.goto("/");
   await picker(page).getByRole("listitem").filter({ hasText: "Demo DSPi" }).getByRole("button", { name: "Connect" }).click();
   const session = page.getByRole("article").last();
-  await expect(session.locator(".device-meta")).toBeVisible();
+  await expect(session).toHaveAttribute("data-status", "open");
   await setMode(session, page, "Installer");
   await openPage(session, "Installer");
   await expect(session.getByRole("region", { name: "Limits" })).toBeVisible();

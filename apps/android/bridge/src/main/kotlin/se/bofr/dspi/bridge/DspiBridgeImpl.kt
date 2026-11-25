@@ -1248,6 +1248,8 @@ class DspiBridgeImpl(
 
     override fun outputCards(): List<OutputCard> = cards
 
+    override fun outputUnused(output: Int): Boolean = labels.getOrNull(output)?.unused == true // -- WP REVEFIX --
+
     override fun channelName(ch: Int): String {
         val w = map.wire(ch)
         if (w < 0) return ""

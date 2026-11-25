@@ -1,4 +1,4 @@
-// WP WEBM2 e2e: the Equaliser's PEQ, Crossover and Delay & gain tabs and the inspector on the core's
+// WP WEBM2 e2e: the Equaliser's PEQ, Crossover and Delay & Gain tabs and the inspector on the core's
 // demo device, in every project. On a wide console the inspector sits beside the page and takes the
 // band bar (with a shape grid) and the chosen channel's parts; hidden, or on a ~1000 px or 375 px
 // console, the band bar stays under the graph and the inspector stacks under the page, with no
@@ -7,6 +7,7 @@
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { openPage } from "../nav";
+import { setOutputGain } from "../presets"; // -- WP REVEFIX --
 
 type Band = { filterType: number; bypass: boolean; freq: number; q: number; gain: number };
 type Clients = { dspiClients: { call(m: string, p: unknown): Promise<unknown> }[] };
@@ -170,10 +171,10 @@ test("WEBM2: the Crossover tab draws every output and sets a high pass; an outpu
   expect(errors).toEqual([]);
 });
 
-test("WEBM2: Delay & gain writes a distance as its delay, the arrival bars follow, mute and gain read back", async ({ page }) => {
+test("WEBM2: Delay & Gain writes a distance as its delay, the arrival bars follow, mute and gain read back", async ({ page }) => {
   const errors = errorsOf(page);
   const { session } = await openEq(page);
-  await openPage(session, "Delay & gain");
+  await openPage(session, "Delay & Gain");
   const table = session.getByRole("region", { name: "Delay and gain of every output" });
   const row = table.getByRole("row", { name: /^OUT1 / });
   await row.getByRole("textbox", { name: /distance$/ }).fill("1.715 m");
@@ -193,6 +194,29 @@ test("WEBM2: Delay & gain writes a distance as its delay, the arrival bars follo
   expect(errors).toEqual([]);
 });
 
+// -- WP REVEFIX -- (REVE C1, USR1's class)
+test("REVEFIX: tabbing through Delay & Gain writes nothing back: the fields show rounded values", async ({ page }) => {
+  const errors = errorsOf(page);
+  const { session } = await openEq(page);
+  const call = (m: string, p: unknown) => page.evaluate(([m, p]) => (globalThis as unknown as Clients).dspiClients[0]!.call(m, p), [m, p] as const);
+  await call("write", { path: "out.delay", indices: [0], value: { float: 4.1234 } });
+  await openPage(session, "Delay & Gain");
+  const before = (await core(page)).outputDelayMs[0]!;
+  expect(before).toBeCloseTo(4.1234, 3);
+  const dirty = ((await call("presetChanges", null)) as { changes: string[] }).changes.length;
+  const row = session.getByRole("region", { name: "Delay and gain of every output" }).getByRole("row", { name: /^OUT1 / });
+  // Into the delay field and out through distance and gain, typing nothing; Enter in one of them too
+  await row.getByRole("textbox", { name: /delay$/ }).focus();
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Enter");
+  for (let i = 0; i < 3; i++) await page.keyboard.press("Tab");
+  await expect(row.getByRole("textbox", { name: /delay$/ })).not.toBeFocused();
+  await page.waitForTimeout(300);
+  expect((await core(page)).outputDelayMs[0]).toBe(before);
+  expect(((await call("presetChanges", null)) as { changes: string[] }).changes.length).toBe(dirty);
+  expect(errors).toEqual([]);
+});
+
 test("WEBM2: at ~1000 px the inspector stacks under the page, the band bar stays under the graph, no sideways scroll", async ({ page }) => {
   test.skip(!wide(), "the 375 px test below is the narrow one");
   await page.setViewportSize({ width: 1000, height: 760 });
@@ -203,7 +227,7 @@ test("WEBM2: at ~1000 px the inspector stacks under the page, the band bar stays
   expect(i.y).toBeGreaterThan(g.y + g.height);
   await expect(session.locator(".eq-graph-card .band-chip")).toHaveCount(1);
   await shot(page, "1000px");
-  for (const p of ["EQ", "Crossover", "Delay & gain"]) {
+  for (const p of ["EQ", "Crossover", "Delay & Gain"]) {
     await openPage(session, p);
     await noSidewaysScroll(page);
   }
@@ -216,7 +240,7 @@ test("WEBM2: at 375 px: stacked, the band bar under the graph, 44 px targets, th
   await expect(session.locator(".eq-graph-card .band-chip")).toHaveCount(1);
   await noSidewaysScroll(page);
   await shot(page, "375px");
-  for (const p of ["Crossover", "Delay & gain"]) {
+  for (const p of ["Crossover", "Delay & Gain"]) {
     await openPage(session, p);
     await noSidewaysScroll(page);
   }
@@ -231,16 +255,24 @@ test("WEBM2: at 375 px: stacked, the band bar under the graph, 44 px targets, th
   await expect(close).toBeFocused();
 });
 
-test("WEBM2: Save to device takes its colours from the theme's tokens", async ({ page }) => {
-  const { one } = await openEq(page);
+test("WEBM2: Save to Device takes its colours from the theme's tokens: the bar's control tone while nothing is unsaved, the accent's fill once something is", async ({ page }) => {
+  // -- WP REVEFIX -- (REVE D1, C6) Qt's `primary: unsaved`; one blue in both schemes; the dark scheme's --line is the separator
+  const { one, session } = await openEq(page);
   const save = one.locator(".bar-save");
   const bg = () => save.evaluate((e) => getComputedStyle(e).backgroundColor);
-  const token = () => save.evaluate((e) => getComputedStyle(e).getPropertyValue("--save-bg").trim());
-  await page.emulateMedia({ colorScheme: "light" });
-  expect(await token()).toBe("#2563eb");
-  expect(await bg()).toBe("rgb(37, 99, 235)");
-  await page.emulateMedia({ colorScheme: "dark" });
-  expect(await token()).toBe("#2f6fdb");
-  expect(await bg()).toBe("rgb(47, 111, 219)");
+  const token = (name: string) => save.evaluate((e, name) => getComputedStyle(e).getPropertyValue(name).trim(), name);
+  const rgb = (hex: string) => `rgb(${[1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(", ")})`;
+  for (const scheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    expect(await token("--line")).toBe(await token("--separator"));
+    expect(await token("--save-bg")).toBe("#2563eb");
+    expect(await bg()).toBe(rgb(await token("--bar-control")));
+  }
+  await setOutputGain(session, -2);
+  await expect(save).toHaveClass(/primary/);
+  for (const scheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    expect(await bg()).toBe("rgb(37, 99, 235)");
+  }
   await page.emulateMedia({ colorScheme: null });
 });

@@ -9066,12 +9066,14 @@ data class OutputLabel(
      */
     val output: Int,
     /**
-     * What to show: the user's name, else "Out 1 · R · Low".
+     * What to show: the user's name, else "Out 1 · R · Low"; an unused
+     * output "3 · None" (owner 2026-11-24).
      */
     val label: String,
     /**
      * The same for a phone row, beside the output's "OUTn" button: the
-     * user's name, else "R · Low" (owner decision, review c86 F3).
+     * user's name, else "R · Low" (owner decision, review c86 F3); an unused
+     * output "None".
      */
     val shortLabel: String,
     /**
@@ -9091,6 +9093,13 @@ data class OutputLabel(
      * "Low", "High", "Band" or "Full".
      */
     val band: String,
+    /**
+     * No input is routed to the output (owner 2026-11-24): a view that only
+     * shows (the Overview's cards and tiles, a phone's Home, a summary) leaves
+     * it out; a view that edits it shows `label`. [`DspiCore::output_cards`]
+     * leaves it out already.
+     */
+    val unused: Boolean,
 )
 
 /**

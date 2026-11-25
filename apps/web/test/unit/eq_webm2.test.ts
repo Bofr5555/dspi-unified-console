@@ -1,4 +1,4 @@
-// WP WEBM2 unit tests: the Equaliser's tabs in the shell (PEQ | Crossover | Delay & gain), an
+// WP WEBM2 unit tests: the Equaliser's tabs in the shell (PEQ | Crossover | Delay & Gain), an
 // output's high and low pass over its four crossover bands, delay and distance, the arrival bars,
 // the on-graph band label, and where the inspector goes (and, on the real core, a pass written
 // the way the Crossover tab and the inspector write it).
@@ -33,11 +33,11 @@ const LR4_HP = encodeXover({ family: 1, order: 4, highPass: true });
 const LR4_LP = encodeXover({ family: 1, order: 4, highPass: false });
 const BW2_HP = encodeXover({ family: 2, order: 2, highPass: true });
 
-test("WEBM2 tabs: the Equaliser is PEQ | Crossover | Delay & gain (then Inputs); Simple has PEQ and Inputs", () => {
+test("WEBM2 tabs: the Equaliser is PEQ | Crossover | Delay & Gain (then Inputs); Simple has PEQ and Inputs", () => {
   const eq = (m: "simple" | "advanced" | "installer") => sectionsFor(withDeviceScreen(screensFor(m, false))).find((s) => s.id === "equaliser")!;
   assert.deepEqual(
     eq("advanced").pages.map((p) => p.label),
-    ["PEQ", "Crossover", "Delay & gain", "Inputs"],
+    ["PEQ", "Crossover", "Delay & Gain", "Inputs"],
   );
   assert.deepEqual(
     eq("installer").pages.map((p) => p.id),

@@ -42,7 +42,7 @@ export function ValueField(props: {
   const [draft, setDraft] = useState<string | null>(null);
   const [bad, setBad] = useState(false);
   const skip = useRef(false);
-  // -- WP WEB6 -- (REVE C1) whether anything was typed since the field took the focus
+  // -- WP WEB6 -- (REVE C1; REVEFIX's fix on int/B is the same) whether anything was typed since the field took the focus
   const typed = useRef(false);
   const commit = () => {
     if (draft === null) return;
@@ -58,6 +58,7 @@ export function ValueField(props: {
     }
     setBad(false);
     setDraft(null);
+    typed.current = false;
     props.onCommit(v);
   };
   return (

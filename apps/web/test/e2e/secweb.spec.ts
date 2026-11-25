@@ -93,7 +93,7 @@ async function openDemo(page: Page, host: string): Promise<Locator> {
   await expect(entry.or(failed).first()).toBeVisible();
   if (await failed.count()) console.log(`SECWEB session failed: ${await failed.first().textContent()}`);
   await entry.getByRole("button", { name: "Open" }).click();
-  await expect(session.locator(".device-meta")).toContainText(DEMO);
+  await expect(session).toHaveAttribute("data-serial", new RegExp(DEMO));
   return session;
 }
 
@@ -252,7 +252,7 @@ test.describe("SECWEB: uconsole web's pinning proxy", () => {
     await row.getByRole("button", { name: "Connect" }).click();
     const s2 = page2.getByRole("article").last();
     await expect(s2).toContainText("different key", { timeout: 30_000 });
-    await expect(s2.locator(".device-meta")).toHaveCount(0);
+    await expect(s2).not.toHaveAttribute("data-serial", /./);
     expect(pinned).toBeTruthy();
     // Every page socket went to the page's own origin (the proxy), none to the LAN hub.
     expect(sockets.every((u) => u.startsWith(`ws://localhost:${web!.port}/`))).toBe(true);
