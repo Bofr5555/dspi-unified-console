@@ -148,7 +148,8 @@ export function StatsPage(props: ScreenProps) {
   const labels = st.snapshot?.outputLabels;
   const i2s = (pair: number) => (labels?.[2 * pair]?.slotName ?? "").startsWith("I2S");
   // -- WP INTE -- (owner 2026-11-24) a pair whose two outputs nothing is routed to is left out of this view
-  const unused = (pair: number) => labels?.[2 * pair]?.unused === true && labels?.[2 * pair + 1]?.unused === true;
+  // -- WP FIN015 -- (REVF R1) `hidden`: not while the generator plays on one of them
+  const unused = (pair: number) => labels?.[2 * pair]?.hidden === true && labels?.[2 * pair + 1]?.hidden === true;
   const unusedNow = useRef(unused); // the poll's closure reads the labels of now
   unusedNow.current = unused;
   usePoll(

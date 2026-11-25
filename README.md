@@ -10,7 +10,7 @@ professional side: **several units playing as one system** over the audio link (
 roles, and **installer modes** that hand a finished system over to its owner, locked to safe limits. And an **AI agent**
 on your computer (Claude, Cursor and other MCP clients) can work with you, under rules that protect your speakers.
 
-![The Qt desktop app on the demo DSPi](docs/images/qt-main.png)
+![The desktop app's Modern layout: the Equaliser's PEQ page, three DSPi units open as tabs](docs/images/qt-main.png)
 
 ## Highlights
 
@@ -52,14 +52,15 @@ on your computer (Claude, Cursor and other MCP clients) can work with you, under
 
 | | |
 |---|---|
-| ![The web console's Simple mode front page](docs/images/web-simple.png) | ![The web console's System view of a multi-unit installation](docs/images/web-system.png) |
-| **Simple mode** (web console): the front page for listening | **System view** (web console on a hub): rooms, zones and alink lock states |
-| ![The Qt app's System window](docs/images/qt-system.png) | ![The Qt app's measurement results](docs/images/qt-measure.png) |
-| **System window** (Qt, Classic layout): every unit on the alink, scenes, delays | **Measure** (Qt, Classic layout): a measured response against its target |
+| ![The web console's Equaliser page on the demo DSPi](docs/images/web-eq.png) | ![The web console's System view of a multi-unit installation](docs/images/web-system.png) |
+| **Equaliser** (web console): the same pages as the desktop's Modern layout | **System view** (web console on a hub): rooms, zones and alink lock states |
+| ![The desktop app's Overview page](docs/images/qt-overview.png) | ![The desktop app's measurement results](docs/images/qt-measure.png) |
+| **Overview** (desktop, Modern): one card per channel, its speaker's name and role, its response | **Measure › Results** (desktop, Modern): a measured response of each driver against its target |
 
 ![The uconsole terminal interface](docs/images/terminal.png)
 
-*The `uconsole` Terminal. All pictures are real renders on the demo devices and the demo hub
+*The `uconsole` Terminal. All pictures are real renders on demo devices: the desktop app's on the function test's
+simulated home theatre (three DSPi units, a simulated microphone), the web console's on the demo DSPi and the demo hub
 ([`tools/shots/readme.sh`](tools/shots/readme.sh) makes them again).*
 
 ## Features

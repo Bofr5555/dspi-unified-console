@@ -54,6 +54,11 @@ pub struct LabelSource {
     pub output_enabled: Vec<bool>,
     /// The K340 firmware's crossfeed pair map; all zero on other firmware.
     pub pair_map: [u8; PairMap::SIZE],
+    // -- WP FIN015 -- (REVF R1)
+    /// Per output: a test signal plays on it now (the signal generator, which
+    /// a measurement, a live run and Identify use too). It writes after the
+    /// matrix, so an output with nothing routed to it can still be loud.
+    pub playing: Vec<bool>,
 }
 
 /// The pass band an output's filters leave.
@@ -115,6 +120,11 @@ pub struct OutputLabel {
     /// only show (the Overview's cards and tiles, a phone's Home, summaries)
     /// leave it out; views that edit it show `label`, "3 · None".
     pub unused: bool,
+    // -- WP FIN015 -- (REVF R1)
+    /// `unused`, and no test signal plays on it: what a view that only
+    /// shows levels (meters, a Spectrum chooser, Stats) leaves out. An unused
+    /// output the generator plays on keeps its meter.
+    pub hidden: bool,
 }
 
 /// One dashboard card: a pair of outputs side by side, or one alone.
@@ -363,6 +373,8 @@ pub fn output_labels(src: &LabelSource) -> Vec<OutputLabel> {
                 channel,
                 band,
                 unused,
+                // -- WP FIN015 --
+                hidden: unused && !src.playing.get(out).copied().unwrap_or(false),
             }
         })
         .collect()
@@ -495,6 +507,13 @@ impl LabelSource {
             filters,
             output_enabled: (0..no).map(|o| s.output(o).enabled).collect(),
             pair_map: s.crossfeed_pair_map().0,
+            // -- WP FIN015 -- not in the image: what the host learnt
+            playing: (0..no)
+                .map(|o| {
+                    u32::try_from(o)
+                        .is_ok_and(|o| s.siggen_outputs.checked_shr(o).is_some_and(|m| m & 1 != 0))
+                })
+                .collect(),
         }
     }
 }
@@ -552,6 +571,7 @@ mod tests_bug1 {
             filters,
             output_enabled: [true, true, true, true, false, false, false, false, false].to_vec(),
             pair_map: PairMap::K340.0,
+            playing: Vec::new(),
         }
     }
 
@@ -804,6 +824,28 @@ mod tests_bug1 {
                 .iter()
                 .any(|c| c.left == 4 || c.right == Some(4))
         );
+    }
+
+    // -- WP FIN015 --
+    /// An unused output the generator plays on is not hidden: it keeps its
+    /// meter, Spectrum entry and Stats rows, and still says "5 · None" and has
+    /// no card (REVF R1). Routed, it is neither.
+    #[test]
+    fn fin015_an_unused_output_a_test_signal_plays_on_is_not_hidden() {
+        let mut s = k340();
+        let l = output_labels(&s);
+        assert!(l[4].unused && l[4].hidden, "silent and unrouted");
+        assert!(!l[0].unused && !l[0].hidden);
+        s.playing = vec![false; 9];
+        s.playing[4] = true;
+        let l = output_labels(&s);
+        assert!(l[4].unused, "still unused");
+        assert!(!l[4].hidden, "but shown while the generator plays on it");
+        assert_eq!(l[4].label, "5 · None");
+        assert!(l[5].hidden, "the others stay hidden");
+        // A short `playing` reads as silent.
+        s.playing = vec![true; 2];
+        assert!(output_labels(&s)[4].hidden);
     }
 
     // -- review c86 --

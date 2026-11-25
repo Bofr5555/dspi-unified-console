@@ -17680,6 +17680,11 @@ Save before continuing?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>%1 (%2)</source>
+        <extracomment>An output in the speaker layout: %1 its label (&quot;Out 1&quot;), %2 the name the pages give it (&quot;Centre woofer&quot;)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>%1 is in the layout</source>
         <translation type="unfinished"></translation>
     </message>

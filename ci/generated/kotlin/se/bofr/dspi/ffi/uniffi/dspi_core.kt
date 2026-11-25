@@ -46975,7 +46975,15 @@ data class OutputLabel (
      * it out; a view that edits it shows `label`. [`DspiCore::output_cards`]
      * leaves it out already.
      */
-    var `unused`: kotlin.Boolean
+    var `unused`: kotlin.Boolean, 
+    /**
+     * `unused`, and no test signal plays on it (the signal generator, which a
+     * measurement, a live run and Identify use too): what a view that only
+     * shows levels (meters, a Spectrum chooser, Stats) leaves out. The
+     * generator writes after the matrix, so an unused output it plays on is
+     * loud and keeps its meter; it still reads "3 · None".
+     */
+    var `hidden`: kotlin.Boolean
 ) {
     
     companion object
@@ -46995,6 +47003,7 @@ public object FfiConverterTypeOutputLabel: FfiConverterRustBuffer<OutputLabel> {
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
         )
     }
 
@@ -47006,7 +47015,8 @@ public object FfiConverterTypeOutputLabel: FfiConverterRustBuffer<OutputLabel> {
             FfiConverterBoolean.allocationSize(value.`userNamed`) +
             FfiConverterString.allocationSize(value.`channel`) +
             FfiConverterString.allocationSize(value.`band`) +
-            FfiConverterBoolean.allocationSize(value.`unused`)
+            FfiConverterBoolean.allocationSize(value.`unused`) +
+            FfiConverterBoolean.allocationSize(value.`hidden`)
     )
 
     override fun write(value: OutputLabel, buf: ByteBuffer) {
@@ -47018,6 +47028,7 @@ public object FfiConverterTypeOutputLabel: FfiConverterRustBuffer<OutputLabel> {
             FfiConverterString.write(value.`channel`, buf)
             FfiConverterString.write(value.`band`, buf)
             FfiConverterBoolean.write(value.`unused`, buf)
+            FfiConverterBoolean.write(value.`hidden`, buf)
     }
 }
 

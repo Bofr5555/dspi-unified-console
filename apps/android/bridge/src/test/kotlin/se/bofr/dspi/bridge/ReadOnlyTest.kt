@@ -410,6 +410,7 @@ class ReadOnlyTest {
                 "channelDelayMS", "channelDescriptor", "channelExists", "channelGainOffset", "channelName", "channelVisible",
                 "channelLabel", "channelShortLabel", "outputSlotName", "outputCards", // -- BUG1 --
                 "outputUnused", // -- WP REVEFIX --
+                "outputHidden", // -- WP FIN015 --
                 "setChannelVisible", "checkCore1Conflict", "core1ConflictOutputs", "crossoverBypass", "crossoverFreq",
                 "crossoverType", "enterBootloader", "fetchActiveSpdifRxPin", "fetchAdatOutStatus", "fetchInputLock",
                 "fetchInputRate", "fetchLgStatus", "fetchSpdifChannelStatus", "fetchSpdifRxStatus", "fetchSubharmHeadroom",

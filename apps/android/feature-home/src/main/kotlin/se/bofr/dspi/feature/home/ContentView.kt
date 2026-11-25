@@ -329,7 +329,8 @@ private fun OutputMeters(bridge: DspiBridge, modifier: Modifier = Modifier) {
     val status = bridge.statusState()
     val ready = bridge.observeDeviceReady()
     // -- WP INTE -- unused outputs (nothing routed to them) have no meter (owner 2026-11-24)
-    val outputs = MatrixOutput.metered(bridge.platformName, s.outputTypes, s.outputEnabled, bridge::outputUnused)
+    // -- WP FIN015 -- (REVF R1) unless the generator plays on one: `hidden`
+    val outputs = MatrixOutput.metered(bridge.platformName, s.outputTypes, s.outputEnabled, bridge::outputHidden)
     if (!ready || outputs.isEmpty()) return
     Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         for (out in outputs) {
