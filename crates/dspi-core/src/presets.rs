@@ -554,9 +554,11 @@ impl DspiCore {
     pub(crate) fn copy_preset_with(&self, source: u8, dest: u8, token: Option<&str>) -> Result<()> {
         slot_in_range(source)?;
         slot_in_range(dest)?;
+        source_is_active(&mut self.lock(), source)?; // -- WP REVEFIX --
         let ticket = self.confirm_gate(ConfirmOp::CopyPreset, token)?;
         self.with_device_lock(COPY_REASON, |inner| {
             ticket.still_on(inner)?;
+            source_is_active(inner, source)?; // -- WP REVEFIX --
             if !save_to_slot(inner, dest)? {
                 refresh_directory(inner);
                 return Err(unconfirmed("copy to", dest));
@@ -926,6 +928,27 @@ fn slot_in_range(slot: u8) -> Result<()> {
             status: st::PRESET_ERR_INVALID_SLOT as u8,
         })
     }
+}
+
+// -- WP REVEFIX --
+/// Refuse a copy whose `source` is not the active slot (REVE B1). The device's
+/// copy saves the live settings to `dest` and then to `source`, so another
+/// `source` would lose its stored contents and become active. Checked before
+/// the token is spent; a disconnected or read-only core is left to the gate's
+/// own refusal.
+fn source_is_active(inner: &mut Inner, source: u8) -> Result<()> {
+    if inner.conn().is_err()
+        || inner.client_read_only.on
+        || inner.state.active_preset_slot == source
+    {
+        return Ok(());
+    }
+    Err(DspiError::InvalidArgument {
+        msg: format!(
+            "preset {source} is not the active preset: a copy saves the current settings, \
+             so it can only copy from the active preset"
+        ),
+    })
 }
 
 /// The directory's bit for `slot`.
@@ -2463,6 +2486,28 @@ mod tests {
         probe.forget(op::REQ_PRESET_LOAD);
         core.load_params().unwrap();
         assert_eq!(DspiCore::new().load_params(), Err(DspiError::Disconnected));
+    }
+
+    // -- WP REVEFIX --
+    #[test]
+    fn revefix_copy_from_a_slot_that_is_not_active_is_refused() {
+        let (core, probe) = fetched();
+        core.copy_preset_tok(0, 3).unwrap();
+        core.set_input_preamp(0, -6.0).unwrap();
+        let token = Some(core.confirm_token(ConfirmOp::CopyPreset));
+        let mark = probe.mark();
+        assert!(matches!(
+            core.copy_preset_confirmed(3, 5, token.clone()),
+            Err(DspiError::InvalidArgument { .. })
+        ));
+        assert!(probe.since(mark).is_empty(), "{:?}", probe.since(mark));
+        let s = core.get_state();
+        assert_eq!(s.active_preset_slot, 0);
+        assert_eq!(s.preset_occupied & bit(5), 0);
+        assert!(core.preset_dirty());
+        // The token was not spent: the same one copies from the active slot.
+        core.copy_preset_confirmed(0, 5, token).unwrap();
+        assert_eq!(core.get_state().active_preset_slot, 0);
     }
 
     #[test]

@@ -46939,12 +46939,14 @@ data class OutputLabel (
      */
     var `output`: kotlin.UByte, 
     /**
-     * What to show: the user's name, else "Out 1 · R · Low".
+     * What to show: the user's name, else "Out 1 · R · Low"; an unused
+     * output "3 · None" (owner 2026-11-24).
      */
     var `label`: kotlin.String, 
     /**
      * The same for a phone row, beside the output's "OUTn" button: the
-     * user's name, else "R · Low" (owner decision, review c86 F3).
+     * user's name, else "R · Low" (owner decision, review c86 F3); an unused
+     * output "None".
      */
     var `shortLabel`: kotlin.String, 
     /**
@@ -46963,7 +46965,14 @@ data class OutputLabel (
     /**
      * "Low", "High", "Band" or "Full".
      */
-    var `band`: kotlin.String
+    var `band`: kotlin.String, 
+    /**
+     * No input is routed to the output (owner 2026-11-24): a view that only
+     * shows (the Overview's cards and tiles, a phone's Home, a summary) leaves
+     * it out; a view that edits it shows `label`. [`DspiCore::output_cards`]
+     * leaves it out already.
+     */
+    var `unused`: kotlin.Boolean
 ) {
     
     companion object
@@ -46982,6 +46991,7 @@ public object FfiConverterTypeOutputLabel: FfiConverterRustBuffer<OutputLabel> {
             FfiConverterBoolean.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
         )
     }
 
@@ -46992,7 +47002,8 @@ public object FfiConverterTypeOutputLabel: FfiConverterRustBuffer<OutputLabel> {
             FfiConverterString.allocationSize(value.`slotName`) +
             FfiConverterBoolean.allocationSize(value.`userNamed`) +
             FfiConverterString.allocationSize(value.`channel`) +
-            FfiConverterString.allocationSize(value.`band`)
+            FfiConverterString.allocationSize(value.`band`) +
+            FfiConverterBoolean.allocationSize(value.`unused`)
     )
 
     override fun write(value: OutputLabel, buf: ByteBuffer) {
@@ -47003,6 +47014,7 @@ public object FfiConverterTypeOutputLabel: FfiConverterRustBuffer<OutputLabel> {
             FfiConverterBoolean.write(value.`userNamed`, buf)
             FfiConverterString.write(value.`channel`, buf)
             FfiConverterString.write(value.`band`, buf)
+            FfiConverterBoolean.write(value.`unused`, buf)
     }
 }
 

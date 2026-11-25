@@ -55,6 +55,14 @@ test("WEB3 DL6: inputs in use get a card (routed, bands or a trim), the rest are
   assert.deepEqual(overviewCards(s, undefined, 2).inputs.map((x) => x.descriptor), ["IN1"]);
 });
 
+// -- WP REVEFIX --
+test("REVEFIX: an output the core calls unused has no card (owner 2026-11-24: not shown where nothing is edited)", () => {
+  const s = state({ outputEnabled: [true, true, true] } as Partial<DspState>);
+  const label = (o: number, unused: boolean) => ({ output: o, label: unused ? `${o + 1} · None` : `Out ${o + 1}`, shortLabel: "", slotName: "", userNamed: false, channel: unused ? "None" : "L", band: "Full", unused });
+  const labels = [label(0, false), label(1, true), label(2, false)];
+  assert.deepEqual(overviewCards(s, labels, 4).outputs.map((x) => x.descriptor), ["OUT1", "OUT3"]);
+});
+
 test("WEB3 DL6: the chips say what is set, in Qt's words", () => {
   const s = state();
   assert.deepEqual(inputCard(s, 2).chips.map((x) => x.text), ["No bands", "to Out 2 + Out 3"]);

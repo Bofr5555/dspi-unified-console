@@ -164,7 +164,8 @@ export function overviewCards(s: DspState, labels: OutputLabel[] | undefined, li
     else idle.push(s.channelNames?.[i] ?? `Input ${i + 1}`);
   }
   const outputs: ChannelCard[] = [];
-  for (let o = 0; o < num(s.numOutputChannels); o++) if (s.outputEnabled?.[o] !== false) outputs.push(outputCard(s, labels, o));
+  // -- WP REVEFIX -- an unused output (nothing routed to it) is not shown here (owner 2026-11-24): the Overview only shows
+  for (let o = 0; o < num(s.numOutputChannels); o++) if (s.outputEnabled?.[o] !== false && labels?.[o]?.unused !== true) outputs.push(outputCard(s, labels, o));
   return { inputs, idle, outputs };
 }
 

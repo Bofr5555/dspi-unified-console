@@ -163,6 +163,9 @@ fn wp_p1tz_a_new_core_requires_tokens_through_c() {
     let h = dspi_core_new();
     assert!(dspi_open_demo(h));
     let none = ptr::null();
+    // -- WP REVEFIX -- a copy is from the active slot (else refused before the token)
+    // SAFETY: the record is the handle's, read on this thread
+    let active = unsafe { (*crate::fns_device::dspi_get_state(h)).active_preset_slot };
     for (op, r) in [
         (
             "save_preset",
@@ -170,7 +173,7 @@ fn wp_p1tz_a_new_core_requires_tokens_through_c() {
         ),
         (
             "copy_preset",
-            reply(|b, l| dspi_copy_preset_confirmed(h, 1, 2, none, b, l)),
+            reply(|b, l| dspi_copy_preset_confirmed(h, active, 2, none, b, l)),
         ),
         (
             "delete_preset",

@@ -83,9 +83,9 @@ function state(over: Partial<DspState> = {}): DspState {
 }
 
 const LABELS: OutputLabel[] = [
-  { output: 0, label: "Out 1 · L · Low", shortLabel: "L · Low", slotName: "I2S 1 L", userNamed: false, channel: "L", band: "Low" },
-  { output: 1, label: "Out B", shortLabel: "Out B", slotName: "I2S 1 R", userNamed: true, channel: "L+R", band: "Full" },
-  { output: 2, label: "Out C", shortLabel: "Out C", slotName: "PDM", userNamed: true, channel: "None", band: "Full" },
+  { output: 0, label: "Out 1 · L · Low", shortLabel: "L · Low", slotName: "I2S 1 L", userNamed: false, channel: "L", band: "Low", unused: false },
+  { output: 1, label: "Out B", shortLabel: "Out B", slotName: "I2S 1 R", userNamed: true, channel: "L+R", band: "Full", unused: false },
+  { output: 2, label: "Out C", shortLabel: "Out C", slotName: "PDM", userNamed: true, channel: "None", band: "Full", unused: true },
 ];
 
 const block = (bs: { id: string }[], id: string) => bs.find((b) => b.id === id) as ReturnType<typeof chainView>["outputs"][number]["blocks"][number];

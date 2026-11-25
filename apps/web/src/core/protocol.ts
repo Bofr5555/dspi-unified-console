@@ -242,6 +242,11 @@ export interface OutputLabel {
   channel: string;
   /** "Low", "High", "Band" or "Full". */
   band: string;
+  /**
+   * -- WP REVEFIX -- No input is routed to it (owner 2026-11-24): a view that only shows (the Overview, a summary)
+   * leaves it out; a view that edits it shows `label`, "3 · None". `outputCards` leave it out already.
+   */
+  unused: boolean;
 }
 
 /** -- BUG1 -- A dashboard card: two outputs side by side ("Woofers L" | "Woofers R"), or one. */
