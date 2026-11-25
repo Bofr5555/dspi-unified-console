@@ -186,9 +186,9 @@ void ua4Section(SmokeDriver &d) {
           texts.contains(ua4RowText(done, QStringLiteral("done.checklist")))
               && texts.contains(ua4RowText(done, QStringLiteral("done.filters_modern")))
               && texts.contains(ua4RowText(done, QStringLiteral("done.help_modern")))
-              && !texts.contains(ua4RowText(done, QStringLiteral("done.filters")))
-              && !texts.contains(ua4RowText(done, QStringLiteral("done.help"))));
-    check("Done offers Settings › This Computer", ua4Shown(wizard, QStringLiteral("GettingStarted.rowAction.done.sound_pc")) != nullptr);
+              && !texts.contains(ua4RowText(done, QStringLiteral("done.filters_classic")))
+              && !texts.contains(ua4RowText(done, QStringLiteral("done.help_classic"))));
+    check("Done offers its sound output check (Settings › This Computer)", ua4Shown(wizard, QStringLiteral("GettingStarted.rowAction.done.sound_pc")) != nullptr);
     d.grab(d.mainWindow(), QStringLiteral("ua4-done.png"));
 
     // ---- Welcome's demo -------------------------------------------------------------------

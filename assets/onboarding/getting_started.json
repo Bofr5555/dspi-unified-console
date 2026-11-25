@@ -58,7 +58,7 @@
         "when": "windows_or_linux",
         "paragraphs": [
           {
-            "id": "welcome.intro",
+            "id": "welcome.intro_pc",
             "text": "DSPi turns a Raspberry Pi Pico into a remarkably capable audio processor: equalisation, crossovers, upmixing, loudness compensation and more, applied live to whatever you play."
           },
           {
@@ -310,15 +310,15 @@
         ],
         "rows": [
           {
-            "id": "done.outputs",
+            "id": "done.outputs_pc",
             "icon": "outputs",
             "text": "Choose which outputs your build uses, and the pins that carry them, in Settings under [[hardware_page]]."
           },
           {
             "id": "done.sound_pc",
             "icon": "speaker",
-            "text": "Pick the DSPi as the output device in [[sound_settings]] to hear audio through it. Settings › This Computer says whether it already is.",
-            "action": "Open This Computer"
+            "text": "Pick the DSPi as the output device in [[sound_settings]] to hear audio through it; Check Sound Output tells you whether it already is.",
+            "action": "Check Sound Output"
           },
           {
             "id": "done.checklist",
@@ -333,7 +333,7 @@
             "text": "Choose a card on the Overview, or Equaliser in the rail, to edit a channel's filters."
           },
           {
-            "id": "done.filters",
+            "id": "done.filters_classic",
             "layout": "classic",
             "icon": "sliders",
             "text": "Click an input or output in the sidebar to edit its filters."
@@ -345,7 +345,7 @@
             "text": "The uConsole menu at the top left holds What's New, the help links and this wizard; the command palette[[shortcut:K]] finds any page or command."
           },
           {
-            "id": "done.help",
+            "id": "done.help_classic",
             "layout": "classic",
             "icon": "help",
             "text": "Help holds release notes and links, and this wizard can be run again."
