@@ -64,7 +64,10 @@ test("UWN A15: Save to Device's name has its count in words; the rail is one Tab
   const session = await openDemo(page);
   const save = session.getByRole("button", { name: /^Save to Device/ });
   await expect(save).toHaveAccessibleName("Save to Device");
-  await session.getByRole("button", { name: "Mute" }).first().click();
+  await openPage(session, "Delay & Gain");
+  const gain = session.getByRole("region", { name: "Delay and gain of every output" }).getByRole("row", { name: /^OUT1 / }).getByRole("textbox", { name: /gain$/ });
+  await gain.fill("-3");
+  await gain.press("Enter");
   await expect(save).toHaveAccessibleName(/^Save to Device, \d+ unsaved changes?$/);
   // One stop: the section on show; the arrows move between sections, Enter opens one
   const sections = rail(session).locator(".rail-list > button");
@@ -85,7 +88,6 @@ test("UWN A15: Save to Device's name has its count in words; the rail is one Tab
   await page.keyboard.press("Tab");
   await expect(page.getByRole("link", { name: "Skip to the volume" })).toBeFocused();
   await page.keyboard.press("Enter");
-  await expect(session.locator(".dock")).toContainText("");
   expect(await page.evaluate(() => !!document.activeElement?.closest(".dock"))).toBe(true);
 });
 
