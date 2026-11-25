@@ -24,6 +24,7 @@
 #include "CoreApi.h"
 #include "CoreWorker.h"
 
+#include <QDir>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QSettings>
@@ -77,6 +78,7 @@ QString call(QObject *o, const char *method) {
 void grabBoth(SmokeDriver &d, QQuickWindow *w, const QString &name) {
     Shell *shell = d.app().shell;
     const Qt::ColorScheme before = shell->colorSchemeOverride();
+    QDir(d.outDir()).mkpath(QStringLiteral("ua5"));
     for (const auto &[scheme, word] : { std::pair{ Qt::ColorScheme::Dark, "dark" }, std::pair{ Qt::ColorScheme::Light, "light" } }) {
         shell->setColorSchemeOverride(scheme);
         d.spin(250);
