@@ -193,6 +193,7 @@ Rectangle {
         if (installer) installer.reset()
     }
     function advance() {
+        if (confirmThenGo) return   // -- WP UA4 -- the core has the Confirm
         if (onLast) {
             OnboardingController.finishSetup()
         } else if (onSpeakers && speakersAction === "confirm_continue") {
