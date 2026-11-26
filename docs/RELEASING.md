@@ -17,10 +17,10 @@ the files is [`INSTALL.md`](INSTALL.md).
    containers (`linux/test-packages.sh`). The AUR package (`arch/PKGBUILD`)
    builds from the desktop source archive and is published by hand after the
    release, with its `sha256sums` and `.SRCINFO` updated.
-4. <!-- WP QTMAC --> `apps/desktop/packaging/macos/build-macos.sh`: the Qt app's
-   `…-macos.dmg`, built and tested in the macOS VM from the same clean commit
+4. `apps/desktop/packaging/macos/build-macos.sh`: the Qt app's
+   `…-macos.dmg`, built and tested on a Mac from the same clean commit
    (universal, ad hoc signed, not notarised; `apps/desktop/packaging/README.md`,
-   "macOS: the .dmg"). A separate step, since it needs the VM: copy the `.dmg`
+   "macOS: the .dmg"). A separate step, since it needs the Mac: copy the `.dmg`
    from `~/.cache/dspi-build/work/release-VERSION-macos/` into `DIR`.
 5. The other clients' packages, copied into the same `DIR`: the Android APK, the
    web dist. The Swift apps are deferred (owner, 2026-11-19): the Mac's file is
@@ -33,7 +33,7 @@ into the project's own Windows files, AppImage, tar.gz and `.dmg` only; the `.de
 `.rpm` and the AUR package are updated by their package managers and never
 check (`apps/desktop/packaging/README.md`).
 
-### The file names (WP RN1)
+### The file names
 
 Every release file starts with the release's stem, `uConsole-for-DSPi-VERSION-`; distribution packages
 use the package name `uconsole-for-dspi`, as their systems expect.
@@ -45,7 +45,7 @@ use the package name `uconsole-for-dspi`, as their systems expect.
 | `uConsole-for-DSPi-VERSION-windows-x86_64-setup.exe`, `…-windows-x86_64.zip`, `…-x86_64.AppImage`, `…-linux-x86_64.tar.gz` | `ci/release-desktop.sh` (`apps/desktop/packaging/build-release.sh`) |
 | `uconsole-for-dspi_VERSION_amd64.deb`, `uconsole-for-dspi-VERSION-1.fcN.x86_64.rpm` | the same |
 | `…-desktop-source.tar.gz` | the same (`ci/release-source.sh --with-desktop`) |
-| `uConsole-for-DSPi-VERSION-macos.dmg` | the Qt app: `apps/desktop/packaging/macos/build-macos.sh` (WP QTMAC; this name was the Swift app's, whose `apps/apple/package-macos.sh` needs another name when it returns) |
+| `uConsole-for-DSPi-VERSION-macos.dmg` | the Qt app: `apps/desktop/packaging/macos/build-macos.sh` (this name was the Swift app's, whose `apps/apple/package-macos.sh` needs another name when it returns) |
 | `uConsole-for-DSPi-VERSION.apk` | `apps/android`: `-Pdspi.sideload=true :app:assembleRelease` |
 | `uConsole-for-DSPi-VERSION-web.tar.gz` | the web dist (`apps/web`), packed by hand |
 

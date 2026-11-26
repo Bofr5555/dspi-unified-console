@@ -1,7 +1,7 @@
 # Undo and redo
 
 Every client has the same undo, because every change goes through one write
-path in the core (WP P0W, PRO1 W1).
+path in the core (PRO1 W1).
 
 Reference: `crates/dspi-core/src/journal.rs` (its module documentation is the
 specification), `crates/dspi-session/src/history.rs`.
@@ -22,7 +22,7 @@ specification), `crates/dspi-session/src/history.rs`.
 
 An action that writes several values (a linked pair's two trims, a Clear
 All, a direct routing) is one undo step when the client wraps it in a group
-(WP P1UG): `begin_group(label)`, the writes, `end_group()` (C:
+: `begin_group(label)`, the writes, `end_group()` (C:
 `dspi_undo_group_begin` and `dspi_undo_group_end`; wasm: `beginGroup`
 and `endGroup`; UniFFI: `beginGroup` and `endGroup`).
 
@@ -37,7 +37,7 @@ and `endGroup`; UniFFI: `beginGroup` and `endGroup`).
   image and a factory reset end it at any depth.
 - A write undo cannot reverse (a hazard, an action) stands apart, as in a
   drag; the group's later writes form a further step.
-- Groups and drags (WP P1AFIX): a drag marked inside a group is part of the
+- Groups and drags: a drag marked inside a group is part of the
   group's step, which ends at the group's end. A group begun while a drag
   is marked joins the drag's step (taking the group's label if the step had
   none); its `end_group` leaves the step open, and the drag's

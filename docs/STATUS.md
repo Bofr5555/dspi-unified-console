@@ -3,11 +3,13 @@
 Where each client stands, what each PRO phase built, and what is still owed. The short view of
 what works where is [`FEATURES.md`](FEATURES.md); the front page is [`../README.md`](../README.md).
 
-As of 2026-11-26, on `int/016`, for release **0.16.0** (what came after 0.15.0 is [below](#release-0160-everyday-use-2026-11-26); 0.15.0, `main` at `201118b9` on 2026-11-26, was not published and ships in 0.16.0: what it added after 0.14.0 is [below too](#release-0150-not-published-in-0160-the-modern-programme-2026-11-21-to-2026-11-25)). The detail, one row per work package,
+As of 2026-11-26, for release **0.16.0**, the next release after 0.14.0 (0.15.0 was built but never published, so
+0.16.0 carries everything since 0.14.0: [the Modern layout, agents and speaker setup](#built-for-0160-the-modern-layout-agents-and-speaker-setup),
+then [everyday use](#built-for-0160-everyday-use)). The detail, one row per work package,
 is in [`docs/core-merge/PLAN-CLIENTS.md`](core-merge/PLAN-CLIENTS.md#status-2026-11-19)
 and, for the PRO phases and the later plans, in the plan files under
 [`docs/core-merge/`](core-merge/) (`PLAN-P2.md`, `PLAN-P3.md`, `PLAN-P5.md`,
-`PLAN-AT.md`, `PLAN-PG.md`, `PLAN-SEC.md`), each WP marked there with its merge.
+`PLAN-AT.md`, `PLAN-PG.md`, `PLAN-SEC.md`), each work item marked there with its merge.
 Every client is tested in CI against the simulated device, mocks, fakes of both
 firmware generations and a fake hub. Hardware runs are recorded in `docs/core-merge/HW-*.md` and
 `docs/HIL-NEW-CORE.md`; what they still lack is listed under
@@ -17,12 +19,12 @@ history of the root `README.md`, where this page used to be.
 | Client | Where | Status |
 |---|---|---|
 | Core | `crates/` | In use by every client, the Swift app included (its opt-out paths aside). The core gaps the clients asked for are done (CG1 to CG37). Since 2026-11-08: confirmation tokens are required for every dangerous call (P1TZ); the client read-only mode (ROMODE); the PRO features of phases 1 to 3 and 5 (below); DSPi Link over TLS 1.3 with the hub's key pinned at pairing (PLAN-SEC); the measurement maths in the new crate `dspi-measure` and the workflow in `dspi-core`'s `measure` module; and both firmware generations, 1.1.6 and upstream's paged 1.1.7 beta as of 2026-11-18 (later 1.1.7 betas may need an update), decided once per connection (PLAN-PG). Earlier: writes by parameter path (`write_param`), one filter-type name table, delays kept to 0.0001 ms, and one delay limit per platform (42 ms on RP2350, 21 ms on RP2040). |
-| Qt, Linux and Windows | `apps/desktop/` | *(2026-11-13.)* Rebuilt in QML from the macOS console's layout and words, on the core through the C ABI, and swapped in for the earlier port (Qt 6.8 or newer; no Qt 5; a macOS `.dmg` since 0.14.0). Beyond the Mac: read-only mode for other firmware, the Core Voltage page, undo and redo with a History window, an update check in the project's own downloads, and diagnostics bundles. Since then: the PRO phase 1 dialogs, the hub's limits and PIN (HUBADMIN), shared snapshots, the hub's history, the alarm banner and Identify (P2QT), pairing bound to the hub's key (SECQT), measurement and auto-tune in Tools > Measure… with a "Several units" tab (P5QCAP, P5QUI, P5QUI2, ATQT), the device's generation and the update check in Settings > About (PGQT), and (round R1) every DSP menu, shortcut and tool window greyed with one banner while the alink sender is open (QTSENDER), and `--version` and `--help` answering with no display (QTCLI). For 0.15.0: the Modern layout beside Classic, several devices in tabs, the AI agents' MCP server, Settings › Speakers with detection, and System › Installation ([below](#release-0150-not-published-in-0160-the-modern-programme-2026-11-21-to-2026-11-25)). Hardware pass on the K340 on Linux and Windows (QP22: `docs/core-merge/HW-QT.md`). Packages: `.deb`, `.rpm`, AppImage, a tar.gz with an installer and an Arch `PKGBUILD` for Linux; a zip and an installer for Windows (cross-built from Linux). None are signed or published; the AppImage has its own release test on Ubuntu 24.04 and 25.04, Debian 13 and Fedora 44 (`apps/desktop/packaging/linux/test-appimage.sh`, APPIMG). |
-| Android | `apps/android/` | On the core through UniFFI. **On Google Play as uConsole for DSPi** (DSPi Console for Android up to 0.13.0, the last closed-testing version; production access granted 2026-11-20, being rolled out to production; 0.12.0 was the first release on the core); 0.14.0 (versionCode 14) is the latest on Play; 0.15.0 will be versionCode 15. Since 0.12.0: R8 shrinking, accessibility (TalkBack labels and roles, with the layout unchanged), faster Link meters, fractional delays kept, delay sliders in whole milliseconds, the delay limit from the core; the PRO phase 1 screens and the hub's limits and PIN; shared snapshots, the hub's history, the alarm banner and Identify (P2AN); pairing bound to the hub's key (SECAN); device info, the update check and the core's write gate (PGAND); S/PDIF units shown in the System screen, view only. Measurement comes in a later batch (PLAN-P5). Open: edge-to-edge, localisation. |
-| Terminal | `apps/terminal/` | Done but for a physical replug in its hardware pass (TM13). Every write goes through the core (TMCORE), so limits, the installer lock and confirmation tokens hold for it. New commands since 2026-11-08: the PRO phase 1 commands, `uconsole hub` services, REST, TLS, groups and the firmware rollout (P2TM, SECTM, P3TM), `uconsole measure` (P5TM), and `uconsole info` and `raw --id` for the generation (PGTM); for 0.15.0 `uconsole mcp`, the AI agents' relay to the Qt app; see [`apps/terminal/README.md`](../apps/terminal/README.md) and `uconsole --help`. |
+| Qt, Linux and Windows | `apps/desktop/` | *(2026-11-13.)* Rebuilt in QML from the macOS console's layout and words, on the core through the C ABI, and swapped in for the earlier port (Qt 6.8 or newer; no Qt 5; a macOS `.dmg` since 0.14.0). Beyond the Mac: read-only mode for other firmware, the Core Voltage page, undo and redo with a History window, an update check in the project's own downloads, and diagnostics bundles. Since then: the PRO phase 1 dialogs, the hub's limits and PIN (HUBADMIN), shared snapshots, the hub's history, the alarm banner and Identify (P2QT), pairing bound to the hub's key (SECQT), measurement and auto-tune in Tools > Measure… with a "Several units" tab (P5QCAP, P5QUI, P5QUI2, ATQT), the device's generation and the update check in Settings > About (PGQT), and (round R1) every DSP menu, shortcut and tool window greyed with one banner while the alink sender is open (QTSENDER), and `--version` and `--help` answering with no display (QTCLI). For 0.16.0: the Modern layout beside Classic, several devices in tabs, the AI agents' MCP server, Settings › Speakers with detection, and System › Installation, and the everyday features ([below](#built-for-0160-everyday-use)). Hardware pass on the K340 on Linux and Windows (QP22: `docs/core-merge/HW-QT.md`). Packages: `.deb`, `.rpm`, AppImage, a tar.gz with an installer and an Arch `PKGBUILD` for Linux; a zip and an installer for Windows (cross-built from Linux). None are signed or published; the AppImage has its own release test on Ubuntu 24.04 and 25.04, Debian 13 and Fedora 44 (`apps/desktop/packaging/linux/test-appimage.sh`, APPIMG). |
+| Android | `apps/android/` | On the core through UniFFI. **On Google Play as uConsole for DSPi** (DSPi Console for Android up to 0.13.0, the last closed-testing version; production access granted 2026-11-20, being rolled out to production; 0.12.0 was the first release on the core); 0.14.0 (versionCode 14) is the latest on Play; 0.16.0 is versionCode 16 (0.15.0 was never published). Since 0.12.0: R8 shrinking, accessibility (TalkBack labels and roles, with the layout unchanged), faster Link meters, fractional delays kept, delay sliders in whole milliseconds, the delay limit from the core; the PRO phase 1 screens and the hub's limits and PIN; shared snapshots, the hub's history, the alarm banner and Identify (P2AN); pairing bound to the hub's key (SECAN); device info, the update check and the core's write gate (PGAND); S/PDIF units shown in the System screen, view only. Measurement comes in a later batch (PLAN-P5). Open: edge-to-edge, localisation. |
+| Terminal | `apps/terminal/` | Done but for a physical replug in its hardware pass (TM13). Every write goes through the core (TMCORE), so limits, the installer lock and confirmation tokens hold for it. New commands since 2026-11-08: the PRO phase 1 commands, `uconsole hub` services, REST, TLS, groups and the firmware rollout (P2TM, SECTM, P3TM), `uconsole measure` (P5TM), and `uconsole info` and `raw --id` for the generation (PGTM); for 0.16.0 `uconsole mcp`, the AI agents' relay to the Qt app, and plain mode (`--plain`); see [`apps/terminal/README.md`](../apps/terminal/README.md) and `uconsole --help`. |
 | Swift, macOS and iOS | `apps/apple/` | **Deferred by the owner (2026-11-19): not built for releases 0.14.0 and 0.16.0, and no Swift work until the owner reopens it** (regenerated bindings only). On the core by default since 2026-11-15/16: USB on the Mac (SW-M1), USB MIDI on iPhone, iPad and the Mac's MIDI paths (SW5), the DSPi Link client (SW6, with its lost-connection banner SW7), firmware updates (SW-M2), and the Mac's hub, now the Rust hub over UniFFI with TLS required by default (SW-M3, P2SW, SECSW). The DSP domains, presets, files, undo and the PRO phase 1 features run on the core's calls (SW8 to SW14, P1SW1 to P1SW3). The opt-out paths (`-CoreTransport NO`, `-CoreHub NO`) are still in the app, 1.1.6 only, to be retired (SWS13). Not yet: the device's generation and the update check (PGSWIFT), measurement (later batch). The look-and-feel decision (OD3) is still the owner's. |
 | Link hub | `crates/dspi-hub/` | `uconsole hub` runs it; the Mac app hosts it too. With `--web` it serves `/` (a landing page without scripts), `/console/` (our web console) and `/hub/` (Weeb Labs' DSPi-Link page, built from a pinned commit). Since 2026-11-08: TLS 1.3 on its one port, required by default, with PIN pairing bound to its key and a PAKE for native clients (PLAN-SEC); the phase 2 services and the phase 3 fleet (below), with the REST mirror under `/api/v1/` frozen as v1 on 2026-11-16; measurement documents (P5HUB); measuring several units, `system.measure.*`, and the guard of a system apply, `system.guard.*` (PLAN-AT); devices of both generations and DSPi Link 1.2 and 1.3 clients (PLAN-PG), and the dual-stack alink sender told apart at attach (LINKFIX). Connection budgets: plain HTTP 48 in all and 16 per address; WebSocket 16 in all and 4 per address before sign-in. |
-| Web | `apps/web/`, `crates/dspi-wasm/` | The same core in wasm, in one Worker per session, without threads. Works: the core's demo device, USB through WebUSB (Chromium, tested on a mock), DSPis behind hubs over DSPi Link with TLS (Chromium and Firefox; `uconsole web` pins the hub's key for the page), hosting by a hub, by `uconsole web` or by any static server. The UI floor is complete (WB6a to WB6l): main window, EQ (with Linkwitz), inputs, crossover, outputs and matrix, effects, the System view, scene bar and status rail, Overview, Snapshots, Files and AutoEQ, Control Surfaces, Events, Installer, the tools (Signal Generator, Analyser, Stats for nerbs, Interrupt Monitor), Measure, Device and Settings; on a hub also the Hub screen (devices, health board, alarms, history, groups, bulk apply, firmware rollout) and Hub Settings. For 0.15.0 the Modern layout only, page by page as Qt's Modern ([below](#release-0150-not-published-in-0160-the-modern-programme-2026-11-21-to-2026-11-25)). Next: Web MIDI (WB4c, later) and its gate (WB9). Published with each release as `…-web.tar.gz`. |
+| Web | `apps/web/`, `crates/dspi-wasm/` | The same core in wasm, in one Worker per session, without threads. Works: the core's demo device, USB through WebUSB (Chromium, tested on a mock), DSPis behind hubs over DSPi Link with TLS (Chromium and Firefox; `uconsole web` pins the hub's key for the page), hosting by a hub, by `uconsole web` or by any static server. The UI floor is complete (WB6a to WB6l): main window, EQ (with Linkwitz), inputs, crossover, outputs and matrix, effects, the System view, scene bar and status rail, Overview, Snapshots, Files and AutoEQ, Control Surfaces, Events, Installer, the tools (Signal Generator, Analyser, Stats for nerbs, Interrupt Monitor), Measure, Device and Settings; on a hub also the Hub screen (devices, health board, alarms, history, groups, bulk apply, firmware rollout) and Hub Settings. For 0.16.0 the Modern layout only, page by page as Qt's Modern ([below](#built-for-0160-the-modern-layout-agents-and-speaker-setup)). Next: Web MIDI (WB4c, later) and its gate (WB9). Published with each release as `…-web.tar.gz`. |
 | Link over the ESP32 bridge | `crates/dspi-link/`, `tools/esp-rig/` | LK1 to LK4 are merged (LK3 and LK4 on 2026-11-09): meters no longer wait behind start-up reads, Link tolerates short silences, a faster connect, and the emulated bridge (the real bridge firmware in Espressif's QEMU, its UART tunnelled to a DSPi) as the opt-in step `ci/check.sh --step esp-rig`. A real bridge has not been run (XC4, XC5). Target: at least as fast as Weeb Labs' own Link client. |
 | CI | `ci/` | `ci/check.sh` is the gate (26 steps with `--all`, the web console included); `ci/matrix.sh` builds and tests every client from one commit, one row each, with the macOS Swift app and the iOS Simulator on a macOS VM, and the Qt release packages installed in clean containers. The ESP32 rig is the opt-in step `--step esp-rig`, not in `--all`. The GitHub Actions file is a draft and not enabled. |
 
@@ -41,7 +43,7 @@ The integrator documents are in [`docs/integrator/`](integrator/)
 |---|---|---|---|---|---|---|
 | Snapshots | Whole-device snapshots kept on this computer, one folder per device: capture, name, note, recall, export, import | ✓ (kept in the page) | ✓ | ✓ | ✓ with the core attached | `snapshot` |
 | A/B compare | Two snapshots (or the device now and one), toggled with one bulk write and diffed; keep either side. The toggle key is a plain `B` | ✓ | ✓ | ✓ | ✓ | `ab` |
-| Safe apply | A recall or an import with a way back: Keep, or it goes back by itself (30 s by default, 5 to 300 s in Advanced). Over DSPi Link the hub puts it back too if the console goes away | ✓ | ✓ | ✓ | ✓ | `--guard`, on by default over DSPi Link |
+| Trial (was "safe apply") | A recall or an import with a way back: Keep, or it goes back by itself (30 s by default, 5 to 300 s in Advanced). Over DSPi Link the hub puts it back too if the console goes away | ✓ | ✓ | ✓ | ✓ | `--guard`, on by default over DSPi Link |
 | Limits profiles | An installer narrows what a system may do (per output gain, high-pass, delay range, limiter ceiling; PEQ boost; master volume). One range table in the core for every editor | ✓ (the page keeps the profile) | ✓ | ✓ | ✓ with the core attached | `limits` |
 | Installer lock and PIN | A PIN on this console (or the hub's) leaves volume, mute, the source and presets to the user; a recovery code is shown once. Not a security boundary: real access control is the hub's roles | reads and unlocks a hub's lock; no PIN of its own | ✓ | ✓ | ✓ with the core attached | `lock`; holds every write (`set`, `eq`, scripts, the TUI) |
 | Confirmation tokens | Dangerous calls (preset save, copy, delete, factory reset, import, firmware writes) run only with a token their confirmation minted | ✓ | ✓ | ✓ | ✓ with the core attached | ✓ (`--yes` mints it) |
@@ -85,7 +87,7 @@ command line (`DSPI_INSTALLER_PIN` or `--installer-pin -` in a script).
 
 **Not done yet** (as of 2026-11-14; both are done since):
 
-- **The hub's profile and PIN from the clients (WP HUBADMIN).** Done 2026-11-14 (`d4c9dad2`): every
+- **The hub's profile and PIN from the clients.** Done 2026-11-14 (`d4c9dad2`): every
   client sets a hub's profile, PIN and pinned modes and hears the hub's `limits.changed` and
   `mode.changed` mid-session.
 - **Swift without the core.** Done 2026-11-15/16: the Mac's USB, USB MIDI, the Swift Link client and the
@@ -270,17 +272,19 @@ Round R1 (`2dcd5f41`; the firmware half on the fork's `bofr-main`, `48bba52`) cl
 - **Qt packaging** (APPIMG, QTCLI): the AppImage's release test, `--version` and `--help` without a display, and the
   rule the app offers to install is the packages' own file.
 
-## Release 0.16.0: everyday use (2026-11-26)
+## Built for 0.16.0: everyday use
 
-Merged on `int/016` after 0.15.0 (`201118b9`, prepared but not published: 0.16.0 is the first release after 0.14.0): the user-experience proposal's quick wins and larger ideas (UXP A1-A17,
-B1-B15 without the deferred phone bar, large fonts and low-resolution PC work), then the fixes of the release review
-(FIX016). The user's view is [`../CHANGELOG-0.16.0.md`](../CHANGELOG-0.16.0.md).
+Added in the last days before the release (2026-11-26): the quick wins and larger ideas of a user-experience review
+of every client, without the deferred parts (Android's Modern navigation, large fonts on Android, low-resolution PC
+screens), then the fixes of the release review. The user's view is [`../CHANGELOG-0.16.0.md`](../CHANGELOG-0.16.0.md)
+and the manual's [Everyday use](manual/everyday.md).
 
-- **Qt.** From Speaker Layout for crossovers and routes (refused below the tweeter floor or to a tweeter without a
-  high-pass), A/B as saved against now (B's edits unsaved on A), the Overview's setup list, unsaved per device tab and
-  Save All, Home for Simple and locked users, the All-devices link, Solo, Modern's names per output and folds, the
-  Measure action bar, one speaker table, the Accessibility options, the question sheet in the screen's words with
-  grouped questions (a sheet holds only what it shows), Install in Claude Desktop (untried in a real Claude Desktop).
+- **Qt.** From Speaker Layout for crossovers and routes (refused below the tweeter floor, or to a tweeter or mid
+  driver without a high-pass unless the same Apply sets it), A/B as saved against now (B's edits stay unsaved while
+  on A), the Overview's setup list, unsaved per device tab and Save All, Home for Simple and locked users, the
+  All-devices link, Solo, Modern's names per output and folds, the Measure action bar, one speaker table, the
+  Accessibility options, Help › Keyboard Shortcuts and F6, the question sheet in the screen's words with grouped
+  questions (a sheet holds only what it shows), Install in Claude Desktop (untried in a real Claude Desktop).
 - **Core.** `ab_start_saved`, the solo (`solo_output`/`_end`/`_state`, lost solos lifted on the next connect), the
   tuned demo and `reset_demo`, the group delay curve; under the installer lock the source passes and the speaker
   layout is refused.
@@ -291,13 +295,13 @@ B1-B15 without the deferred phone bar, large fonts and low-resolution PC work), 
 - **Terminal.** Plain mode for screen readers and scripts, search by words, the no-device page, the shell's verbs on
   `:`, the volume keys everywhere.
 - **Testing.** CI as before, green on the release commit; the new Qt pages walked in the function test's simulated
-  home theatre, and the agent stories replayed. **No real hardware**: nothing of 0.16.0 has run on a real DSPi or a
+  home theatre, and the agent stories replayed. **No real hardware**: nothing of this part has run on a real DSPi or a
   phone, and the Claude Desktop extension has not been installed in a real Claude Desktop.
 
-## Release 0.15.0, not published (in 0.16.0): the Modern programme (2026-11-21 to 2026-11-25)
+## Built for 0.16.0: the Modern layout, agents and speaker setup
 
-Merged on `int/B` after 0.14.0 (`7d681a73`); the plan is `MPLAN.md` in the coordinator's notes, the user's view
-[`../CHANGELOG-0.15.0.md`](../CHANGELOG-0.15.0.md).
+Built from 2026-11-21 to 2026-11-25 after 0.14.0 (`7d681a73`) and first packaged as 0.15.0, which was not published.
+The user's view is [`../CHANGELOG-0.15.0.md`](../CHANGELOG-0.15.0.md).
 
 - **Layouts.** The Qt app has Classic and Modern, switched in Settings › Appearance; new installs start in Modern.
   Modern has every tool as a page, a command palette, the Equaliser's PEQ, Crossover and Delay & Gain pages with an
@@ -333,9 +337,10 @@ Merged on `int/B` after 0.14.0 (`7d681a73`); the plan is `MPLAN.md` in the coord
   web console against real USB and real hubs; the ESP32 bridge suite with a
   real bridge (XC4, XC5).
 - **Hardware runs for 0.16.0:** an agent measuring and tuning the K340 at the coupler, the speaker detection on the
-  real K340, two real units open at once in Modern, Android 0.16.0 on a phone, the agents' stdio relay on a real
+  real K340, two real units open at once in Modern, Android 0.16.0 on a phone, From Speaker Layout, A/B, Solo and the lock on a real DSPi, the Claude Desktop extension in a
+  real Claude Desktop, the agents' stdio relay on a real
   Windows, and the host-audio reader on Windows and macOS (built, not run).
-- **Hardware runs of the later plans** (each the coordinator's with the owner's go): one firmware
+- **Hardware runs of the later plans** (each with the owner's go): one firmware
   rollout of the K340 through the hub with the image it runs (P3HIL); a full measurement and auto-tune
   session with the microphone (P5HIL); several real units on one time base, S/PDIF between real units
   (ATHIL, which also compares an overlapped run with an interleaved one: the later unit's response below
@@ -354,7 +359,7 @@ Merged on `int/B` after 0.14.0 (`7d681a73`); the plan is `MPLAN.md` in the coord
   owner, outside the repository ([`docs/RELEASING.md`](RELEASING.md)). The Swift app's own updater
   still carries a test key, to be swapped at its first signed release.
 - **Publishing:** release 0.14.0 is out as a GitHub release (2026-11-21, every client but the Swift apps, `SHA256SUMS`
-  signed by the owner) and on Google Play in production (versionCode 14). 0.15.0 was not published (owner, 2026-11-26); release 0.16.0 follows the same way. Making
+  signed by the owner) and on Google Play in production (versionCode 14). Release 0.16.0 follows the same way (0.15.0 was built but not published). Making
   the repository public, any store upload and any contact with Weeb Labs are
   the owner's.
 - **Decisions:** the Swift app's look and feel (OD3), and the licence terms for

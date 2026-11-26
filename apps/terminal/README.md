@@ -1,31 +1,44 @@
-# DSPi Terminal
+# The Terminal: `uconsole`
 
-Cross-platform terminal control for [DSPi](https://github.com/WeebLabs/DSPi)
-audio processors: the DSPi Console's layout and controls in a full-screen
-terminal interface, plus a scriptable one-shot CLI. The command is `uconsole`
-(package `dspi-term`).
+The Terminal of uConsole for DSPi: cross-platform terminal control for
+[DSPi](https://github.com/WeebLabs/DSPi) audio processors. It is the layout and
+controls of Weeb Labs' DSPi Console in a full-screen terminal interface, a plain
+line mode for screen readers and scripts, and a scriptable one-shot CLI. The
+command is `uconsole` (package `dspi-term`).
 
 It is one of the clients in this repository. It came from Weeb Labs'
 DSPi-Terminal (see [`docs/CREDITS.md`](../../docs/CREDITS.md)) and uses the
 repository's session crates directly (`crates/dspi-proto`, `dspi-transport`,
-`dspi-session`, `dspi-cmd`, `dspi-tui`), writes through `dspi-core` (WP TMCORE; also
+`dspi-session`, `dspi-cmd`, `dspi-tui`), writes through `dspi-core` (also
 `uconsole flash`, the PRO commands and `uconsole measure`) and runs `dspi-hub` for
 `uconsole hub`.
 
-**Status:** the terminal's work packages are done except its hardware pass on a
-real board (TM13 in
-[`docs/core-merge/PLAN-CLIENTS.md`](../../docs/core-merge/PLAN-CLIENTS.md)). It is
-tested against the simulated device, mocks and a fake hub. What it lacks against
-the macOS Console is in [`docs/PARITY.md`](../../docs/PARITY.md), section 5. The
-plan and surveys it was built from, before the merge, are in
-[`docs/terminal/plan/`](../../docs/terminal/plan/).
+**Status:** release 0.16.0. The Terminal is tested against the simulated device,
+mocks and a fake hub; nothing new in 0.16.0 has run on a real DSPi yet. What it
+lacks against the macOS Console is in [`docs/PARITY.md`](../../docs/PARITY.md),
+section 5. The plan and surveys it was built from, before the merge, are in
+[`docs/terminal/plan/`](../../docs/terminal/plan/). `uconsole --help` lists every
+command.
 
-*Added since (2026-11-19, `main` at `11625ba5`):* the PRO phase 1 commands (snapshots, A/B,
-limits, the installer lock, documents; [PRO commands](#pro-commands-measurement-and-the-protocol)),
-the hub's services, REST, TLS, groups and the firmware rollout (P2TM, SECTM, P3TM;
-[Sharing devices](#sharing-devices-uconsole-hub)), `uconsole measure` (P5TM), and
-`uconsole info` and `raw --id` for both firmware generations (PGTM). `uconsole --help`
-lists everything.
+**New in 0.16.0** (since 0.14.0; 0.15.0 was not published):
+
+- [Plain mode](#plain-mode-lines-for-a-screen-reader-a-log-or-a-script):
+  `uconsole --plain`, or `uconsole` at a terminal with `TERM=dumb`, is the
+  interface as sentences, one command per line.
+- With nothing plugged in, `uconsole` waits for a DSPi and offers the demo and
+  DSPi Link. The demo is a tuned two-way speaker; `:reset-demo` starts it again.
+- `Ctrl-P` search finds words ("crossover", "mute"); the `:` line runs `snapshot`,
+  `ab`, `diff`, `lock`, `limits` and `status` on the open device; numbers take `k`
+  (`2k`).
+- `Tab` goes channels, page, footer; `Enter` on a route in the Matrix Mixer edits
+  its gain and never connects; `[` `]` `{` `}` and `m` set the listening volume and
+  mute from any page; outputs nothing plays to fold under "N unused".
+- Settings › Speakers (which output drives what) is read-only under the
+  installer's lock. Filters say **Bell** and **Q**, and `Ctrl-S` is **Save to
+  Device**.
+- Snapshots and A/B (`N`), `uconsole mcp` to relay an AI agent to the desktop
+  app, unused outputs left out of the Overview, Spectrum and Stats, and
+  `uconsole measure` taking its roles from the device's speaker layout.
 
 ## The interface
 
@@ -42,12 +55,12 @@ lists everything.
 │ ▪SL     ░░░░░░▏ IN7││──────────────────────────────────────────────────────────────────────│
 │ ▪SR     ░░░░░░▏ IN8││ Link 1/2   ▸Preamp +0.0 dB ━━━━━━━━━━━━━━━━━━━━━━━━●━━━━   Clear PEQ │
 │                    ││──────────────────────────────────────────────────────────────────────│
-│ OUTPUTS            ▼│   # TYPE                       FREQ      GAIN   WIDTH                │
+│ OUTPUTS            ▼│   # TYPE                       FREQ      GAIN       Q                │
 │ ●Crossfeed Matrix  ││ ● 1 Low Shelf (12dB)         105 Hz   +8.8 dB   0.707                │
-│ ○Loudness  Stats   ││ ● 2 Peaking                   64 Hz   -6.2 dB     0.3                │
-│ ○Leveller  Settings││ ● 3 Peaking                 2856 Hz   -8.6 dB    3.58                │
-│ ●Bass      ○Bypass ││ ● 4 Peaking                 1880 Hz   +3.6 dB    1.69                │
-│ Preset ‹3: Livin…› ││ ● 5 Peaking                 6749 Hz   +4.0 dB    4.74                │
+│ ○Loudness  Stats   ││ ● 2 Bell                      64 Hz   -6.2 dB     0.3                │
+│ ○Leveller  Settings││ ● 3 Bell                    2856 Hz   -8.6 dB    3.58                │
+│ ●Bass      ○Bypass ││ ● 4 Bell                    1880 Hz   +3.6 dB    1.69                │
+│ Preset ‹3: Livin…› ││ ● 5 Bell                    6749 Hz   +4.0 dB    4.74                │
 │ Source ‹USB›       ││   6 Off                                                              │
 │ User -12.0 ━━━━━●━ ││   7 Off                                                              │
 │ C0 ▓░ 31% C1 ▓░ 74%││   8 Off                                                             ▼│
@@ -87,22 +100,23 @@ mnemonics (its Shift-Cmd-M is `M` here):
 | `T` `I` | Stats for Nerbs, Interrupt Monitor |
 | `B` | AutoEQ |
 | `N` | Snapshots: save the device as it is, Recall, and A/B (the device now against a snapshot: `a` starts it, `Space` switches, `k` keeps the side it is on). Over DSPi Link a recall counts down: `k` keeps it, `r` puts the settings back |
-| `,` | Settings (Settings › Speakers: which output drives what, the roles the measurement and its safety checks take; `n` names a speaker, `g` sets a group, Confirm keeps it) |
+| `,` | Settings (Settings › Speakers: which output drives what, the roles the measurement and its safety checks take; `n` names a speaker, `g` sets a group, Confirm keeps it; read-only under the installer's lock) |
 
 Everywhere:
 
 | Key | Does |
 |---|---|
-| `Tab` | Next region: channels, the page, the footer (one region: `↑ ↓` move inside it) |
+| `Tab` | Next region: channels, then the page, then the footer (one region: `↑ ↓` move inside it); `Shift-Tab` goes back |
 | `↑ ↓` | Select a channel; `Enter` or `→` goes into its page, `Esc` back to the overview. Outputs nothing is routed to are folded under "N unused ▸" (`Enter` opens it) |
-| `[` `]` | The listening volume down, up by 1 dB, on every page; `{` `}` (with Shift) by 3 dB |
-| `m` | Mute or unmute the listening volume, on every page |
+| `[` `]` | The listening volume down, up by 1 dB, from any page; `{` `}` (with Shift) by 3 dB |
+| `m` | Mute or unmute the listening volume, from any page |
 | `Space` | Toggle: a bypass, a feature in the quick strip, mute on the volume row |
 | `;` | Page commands: a small grammar scoped to the current page, with live hints (`1 2 > 3` routes on the matrix, `3 peak 1k -2` sets a band, `gain -3` trims an output) |
 | `Ctrl-P` | Search: words find places, tools, actions, verbs and parameters ("crossover", "mute", "low pass", "snapshot"); `Enter` goes there, `Tab` puts a command on the `:` line |
-| `:` | Command line, the shell's grammar (numbers take `k`: `1k`); `:help` is `?`. `snapshot`, `ab`, `diff`, `lock`, `limits`, `status` and `measure docs`, `show`, `export` run here on this device, with the terminal handed back while they run; `:snapshot recall NAME` and `:ab NAME` run in the interface and open the Snapshots panel (`:snapshot` and `:ab` alone open it) |
+| `:` | Command line, the shell's grammar (numbers take `k`: `2k`); `:help` is `?`. `snapshot`, `ab`, `diff`, `lock`, `limits`, `status`, `measure docs`, `show`, `export` and, on the demo, `reset-demo` run here on this device, with the terminal handed back while they run; `:snapshot recall NAME` and `:ab NAME` run in the interface and open the Snapshots panel (`:snapshot` and `:ab` alone open it) |
 | `Ctrl-S` | Save to Device: the active preset |
 | `Ctrl-Z` `Ctrl-Y` | Undo, redo |
+| `Ctrl-D` | Choose another device |
 | `= g p . + - h l` | Graph height, pop-out, phase, linked partner, zoom, cursor |
 | `f t` | The live spectrum on the graph; take the analyser back from another console |
 | `F` | The analyser's third-octave bars above the page |
@@ -112,6 +126,10 @@ Everywhere:
 
 The echo line prints every change as the `:` command that would make it, so
 anything done in the interface can be pasted into a script.
+
+In the Matrix Mixer (`M`), `Space` connects a route (or enables or mutes an
+output), `Enter` on a route edits its gain and never connects it, `i` inverts it
+and `d` sets Direct 1:1.
 
 With no DSPi attached, `uconsole` opens on a page that waits for one and opens
 it the moment it is plugged in; meanwhile `d` opens the demo, `l` a DSPi Link
@@ -131,27 +149,40 @@ per line and says every change back as the command that makes it:
 uconsole 0.16.0, plain mode. Connected to the demo device.
 Volume 0.0 dB, not muted.
 No unsaved changes.
-USB 1: no filters, trim 0.0 dB
+USB 1: 1 filter, trim 0.0 dB
 …
-Out 1 · L: no filters, gain 0.0 dB, not muted
-Out 2 · R: no filters, gain 0.0 dB, not muted
-7 unused outputs are not listed (overview all lists them).
+Left woofer: 2 filters (low-pass 2.2 kHz LR4), gain 0.0 dB, not muted
+Right woofer: 2 filters (low-pass 2.2 kHz LR4), gain 0.0 dB, not muted
+Left tweeter: 2 filters (high-pass 2.2 kHz LR4), gain -3.0 dB, not muted, delay 0.1 ms
+Right tweeter: 2 filters (high-pass 2.2 kHz LR4), gain -3.0 dB, not muted, delay 0.1 ms
+5 unused outputs are not listed (overview all lists them).
 Type a command, help for the list, or quit.
 dspi> out.gain 0 -3
 out.gain 0 -3
 dspi> show out 1
-Out 1 · L: no filters, gain -3.0 dB, not muted
+Left woofer: 2 filters (low-pass 2.2 kHz LR4), gain -3.0 dB, not muted
 ```
 
 Every parameter and command of the shell's grammar works, as do `overview`
 (`overview all` adds the unused outputs), `show out 1`, `save` (Save to
 Device), `params`, `help` and the shell's `snapshot`, `ab`, `diff`, `lock`,
 `limits`, `status` and `measure docs`/`show`/`export`, on the same session.
-`quit` asks once when something is unsaved. With standard input piped
-(`uconsole --plain < session.txt`) there is no prompt, a mistake does not stop
-the rest, and the exit code is the first failure's. A script's lines are its
-commands, never answers: `ab` keeps the side it is on (`ab NAME --keep b` ends
-on B) and a guarded recall is kept at once, and the next line runs.
+The shell's grammar counts outputs from 0 (`out.gain 0` is Out 1); `show` and
+the sentences count from 1. `quit` asks once when something is unsaved. With no
+DSPi plugged in, plain mode waits for one: type `demo`, `link ADDRESS` (`link`
+alone looks on the network), `doctor` or `quit`.
+
+With standard input piped (`uconsole --plain < session.txt`) there is no prompt,
+every line runs (a mistake does not stop the rest), nothing waits for an answer,
+and the exit code is the first failure's. A script's lines are its commands,
+never answers: `ab` keeps the side it is on (`ab NAME --keep b` ends on B), a
+guarded recall is kept at once, and the next line runs.
+
+`--plain` takes its commands from standard input only: `uconsole --plain
+vol.user -20` (a command on the line as well) is refused with a message saying
+so; run the command without `--plain`, or type it in plain mode. `TERM=dumb`
+starts plain mode only when standard input is a terminal; piped, the input is a
+script as before.
 
 ## Building
 
@@ -198,7 +229,7 @@ uconsole cs import surfaces.json --save
 uconsole -f evening.dspi              # a script, one command per line
 uconsole usb-direct generate cinema.json --out usb-direct-cinema
                                       # a USB-direct home theatre's PipeWire files,
-                                      # unit scripts and hub model (WP AUSB3; files only;
+                                      # unit scripts and hub model (files only;
                                       # docs/integrator/usb-direct-home-theater.md)
 
 uconsole autoeq search hd600          # headphone corrections
@@ -262,7 +293,7 @@ cannot say, it stops. `--force` skips the ordinary "are you sure" and nothing
 else: only `--accept-core-voltage-risk` plus typing the answer it asks for gets
 past this. Success means the board came back running the image's version.
 
-*(2026-11-19, WP PGTM.)* `flash` runs the core's update check first, for both firmware
+`flash` runs the core's update check first, for both firmware
 generations: a board without BOOTSEL (the DSPi-Zero) gets no image and no reboot; an
 image that would leave this fork's firmware asks for the typed phrase "I ACCEPT LOSING
 THE EXTENSIONS", which `--force` does not answer; and a change of generation (1.1.6 to
@@ -298,7 +329,7 @@ apply to them.
 script add `--yes`; without it they exit 3 and nothing is sent.
 
 **The installer's PIN.** While this console's (or the hub's) installer lock is
-on, only volume, mute and a preset recall are written. With the PIN, every
+on, only volume, mute, the input source and a preset recall are written. With the PIN, every
 writing command goes through: `DSPI_INSTALLER_PIN=... uconsole set ...`, or
 `--installer-pin -` with the PIN as a line of standard input (for a script on
 standard input, its first line), or the prompt on a terminal (nothing is echoed).
@@ -323,8 +354,8 @@ interface keeps the history for as long as it is open, and there a compound edit
 - A script line that saves or deletes a preset, saves (`dev.save`,
   `dev.save.io`), resets or enters the bootloader: add `--yes` to the command.
 - A device with this console's installer PIN set and a lock on: give the PIN with
-  `DSPI_INSTALLER_PIN` or `--installer-pin -`, or the writes outside volume, mute
-  and presets exit 3.
+  `DSPI_INSTALLER_PIN` or `--installer-pin -`, or the writes outside volume, mute,
+  the input source and presets exit 3.
 - A script that read `set --json`'s `outcome` as the device's read-back: it is now
   the core's value after its clamp and rounding. Read the value back with
   `uconsole get` if the device's own word is wanted.
@@ -346,7 +377,7 @@ uconsole --link host:port dump        # a device behind a hub at that address
 ```
 
 A hub asks for its PIN the first time; `--pin -` or the `DSPI_PIN` environment
-variable gives it to a script. *(Since 2026-11-16, PLAN-SEC.)* The connection is TLS:
+variable gives it to a script. The connection is TLS:
 pairing shows the hub key's fingerprint to compare with the hub's, the key is pinned,
 and a pinned hub is never reached in plaintext. A pasted `dspi://pair?...` link from the
 hub's pairing screen works as `--link` (its key is checked). An unencrypted hub (an
@@ -367,7 +398,7 @@ type `clients` and `role <cid> admin` at the running hub's prompt, where it appl
 Windows task scheduler are in [`packaging/service/`](packaging/service/), with
 install notes.
 
-An audio link installation of simulated devices, for testing (WP SW3, HWLK1F):
+An audio link installation of simulated devices, for testing:
 
 ```sh
 uconsole --demo hub --alink            # a sender, a fan-out, four units, two USB-direct units and their model
@@ -377,13 +408,13 @@ uconsole --demo hub --alink            # a sender, a fan-out, four units, two US
                                       # mixed installation on hardware (add them to the model)
   --with-measure-units                # test option: units on one time base to measure together
                                       # (one re-anchors every 15 s), one on another, S/PDIF units,
-                                      # and the demo hub's simulated microphone (WP ATDEMO)
+                                      # and the demo hub's simulated microphone
 uconsole --demo hub --rollout --with-rollout-bench
                                       # test option: a simulated DSPi as if on this machine's USB,
                                       # with a simulated bootloader and writer (nothing is written)
 ```
 
-The web console (WP WB7, `apps/web`'s built dist; [`apps/web/DEPLOY.md`](../web/DEPLOY.md)):
+The web console (`apps/web`'s built dist; [`apps/web/DEPLOY.md`](../web/DEPLOY.md)):
 
 ```sh
 uconsole hub --web --console <dist>   # / links both: the console at /console/,
@@ -392,7 +423,7 @@ uconsole web [--demo]                 # this machine only: http://localhost:1191
                                   # WebUSB and Link in one page (uconsole hub --local)
 ```
 
-The hub API (WP P2TM; [`docs/integrator/hub-api.md`](../../docs/integrator/hub-api.md)
+The hub API ([`docs/integrator/hub-api.md`](../../docs/integrator/hub-api.md)
 section 16). A hub runs every family (health, inventory, Identify, history, alarms,
 schedules), each turned off with `--no-health`, `--no-inventory`, `--no-identify`,
 `--no-history`, `--no-alarms` or `--no-schedule`; the REST mirror only with `--rest`:
@@ -406,7 +437,7 @@ uconsole --hub api inventory.list     # any hub message; the answer's fields as 
 uconsole --hub api param.get '{"serial": "E46058388B1A2E2C", "path": "vol.master"}' --json
 ```
 
-Encryption (PLAN-SEC, [`docs/integrator/hub.md`](../../docs/integrator/hub.md)): the
+Encryption ([`docs/integrator/hub.md`](../../docs/integrator/hub.md)): the
 hub serves TLS on its port, `--tls require` by default (`on` also takes unencrypted
 clients, which cannot pair; `off` encrypts nothing); `--upstream-compat` is the stated
 downgrade for upstream DSPi Link clients.
@@ -417,7 +448,7 @@ uconsole hub tls cert                 # the certificate, PEM (curl --cacert, Hom
 uconsole hub tls rotate               # a new key, which clients follow for 30 days (hub stopped)
 ```
 
-The fleet (WP P3TM; hub-api.md sections 19 to 21): groups (`--no-groups` turns them off) and
+The fleet (hub-api.md sections 19 to 21): groups (`--no-groups` turns them off) and
 the firmware rollout (`--rollout`, off by default, served over TLS only; an Admin updates
 the DSPis on this machine's USB one at a time, the settings exported first):
 
@@ -439,8 +470,9 @@ api` exits by the hub's answer: 0 ok, 2 not found, 3 another refusal, 4 no hub, 
 
 - **Windows**: nothing to install. The firmware ships MS OS 2.0 descriptors, so
   WinUSB binds automatically.
-- **macOS**: nothing to install. The vendor interface is *exclusive*, so DSPi
-  Console and this tool cannot hold the device at the same time.
+- **macOS**: nothing to install. The vendor interface is *exclusive*, so only
+  one program (the desktop app, Weeb Labs' DSPi Console or this tool) can hold
+  the device at a time.
 - **Linux and Raspberry Pi**: `sudo uconsole --install-udev`, then
   `sudo udevadm control --reload`, then unplug and replug the device. It writes
   `/etc/udev/rules.d/70-dspi.rules` (also in the archive), the same rule the

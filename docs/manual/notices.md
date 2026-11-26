@@ -1,10 +1,11 @@
 # Notices: firmware versions, hubs and updates
 
-*User manual, WP PGDOC, 2026-11-19. For the owner and for everyone who uses the consoles. The technical side is
+*User manual of uConsole for DSPi 0.16.0, for everyone who uses the consoles. The technical side is
 [docs/integrator/protocol-generations.md](../integrator/protocol-generations.md) and, for the hub,
-[docs/integrator/hub-api.md](../integrator/hub-api.md). This page describes the consoles as they are after wave PG-D
-(the Terminal, the web console, the Qt console and the Android app; revised at the PG-D part 2 review). The Apple apps
-have not been changed yet; that is said where it matters.*
+[docs/integrator/hub-api.md](../integrator/hub-api.md). This page describes the Terminal, the web console, the desktop
+app and the Android app of this release, and the hub. The fork firmware to use is still
+[v1.1.6-bofr1](https://github.com/Bofr5555/DSPi/releases/tag/v1.1.6-bofr1), unchanged since 0.14.0. The Swift app for
+macOS, iPhone and iPad is not part of this release and has not had these changes; that is said where it matters.*
 
 DSPi firmware now comes in two versions that talk to the consoles in different ways: **firmware 1.1.6** (and older)
 and **firmware 1.1.7**. Our consoles work with both. This page lists what you may see because of that, what each
@@ -19,10 +20,10 @@ Where you can see it:
 
 | Console | Where | What it shows |
 |---|---|---|
-| Terminal | `uconsole info`, and **Settings > About** in the interface | board, firmware version (1.1.6 or 1.1.7 with its protocol version), the list of command pages, and how the extensions are reached |
-| Web console | the **Device** screen, just before Settings | the same |
-| Qt console | **Settings > About**, under "Connected Device" | the same |
-| Android app | **Settings > About**, the section "Device" at the end | board, which of the two firmware versions (1.1.7 with its protocol version), the command pages, and how the extensions are reached |
+| Terminal | `uconsole info`, and **Settings › About** in the interface | board, firmware version (1.1.6 or 1.1.7 with its protocol version), the list of command pages, and how the extensions are reached |
+| Web console | the **Device** screen, just before Settings, under "Connected Device" | the same |
+| Desktop app | **Settings › Advanced**, under "Protocol" | the same, with **Raw Request…** |
+| Android app | **Settings › About**, the section "Device" at the end | board, which of the two firmware versions (1.1.7 with its protocol version), the command pages, and how the extensions are reached |
 
 "Extensions" are this fork's own additions: the audio link, the reset reason, the core voltage setting and a few more.
 Stock firmware has none of them; the console simply does not offer those parts then. Which features need
@@ -48,7 +49,7 @@ session sees no audio link status, no reset reason and no core voltage. An **adm
 access (no PIN) every session is an admin, so everyone sees it.
 
 Why: the same channel carries the core voltage and other settings that change the hardware itself, so the hub treats
-all of it as a setting for admins. The Qt console says so on the alink sender's page when the hub refuses it.
+all of it as a setting for admins. The desktop app says so on the alink sender's page when the hub refuses it.
 
 ## 4. A K340 must not get stock firmware from an upstream console or hub
 
@@ -74,8 +75,8 @@ Our consoles ask before they replace this fork's firmware with anything that may
 The DSPi Zero (Weeb Labs' small board) has no BOOTSEL button bootloader that our consoles could update it through. So
 our consoles never offer it an image, never restart it into a bootloader, and our hub never includes it in a firmware
 rollout (in a group rollout it is listed as "excluded", with the reason). It is shown as "DSPi Zero" in device info.
-One gap remains until the Apple apps' next change: their developer option that bypasses the core can still send a
-Zero the bootloader request.
+One gap remains in the Swift app (not part of this release): its developer option that bypasses the core can still send
+a Zero the bootloader request.
 
 **One case we cannot detect:** a DSPi Zero on firmware 1.1.7, reached through an **upstream** DSPi Link 1.3 hub. Such a
 hub does not pass on what kind of board it is, and the Zero then looks like an ordinary DSPi. A console would then offer
@@ -107,15 +108,15 @@ Which consoles ask this before the restart into the bootloader:
 | Console | State |
 |---|---|
 | Terminal (`uconsole flash`) | asks; `--force` does not answer the phrase for you, and nothing types it |
-| Qt console | asks; the field for the phrase starts empty |
+| Desktop app | asks; the field for the phrase starts empty |
 | Web console | has no firmware install of its own; its **Check an Image…** and the hub's rollout dialog show the same verdict |
 | Android app | asks; the field for the phrase starts empty |
-| The Apple apps | not yet |
+| The Swift app (not in this release) | not yet |
 
 The last check is in the core itself, at the moment of writing: even a console that did not ask first cannot write such
 an image without the phrase, as long as it read the board before restarting it. The Android app writes the image
 itself, so it asks the core for that same last check just before it writes. But a console that has not been changed
-yet (the Apple apps) may already have restarted the board into its bootloader before it is refused. Nothing is written then; the board
+yet (the Swift app) may already have restarted the board into its bootloader before it is refused. Nothing is written then; the board
 waits in its bootloader until you unplug it and plug it in again.
 
 A board that you put into its bootloader by hand (holding BOOTSEL) cannot be asked which firmware it ran. Then only the
@@ -127,13 +128,13 @@ The alink sender (the board that sends audio over the audio link) is not a DSP, 
 its device info, the audio link block and the firmware update. Every DSP screen is left out.
 
 - Web console: a page of its own with exactly those (its update part is **Check an Image…**).
-- Qt console: a page of its own, with one banner; every DSP menu, shortcut and tool window is greyed while the sender
+- Desktop app: a page of its own, with one banner; every DSP menu, shortcut and tool window is greyed while the sender
   is open.
 - Android app: a page of its own in place of the main screen, with Firmware Update and Settings.
-- The Qt console and the Android app do not offer the sender their bundled firmware, which is for the DSP: choose the
+- The desktop app and the Android app do not offer the sender their bundled firmware, which is for the DSP: choose the
   sender's own image file. A DSP image is refused there by its stamp (section 6).
 - The sender speaks both firmware generations (1.1.6 and the paged 1.1.7), and our hub recognises it either way.
-- Terminal: `uconsole info` and **Settings > About** say it is the alink sender. The interface itself cannot open it
+- Terminal: `uconsole info` and **Settings › About** say it is the alink sender. The interface itself cannot open it
   yet, since it needs a DSP.
 
 ## 8. For advanced users: raw requests in the Terminal

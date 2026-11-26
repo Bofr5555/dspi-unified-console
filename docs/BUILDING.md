@@ -25,12 +25,12 @@ release is [`INSTALL.md`](INSTALL.md); how releases are made is [`RELEASING.md`]
 | `apps/terminal/` | The `uconsole` terminal client, a TUI and CLI (package `dspi-term`). |
 | `apps/web/` | The web console, TypeScript and Preact, Playwright tests ([`apps/web/DEPLOY.md`](../apps/web/DEPLOY.md) for hosting). |
 | `tools/esp-rig/` | The emulated ESP32 Link bridge rig (`ci/check.sh --step esp-rig`). |
-| `tools/alink-scope/`, `tools/shots/` | The alink timing tool on a PicoScope mixed-signal scope (WP SCOPE1), and the screenshots: the sheets of the Terminal and the web console, and the front page's pictures (`readme.sh`, into `docs/images/`). |
+| `tools/alink-scope/`, `tools/shots/` | The alink timing tool on a PicoScope mixed-signal scope, and the screenshots: the sheets of the Terminal and the web console, and the front page's pictures (`readme.sh`, into `docs/images/`). |
 | `firmware/manifest.json`, `tools/firmware_manifest.py` | The SHA-256 of every firmware image the apps bundle, checked by `--step firmware-digests`. |
 | `assets/` | Data shared by every client, `about.json` (the About pages) and `onboarding/`. |
 | `tests/fixtures/` | Filter-file fixtures and the DSPi Link fixtures (`link/`, from WeebLabs/DSPi-Link). |
 | `xtask/` | Developer tasks, and the udev rule they install. |
-| `docs/` | The user's pages: `INSTALL.md`, `FEATURES.md`, `STATUS.md`, `BUILDING.md` (this page), `CREDITS.md`, `LICENCES.md`, `images/` (the front page's screenshots); `core-merge/` (the core plan `PLAN.md`, the client plan `PLAN-CLIENTS.md`, the plans of the later phases `PLAN-P2.md`, `PLAN-P3.md`, `PLAN-P5.md`, `PLAN-AT.md`, `PLAN-PG.md`, `PLAN-SEC.md`, the hub, the web study, the hardware records), [`integrator/`](integrator/README.md) (the integrator guide), `manual/` (the user manual's first pages: measurement, notices), `release/` (the minisign public key, the release notes template), `GLOSSARY.md`, `PARITY.md`, `PORTABILITY.md`, `SWIFT-SEAMS.md`, `SWIFT-STAYS.md`, `UI-MODES.md` (Simple, Advanced and Installer), `RELEASING.md`, `licensing/`, `terminal/`. |
+| `docs/` | The user's pages: `INSTALL.md`, `FEATURES.md`, `STATUS.md`, `BUILDING.md` (this page), `CREDITS.md`, `LICENCES.md`, `images/` (the front page's screenshots); `core-merge/` (the core plan `PLAN.md`, the client plan `PLAN-CLIENTS.md`, the plans of the later phases `PLAN-P2.md`, `PLAN-P3.md`, `PLAN-P5.md`, `PLAN-AT.md`, `PLAN-PG.md`, `PLAN-SEC.md`, the hub, the web study, the hardware records), [`integrator/`](integrator/README.md) (the integrator guide), `manual/` (the user manual: everyday use, words, measurement, AI agents, notices), `testing/` (checklists), `release/` (the minisign public key, the release notes template), `GLOSSARY.md`, `PARITY.md`, `PORTABILITY.md`, `SWIFT-SEAMS.md`, `SWIFT-STAYS.md`, `UI-MODES.md` (Simple, Advanced and Installer), `RELEASING.md`, `licensing/`, `terminal/`. |
 | `ci/` | `check.sh` and `run.sh` (the checks and their container wrapper), `matrix.sh` (every client from one commit), the container files, and a **draft** GitHub Actions file that is not enabled. |
 
 ## Building and testing
@@ -67,7 +67,7 @@ Per client:
 | Qt, Windows | `--step qt-windows` (MinGW app, zip and installer, the installer tested under Wine); `--step windows-msvc` builds the core and terminal with MSVC | `apps/desktop/packaging/windows/build-windows.sh` |
 | Qt release packages | not in `ci/check.sh`: `ci/release-desktop.sh --test` (matrix row `qt-packages`) builds every package in its own image and installs the Linux ones in clean containers | `apps/desktop/packaging/build-release.sh`, `linux/test-packages.sh` |
 | Android | `--step android` (core libraries), `android-tests`, `android-aab` | `apps/android/tools/ci.sh` |
-| Swift, macOS and iOS (deferred: not built for 0.14.0) | not in a container: `ci/macvm.sh macos` or `ios` runs it in the macOS VM; `ci/macvm.sh build macos` or `build ios` only compiles the app and its tests (`xcodebuild build-for-testing`), a cheap check after a merge | `apps/apple/build-xcframework.sh`, then `apps/apple/ci-test.sh macos` or `ios` (`--build-only` to compile without testing) |
+| Swift, macOS and iOS (deferred: not in 0.14.0 or 0.16.0) | not in a container: on a Mac with Xcode; `ci/macvm.sh macos` or `ios` runs it on a Mac reached over SSH; `ci/macvm.sh build macos` or `build ios` only compiles the app and its tests (`xcodebuild build-for-testing`), a cheap check after a merge | `apps/apple/build-xcframework.sh`, then `apps/apple/ci-test.sh macos` or `ios` (`--build-only` to compile without testing) |
 | Web | `--step web` (Chromium and Firefox on the core's demo) | `apps/web/README.md`; `uconsole web --demo` serves it on localhost |
 | Swift, macOS `.dmg` | not in a container: `ci/macvm.sh swift-dmg` builds the release `.dmg` and starts it on the demo device | `apps/apple/package-macos.sh`, then `apps/apple/test-dmg.sh` |
 | Bindings | `--step kotlin`, `--step swift`, `--step drift` | `ci/compile-bindings.sh` |
@@ -76,15 +76,16 @@ Other checks: `--step test`, `proptest`, `deny`, `licences`, `firmware-digests`,
 `ios-check`, `conformance-ts` (upstream's TypeScript Link client against the hub), and the opt-in
 `esp-rig`. On Linux the workspace needs ALSA development files for MIDI; the
 Linux Qt app needs the udev rule in `apps/desktop/packaging/linux/` for USB access.
-The Qt app's macOS build (a universal `.dmg`) is made in the macOS VM by
-`apps/desktop/packaging/macos/build-macos.sh` (WP QTMAC); the Swift app is deferred.
+The Qt app's macOS build (a universal `.dmg`) is made on a Mac with Xcode by
+`apps/desktop/packaging/macos/make-dmg.sh`; `build-macos.sh` runs it from a clean commit on a Mac reached over
+SSH. The Swift app is deferred.
 
 ## The core
 
 Qt reaches `dspi-core` through the C ABI (`dspi-capi`); Android and the Swift app through
 UniFFI (`dspi-ffi`; the Swift app's opt-out paths are its own Swift code); the web console through
 the wasm binding (`dspi-wasm`). The terminal uses the session crates for its interface and grammar,
-writes through `dspi-core` (TMCORE), and runs `dspi-hub` for `uconsole hub`.
+writes through `dspi-core`, and runs `dspi-hub` for `uconsole hub`.
 
 - **Wire format V32** (firmware 1.1.6) is read and written. Older formats, and
   newer ones, connect read-only; an image that cannot be mapped still shows the

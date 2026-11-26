@@ -29,13 +29,14 @@ and the full key list in [`docs/terminal/preset-format.md`](../terminal/preset-f
 |---|---|---|
 | Export | `config_export(name, app_version, links)` | `uconsole export FILE.dspipreset` |
 | Describe before applying | `config_inspect(text)` | `uconsole import FILE --dry-run` |
-| Apply | `config_import_confirmed(text, options, eq_channels, token)` (a token is required, WP P1TZ) | `uconsole import FILE [--volume] [--hardware] [--yes]` |
+| Apply | `config_import_confirmed(text, options, eq_channels, token)` (a token is required) | `uconsole import FILE [--volume] [--hardware] [--yes]` |
 | Diff two documents (P1DF) | `config_diff(before, after)` | `uconsole diff A.dspipreset B.dspipreset [--json]` |
 | Diff a document against the device | `config_preview(text, options, eq_channels)` | `uconsole diff FILE`, `uconsole import FILE --preview [--only ...]` |
 | Apply some blocks (P1DF) | `config_import_confirmed(text, IMPORT_BY_BLOCK \| blocks, eq_channels, token)` | `uconsole import FILE --only eq,crossover,routing,outputs,limiters,effects,volumes,hardware,names [--yes]` |
 | Apply with a way back (P1SA) | `apply_guarded_import(text, options, eq_channels, timeout_s)`, then `apply_confirm`/`apply_revert`, `apply_poll` | `uconsole import FILE --guard 30 [--only ...]`: answer `keep` or `revert`; no answer goes back. Over DSPi Link guarded for 30 s by default; `--no-guard` opts out |
 | Snapshots (P1SN) | `snapshot_capture`, `snapshot_list`, `snapshot_recall`, `snapshot_export`, `snapshot_import`, `snapshot_delete` | `uconsole snapshot save NAME [--note T]`, `list`, `recall N [--guard S \| --no-guard]`, `diff N [M]`, `export N FILE`, `import FILE`, `delete N` |
 | A/B (P1AB) | `ab_start`, `ab_toggle`, `ab_diff`, `ab_keep` | `uconsole ab [A] B` (`t`, `d`, `a`, `b`, `q` on standard input), `--keep a\|b` |
+| A/B as saved (the top bar's A \| B) | `ab_start_saved`: A is the active preset as saved on the device, B the device now; only what a preset holds differs, and a tweeter the preset's load would mute is held muted on A (desktop and web; not in the bindings) | – (the Terminal's `ab` compares with a snapshot) |
 | Edit a file with no device (P1OF) | `open_document(text, file_name)`, `save_document` | `uconsole open FILE` (the interface, "File:" in its title; asks to save); `--json` describes it |
 
 A one-shot `uconsole` command is one session of the core. With `--json` each of
@@ -46,7 +47,7 @@ limit, a guard reverted), 4 transport. An import is a gated call
 (P1TK; always, P1TZ): on a terminal it asks, in a script it needs `--yes`, which mints the
 confirmation token; a guarded import needs none.
 
-**The guard's default (WP P1EFIX).** Over DSPi Link (`--link`) a snapshot recall
+**The guard's default.** Over DSPi Link (`--link`) a snapshot recall
 and an import of a whole-device document are guarded by default, for 30 s;
 `--guard S` sets the time and `--no-guard` applies plainly. Locally (USB, MIDI,
 the demo) nothing is guarded unless `--guard` is given, as before.

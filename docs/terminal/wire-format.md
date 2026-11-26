@@ -307,12 +307,10 @@ On bulk SET the firmware ignores these; they are produced by the device:
   its reply in the same buffer, so it stalls while a chunked bulk transfer holds
   it (vendor_commands.c:4334-4355).
 
-<!-- WP PGDOC -->
 ## 8. On paged firmware (1.1.7)
 
 *From the vendored registry and old-to-new map (`crates/dspi-proto/firmware/protocol/dspi_commands.json`,
-`legacy_map.json`, upstream firmware `103ba37`) and the planner (`crates/dspi-proto/src/paged/`, WP PGPROTO and
-PGCUST). The plan is [`docs/core-merge/PLAN-PG.md`](../core-merge/PLAN-PG.md) section 1.2; the client side is
+`legacy_map.json`, upstream firmware `103ba37`) and the planner (`crates/dspi-proto/src/paged/`). The plan is [`docs/core-merge/PLAN-PG.md`](../core-merge/PLAN-PG.md) section 1.2; the client side is
 [`docs/integrator/protocol-generations.md`](../integrator/protocol-generations.md).*
 
 **The packet is unchanged.** Firmware 1.1.7 moves the vendor commands onto pages (a command id `0xPPCC`: page `PP` in

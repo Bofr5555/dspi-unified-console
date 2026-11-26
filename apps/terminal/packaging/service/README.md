@@ -4,7 +4,7 @@
 here are templates: `render.sh OUTDIR` writes them with the name filled in and under their
 installed names, as the release archives carry them.
 
-Placeholders to adapt, one per OS (WP TM11). Each runs `@CMD@ hub`, which shares
+Placeholders to adapt, one per OS. Each runs `@CMD@ hub`, which shares
 this machine's DSPi devices on the network (DSPi Link) until it is stopped. Run
 `@CMD@ hub --help` for its options.
 
@@ -21,8 +21,11 @@ Each assumes `@CMD@` in a fixed place (`/usr/local/bin/@CMD@`,
 
 None of them passes `--open`, and none should: with open access anyone who can
 reach the machine controls every device. With PIN pairing a client needs a PIN
-that the hub shows only on its own terminal and only for two minutes. A PIN
-crosses the network in plain text, so pair on a network you trust.
+that the hub shows only on its own terminal and only for two minutes. The hub
+serves TLS by default (`--tls require`), so pairing is encrypted: compare the key
+fingerprint the hub shows beside the PIN with the one the client shows before you
+type the PIN. With `--tls off` or `--upstream-compat` the PIN crosses the network
+in plain text, so pair on a network you trust.
 
 A service has no terminal, so pair with the service stopped:
 

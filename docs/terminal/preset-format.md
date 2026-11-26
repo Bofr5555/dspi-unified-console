@@ -25,13 +25,11 @@ zero; the Terminal and Qt leave that setting as it is (see the table at the end)
 `inputChannelCount`, `outputChannelCount`, and the Console's additive
 `masterVolumeMode` and `outputConfigMode`. Nothing in `meta` gates an import.
 
-<!-- WP P1DF -->
 `meta.kind` (additive to schema 1) says which document of the family it is:
 `preset`, `snapshot`, `template` or `limits`. Absent, or a word a build does not
 know, reads as `preset`, so such a document still imports; a preset export
 leaves the key out. One format serves all four (PRO1 section 6).
 
-<!-- WP P5MDOC -->
 Phase 5 adds three kinds that configure no device. Each carries its own block
 named as its kind instead of the device blocks; `config_import` refuses them
 (P5DOCK) and their own readers (`dspi_measure::doc`) refuse every other kind.
@@ -117,7 +115,6 @@ limiters inside each output entry) is opt-in. The input source goes last.
 `global.inputPairLinked` is app state; the Terminal applies it to its own pair
 links.
 
-<!-- WP P1DF -->
 The core's import (`config_import_confirmed`, with its token; `config_preview`) also applies by
 block: with `IMPORT_BY_BLOCK` each of `IMPORT_EQ` (per channel, and the master
 EQ bypass), `IMPORT_CROSSOVER`, `IMPORT_ROUTING` (matrix, input source, preamps,
@@ -129,7 +126,6 @@ a block left out keeps the device's values. Without it, `IMPORT_VOLUMES` and
 bringing the limiters). `config_preview` and `config_diff` say what would change,
 one row per value: `{block, section, item, before, after}`.
 
-<!-- WP P1AFIX -->
 With `IMPORT_BY_BLOCK` and no block bit nothing is chosen: `config_import_confirmed`
 refuses (`noticeKey` `config.nothing_selected`) and writes, journals and logs
 nothing, so the undo history stays. Every refusal of `config_import_confirmed`,

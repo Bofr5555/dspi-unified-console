@@ -1,4 +1,4 @@
-# alink-scope: alink timing between DSPi units on a PicoScope 2000A MSO (WP SCOPE1)
+# alink-scope: alink timing between DSPi units on a PicoScope 2000A MSO
 
 Measures how far apart several DSPi units play the same sample, with the owner's PicoScope 2000A series scope
 (USB `0ce9:1016`) and its 16 digital inputs. Each unit runs a **test firmware** that raises a marker pin at the same
@@ -31,8 +31,8 @@ Everything here runs in a podman container. The host needs only a udev rule; no 
 ## 2. Flash the test images (owner's step)
 
 Images: DSPi fork branch `wp/SCOPE1F-usb3b` = the reviewed USB3b image's source (844017f) plus the marker commits
-only (review scope1 fixups included), marker on GPIO 22, N 4096, no lock pin. sha256 in
-`~/.cache/dspi-build/work/wp-SCOPE1/images-f/SHA256SUMS`.
+only (review scope1 fixups included), marker on GPIO 22, N 4096, no lock pin. Check each image's SHA-256 against
+the `SHA256SUMS` built with the images.
 
 | File | Board | Build |
 |---|---|---|
@@ -40,8 +40,7 @@ only (review scope1 fixups included), marker on GPIO 22, N 4096, no lock pin. sh
 | `DSPi-scope-gp22-pico2.uf2` | plain Pico 2 (RP2350) | pico2, USB MIDI |
 | `DSPi-scope-gp22-pico.uf2` | plain Pico (RP2040) | pico, USB MIDI |
 
-The same build without the marker is byte-identical to the reviewed USB3b K340 image except for the version stamp
-(WP SCOPE1 report). Back up each unit first, copy the UF2 in BOOTSEL mode, then on every unit: input source USB,
+The same build without the marker is byte-identical to the reviewed USB3b K340 image except for the version stamp. Back up each unit first, copy the UF2 in BOOTSEL mode, then on every unit: input source USB,
 `EXT_ALINK_USB` mode 2 with the same D (e.g. `02 01 c0 00 00 00 00 00`, D 192 at 48 kHz), same output type, same
 DSP delays; never saved (no `0x52`). Restore mode 0 and the normal firmware afterwards.
 
@@ -61,7 +60,7 @@ Once, on the host (sudo, the owner's step): a udev rule that gives the logged-in
 
 ```sh
 sudo tee /etc/udev/rules.d/60-picoscope.rules <<'R'
-# PicoScope (Pico Technology, 0ce9): access for the seat's user (alink-scope container, WP SCOPE1)
+# PicoScope (Pico Technology, 0ce9): access for the seat's user (alink-scope container)
 SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="0ce9", TAG+="uaccess"
 R
 sudo udevadm control --reload && sudo udevadm trigger --subsystem-match=usb --attr-match=idVendor=0ce9
@@ -69,9 +68,9 @@ sudo udevadm control --reload && sudo udevadm trigger --subsystem-match=usb --at
 
 (`uaccess` needs a rule file sorting before `73-seat-late.rules`, hence `60-`. Pico's own package would instead
 write `95-pico.rules` with `MODE="0666"` for everyone; not needed here.) Re-plug the scope; then
-`getfacl /dev/bus/usb/BBB/DDD` shows `user:bofr:rw-`.
+`getfacl /dev/bus/usb/BBB/DDD` shows `user:<your user>:rw-`.
 
-Build the image (downloads from Pico's official repositories; done once, already done by WP SCOPE1):
+Build the image (downloads from Pico's official repositories; done once):
 
 ```sh
 tools/alink-scope/scope.sh build          # localhost/dspi-alink-scope:1
@@ -129,7 +128,7 @@ $S analyse ~/.cache/dspi-build/work/alink-scope/baseline/edges.csv              
   48 kHz), jitter std and peak-to-peak, drift of the capture means (ns/hour, long runs), captures, missing edges,
   verdict. `--out DIR` also writes `compare.csv` (with 96 kHz samples and in-capture drift) and `compare.txt`.
 
-Output, in `~/.cache/dspi-build/work/alink-scope/<--out>/`: `meta.json`, `edges.csv` (every edge), `pairs.csv`
+Output, in `$ALINK_SCOPE_OUT/<--out>/` (default `~/.cache/dspi-build/work/alink-scope/<--out>/`): `meta.json`, `edges.csv` (every edge), `pairs.csv`
 (per capture and pair), `summary.txt`, `run.log`. Ctrl-C ends a long run early and still writes the summary.
 
 ## 5. Reading the result

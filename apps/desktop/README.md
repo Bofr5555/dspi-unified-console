@@ -1,15 +1,29 @@
-# The desktop app (Windows and Linux)
+# The desktop app (Windows, Linux and macOS)
 
-The Qt app for Windows and Linux, built on the project's Rust core through its
-C ABI (`crates/dspi-capi`, header `include/dspi_core.h`). Its screens follow
-the Mac console (`apps/apple`): the same layout, the same words, the same
-behaviour, with the Windows and Linux additions listed in `docs/PARITY.md`.
+The Qt app "uConsole for DSPi" for Windows, Linux and macOS (on a Mac it ships
+as a `.dmg`; the Swift app in `apps/apple` is not part of the release), built on
+the project's Rust core through its C ABI (`crates/dspi-capi`, header
+`include/dspi_core.h`). It has two layouts, switched at any time in
+**Settings › Appearance › Layout**:
+
+- **Modern** (`qml/modern/`), where new installs start: one window with the
+  sections in a rail, every tool a page with tabs, each open device a tab,
+  a top bar, a dock along the bottom, no menu bar. Each action sits where it
+  acts (the top bar, a page, a right-click menu), and the command palette
+  (Ctrl+K) finds commands, pages, channels and settings. Its look follows
+  `docs/DESIGN-LANGUAGE.md`.
+- **Classic** (`qml/main/`), the layout of the Mac console (`apps/apple`): a
+  menu bar and tool windows, the same words and behaviour, with the Windows and
+  Linux additions listed in `docs/PARITY.md`. An install that finished Getting
+  Started before Modern existed keeps it.
+
+The rest:
 
 - Qt 6.8 or newer, Qt Quick with the Basic style and the app's own components.
   No Qt 5.
-- The system's window frame with the menu bar inside the window.
-- Light and dark follow the system; dark is the look when the system says
-  nothing.
+- The system's window frame; in Classic the menu bar is inside the window.
+- Light and dark follow the system unless **Settings › Appearance › Theme** says
+  Light or Dark; dark is the look when the system says nothing.
 - The name people see is in one place: `src/AppIdentity.h`.
 - Settings are kept under the organisation and application
   `uconsole-for-dspi` (`AppIdentity.h`).
@@ -19,8 +33,9 @@ behaviour, with the Windows and Linux additions listed in `docs/PARITY.md`.
   every DSP menu row, shortcut and tool window is greyed, never hidden; device info, the audio link block and
   the firmware update stay.
 
-Installing a release: [`docs/INSTALL.md`](../../docs/INSTALL.md) (Windows, the Linux packages, the AppImage and
-the one USB rule every component shares). What the app offers against the other clients, and which features need
+Installing a release: [`docs/INSTALL.md`](../../docs/INSTALL.md) (Windows, macOS, the Linux packages, the
+AppImage and the one USB rule every component shares). How the release files are built:
+[`packaging/README.md`](packaging/README.md). What the app offers against the other clients, and which features need
 the DSPi fork firmware (†): [`docs/FEATURES.md`](../../docs/FEATURES.md).
 
 ## Notes for Linux users
@@ -67,14 +82,17 @@ By hand, in the container:
     qt/src/platform/         the icon provider, the token store, tray and system integration,
                              the update checker (AppUpdater), the bootloader locator,
                              device access (DeviceAccess: the udev rule), the measurement
-                             microphone (AudioCapture, capture only) and the P5SPIKE switches
-                             (MeasureSpike: --audio-inputs, --measure-spike; WP P5QCAP)
+                             microphone (AudioCapture, capture only) and its diagnostic switches
+                             (MeasureSpike: --audio-inputs, --measure-spike)
     qt/src/render/           the drawn items: BodePlot (the graph), PeqOverlay, Meter, PinGrid,
                              RtaSurface and RtaBars (the spectrum), TubeIllustration
     qt/qml/Theme/            Theme (every colour, size and font) and ChannelPalette
     qt/qml/components/       the shared controls (below)
-    qt/qml/main/             the main window, the menu table, the banner host, the
-                             sidebar, the right pane, the device button
+    qt/qml/main/             the main window, the menu table, the banner host; Classic's
+                             shell (ClassicShell), sidebar, right pane and device button
+    qt/qml/modern/           Modern's shell: the top bar, device tabs, rail, dock, inspector,
+                             command palette, context menus; pages/ holds its pages
+    qt/qml/settings/         the Settings pages (both layouts), Speakers among them
     qt/icons/lucide/         the Lucide icons the app ships (manifest.txt, fetch-lucide.sh)
     qt/icons/own/            icons drawn for the app, in Lucide's style
     qt/smoke/                the offscreen smoke driver (NAMES.md: the naming rule;
@@ -85,7 +103,7 @@ By hand, in the container:
 
 ## How the app talks to the core
 
-- **One core per open device** (WP MDQT1): `DeviceRegistry` over the core's
+- **One core per open device:** `DeviceRegistry` over the core's
   `CoreSet`, a `DeviceSession` each (its core, `CoreWorker`, `SessionModel` and
   stash), one of them active. `Core`, `DeviceModel`, `Poller` and
   `LinkController` are facades over the active one: ask them at each call, never
@@ -93,17 +111,17 @@ By hand, in the container:
   the active device on its own core; `DeviceRegistry.keepOpen` opens beside it.
   The main session's core is there with no device too.
   A controller's per-device state is a `sessionState<State>()` (SessionState.h,
-  in the session's stash; WP MDQT2a): what a job brings back goes into the State
+  in the session's stash): what a job brings back goes into the State
   it was asked with. On `activeLeaving` what is half-edited is finished or let go
   of, on the device it was made on; a `QuestionDialog` about the device is
   `ofDevice`.
-  A job goes on on the device it was started on (WP MDQT2c): Measure and Tune are
+  A job goes on on the device it was started on: Measure and Tune are
   facades over a `MeasureSession` and a `TuneSession` per device, with a
   measurement thread each. What has no end of its own (the signal generator, the
   live view, solo) stops on `activeLeaving`; what plays on a device that is closed
   or replaced stops on `sessionStopping`, posted to its worker (`drainFirst`).
   `DeviceSession::setJob` makes its tab busy.
-  Views that span devices use the registry directly (WP XDEV1): Several units
+  Views that span devices use the registry directly: Several units
   judges a unit open in a tab by that tab's core (no second session) and any
   other by an extra core of the set (`DeviceRegistry::openExtra`: no tab, its
   serial held while it is chosen); the System view's "Open in tab" shows a
@@ -168,18 +186,18 @@ for both schemes; screens use these, not the Basic style's controls:
 | `Icon`, `HelpTip` | Lucide icons tinted by the theme; tooltips |
 | `AppMenu`, `AppMenuItem`, `AppMenuBar` | menus |
 | `ToolWindow` | tool windows: remembered size, the menu table's shortcuts (`TableShortcuts`) |
-| `LevelMeter` | a dBFS meter: three bands or one colour, the core's hold line and clip hold, a gain reduction variant (QP18) |
-| `NumericField` | a number typed in its unit ("2k", "2.5 kHz", "+=3"), nudged by Up/Down, held to its range with a badge (QP18) |
-| `StatusBar` | a window's foot: connection, scene, mode, then the caller's items (QP18) |
-| `OptionChip`, `ChipGroup` | options as grey chips, the chosen one in the selection tone with accent text: `selected` (many, `toggled(index, on)`, All / None → `setAll(on)`) or `current` (`exclusive`, `chosen(index)`) (DL0) |
-| `ToggleChip` | an on/off chip: graph overlays, Solo; `overlay` for the 0.92 opacity over a graph (DL0) |
-| `EmptyState` | a page with nothing to show: icon, title, one sentence, one action (`actionText`, `actionPrimary`, `action()`) (DL0) |
-| `NoticeRow` | an inline notice where a condition blocks an action: `kind`, `text`, `actionText`, `action()` (DL0) |
-| `ListRow` | a list or table row: stripe, hover, selection, title/subtitle/value, hover actions; `clicked`, `activated`, `menuRequested` (DL0) |
-| `FormRow`, `ContentColumn` | a 36 px form row (title, caption, control at the right); the 760 px left-aligned column (DL0) |
-| `GraphFrame`, `AxisLabels` | a graph's frame: no outline, grid, axis labels whole inside the plot, empty label, toggles, hint (DL0) |
+| `LevelMeter` | a dBFS meter: three bands or one colour, the core's hold line and clip hold, a gain reduction variant |
+| `NumericField` | a number typed in its unit ("2k", "2.5 kHz", "+=3"), nudged by Up/Down, held to its range with a badge |
+| `StatusBar` | a window's foot: connection, scene, mode, then the caller's items |
+| `OptionChip`, `ChipGroup` | options as grey chips, the chosen one in the selection tone with accent text: `selected` (many, `toggled(index, on)`, All / None → `setAll(on)`) or `current` (`exclusive`, `chosen(index)`) |
+| `ToggleChip` | an on/off chip: graph overlays, Solo; `overlay` for the 0.92 opacity over a graph |
+| `EmptyState` | a page with nothing to show: icon, title, one sentence, one action (`actionText`, `actionPrimary`, `action()`) |
+| `NoticeRow` | an inline notice where a condition blocks an action: `kind`, `text`, `actionText`, `action()` |
+| `ListRow` | a list or table row: stripe, hover, selection, title/subtitle/value, hover actions; `clicked`, `activated`, `menuRequested` |
+| `FormRow`, `ContentColumn` | a 36 px form row (title, caption, control at the right); the 760 px left-aligned column |
+| `GraphFrame`, `AxisLabels` | a graph's frame: no outline, grid, axis labels whole inside the plot, empty label, toggles, hint |
 
--- WP DL0 -- The Modern look of these (no outlines, the accent only for what
+The Modern look of these (no outlines, the accent only for what
 is on, chosen or the one primary action, left-aligned 760 px forms) and every
 token they use are in `docs/DESIGN-LANGUAGE.md`; its §19 maps each rule to a
 component.
@@ -206,7 +224,7 @@ A work package adds its files without editing the shell:
   every row of the Mac's menus is in `qml/main/MenuTable.qml` already and does
   nothing until something handles its id (one handler per id);
 - a **hardware setting held for the save bar** with a `SaveParticipant`
-  added with `HardwareController::addSaveParticipant(participant, order)` (QP11); an edit of
+  added with `HardwareController::addSaveParticipant(participant, order)`; an edit of
   the output configuration made elsewhere calls
   `HardwareController::beginOutputEdit()` before it writes;
 - **Qt modules and libraries** through the base's lists in the package's
@@ -220,8 +238,9 @@ A work package adds its files without editing the shell:
 
 ## Shared files: the merge rule
 
-Work packages run in parallel on branches cut from `qtport`. So that their
-merges do not conflict, nothing generated or listed is edited by two of them:
+Work packages run in parallel on branches cut from the integration branch
+(`main`; `qtport` while the app was ported). So that their merges do not
+conflict, nothing generated or listed is edited by two of them:
 
 - **Files to build:** each package lists its sources, QML files, singletons
   and smoke sections in its own `qt/cmake/wp/<wp>.cmake` (`cmake/wp/README.md`).
@@ -230,10 +249,10 @@ merges do not conflict, nothing generated or listed is edited by two of them:
   `qt/icons/lucide/manifest.d/<wp>.txt` and commits the SVGs
   `icons/fetch-lucide.sh` copies; `manifest.txt` is the base's.
 - **The translation file** `qt/translations/uconsole-for-dspi_en.ts` is not
-  committed by a package. The coordinator regenerates it on `qtport` after
-  each merge (QP18 during its pass), and `ci/check.sh --step qt-ts` checks it
-  there. On a package's branch `--step qt` skips the `.ts` check
-  (`DSPI_TS_CHECK=1` forces it).
+  committed by a package. It is regenerated on the integration branch after
+  each merge, and `ci/check.sh --step qt-ts` checks it there (`--step qt`
+  checks it on `qtport` and `main`). On a package's branch `--step qt` skips the
+  `.ts` check (`DSPI_TS_CHECK=1` forces it).
 - **Smoke object names:** each package documents its names in
   `qt/smoke/names/<wp>.md`; `NAMES.md` holds only the rule.
 - **The menu table** (`qml/main/MenuTable.qml`) has every row already; a
@@ -244,22 +263,21 @@ merges do not conflict, nothing generated or listed is edited by two of them:
   handler where its menu is (`qml/modern/ContextMenus.qml`).
 - **`assets/actions.json`**, the actions for the web and the Terminal, is made
   from that table by `qt/tools/actions.sh` and checked by `qt-offscreen`; like
-  the `.ts`, the coordinator runs it after a merge that changes the table.
+  the `.ts`, it is run on the integration branch after a merge that changes the table.
 - **The command palette** (`qml/modern/CommandPalette.qml`, Modern's Ctrl+K)
   lists what is in the menu table, `SectionTable`, the channels, the Settings
   pages with their search terms and the open devices: a new row, tab or page is
   in it without a line there. No row and no panel may take Ctrl+K.
-- **The parked files' table** below is updated by the coordinator when a
+- **The parked files' list** below is updated on the integration branch when a
   package that adapts a parked file is merged.
 
 ## Parked files
 
-None left: QP19 converted or retired the last smoke files (the core-voltage
-states the old `SmokeDriverExt.cpp` checked are listed in
-`Documentation/behaviour.md` §20 for the core-voltage page's work package).
+None left: the last smoke files of the old app were converted or retired (the
+core-voltage states the old `SmokeDriverExt.cpp` checked are listed in
+`Documentation/behaviour.md` §20).
 
-QP14 built `src/platform/SystemIntegration.*` and `FirewallController.*`, and
-its sections are `SmokeNetworking.cpp`, `SmokeTray.cpp`, `SmokeSystem.cpp`;
-QP15 removed `SmokeDriverAutoEq.cpp`.
-
-`src/platform/TokenStore.*` is built (it needs nothing of the app) and wired by QP13.
+`src/platform/SystemIntegration.*` and `FirewallController.*` are built, with
+their smoke sections in `SmokeNetworking.cpp`, `SmokeTray.cpp` and
+`SmokeSystem.cpp`; `SmokeDriverAutoEq.cpp` is gone. `src/platform/TokenStore.*`
+is built (it needs nothing of the app) and wired.

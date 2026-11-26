@@ -256,7 +256,7 @@ Reference: macOS `MatrixMixerView.swift` (+ the matrix helpers of
    via `setMatrixRoute(sendOnly = true)` → `sendOnly = false`.
 3. **Rounding as macOS:** output gain 0.1 dB; delay max 42 ms (RP2040) /
    85 ms (RP2350) as `CompactDelayField(maxDelay:)`. Gain fields −60…+12 dB.
-   **Delays are not rounded to whole ms** (WP AN40; upstream: Commands.swift
+   **Delays are not rounded to whole ms** (upstream: Commands.swift
    `setDelay`/`setOutputDelay` do `ms.rounded()`, README "Applied in whole
    milliseconds", Dashboard `%.0f`): the core quantises to 0.0001 ms and the
    firmware takes any float, so a fractional delay from a file, another
@@ -265,7 +265,7 @@ Reference: macOS `MatrixMixerView.swift` (+ the matrix helpers of
    an untouched value writes it back unchanged; a drag still steps on the
    whole-ms grid (0.5 → 1 → 2). HOME's delay field shows two decimals and the
    Dashboard "Delay: 0.5ms". No field or row grows. (Qt never rounded; the
-   Swift clients are WP SWF5's.) Gestures do round, as macOS (WP SL1, owner
+   Swift app does the same, root `docs/UPSTREAM-DEVIATIONS.md`.) Gestures do round, as macOS (owner
    2026-11-08): HOME's DELAY slider moves continuously but sends and commits
    whole ms (`roundDelayToWholeMs`, Swift `rounded()`, no −0) and snaps to the
    committed value on release; until a drag, a fractional delay stays shown.
@@ -307,17 +307,39 @@ Reference: macOS `MatrixMixerView.swift` (+ the matrix helpers of
 ## APP
 
 1. **Demo mode** ("Demo (no device)"): no official client has one. Offered
-   only while no DSPi is attached; runs the real core on its demo device (AN28)
-   behind its own `DspiBridgeImpl`, never through the USB session, touches no
-   device (`DemoCore`; the firmware page is a notice), is labelled in the
-   connection strip, and ends by itself as soon
-   as a DSPi appears. Its input-pair links are not persisted.
+   in the device list with or without a DSPi attached; runs the real core on
+   its demo device (a tuned two-way speaker since 0.16.0) behind its own
+   `DspiBridgeImpl`, never through the USB session, touches no device
+   (`DemoCore`; the firmware page is a notice), is labelled in the connection
+   strip with **Reset demo** and **Exit demo**, and ends by itself as soon as
+   a DSPi appears. Its input-pair links are not persisted.
 2. **Input-pair links** are kept in a Preferences DataStore
    (`dspi_bridge`, key `inputLinks/<serial>`) instead of QSettings, same keys
    and bit layout.
 3. **Connection strip** under the top bar for the Android-only USB states
    (permission required/denied/pending, open failed) with "Allow USB access";
-   macOS and Linux have no permission step.
+   macOS and Linux have no permission step. On a phone, Exit demo (or the
+   file's way out) and Allow USB access are buttons on the bar, not behind
+   "⋮" (`ConnectionStrip.actionsOnBar`). A USB DSPi that goes away says so
+   ("DSPi disconnected. Changes not saved to the device are lost when it
+   loses power.") and its return too ("DSPi reconnected over USB.";
+   `UsbLossNotices`); macOS shows only the connection state.
+4. **Volume buttons** (0.16.0): while the app is in front and a DSPi is the
+   current device, the hardware volume keys move the DSPi's User Volume
+   (`vol.user`) 1 dB a press on the whole-dB grid, −60…0 dB, at most 10
+   writes a second, and the mute key toggles its mute (`VolumeKeys.kt`;
+   Settings › Advanced › Volume Buttons turns it off). The notification's
+   volume actions take the same 1 dB step (`NotificationControls.VOLUME_STEP_DB`).
+5. **Modes and the installer's lock** (from the core, as in this project's
+   other clients; not in the macOS reference): Simple, Advanced and Installer
+   under **Mode…** in the top bar (`ModeDialog.kt`, `UiModeModel.kt`); the core
+   resolves the mode from the user's choice per DSPi, and a phone opens in
+   Advanced (Advanced too with a core that answers none). A DSPi locked by
+   its installer offers Home, Getting Started, What's New and Settings' About
+   and installer's note only (`UiModeModel.allowedWhenLocked`); a tap on any
+   other page shows the lock's line with **Unlock…** instead of doing nothing.
+   Settings › Speakers and Getting Started's Speakers step are not offered
+   under the lock: the speaker roles are the installer's.
 
 
 ## PRESETS
@@ -463,10 +485,23 @@ core is driven. Gating follows coordinator E1/E1b (`reviews/decisions-waveB-1.md
     Symbols; the bass clef is the Linux glyph.
 14. **Light theme**: `DspiColors.Light` is AppKit's light appearance; no
     reference client ships a light palette (review H15), it exists because
-    Android follows the system theme. The dark set is `MacColors.qml`.
+    Android follows the system theme. The dark set is `MacColors.qml`. The
+    accent is #005AC2 in light and #64AEFF in dark (navy text on it) instead
+    of macOS's #007AFF, so it is WCAG AA as text on every surface, and every
+    Material colour role is the app's own (`dspiColorScheme()`; owner
+    2026-11-21).
 15. **isDeviceReady** (row/dashboard fade) is `connected && bulkValid`: the
     core marks the state valid once the connect fetch landed (review H13).
 16. **Typed band values** go to the bridge unclamped, as macOS (review H7).
+17. **Home as a remote** (0.16.0): **Mute** sits beside the volume on Home.
+    Outputs no input is routed to are left out of Home (and of Spectrum and
+    Stats; the core's `hidden`, never an output that plays); where an output
+    must show it is named "Out 3" unless the user named it.
+18. **Crossover rows** (0.16.0): an output page shows the crossover in two
+    rows above the band list (`components/CrossoverRows.kt`), with **Same for
+    the right side** for a left/right pair (else "Same for <its label>";
+    `bridge.copyCrossover`); macOS keeps the crossover bands behind the XO
+    tab only (which stays).
 
 ## SETTINGS
 
@@ -506,16 +541,18 @@ Gating per E1b, output-config tracking per F2: behaviour is macOS's.
    2 s while the I2S page is open (macOS: `telemetry.sampleRateHz`).
 6. **Page list on phones.** The macOS sidebar becomes a grouped list of
    pages (one page at a time; system back returns to the list); ≥ 840 dp
-   shows sidebar + page. "Software Update" and "Networking" are not ported
-   (PORT-MAP), nor the Advanced tab's "Onboarding (Developer)" section
-   (onboarding is Phase 6). The save bar adds a tap-to-expand list of what
+   shows sidebar + page. "Software Update" is not ported (Play updates the
+   app; PORT-MAP), nor the Advanced tab's "Onboarding (Developer)" section;
+   "Networking" is the DSPi Link client's half (LINK). The save bar adds a tap-to-expand list of what
    is pending (Windows InfoBar).
 7. **Control Surfaces** renders the controls, groups, macros and auxiliary
    outputs from the core's `cs_snapshot`, with rename/remove of a slot,
    macro Run and aux on/off (live previews or one click, D1; run in the
-   app-scoped coordinator, E9). The full binding editor (component/function/
-   target pickers, IR learn, display pages, group and macro editors) is not
-   ported yet.
+   app-scoped coordinator, E9). The full editor (bindings with component,
+   function and target pickers, IR remote buttons with learning, display
+   pages, channel groups, macros and auxiliary outputs) is in `cs/` since
+   0.13.0, as pushed pages on a phone instead of the desktop's expanding
+   cards.
 8. **App preferences** are :ui-common's one AppSettings store (F3): the
    exact macOS `@AppStorage` key names in a Preferences DataStore
    (`app_settings`), provided by :app as `LocalAppSettings` and read by
@@ -528,6 +565,14 @@ Gating per E1b, output-config tracking per F2: behaviour is macOS's.
 9. **Device identity** for aborting a Save/hardware sequence is
    `bridge.deviceGeneration` (macOS: the transport generation); the pending
    global draft is still kept per serial (macOS `noteSelectedDevice`).
+10. **Settings › Speakers** (0.16.0; no page in the macOS reference): the
+    role (Woofer, Mid, Tweeter, Sub, Full range, None) and side of each
+    output, the tweeter's floor, "Same for the right side", "Use the
+    Suggestion" and Confirm (`SpeakersSettingsTab.kt`, `SpeakersModel.kt`). The core keeps
+    the layout per serial in the app's files (`speakerLayoutSetDir`) and is
+    the only judge of what a role means (the tweeter's high-pass floor);
+    Getting Started has the same editor as a step. Measuring is not on
+    Android; the page says so.
 
 ## TOOLS
 
@@ -688,7 +733,7 @@ Reference: DSPi-Console (macOS) v1.1.6-beta5 `FirmwareUpdateView.swift`,
    titled as the macOS windows: tabs on a phone, a side list on a tablet
    (≥ 840 dp). Only the page on screen polls or subscribes.
 2. **The Signal Generator keeps running off-screen**, as macOS keeps playing
-   after the window closes (WP AN18, the plan's floor; until then it stopped
+   after the window closes (since 2026-11-07; until then it stopped
    when its page left the screen). Leaving the page stops only its status
    poll; coming back shows it still running, with Stop. Starting stays one explicit tap on Start (ungated, D1); the start sequence
    runs in a process scope (E9), not the composition. Default draft = macOS
@@ -755,7 +800,8 @@ Windows `DSPiConsole.Core/GraphEditing` port (v1.1.6-beta4) with its tests.
    event) and `abandonPress()`.
 2. **Chip text entry** opens a dialog on a tap (macOS: in-place field on a
    double-click), so the phone keyboard has room; it seeds the bare number as
-   macOS does (Freq short form, Gain `%.2f`, Width `%.3f`), Return/Done
+   macOS does (Freq short form, Gain `%.2f`, Q `%.3f`; the row is called Q,
+   macOS says Width), Return/Done
    applies, Tab/Shift-Tab apply and move to the next adjustable field, and
    unreadable text keeps it open. Chip values take a vertical drag (Shift
    ×0.12) and the mouse wheel (`hudScroll`; Cmd/Ctrl or a running graph
@@ -818,6 +864,15 @@ Windows `DSPiConsole.Core/GraphEditing` port (v1.1.6-beta4) with its tests.
     for. At the editor's cadence the throttle passes each value on at once
     (its window has closed by the next send), so it adds no latency in
     practice; it only merges a burst.
+12. **Band sheet on a phone** (0.16.0): a touch selection opens the band in a
+    sheet at the bottom of the window with 48 dp rows (shape, Freq, Gain, Q,
+    Bypass) and − and + per value (`PeqBandSheet.kt`) instead of the floating
+    chip, whose rows are too small for a finger; the chip stays for a mouse
+    and on a tablet.
+13. **Legend pills choose** (0.16.0): on the graph page a tap on a legend
+    pill chooses the channel to edit and a long-press shows or hides its
+    curve (`GraphLegend(chosen, onChoose)`); in macOS's pop-out legend a click
+    shows or hides. Unused outputs have no pill.
 
 ## CONSOLIDATION (decisions E6, F3)
 
@@ -1001,7 +1056,7 @@ Reference: DSPi-Console `release/v1.1.6` (`9a42965`) `Link/` and
 2. **Opt-in, off by default** (D2): Settings › Networking › "Control DSPi
    devices over the network". macOS has no such switch (its client is always
    there). Browsing runs only while the Networking page is visible.
-   The same page opens from the main page (WP ANLINK): the strip's
+   The same page opens from the main page: the strip's
    "Connect over DSPi Link" with no DSPi connected, and "DSPi Link…" in the
    device list, listed with DSPi Link off too; neither turns it on.
 3. **Protocol in Rust behind the core's transport** (D3/D4) instead of the
@@ -1046,6 +1101,16 @@ Reference: DSPi-Console `release/v1.1.6` (`9a42965`) `Link/` and
 14. **Device names:** shown as the hub reports them (`device.list` `name`,
     the board's own name on 1.1.6 firmware); renaming (`device.rename`) is
     not offered.
+15. **TLS to this project's hubs** (the core's `dspi-link` `tls`): TLS 1.3
+    with the hub's key pinned at pairing; a hub that was once encrypted is
+    only ever reached encrypted. Upstream hubs and the ESP32 bridge have no
+    TLS: the strip ends in "(unsecured)" with an info button, in amber, and
+    "I understand, don't highlight this hub" gives that hub the normal
+    colours, per hub (`UnsecuredAcks.kt`; forgotten in Settings › Networking
+    › Acknowledged Unsecured Hubs). macOS's protocol is plaintext throughout.
+16. **Reconnect to the last hub at start** (Settings › Networking, on by
+    default): the app dials the hub used last when it starts, unless the user
+    disconnected from it or a DSPi is on USB.
 
 
 ## OUTPUT LABELS (BUG1, owner decision 2026-11-09, option B; review c86 fixups)

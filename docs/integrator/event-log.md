@@ -1,6 +1,6 @@
 # The event log
 
-A persistent, bounded log per device of what happened to it (WP P0M, PRO1 M1,
+A persistent, bounded log per device of what happened to it (PRO1 M1,
 the client half). It is written from calls a client makes anyway; nothing is
 polled for it.
 
@@ -33,7 +33,7 @@ One JSON object per line, oldest first. Absent fields are omitted.
 | `text` | string | one readable line |
 | `source` | string | who or what caused it: a notification's source (`HOST`, `PRESET`, `UART`, ...), a transport, a counter, a reset reason |
 | `session` | number | the DSPi Link session that caused it, when another one did |
-| `by` | string | the name of the client, API key, schedule or alarm rule that caused it, beside `session`; written by the hub (WP P2EVW) |
+| `by` | string | the name of the client, API key, schedule or alarm rule that caused it, beside `session`; written by the hub |
 | `own` | bool | this client's own write coming back |
 | `channel` | number | a wire channel (clips), or the preset slot (recalls) |
 | `value` | number | °C for a temperature, the total for a counter |
@@ -44,7 +44,7 @@ One JSON object per line, oldest first. Absent fields are omitted.
 
 Kinds: `notification`, `connected`, `disconnected`, `clip`, `temperature`,
 `counter`, `reset`, `firmware`, `import`, `recall`, `unknown`; and, written by
-the hub (WP P2EVW), `unresponsive`, `alarm`, `schedule`, `access` and
+the hub, `unresponsive`, `alarm`, `schedule`, `access` and
 `events_dropped` (`count` the records it could not write). An older build reads
 these five as `unknown`.
 
@@ -68,7 +68,7 @@ machine) then never write the same id. Readers take no lock.
 ## On the hub
 
 The hub keeps one shared log per device in `<store>/events/`, in this format and
-under this lock rule (`EventStore`, `crates/dspi-session/src/events/store.rs`, WP P2EVW): one writer
+under this lock rule (`EventStore`, `crates/dspi-session/src/events/store.rs`): one writer
 for many serials, the same file names, rotation and id rule. Caps (OD-P2k):
 512 KiB per file and 3 rotated files, so 2 MiB per device, and 128 MiB in all,
 past which the oldest rotated file goes first. Forgetting a device in the

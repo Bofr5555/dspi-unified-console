@@ -1,4 +1,9 @@
-# Control surfaces on a phone: spike report (WP AN8)
+# Control surfaces on a phone: spike report
+
+> **History.** The report written on 2026-11-07, before the control-surface pages were built; the names AN8 to
+> AN13, CG16 and CG20 are the work items of that plan. The full editor shipped in 0.13.0
+> (`feature-settings/…/cs/`), and demo mode runs on the real core (option A of section 4). Kept for its screen map,
+> sizes and open questions; it does not describe the app as it is now.
 
 What AN9–AN12 should build, how big they are, and what is still unknown.
 Written from a working spike: the real core's demo device (`FakeDevice`, CG16)

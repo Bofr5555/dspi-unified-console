@@ -1,6 +1,6 @@
 # The diagnostics bundle
 
-One zip a user saves and attaches to a support request themselves (WP P0E, PRO1
+One zip a user saves and attaches to a support request themselves (PRO1
 E2). Nothing is sent anywhere: the file is written where the user says.
 
 Reference: `crates/dspi-core/src/diag.rs`.

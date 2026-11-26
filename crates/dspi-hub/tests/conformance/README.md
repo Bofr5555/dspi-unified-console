@@ -1,4 +1,4 @@
-# Hub conformance (WP HB7)
+# Hub conformance
 
 Three DSPi Link clients against this hub, on real sockets, through one list of
 scenarios. The hub serves the demo device (`FakeDevice::demo`) at handle 0, PIN
@@ -32,7 +32,7 @@ runs the TypeScript client; its Node image is `NODE` in `ci/container/images.con
 |---|---|---|---|---|
 | C1 | hello: proto 1, the hub's id, `auth: pin`, `cmd` and no `fw_install` in caps, `max_frame` | yes | yes | yes |
 | C2 | a wrong PIN is the typed wrong-PIN error and the session waits; the right one then pairs | yes | yes | yes |
-| C3 | pairing as admin with a PIN gives control (HWLK1F); made admin on the hub's side (the driver's `admin <client name>`, as `uconsole hub role <cid> admin`; PAIRADM), its token reconnects as admin and lists the device: handle 0, online, a serial | yes | yes | yes |
+| C3 | pairing as admin with a PIN gives control; made admin on the hub's side (the driver's `admin <client name>`, as `uconsole hub role <cid> admin`), its token reconnects as admin and lists the device: handle 0, online, a serial | yes | yes | yes |
 | C4 | the token reconnects with no PIN, as a new session with the same role | yes | yes | yes |
 | C5 | GET_PLATFORM answers 7 bytes; an unknown handle `NO_DEVICE` | yes | yes | yes |
 | C6 | a write: the writer's echo and a second session's copy both carry the writer's session as `origin` | yes | yes | yes |
@@ -64,14 +64,14 @@ the table until someone decides what it means here.
 
 ## Last run
 
-2026-11-07, `wp/HB7`, against `main` f6e74fa9:
+2026-11-07, against `main` f6e74fa9:
 
 - ours: 27 passed, 1 ignored (the serve test); 8 more runs, no failure;
 - TypeScript: `DONE 14/14`;
 - Swift: `DONE 13/13` (Swift 6.3.3, macOS 26 VM).
 
 The differences from the Swift hub these runs and the reading behind them found are in
-`docs/core-merge/HUB.md` section 8, under WP HB7.
+`docs/core-merge/HUB.md` section 8 ("From HB7's runs").
 
 ## Not run here
 

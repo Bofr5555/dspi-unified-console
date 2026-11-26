@@ -1,4 +1,4 @@
-# esp-rig: the emulated ESP32 DSPi-Link bridge (WP LK3)
+# esp-rig: the emulated ESP32 DSPi-Link bridge
 
 Upstream's ESP32 bridge firmware (WeebLabs/DSPi-Link `bridge/esp32`, at the conformance pin) runs in Espressif's QEMU.
 Its DSPi UART goes to `esp-rig-tunnel`, which plays a DSPi on that UART: the demo device (`FakeDevice`, no hardware) or the
@@ -60,10 +60,10 @@ pages. They are built with `npm ci --ignore-scripts` from upstream's lockfile in
 
 ## Running it
 
-Everything runs in rootless podman with no published port: QEMU from `IDF_IMAGE` (`images.conf`, ESP-IDF v6.1 by
+Everything runs in rootless podman with no published port: QEMU from `IDF_IMAGE` (`tools/esp-rig/images.conf`, ESP-IDF v6.1 by
 digest), the tunnel and netem in `localhost/lk3-netem:1` (Fedora 44 with iproute-tc, built on first use), the TS client
-in `NODE`. Work files go to `$ESP_RIG_WORK`, default `~/.cache/dspi-build/work/esp-rig`, never tmpfs. It needs the
-DSPi-Link clone in `~/.cache/dspi-build/work/consoles/DSPi-Link`, as `conformance-ts` does.
+in `NODE` (`ci/container/images.conf`). Work files go to `$ESP_RIG_WORK`, default `~/.cache/dspi-build/work/esp-rig`, never tmpfs. It needs the
+DSPi-Link clone in `~/.cache/dspi-build/work/consoles/DSPi-Link` (`DSPI_LINK_REPO`), as `conformance-ts` does.
 
 ```
 tools/esp-rig/rig.sh build                 # firmware (about 3 min the first time), tunnel, our probe
@@ -95,7 +95,7 @@ tools/esp-rig/rig.sh down r1               # also keeps the serial log in runs/r
 - **CI.** `ci/check.sh --step esp-rig` (`ci.sh`) is opt-in and not in `--all`. It builds what is missing, then
   runs the smoke with our client and the TS client.
 
-### The Android app's path (WP LKFAST)
+### The Android app's path
 
 `rig.sh android RUN` times the app's own REMOTE stack against a rig: the real core (release build, as the app ships
 it), `DspiBridgeImpl` on its serial FFI thread with the controllers' start-up reads, and `LinkSessionEngine`, on the

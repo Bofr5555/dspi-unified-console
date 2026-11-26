@@ -12,7 +12,6 @@ Two vendored sets, bumped separately (`crates/dspi-proto/firmware/PROVENANCE.tom
 - **The paged protocol** (step 8): upstream's `dspi_commands.json` and
   `legacy_map.json` for firmware 1.1.7 and later (PLAN-PG, OD-PGj).
 
-<!-- -- WP PGPROTO -- -->
 **The legacy headers stay on the 1.1.6 line.** Once `bofr-main` has merged
 upstream 1.1.7 (FWPG1), its `config.h` has no `REQ_*` defines any more, yet
 `build.rs` generates every legacy opcode (`generated::opcodes`, `ALL_OPCODES`)
@@ -161,7 +160,6 @@ interface is exclusive.
 Record it in `docs/firmware-notes.md`, **in this repository**. The firmware repo
 is not modified as part of this work.
 
-<!-- -- WP PGPROTO -- -->
 ## 8. The paged protocol (`dspi_commands.json`, `legacy_map.json`)
 
 `dspi_proto::paged` is generated from two files of upstream's firmware repository,

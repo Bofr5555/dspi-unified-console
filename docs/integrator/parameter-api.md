@@ -1,8 +1,8 @@
 # The parameter API
 
 PRO1 I1: read and write parameters by name from another program, over the hub. The contract is
-[hub-api.md](hub-api.md) (WP P2DOC): section 9 (parameters), 10 (presets), 11 (snapshots on the hub) and 14 (the REST
-mirror and API keys), with the conventions of section 1. It is **v1, experimental** and **draft** until WP P2PA builds it.
+[hub-api.md](hub-api.md): section 9 (parameters), 10 (presets), 11 (snapshots on the hub) and 14 (the REST
+mirror and API keys), with the conventions of section 1. It is **v1, experimental** and **draft** until it is built.
 
 ## In short
 

@@ -17,7 +17,19 @@ change is shown before it is written, and every change can be undone.
 | Terminal (`uconsole measure`) | the command line | importing calibration and target files, listing, showing and exporting documents, and a tune from a saved measurement. It opens no microphone |
 
 On the demo device a **Simulated microphone** stands in for a real one, so you can try every step without hardware. It
-is labelled that way everywhere and never runs on a real DSPi.
+is labelled that way everywhere and never runs on a real DSPi. In the desktop app, once you have picked it, it is
+picked again when you open the demo again.
+
+**The action bar (desktop app).** While something runs or waits, Measure shows it in one line above every tab, with its
+actions, so they never sit below the fold: what plays and its progress with **Stop**, and **Next Position** while a run
+waits for you to move the microphone; on the Auto-tune tab a proposal's **Apply…**; and during an auto-tune's trial the
+countdown with **Verify**, **Revert** and **Keep**.
+
+**Your speakers in one line.** Measure and Auto-tune show your speaker layout in one line ("L: woofer Out 1, tweeter
+Out 2 · R: … · confirmed") with **Edit in Speakers…**. The table itself is edited in one place, **Settings › Speakers**
+(and the first run's Speakers step); Measure keeps only its own tick boxes for what each run measures. In the Modern
+layout, outputs that nothing is routed to and nothing plays on are folded under one "N unused" row; an output you tick
+is never folded.
 
 ## 1. How a measurement works, in short
 
@@ -133,7 +145,10 @@ lined up with your curve over a reference band (500 Hz to 2 kHz by default).
 ## 4. The safety rules, and what they mean for you
 
 The measurement protects your speakers, your headphones and your ears. These rules cannot be switched off. When one
-stops you, the console says which one and what to do.
+stops you, the console says which one and what to do. In the desktop app a refused start shows one row per reason, each
+with its fix where the app has one: **Lower to −12 dB** turns the volume down to where a measurement may start,
+**Open the Crossover** opens the output whose high-pass is missing, **Show the Auto-tune** shows a trial that still
+waits for Keep or Revert. A fix changes nothing you did not press.
 
 | Rule | What you notice |
 |---|---|
@@ -142,7 +157,7 @@ stops you, the console says which one and what to do.
 | **Start quiet, then ramp** | Each output starts very quietly: -50 dBFS for speakers, -60 dBFS on a coupler. It gets 6 dB louder a step until the microphone hears it clearly. It never goes past a ceiling (speakers -12 dBFS, coupler -30 dBFS) or, with a calibration, past 95 dB SPL for speakers or 90 dB SPL on a coupler. If the microphone does not hear the output, or stops getting louder with it, the ramp stops and asks you to check the microphone and the wiring. Never full scale |
 | **Stop on clipping** | If the microphone or an output reaches full scale, or the sound gets past the level cap, the generator stops at once and the run is thrown away |
 | **Stop on anything foreign** | The run is stopped and thrown away if another console changes a setting or loads a preset, the volume changes (including the volume sent over USB), the input rate changes, audio starts playing, the microphone's capture skips, the DSPi stops answering, or you press **Stop**. Nothing is retried by itself |
-| **Tweeter protection** | A mid or high way is measured only through its own high-pass filter: at least 1 kHz for a tweeter and 80 Hz for a midrange, at least 12 dB/octave (an installer's limits profile may set other values; a profile's high-pass minimum also holds the output's music high-pass, so it belongs on tweeter and midrange outputs, never on a woofer's). The filter is never bypassed. Auto-tune never sets a high-pass below these values |
+| **Tweeter protection** | A mid or high way is measured only through its own high-pass filter, at least 12 dB/octave: a tweeter's at 1 kHz or above (or the limits profile's higher high-pass minimum for that output; a profile can raise the tweeter's floor, never lower it), a midrange's at 80 Hz or the profile's value for that output. A profile's high-pass minimum also holds the output's music high-pass, so it belongs on tweeter and midrange outputs, never on a woofer's. The filter is never bypassed. Auto-tune never sets a high-pass below these values |
 | **Every run ends by itself** | Sweeps repeat a set number of times, pink noise runs at most 60 s, and a run lasts at most 120 s. If the console crashes, the DSPi stops on its own |
 | **Silence first** | A run starts only when no input is playing. Stop your music first |
 | **Bounded changes** | A proposal never boosts the EQ by more than +3 dB (speakers) or +6 dB (headphones), never cuts more than 15 dB, and never raises an output's level. A level change is always a cut. An EQ boost is balanced by an equal cut of the output's gain, so you keep your headroom |
@@ -158,8 +173,8 @@ or hide the target. Points the measurement does not trust (too much noise, or re
 and are never used by the EQ fit. You can export an output as REW text.
 
 **Live** repeats short sweeps on one output, or plays pink noise with the microphone RTA (fast, slow or infinite
-averaging, with hold and compare). Over the curve, **Cut this peak** and **Fit this range** propose one EQ change and
-show the predicted curve first. Applied, each change is one undo step.
+averaging, with hold and compare). Over the curve, **Cut This Peak** and **Fit This Range** propose EQ bands (each with
+its frequency, gain and Q) and show the predicted curve first. Applied, each change is one undo step.
 
 ## 6. "Timing unreliable"
 
@@ -205,9 +220,9 @@ EQ toward the target. Each step shows its result before the next, and you can st
    measurement predicts. If they disagree by more than 1.5 dB, every delay, polarity and crossover change is withdrawn
    with the reason, and only the EQ remains. Timing and crossover changes are applied only after the summed check has
    passed. The web console keeps Apply disabled until it has run.
-6. **Proposal.** Every change in words, for example "Output 2 (L high): crossover 2.8 kHz LR4 → 3.1 kHz LR4; delay 0 →
-   0.21 ms". It also shows the curves before and predicted, what was held to a limit, and what was withdrawn and why.
-   Nothing is written yet.
+6. **Proposal.** Every change in words, one line each, for example "Out 2 (L high): crossover LR4 high-pass 2.80 kHz →
+   3.10 kHz" and "Out 2 (L high): delay 0.0000 → 0.2100 ms". It also shows the curves before and predicted, what was
+   held to a limit, and what was withdrawn and why. Nothing is written yet.
 
 ### 7.1 What auto-tune changes, and what it will not change
 
@@ -243,7 +258,7 @@ It will not:
 2. **Verify.** The tuned speaker is measured again: a walked run and a summed run for each crossover. It passes when
    everything is within 1.5 dB of the prediction.
    - Web console: the verify starts by itself right after the apply.
-   - Desktop app: press **Verify**.
+   - Desktop app: press **Verify** in the action bar.
    - Terminal: only on the demo device. Elsewhere it has no microphone, so it applies only EQ-only tunes, says they are
      unverified, and leaves timing changes to the web console or the desktop app.
 3. **Keep.** The rules for Keep:
@@ -258,7 +273,9 @@ It will not:
      unverified (the Terminal says "Not verified"). The web console asks you once more ("The tune is not verified")
      before it keeps.
 
-   Keep saves an "After auto-tune" snapshot, which records which measurement the tune came from.
+   Keep saves an "After auto-tune" snapshot, which records which measurement the tune came from. A kept tune is live,
+   but not yet saved in the device's preset: the desktop app then says "Kept, not saved on the device yet." with
+   **Save to Device…**. Until you save, switching the DSPi off loses the tune.
 
 ### 7.3 How to go back
 
@@ -267,8 +284,9 @@ It will not:
 - **A lost connection:** through a hub that runs the trial, the hub puts the settings back. Over USB nothing can
   be written while the DSPi is gone; Revert stays offered and puts the settings back once the same DSPi is open again.
   Until then the console says that the DSPi may still hold the tune.
-- **A/B** after Keep: switch between the tuned settings (A) and the "Before" snapshot (B) to listen, then keep the one
-  you prefer.
+- **A/B** after Keep, until you save (desktop app and web console): the top bar's **A | B** compares the preset as saved
+  on the device (A, as last saved, so without the tune) with what you hear now (B, with it). Library › Snapshots compares the "Before
+  auto-tune" and "After auto-tune" snapshots at any time.
 - **The snapshots** "Before auto-tune" and "After auto-tune" stay in your snapshot list. Recall either at any time. The
   web console also lets you download them.
 - **Undo:** the whole tune is one step in the history.
@@ -293,7 +311,6 @@ never plays anything and never writes to the DSPi. You can still open Results an
 It does not run while this console is measuring, in the live view or in auto-tune, so it never shows the test signal as
 if it were your music.
 
-<!-- WP ATDOC -->
 ## 10. Measuring several units together
 
 *† Needs the DSPi fork firmware ([Bofr5555/DSPi](https://github.com/Bofr5555/DSPi), branch `bofr-main`) on every unit: the units' shared time base and the generator started on it are the fork's
@@ -406,12 +423,11 @@ auto-tune (section 7).
 Everything in this section has run on simulated units in a simulated room only. It still has to be shown on real
 boards: that each unit plays exactly by the delay it reports, that real units can be opened together, and the S/PDIF
 clock between real units.
-<!-- /WP ATDOC -->
 
 ## See also
 
 - [docs/integrator/measurement.md](../integrator/measurement.md): the technical contract (signal path, rules, documents)
 - [docs/integrator/hub-api.md section 22](../integrator/hub-api.md#22-measurement-documents): documents on the hub
 - [docs/integrator/multi-unit-measurement.md](../integrator/multi-unit-measurement.md): measuring several units
-  together, the technical page (WP ATDOC)
+  together, the technical page
 - [docs/GLOSSARY.md](../GLOSSARY.md): the words the consoles use

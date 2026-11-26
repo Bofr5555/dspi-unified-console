@@ -48,7 +48,7 @@ for a closed bench only.
 - `pair` (typed at the running hub) opens a window of 2 minutes and shows a
   6-digit PIN. A client that enters it gets a token, stored by the client; the
   hub stores only the token's SHA-256.
-- <!-- WP SECDOC --> The PIN is shown with the hub key's fingerprint
+- The PIN is shown with the hub key's fingerprint
   (`PIN 482913 · key SHA256:K7Q2-M9XD-4TNB-0ZRA`) and, on a terminal, a QR code
   of the pairing link `dspi://pair?h=<hid>&a=<host:port>&k=<key>&p=<PIN>`
   (`--json`: the `pairing` event's `fingerprint` and `pairLink`). Compare the
@@ -60,14 +60,14 @@ for a closed bench only.
   `wrongPins`: open a new window knowingly); wrong tries are also rate
   limited per address. A client retrying a revoked token is counted apart and
   never closes a window.
-- <!-- WP SECDOC --> A console's token unused for 180 days is forgotten
+- A console's token unused for 180 days is forgotten
   (`--token-idle-days <n>`, 0: never); API keys do not expire.
 - At most 64 paired clients. `uconsole hub clients`, `role`, `revoke` manage
   them (with the hub stopped, or live at its prompt).
 - A service has no terminal: stop it, pair from `uconsole hub` in a terminal,
   start it again (`service/README.md`). `--pair` prints the PIN to the log.
 - A PIN gives at most `control`: a client that asks for `admin` with a PIN gets
-  `control` (WP HWLK1F). No pairing gives more (WP PAIRADM, owner 2026-11-14).
+  `control`. No pairing gives more (owner 2026-11-14).
   **Admin is given on the hub's own machine only:** find the client's number
   with `uconsole hub clients`, then run `uconsole hub role <cid> admin` (both
   with the hub stopped), or type `clients` and `role <cid> admin` at the running
@@ -92,7 +92,6 @@ role; do that on the hub machine. Reference: `crates/dspi-hub/src/policy.rs`.
 
 ## Guarded apply
 
-<!-- WP P1HA -->
 A client about to change a device over Link (an import, a snapshot recall) can
 ask the hub to guard the change: if the client does not confirm it in time, or
 goes away, the hub writes the device's previous settings back itself. Additive
@@ -113,7 +112,7 @@ Every end is also sent to every session as
 (with the Link `status`; it is not tried again) or `not_written` (no device with
 that serial was online: nothing was written).
 
-The settings outside the image <!-- WP P1CFIX -->: `apply.begin` also reads the
+The settings outside the image: `apply.begin` also reads the
 device name, the input source names, the output latency and the control-surface
 configuration (groups, macros, IR commands, bindings and their names, the
 display configuration and pages), as the beginning client, and lists what it
@@ -134,7 +133,7 @@ image only.
   charge now. The end is `reason: "taken_over"`, `result: "kept"`, with
   `taken_by` the session that took the lock; the guard's own client hears it as
   `apply.ended` like everyone. The guard's own session renewing its lock does
-  not end it. <!-- WP P1BFIX -->
+  not end it.
 - The write back is the hub's own (`0xA1`, origin the hub's session) and is
   never refused by another session's lock (one already held when the deadline
   passes, e.g. one taken while the write back was starting). It only ever goes
@@ -144,15 +143,13 @@ image only.
   whole image (`0xA1`, class `control` in the policy) itself today, so a snapshot
   recall by a Control client over Link writes its image; P1HL narrows that.
   On a device with a limits profile or a lock only an Admin may (see Limits and
-  the installer lock). <!-- WP P1HL -->
-  <!-- WP P1BFIX -->
+  the installer lock).
 - Stopping the hub (sharing off) reverts every running guard first.
 
 Reference: `crates/dspi-hub/src/apply_guard.rs`.
 
 ## Limits and the installer lock
 
-<!-- WP P1HL -->
 The hub keeps a limits profile per device (by serial) and the installer PIN
 beside it, and judges every network client's write against them: the same
 check the consoles run on USB ([limits-profiles.md](limits-profiles.md)).
@@ -163,10 +160,10 @@ answer carries `"v": 1`. With no profile a device behaves as before.
 |---|---|---|
 | `limits.get {id, handle}` | every role | `ok {serial, handle, profile, pin_set, locked, unlocked, held, wrong_tries, retry_in_ms}`: the profile (as the `limits` block of a limits document) or `null`; whether a PIN is set; whether the device is locked, and whether it is unlocked for this session; the rows the hub last held; the wrong PINs since the last good one and the refusal window left, ms (0: none) |
 | `limits.set {id, handle, profile}` | admin | sets the profile (a limits document, a document carrying one in `meta.limits`, or the profile object); `null` clears it. Its `serial` is the device's. A device outside the new profile is held at once: `ok {serial, held}` |
-| `limits.pin {id, handle, pin}` | admin | sets the PIN (4 to 64 characters), or clears it with `null`, which removes the lock. A new PIN answers `ok {serial, pin_set, recovery_code}`: a recovery code (`XXXXX-XXXXX-XXXXX-XXXXX`, WP HUBADMIN, OD-P1c) that `limits.unlock` takes in place of the PIN (any case, spaces or dashes), shown in this reply only and kept as a salted, slow hash (`device_pin_recovery`, removed from a diagnostics bundle); it goes with the PIN it was made for |
+| `limits.pin {id, handle, pin}` | admin | sets the PIN (4 to 64 characters), or clears it with `null`, which removes the lock. A new PIN answers `ok {serial, pin_set, recovery_code}`: a recovery code (`XXXXX-XXXXX-XXXXX-XXXXX`) that `limits.unlock` takes in place of the PIN (any case, spaces or dashes), shown in this reply only and kept as a salted, slow hash (`device_pin_recovery`, removed from a diagnostics bundle); it goes with the PIN it was made for |
 | `limits.unlock {id, handle, pin}` | control, admin | unlocks the device for this session (an Admin needs no PIN). A wrong PIN is `bad_pin`. The consoles' rule: 3 wrong PINs are free, each further one opens a refusal window of 30 s, doubling to 15 min, inside which every attempt is refused unchecked (`retry_later`, `retry_in_ms`); a good PIN resets the count |
 | `limits.lock {id, handle}` | control, admin | locks the device again for this session |
-| `mode.pinned {id, handle?}` | every role | `ok {role, mode, locked?, pins?}`: the mode the hub pins for this session's role (`simple`, `advanced`, `installer`) or `null` (the user's choice), and with a handle whether that device is locked for this session. An Admin also gets `pins {viewer, control, admin}`, every role's (WP HUBADMIN: its Installer page) |
+| `mode.pinned {id, handle?}` | every role | `ok {role, mode, locked?, pins?}`: the mode the hub pins for this session's role (`simple`, `advanced`, `installer`) or `null` (the user's choice), and with a handle whether that device is locked for this session. An Admin also gets `pins {viewer, control, admin}`, every role's (its Installer page) |
 | `mode.pin {id, role, mode}` | admin | pins a role's mode, or unpins it with `null` |
 
 Events to every session: `limits.changed {v, serial, handle}` after a profile or
@@ -216,8 +213,7 @@ PIN change, `limits.held {v, serial, handle, rows}` after the hub held a device,
   `device_limits`, pinned modes under `role_modes`. Like the consoles' PIN it is a
   UI lock: whoever has the device on USB can change it with any tool.
 
-The consoles' typed calls for these messages are `dspi_core::hub_admin` (WP
-HUBADMIN): `installer_target` (which copy an Installer page edits: the hub's
+The consoles' typed calls for these messages are `dspi_core::hub_admin`: `installer_target` (which copy an Installer page edits: the hub's
 for a device reached through a hub that keeps limits, this console's own only
 for a directly connected one), `hub_limits_get`/`set`/`clear`,
 `hub_pin_set`/`clear` and `hub_mode_pin`, and the events through
@@ -234,7 +230,6 @@ Reference: `crates/dspi-hub/src/limits.rs`.
 
 ## Encryption
 
-<!-- WP SECDOC (PLAN-SEC 4.1-4.4, 4.11-4.12) -->
 The hub speaks TLS 1.3 on its port with its own P-256 key, made at the first start
 with TLS and kept in the store (`tls/`). Clients pin the key's hash when they pair
 and refuse any other key from then on. Why, and what each client shows:
@@ -297,7 +292,6 @@ refused in plaintext (`426`) unless minted `plaintext_ok`. Tested in
 
 ## Security deviations
 
-<!-- WP SECDOC (PLAN-SEC 4.12) -->
 What this hub does beyond DSPi Link 1.2 (the spec copy:
 `apps/apple/Documentation/dspi_link_protocol_spec.md`). Upstream is told nothing
 automatically; offering it upstream is the owner's call.
@@ -317,7 +311,6 @@ automatically; offering it upstream is the owner's call.
 
 ## Firmware rollout
 
-<!-- WP P3FRZ (PLAN-P3 F6, OD-P2b, OD-P3e, OD-P3n) -->
 The hub can update the firmware of the DSPis on its own USB with nobody at the rack:
 an Admin starts it from a console (the web console's rollout screen, `uconsole api`,
 or this hub's prompt), one device at a time, the settings exported to the hub's
@@ -376,7 +369,7 @@ step: [hub-api.md](hub-api.md) section 21; why it is safe enough:
 - `--loopback` listens on this machine only and does not advertise.
 - `--web` also serves the web console and the hub's page to browsers on the
   network, on the Link port (`https://<hub>:11915/console/`).
-- <!-- WP SECDOC --> Everything on the port is TLS 1.3 by default (Encryption,
+- Everything on the port is TLS 1.3 by default (Encryption,
   below): nothing a client sends, PIN and token included, can be read on the
   network. Still keep the hub off the internet: never behind router port
   forwarding; use a VPN for remote access (spec 6.4). With `--tls off` or
@@ -397,7 +390,7 @@ used over TLS) and device names; limits profiles, PIN hashes and pinned modes
 A diagnostics bundle includes it with the token hashes removed
 ([diagnostics.md](diagnostics.md)).
 
-<!-- WP SECDOC --> Beside it (the folder is 0700, every file 0600 on Unix):
+Beside it (the folder is 0700, every file 0600 on Unix):
 
 | Path | What |
 |---|---|
@@ -411,8 +404,7 @@ made, with a loud log line: every paired client then reports that the hub's key
 changed and must pair again. Back up `tls/` with the store if the hub is moved to
 another machine.
 
-<!-- WP P3DOC --> The fleet's files (PRO phase 3, [hub-api.md](hub-api.md) sections 19 to 21; built by the WP
-named), in the data folder (`--data`; by default the store folder), 0600 and written atomically; a file the
+The fleet's files (PRO phase 3, [hub-api.md](hub-api.md) sections 19 to 21), in the data folder (`--data`; by default the store folder), 0600 and written atomically; a file the
 hub cannot read is kept aside as `<name>.bad-<time>` and the hub goes on with what it could read:
 
 | Path | What | Bound | Diagnostics bundle |
