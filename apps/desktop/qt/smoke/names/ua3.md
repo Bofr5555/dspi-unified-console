@@ -8,5 +8,5 @@ Smoke section: `ua3-savestate` (order 899), `smoke/SmokeUa3.cpp`. Screenshots `u
 - `<device tabs>.more.<device id>`: the active tab's ▾, which opens `<device tabs>.menu.<device id>`.
 - `TopBar.save.menu.saveAll`: Save All, a lead row of Save ▾ (with two or more devices open); its question
   `TopBar.saveAllQuestion`. `TopBar.save`'s `countToolTip`.
-- `TopBar.ab` shows only while a compare runs; its `toolTip` property, and `TopBar.ab.tip`.
+- `TopBar.ab` shows while a compare runs (and, -- WP UB34 --, from the first edit: names/ub34.md); its `toolTip` property, and `TopBar.ab.tip`.
 - `DevicesSection.device.factoryReset`: Factory Reset on Devices › This Computer.

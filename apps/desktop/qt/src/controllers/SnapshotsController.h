@@ -67,6 +67,13 @@ class SnapshotsController : public QObject {
     Q_PROPERTY(QVariantList abRows READ abRows NOTIFY abChanged)
     // The toggle works now: a compare runs, no guard waits, nothing is under way
     Q_PROPERTY(bool canToggle READ canToggle NOTIFY abChanged)
+    // -- WP UB34 -- (UXP B3) The compare is "as saved on the device" (A)
+    // against "now" (B), abStartSaved()'s
+    Q_PROPERTY(bool abSaved READ abSaved NOTIFY abChanged)
+    // abStartSaved() is offered: no compare runs, the shown device can be
+    // written and its preset has unsaved changes, no guard waits (it stays
+    // true while the start is under way)
+    Q_PROPERTY(bool canStartSaved READ canStartSaved NOTIFY abChanged)
     // ---- The safe apply ----
     // "idle", "waiting", "kept", "reverted", "revert_incomplete", "revert_failed", "not_written", "lost"
     Q_PROPERTY(QString guardPhase READ guardPhase NOTIFY guardChanged)
@@ -128,6 +135,8 @@ public:
     QString abBName() const { return m_abBName; }
     QVariantList abRows() const { return m_abRows; }
     bool canToggle() const { return m_abActive && !guardWaiting() && m_toggling == 0; }
+    bool abSaved() const { return m_abActive && m_abSaved; }   // -- WP UB34 --
+    bool canStartSaved() const;
     QString guardPhase() const { return m_guard.value(QLatin1String("phase")).toString(QStringLiteral("idle")); }
     bool guardWaiting() const { return guardPhase() == QLatin1String("waiting"); }
     QString guardLabel() const { return m_guard.value(QLatin1String("label")).toString(); }
@@ -161,7 +170,12 @@ public:
 
     // A/B: `aId` "" captures the device as A; `bId` is B
     Q_INVOKABLE void abStart(const QString &aId, const QString &bId);
+    // -- WP UB34 -- No compare running: abStartSaved() when canStartSaved
     Q_INVOKABLE void abToggle();
+    // -- WP UB34 -- (UXP B3, owner D7) A compare of the active preset as saved
+    // on the device (A) against now (B), on A: the top bar's A from the first
+    // edit. Only what a preset holds changes; the listening volume stays.
+    Q_INVOKABLE void abStartSaved();
     // Ends the compare on `side` ("a" or "b")
     Q_INVOKABLE void abKeep(const QString &side);
 
@@ -239,6 +253,7 @@ private:
     QString m_abSide;
     QString m_abAName;
     QString m_abBName;
+    bool m_abSaved = false;   // -- WP UB34 --
     QVariantList m_abRows;
     int m_toggling = 0;
     int m_writes = 0;

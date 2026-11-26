@@ -2330,6 +2330,9 @@
 .dspi-web .top .preset-control { flex: 0 1 auto; min-width: 0; }
 .dspi-web .top .bar-preset { width: 150px; height: 28px; padding: 0 6px 0 8px; gap: 4px; background: var(--bar-control); border-radius: var(--radius-control); }
 .dspi-web .top .bar-preset:hover:not(:disabled), .dspi-web .top .bar-preset[aria-expanded="true"] { background: var(--bar-control-hover); }
+/* -- WP UB34 -- the top bar's A | B (Qt's TopBar.ab): the bar's control tone, a 28 px row */
+.dspi-web .top .top-ab { flex: 0 0 auto; align-self: center; flex-wrap: nowrap; background: var(--bar-control); }
+.dspi-web .top .top-ab > button { min-height: 24px; min-width: 28px; }
 .dspi-web .bar-preset-chevron { flex: none; width: 12px; height: 12px; color: var(--muted); }
 .dspi-web .top-search { width: 240px; height: 28px; min-height: 28px; padding: 0 8px; gap: 6px; border: 0; background: var(--bar-control); color: var(--muted); font-size: 13px; }
 .dspi-web .top-search:hover { background: var(--bar-control-hover); color: var(--muted); }

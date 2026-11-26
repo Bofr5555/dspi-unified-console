@@ -275,7 +275,10 @@ impl PresetSnapshot {
     /// `master_volume_mode` is the live master-volume mode, and the master
     /// volume counts only in WITH_PRESET mode, as in the Console's diff
     /// (PresetSnapshot.swift:186-198). The channel names are compared by
-    /// [`Self::names_match`].
+    /// [`Self::names_match`]. -- WP UB34 -- (UXP D8) The listening volume
+    /// (`user_volume`, volume and mute) is never a preset change, as the
+    /// core's `preset_changes` leaves it out: a volume move does not ask
+    /// "Save before continuing?".
     pub fn matches(&self, live: &[u8], output_config_mode: u8, master_volume_mode: u8) -> bool {
         if live.len() != self.bytes.len() {
             return false;
@@ -284,6 +287,7 @@ impl PresetSnapshot {
         let (_, loff, _) = section("lg_sound_sync");
         let (_, moff, mlen) = section("master_volume");
         let (_, noff, nlen) = section("channel_names");
+        let (_, uoff, ulen) = section("user_volume"); // -- WP UB34 --
         let with_preset = output_config_mode == output_config_mode::WITH_PRESET;
         let with_master = master_volume_mode == master_volume_mode::WITH_PRESET;
         let io = Self::output_config();
@@ -291,6 +295,7 @@ impl PresetSnapshot {
             let blanked = (i >= hoff && i < hoff + hlen)
                 || (i > loff && i < loff + 4)
                 || (i >= noff && i < noff + nlen)
+                || (i >= uoff && i < uoff + ulen)
                 || (!with_master && i >= moff && i < moff + mlen)
                 || (!with_preset && io.iter().any(|(o, n)| i >= *o && i < o + n));
             blanked || a == b
@@ -579,9 +584,7 @@ impl PresetSnapshot {
         if differs("lg_sound_sync", a, b) {
             line(&mut out, "Hardware", "LG Sound Sync".into());
         }
-        if differs("user_volume", a, b) {
-            line(&mut out, "Global", "Volume".into());
-        }
+        // -- WP UB34 -- (UXP D8) the listening volume is no preset change
         if differs("dac_hw_mute", a, b) {
             line(&mut out, "Hardware", "External mute".into());
         }
@@ -2020,6 +2023,28 @@ mod tests {
         assert!(summary.ends_with("- and 2 more"), "{summary}");
         s.mark_saved();
         assert!(!s.has_unsaved_changes());
+    }
+
+    // -- WP UB34 -- (UXP D8, owner 2026-11-25)
+    #[test]
+    fn wp_ub34_the_listening_volume_is_no_preset_change() {
+        let mut s = state();
+        let (_, u, _) = section("user_volume");
+        s.bulk.patch(u, &(-30.0f32).to_le_bytes());
+        s.bulk.patch(u + 4, &[1]);
+        assert!(!s.has_unsaved_changes(), "volume and mute are no change");
+        assert!(s.unsaved_diff().is_empty(), "{:?}", s.unsaved_diff());
+        // The master volume still is, when it travels with presets.
+        s.master_volume_mode = master_volume_mode::WITH_PRESET;
+        let (_, m, _) = section("master_volume");
+        s.bulk.patch(m, &(-40.0f32).to_le_bytes());
+        assert!(s.has_unsaved_changes());
+        let texts: Vec<String> = s
+            .unsaved_diff()
+            .iter()
+            .map(|d| format!("{}: {}", d.category, d.text))
+            .collect();
+        assert_eq!(texts, ["Global: Master volume"]);
     }
 
     // -- the beta4 sections -------------------------------------------------

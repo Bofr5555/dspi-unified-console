@@ -1,5 +1,6 @@
 #include "ShortcutController.h"
 
+#include "DeviceLinkController.h"   // -- WP UB34 --
 #include "CoreApi.h"
 #include "DeviceModel.h"
 #include "Shell.h"
@@ -41,6 +42,8 @@ void ShortcutController::recallPreset(int number) {
 void ShortcutController::toggleMute() {
     if (!m_ctx.device->connected()) return;
     const bool on = !muted();
+    // -- WP UB34 -- (UXP B4) linked in the dock: Mute mutes every device
+    if (auto *link = Registrar::instance<DeviceLinkController>(); link && link->linked()) return link->setMute(on);
     m_ctx.device->write(QStringLiteral("user mute"), [on](FfiCore *c) { return dspi_set_user_mute(c, on); });
 }
 

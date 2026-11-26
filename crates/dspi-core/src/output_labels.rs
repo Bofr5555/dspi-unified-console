@@ -480,14 +480,11 @@ mod tests_bug1 {
         core.lock().conn().unwrap().siggen = crate::stats::SiggenOutputs::default();
         assert!(at(&core).hidden);
         until_siggen(&core);
-        assert!(!at(&core).hidden, "learnt from the device's config");
+        assert!(!at(&core).hidden, "a start made elsewhere shows it");
         let others = core.output_labels();
         assert!(
-            others
-                .iter()
-                .filter(|l| l.output != OUT)
-                .all(|l| l.hidden == l.unused),
-            "only the generator's output: {others:?}"
+            others.iter().all(|l| !l.hidden),
+            "and every other output, as its outputs are not read: {others:?}"
         );
     }
 }

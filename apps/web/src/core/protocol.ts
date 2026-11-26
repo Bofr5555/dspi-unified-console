@@ -755,6 +755,8 @@ export interface AbCompareRecord {
   bName: string;
   /** What this call recalled, if it recalled anything. */
   recall: SnapshotRecallRecord | null;
+  /** -- WP UB34 -- (UXP B3) A compare of the preset as saved on the device (A) against now (B): `abStartSaved`'s. */
+  saved?: boolean;
 }
 
 /** Where a guarded apply stands (`dspi_core::GuardPhase`). */
@@ -861,6 +863,8 @@ export interface DocumentMethods {
   abDiff: { params: undefined; result: ConfigDiff };
   abKeep: { params: { side: "a" | "b" }; result: AbCompareRecord };
   abState: { params: undefined; result: AbCompareRecord };
+  /** -- WP UB34 -- Compare the preset as saved on the device (A) with now (B), on A; the listening volume stays. */
+  abStartSaved: { params: undefined; result: AbCompareRecord };
   /** Import with a way back: waits for `applyConfirm`; a timeout (0: 30 s), Revert or a lost connection reverts. */
   applyGuardedImport: { params: { text: string; options?: number; eqChannels?: number; timeoutS?: number }; result: GuardedApplyRecord };
   /** Recall a snapshot document with a way back. */

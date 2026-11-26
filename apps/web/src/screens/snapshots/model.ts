@@ -150,6 +150,12 @@ export function mayToggle(st: DeskState, readOnly: boolean): boolean {
   return st.ab.active && st.guard?.phase !== "waiting" && !st.busy && !readOnly;
 }
 
+// -- WP UB34 -- (UXP B3, owner D7)
+/** Whether "as saved" against "now" may start: no compare runs, something is unsaved, no guard waits, writes allowed. */
+export function mayStartSaved(st: DeskState, readOnly: boolean, unsaved: number): boolean {
+  return !st.ab.active && unsaved > 0 && st.guard?.phase !== "waiting" && !st.busy && !readOnly;
+}
+
 /** The import options for the chosen blocks (`IMPORT_*` bits), always by block. */
 export function importOptions(blocks: number): number {
   return IMPORT_BY_BLOCK | (blocks & 0x1ff);
@@ -181,6 +187,8 @@ export class SnapshotDesk {
   // -- WP P1DCFIX -- the session's status, to ask the core again when it opens again
   private unwatch: (() => void) | undefined;
   private wasOpen = false;
+  // -- WP UB34 -- what a save or a load changes: "as saved" against "now" is read again then
+  private savedKey = "";
   // -- WP P5FOLLOW -- the core's events: a guard the auto-tune started
   private unsubscribe: (() => void) | undefined;
 
@@ -204,6 +212,11 @@ export class SnapshotDesk {
         const open = this.session.state.status === "open";
         if (open && !this.wasOpen) void this.reread();
         this.wasOpen = open;
+        // -- WP UB34 -- a save or a load ends a compare of "as saved" (the core's rule)
+        const st = this.session.state;
+        const key = `${st.unsaved?.length ?? 0}/${st.snapshot?.state.activePresetSlot ?? ""}`;
+        if (key !== this.savedKey && this.state.ab.saved && !this.state.busy) void this.rereadAb();
+        this.savedKey = key;
       });
     }
     // -- WP P5FOLLOW -- (review P5-E) a tune's guard is the bar's too: adopted from the Worker's
@@ -235,6 +248,12 @@ export class SnapshotDesk {
     if (!this.alive) return;
     this.set({ guardDefault, ab, guard: guard && guard.phase !== "idle" ? guard : this.state.guard });
     if (guard?.phase === "waiting") this.schedule();
+  }
+
+  /** -- WP UB34 -- the compare as the core has it now (no I/O there). */
+  private async rereadAb(): Promise<void> {
+    const ab = await this.session.core.call("abState", undefined).catch(() => this.state.ab);
+    if (this.alive && (ab.active !== this.state.ab.active || ab.side !== this.state.ab.side)) this.set({ ab, abDiff: ab.active ? this.state.abDiff : null });
   }
 
   stop(): void {
@@ -440,14 +459,26 @@ export class SnapshotDesk {
     }).then((v) => v ?? false);
   }
 
-  /** The other side; refused (and off) while a guard waits. */
+  /** The other side; refused (and off) while a guard waits. -- WP UB34 -- With nothing compared and something unsaved, A: as saved. */
   abToggle(): Promise<boolean> {
+    if (mayStartSaved(this.state, !!this.readOnly, this.session.state.unsaved?.length ?? 0)) return this.abStartSaved();
     if (!mayToggle(this.state, !!this.readOnly)) return Promise.resolve(false);
     return this.run("A/B", async () => {
       const ab = await this.session.core.call("abToggle", undefined);
       this.set({ ab });
       await this.after();
       if (ab.recall?.notes.length) this.set({ outcome: { title: `Now ${ab.side === "a" ? "A" : "B"}`, lines: [], notes: ab.recall.notes, tone: "warn" } });
+      return true;
+    }).then((v) => v ?? false);
+  }
+
+  /** -- WP UB34 -- (UXP B3) Compare the preset as saved on the device (A) with now (B): the device goes to A. */
+  abStartSaved(): Promise<boolean> {
+    if (!mayStartSaved(this.state, !!this.readOnly, this.session.state.unsaved?.length ?? 0)) return Promise.resolve(false);
+    return this.run("Compare", async () => {
+      const ab = await this.session.core.call("abStartSaved", undefined);
+      this.set({ ab, abDiff: null, outcome: null });
+      await this.after();
       return true;
     }).then((v) => v ?? false);
   }

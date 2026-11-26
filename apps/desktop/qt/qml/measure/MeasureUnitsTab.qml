@@ -140,6 +140,16 @@ Item {
             wrapMode: Text.WordWrap
             Accessible.role: Accessible.StaticText
         }
+        // -- WP UB34 -- (UXP B4) several devices open here, and still no: why
+        // (each keeps its own clock), and what does work for all of them
+        NoticeRow {
+            objectName: "MeasureUnits.localNotice"
+            readonly property int open: DeviceRegistry.devices.length
+            visible: tab.uc.unavailable.length > 0 && tab.modern && open >= 2
+            Layout.fillWidth: true
+            //: %1 is how many devices are open, 2 or more
+            text: qsTr("These %1 devices are open on this computer, but each one keeps its own clock: measuring them together needs one shared time base, which the DSPi hub gives. For the volume, Mute and presets of all of them, use All devices in the dock.").arg(open)
+        }
         // -- WP DL2 -- Modern: the notice's title once, then what to do (the
         // controller's sentence repeated the title); `text` is what it says
         Item {
