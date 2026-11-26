@@ -44,9 +44,10 @@ Item {
     function rowsOf(c) {
         return c.batch && c.batch.length ? c.batch : c.riskLines.map(line => ({ said: line, risky: true }))
     }
-    // -- WP UAG -- (UXP D2) a grouped sheet: each question's device, then its rows
+    // -- WP UAG -- (UXP D2) a grouped sheet: each device once, then its questions' rows
     readonly property var rows: !front ? []
-        : grouped ? group.reduce((all, c) => all.concat([{ said: c.device, risky: false, head: true }], rowsOf(c)), [])
+        : grouped ? group.reduce((all, c, i) => all.concat(i > 0 && group[i - 1].device === c.device ? []
+                                                           : [{ said: c.device, risky: false, head: true }], rowsOf(c)), [])
         : rowsOf(front)
     // What a question's Allow leaves to do afterwards (-- WP UAG --: one function for one or a group)
     function afterOf(c) {
