@@ -28,7 +28,7 @@ fn capture() -> DspState {
 
 fn demo() -> Arc<DspiCore> {
     let core = DspiCore::new();
-    core.open_demo().unwrap();
+    core.open_demo_blank().unwrap(); // -- WP UB12 --
     core.fetch_all().unwrap();
     core
 }

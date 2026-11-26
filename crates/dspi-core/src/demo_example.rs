@@ -19,7 +19,7 @@ use dspi_proto::value::Value;
 use dspi_proto::xover::{Family, Meta};
 use dspi_transport::clock::Instant;
 use dspi_transport::fake::EXT_FAKE_DEMO_RESET;
-use dspi_transport::{FakeDevice, TransportKind};
+use dspi_transport::{FakeDevice, Transport, TransportKind};
 
 use crate::journal::journal;
 use crate::records::{DspState, FilterParams};
@@ -29,8 +29,12 @@ use crate::{DspiCore, DspiError, Result, state};
 /// The crossover frequency, Hz.
 pub(crate) const CROSSOVER_HZ: f32 = 2200.0;
 /// The outputs' names, outputs 1-4 (0-based 0..4).
-pub(crate) const OUTPUT_NAMES: [&str; 4] =
-    ["Left woofer", "Right woofer", "Left tweeter", "Right tweeter"];
+pub(crate) const OUTPUT_NAMES: [&str; 4] = [
+    "Left woofer",
+    "Right woofer",
+    "Left tweeter",
+    "Right tweeter",
+];
 /// The tweeters' level, dB.
 const TWEETER_GAIN_DB: f32 = -3.0;
 /// The tweeters' delay, ms.
@@ -73,7 +77,10 @@ pub(crate) fn tune(s: &mut DspState) {
         }
     }
     s.matrix_gain.iter_mut().flatten().for_each(|g| *g = 0.0);
-    s.matrix_invert.iter_mut().flatten().for_each(|v| *v = false);
+    s.matrix_invert
+        .iter_mut()
+        .flatten()
+        .for_each(|v| *v = false);
     for o in 0..4.min(n_out) {
         let tweeter = o >= 2;
         if let Some(v) = s.output_enabled.get_mut(o) {
@@ -89,7 +96,7 @@ pub(crate) fn tune(s: &mut DspState) {
         if let Some(v) = s.output_delay_ms.get_mut(o) {
             *v = delay;
         }
-        let ch = n_in + o;
+        let ch = n_in.saturating_add(o);
         if let Some(v) = s.channel_delays.get_mut(ch) {
             *v = delay;
         }
@@ -221,11 +228,13 @@ impl DspiCore {
 /// only then does a reset bring the example's roles back.
 fn is_example(s: &DspState) -> bool {
     let n_in = usize::from(s.num_input_channels);
-    OUTPUT_NAMES
-        .iter()
-        .enumerate()
-        .all(|(o, n)| s.channel_names.get(n_in + o).is_some_and(|x| x == n))
+    OUTPUT_NAMES.iter().enumerate().all(|(o, n)| {
+        s.channel_names
+            .get(n_in.saturating_add(o))
+            .is_some_and(|x| x == n)
+    })
 }
 
 #[cfg(test)]
+#[allow(clippy::arithmetic_side_effects, clippy::needless_range_loop)]
 mod tests_wp_ub12;

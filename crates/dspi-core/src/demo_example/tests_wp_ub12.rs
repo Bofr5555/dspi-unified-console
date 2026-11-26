@@ -41,7 +41,13 @@ fn assert_example(s: &DspState) {
         assert_eq!(s.filters[ch][0].filter_type, FilterType::Peaking.to_raw());
         assert!(s.filters[ch][0].gain < 0.0, "a cut on output {}", o + 1);
         for i in 0..usize::from(s.num_input_channels) {
-            assert_eq!(s.matrix_routing[i][o], i == o % 2, "USB {} to output {}", i + 1, o + 1);
+            assert_eq!(
+                s.matrix_routing[i][o],
+                i == o % 2,
+                "USB {} to output {}",
+                i + 1,
+                o + 1
+            );
         }
     }
     assert_eq!(s.output_gain_db[2], -3.0);
@@ -52,7 +58,11 @@ fn assert_example(s: &DspState) {
     }
     // Outputs 5-9 play nothing
     for o in 4..usize::from(s.num_output_channels) {
-        assert!(s.matrix_routing.iter().all(|r| !r[o]), "output {} plays", o + 1);
+        assert!(
+            s.matrix_routing.iter().all(|r| !r[o]),
+            "output {} plays",
+            o + 1
+        );
     }
     assert_eq!(s.master_volume_db, -20.0, "the capture's");
 }
@@ -123,7 +133,11 @@ fn wp_ub12_the_tweeters_pass_the_tweeter_floor() {
     for o in 2..4 {
         let x = s.xover[out(&s, o)][0];
         let meta = dspi_proto::xover::meta(x.filter_type).expect("a crossover");
-        assert!(meta.high_pass && meta.order >= 2, "output {}: 12 dB/octave or more", o + 1);
+        assert!(
+            meta.high_pass && meta.order >= 2,
+            "output {}: 12 dB/octave or more",
+            o + 1
+        );
         assert!(x.freq >= 1000.0, "output {}", o + 1);
     }
 }
@@ -157,7 +171,8 @@ fn wp_ub12_reset_demo_puts_the_example_back() {
 fn wp_ub12_a_saved_change_is_reset_too() {
     let core = demo();
     core.set_output_gain(1, -6.0).unwrap();
-    core.save_params_with(None).unwrap();
+    let t = core.confirm_token(crate::ConfirmOp::SaveParams);
+    core.save_params_with(Some(&t)).unwrap();
     core.reset_demo().unwrap();
     assert_example(&core.get_state());
 }
@@ -238,7 +253,8 @@ fn wp_ub12_reset_demo_is_for_the_demo_only() {
 #[test]
 fn wp_ub12_factory_reset_still_gives_the_capture() {
     let core = demo();
-    core.factory_reset_with(None).ok();
+    let t = core.confirm_token(crate::ConfirmOp::FactoryReset);
+    core.factory_reset_with(Some(&t)).unwrap();
     let s = core.get_state();
     assert_eq!(s.xover[out(&s, 0)][0].filter_type, 0, "the capture's");
 }

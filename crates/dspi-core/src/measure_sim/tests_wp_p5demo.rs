@@ -53,7 +53,7 @@ pub(super) fn make_ready(core: &DspiCore) {
 
 pub(super) fn demo() -> Arc<DspiCore> {
     let core = DspiCore::new();
-    core.open_demo().unwrap();
+    core.open_demo_blank().unwrap(); // -- WP UB12 --
     make_ready(&core);
     core
 }
@@ -230,7 +230,7 @@ fn wp_p5demo_a_real_connection_refuses_the_simulated_microphone() {
 
     // On for the demo, then the demo replaced by a "USB" DSPi: off at the
     // next tick, and the client's pushes are the microphone again.
-    core.open_demo().unwrap();
+    core.open_demo_blank().unwrap(); // -- WP UB12 --
     make_ready(&core);
     assert!(core.measure_sim_set(true, SEED).unwrap().on);
     core.attach_probed(

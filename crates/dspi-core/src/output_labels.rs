@@ -248,7 +248,7 @@ mod tests_bug1 {
 
     fn demo() -> Arc<DspiCore> {
         let core = DspiCore::new();
-        core.open_demo().expect("demo");
+        core.open_demo_blank().expect("demo"); // -- WP UB12 --
         core
     }
 

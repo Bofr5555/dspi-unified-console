@@ -70,8 +70,8 @@ mod cs;
 // -- WP CG20 --
 mod cs_rules;
 mod curves;
-mod device;
 mod demo_example; // -- WP UB12 --
+mod device;
 mod ext;
 // -- WP FWX --
 mod ext_diag;
