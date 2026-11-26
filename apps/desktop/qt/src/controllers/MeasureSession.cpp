@@ -57,6 +57,22 @@ bool isOk(const QJsonObject &o) { return o.value(QLatin1String("ok")).toBool(); 
 
 QByteArray compact(const QJsonObject &o) { return QJsonDocument(o).toJson(QJsonDocument::Compact); }
 
+// -- WP UA2 -- (A2) a measurement's name for people: the core's default
+// ("Measurement 2026-11-25T21:23:27Z") as where and when, in local time
+// ("Fronts · 25 Nov 21:23"); a name the person gave stays as it is. The
+// document keeps the core's name.
+QString shownName(const QString &name, const QString &device) {
+    static const QRegularExpression stamp(QStringLiteral("^Measurement (\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\dZ)$"));
+    const QRegularExpressionMatch m = stamp.match(name);
+    if (!m.hasMatch()) return name;
+    const QDateTime t = QDateTime::fromString(m.captured(1), Qt::ISODate);
+    if (!t.isValid()) return name;
+    const QString when = QLocale().toString(t.toLocalTime(), QStringLiteral("d MMM HH:mm"));
+    //: A measurement's name: %1 the device it was measured on ("Fronts"), or "Measurement"; %2 when ("25 Nov 21:23")
+    return QCoreApplication::translate("MeasureSession", "%1 · %2")
+        .arg(device.isEmpty() ? QCoreApplication::translate("MeasureSession", "Measurement") : device, when);
+}
+
 // Reads a text file of at most kMaxFileBytes; "" and `error` set otherwise
 QByteArray readText(const QString &path, QString *error) {
     QFile f(path);
@@ -709,6 +725,7 @@ void MeasureSession::track(int delta) {
 void MeasureSession::fail(const QString &text) {
     m_error = text;
     m_said.clear();
+    m_refusals.clear();   // -- WP UA2 --
     emit errorChanged();
     if (!isActive()) m_owner->report(this, text, true);   // -- WP MDQT2c --
 }
@@ -716,12 +733,14 @@ void MeasureSession::fail(const QString &text) {
 void MeasureSession::say(const QString &text) {
     m_said = text;
     m_error.clear();
+    m_refusals.clear();   // -- WP UA2 --
     emit errorChanged();
 }
 
 void MeasureSession::clearError() {
     m_error.clear();
     m_said.clear();
+    m_refusals.clear();   // -- WP UA2 --
     emit errorChanged();
 }
 
@@ -1231,6 +1250,23 @@ void MeasureSession::preflight() {
            });
 }
 
+// -- WP UA2 -- (A2) a refused start's problems, one row each with the output it
+// is about, from the preflight of the same setup (the core's words, as Check
+// shows them); none when the preflight has no blocker (the refusal's sentence
+// stands alone then)
+void MeasureSession::takeRefusals(const QJsonObject &preflight) {
+    m_refusals.clear();
+    if (isOk(preflight))
+        for (const QJsonValue &v : preflight.value(QLatin1String("blockers")).toArray()) {
+            const QJsonObject b = v.toObject();
+            const QJsonValue out = b.value(QLatin1String("output"));
+            m_refusals.append(QVariantMap{ { QStringLiteral("key"), str(b, "key") },
+                                           { QStringLiteral("output"), out.isDouble() ? out.toInt() : -1 },
+                                           { QStringLiteral("text"), issueWords(b) } });
+        }
+    emit errorChanged();
+}
+
 // ---- The run ---------------------------------------------------------------------------
 
 void MeasureSession::start() {
@@ -1263,14 +1299,24 @@ void MeasureSession::start() {
             return;
         }
         const QByteArray setup = setupJson(rateHz);
+        // -- WP UA2 -- (A2) a refusal names its problems in one sentence: the
+        // preflight of the same setup, asked at once, gives them one by one
         onLoop(this,
-               [setup](FfiCore *c) { return once([&](char *b, uint32_t l) { return dspi_measure_start(c, setup.constData(), b, l); }); },
-               [this, epoch](const QByteArray &r) {
+               [setup](FfiCore *c) {
+                   const QByteArray started = once([&](char *b, uint32_t l) { return dspi_measure_start(c, setup.constData(), b, l); });
+                   if (started.isEmpty() || isOk(object(started))) return started;
+                   const QByteArray pre = reply([&](char *b, uint32_t l) { return dspi_measure_preflight(c, setup.constData(), b, l); });
+                   return QByteArray("{\"refused\":") + started + ",\"preflight\":" + (pre.isEmpty() ? QByteArray("{}") : pre) + "}";
+               },
+               [this, epoch](const QByteArray &answer) {
                    m_starting = false;
-                   const QJsonObject o = object(r);
+                   const QJsonObject both = object(answer);
+                   const bool refused = both.contains(QLatin1String("refused"));
+                   const QJsonObject o = refused ? both.value(QLatin1String("refused")).toObject() : both;
                    if (!isOk(o)) {
                        closeMic();
                        fail(failureText(o));
+                       if (refused) takeRefusals(both.value(QLatin1String("preflight")).toObject());
                        return;
                    }
                    if (epoch != m_stopEpoch) {
@@ -1581,7 +1627,10 @@ void MeasureSession::setResultDocument(const QByteArray &text, const QString &fr
                                  { QStringLiteral("colour"), colour++ },
                                  { QStringLiteral("shown"), !m_hidden.contains(n) } });
     }
-    m_resultView = QVariantMap{ { QStringLiteral("name"), str(meta, "name") },
+    // -- WP UA2 -- (A2) the core's default name as the device and the time: this
+    // device's own run is named after it
+    const QString device = from == QLatin1String("run") && m_session ? m_session->title() : QString();
+    m_resultView = QVariantMap{ { QStringLiteral("name"), shownName(str(meta, "name"), device) },
                                 { QStringLiteral("summary"), summary.join(QStringLiteral(" · ")) },
                                 { QStringLiteral("timing"), timing },
                                 { QStringLiteral("reliable"), reliable },
@@ -1712,7 +1761,8 @@ void MeasureSession::saveResult() {
     if (text.isEmpty()) return;
     storeCall(QStringLiteral("save"), [text](FfiCore *c) { return once([&](char *b, uint32_t l) { return dspi_measure_doc_put(c, text.constData(), b, l); }); },
               [this](const QByteArray &r) {
-                  say(tr("Saved in this console as \"%1\".").arg(str(object(r), "name")));
+                  // -- WP UA2 -- (A2) "Keep on This Computer", and the name as Results show it
+                  say(tr("Kept on this computer as \"%1\".").arg(resultName().isEmpty() ? str(object(r), "name") : resultName()));
                   reloadDocuments();
               });
 }
@@ -2260,7 +2310,7 @@ void MeasureSession::reloadDocuments() {
                       const qint64 ms = qint64(d.value(QLatin1String("savedMs")).toDouble());
                       rows.append(QVariantMap{ { QStringLiteral("id"), str(d, "id") },
                                                { QStringLiteral("kind"), str(d, "kind") },
-                                               { QStringLiteral("name"), str(d, "name") },
+                                               { QStringLiteral("name"), shownName(str(d, "name"), QString()) },   // -- WP UA2 --
                                                { QStringLiteral("note"), str(d, "note") },
                                                { QStringLiteral("serial"), str(d, "serial") },
                                                { QStringLiteral("saved"), ms > 0 ? QLocale().toString(QDateTime::fromMSecsSinceEpoch(ms), QLocale::ShortFormat) : QString() },
