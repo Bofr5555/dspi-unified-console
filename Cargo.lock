@@ -739,7 +739,7 @@ dependencies = [
 
 [[package]]
 name = "dspi-capi"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "cbindgen",
  "dspi-core",
@@ -757,7 +757,7 @@ dependencies = [
 
 [[package]]
 name = "dspi-cmd"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "dspi-proto",
  "proptest",
@@ -766,7 +766,7 @@ dependencies = [
 
 [[package]]
 name = "dspi-core"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "dspi-link",
  "dspi-measure",
@@ -787,7 +787,7 @@ dependencies = [
 
 [[package]]
 name = "dspi-esp-rig"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "dspi-proto",
  "dspi-transport",
@@ -795,7 +795,7 @@ dependencies = [
 
 [[package]]
 name = "dspi-ffi"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "android_logger",
  "dspi-core",
@@ -806,7 +806,7 @@ dependencies = [
 
 [[package]]
 name = "dspi-hub"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "data-encoding",
  "dspi-core",
@@ -860,7 +860,7 @@ dependencies = [
 
 [[package]]
 name = "dspi-mcp"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "data-encoding",
  "dspi-core",
@@ -878,7 +878,7 @@ dependencies = [
 
 [[package]]
 name = "dspi-measure"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "base64",
  "dspi-proto",
@@ -891,7 +891,7 @@ dependencies = [
 
 [[package]]
 name = "dspi-proto"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "proptest",
  "serde",
@@ -901,7 +901,7 @@ dependencies = [
 
 [[package]]
 name = "dspi-session"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "dirs",
  "dspi-cmd",
@@ -918,7 +918,7 @@ dependencies = [
 
 [[package]]
 name = "dspi-term"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "crossterm",
  "data-encoding",
@@ -943,7 +943,7 @@ dependencies = [
 
 [[package]]
 name = "dspi-transport"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "dspi-link",
  "dspi-proto",
@@ -957,7 +957,7 @@ dependencies = [
 
 [[package]]
 name = "dspi-tui"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "crossterm",
  "dirs",
@@ -978,7 +978,7 @@ dependencies = [
 
 [[package]]
 name = "dspi-wasm"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "dspi-core",
  "dspi-link",
@@ -991,7 +991,7 @@ dependencies = [
 
 [[package]]
 name = "dspi-wasm-scenario"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "dspi-core",
  "dspi-proto",
@@ -3073,7 +3073,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "dspi-core",
  "dspi-proto",

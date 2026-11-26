@@ -355,7 +355,7 @@ pub extern "C" fn dspi_mcp_free(mcp: *mut FfiMcp) {
 }
 
 /// Start listening for AI agents. `config_json`: `{"port": 47860, "storeDir":
-/// "<the app's folder>", "appVersion": "0.15.0", "templateDir": "<the user's
+/// "<the app's folder>", "appVersion": "0.16.0", "templateDir": "<the user's
 /// templates>", "measuring": true}`, each optional (without a folder the
 /// clients last only for this run; -- WP MCP5 -- `measuring`: the app runs
 /// the agents' measurement requests, `dspi_mcp_measure_*`; -- WP FEAT2 --

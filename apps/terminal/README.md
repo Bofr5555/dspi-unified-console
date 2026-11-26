@@ -128,7 +128,7 @@ characters. It greets with the overview as sentences, then takes one command
 per line and says every change back as the command that makes it:
 
 ```
-uconsole 0.15.0, plain mode. Connected to the demo device.
+uconsole 0.16.0, plain mode. Connected to the demo device.
 Volume 0.0 dB, not muted.
 No unsaved changes.
 USB 1: no filters, trim 0.0 dB
