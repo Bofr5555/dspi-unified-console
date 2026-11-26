@@ -170,5 +170,5 @@ export async function hubDetails(devices: Locator, name: string): Promise<Locato
   const more = row.getByRole("button", { name: `Details of ${name}` });
   if ((await more.getAttribute("aria-expanded")) !== "true") await more.click();
   await expect(more).toHaveAttribute("aria-expanded", "true");
-  return devices.locator("tbody").filter({ has: row });
+  return devices.locator("tbody").filter({ has: devices.page().getByRole("row", { name, exact: true }) });
 }

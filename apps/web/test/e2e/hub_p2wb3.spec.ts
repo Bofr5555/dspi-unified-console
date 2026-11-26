@@ -118,7 +118,7 @@ test.describe("P2WB3 on a hub", () => {
     // An offline row: no Identify, an Admin's Edit and Forget (-- WP UB6 -- in its details).
     const away = devices.getByRole("row", { name: "Bar" });
     await expect(away.getByRole("button", { name: "Identify" })).toHaveCount(0);
-    await expect(devices.locator("tbody").filter({ has: own }).getByRole("button", { name: /^Forget/ })).toHaveCount(0);
+    await expect(devices.locator("tbody").filter({ hasText: DEMO }).getByRole("button", { name: /^Forget/ })).toHaveCount(0);
     let awayBody = await hubDetails(devices, "Bar");
 
     // The details: location, note, tags, saved at the hub and shown from its answer.
