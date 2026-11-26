@@ -6912,6 +6912,7 @@ internal fun se.bofr.dspi.ffi.uniffi.OutputLabel.toDomain() =
         channel = channel,
         band = band,
         unused = unused,
+        hidden = hidden,
     )
 
 internal fun OutputLabel.toFfi() =
@@ -6924,6 +6925,7 @@ internal fun OutputLabel.toFfi() =
         channel = channel,
         band = band,
         unused = unused,
+        hidden = hidden,
     )
 
 internal fun se.bofr.dspi.ffi.uniffi.OutputCard.toDomain() =

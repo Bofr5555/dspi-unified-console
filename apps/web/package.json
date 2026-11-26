@@ -1,7 +1,7 @@
 {
   "name": "dspi-web",
   "private": true,
-  "version": "0.14.0",
+  "version": "0.15.0",
   "description": "DSPi web console: the Rust core in a Worker, a small Preact UI, built for standalone use and for embedding in a fleet server",
   "license": "GPL-3.0-or-later",
   "type": "module",

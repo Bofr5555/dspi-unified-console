@@ -66,7 +66,8 @@ fn channels(state: &DeviceState) -> Vec<usize> {
     (0..ni)
         .chain(
             (0..no)
-                .filter(|o| state.output(*o).enabled && !super::channel_unused(state, ni + o))
+                // -- WP FIN015 -- unless the generator plays on it (REVF R1)
+                .filter(|o| state.output(*o).enabled && !super::channel_hidden(state, ni + o))
                 .map(|o| ni + o),
         )
         .collect()
@@ -699,6 +700,22 @@ mod tests {
         let cells = Overview::new(shared()).cells(&with_sub(state));
         assert!(cells.iter().any(|c| c.channels == vec![16]), "{cells:?}");
         assert_eq!(cells.len(), 5, "{cells:?}");
+    }
+
+    // -- WP FIN015 -- (REVF R1) an unused output the generator plays on keeps
+    // its cell: the generator writes after the matrix
+    #[test]
+    fn fin015_an_unused_output_the_generator_plays_on_keeps_its_cell() {
+        let mut state = fixture::state();
+        state.siggen_outputs = 1 << 8;
+        assert!(crate::screens::channel_unused(&state, 16), "still unused");
+        assert!(!crate::screens::channel_hidden(&state, 16));
+        let cells = Overview::new(shared()).cells(&state);
+        assert!(cells.iter().any(|c| c.channels == vec![16]), "{cells:?}");
+        // The generator elsewhere: hidden again
+        state.siggen_outputs = 1;
+        let cells = Overview::new(shared()).cells(&state);
+        assert!(cells.iter().all(|c| !c.channels.contains(&16)), "{cells:?}");
     }
 
     #[test]
