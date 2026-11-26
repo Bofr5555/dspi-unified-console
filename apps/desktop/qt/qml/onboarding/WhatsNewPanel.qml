@@ -20,6 +20,12 @@ Panel {
     id: panel
     objectName: "WhatsNewPanel"
     readonly property bool asPage: inPage && LayoutController.modern   // -- WP DL7 --
+    // -- WP UFW -- the app's own notes are there: each part has its heading
+    readonly property bool twoParts: {
+        const list = OnboardingController.releases
+        for (let i = 0; i < list.length; ++i) if (list[i].app === true) return true
+        return false
+    }
 
     onShownChanged: if (shown) OnboardingController.markWhatsNewRead()
 
@@ -57,7 +63,7 @@ Panel {
                 objectName: "WhatsNew.part." + (release.app ? "app" : "firmware")
                 Layout.fillWidth: true
                 // Only when there are both parts
-                visible: release.starts && OnboardingController.releases.some(r => r.app === true)
+                visible: release.starts && panel.twoParts
                 text: release.app ? AppIdentity.displayName : qsTr("DSPi firmware")
                 color: Theme.textMuted
                 font.pixelSize: Theme.fontSmall.pixelSize

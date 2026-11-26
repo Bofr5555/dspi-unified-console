@@ -85,8 +85,11 @@ OnboardingController::OnboardingController(const AppContext &ctx, QObject *paren
     m_gettingStarted = coreJson(dspi_onboarding_getting_started_json, 16384).object().toVariantMap();
     withSpeakersStep(m_gettingStarted);
     m_releases = coreJson(dspi_onboarding_whats_new_json, 16384).array().toVariantList();
-    // Newest first whatever the file's order (the Mac's rule)
+    // Newest first whatever the file's order (the Mac's rule); -- WP UFW -- the
+    // app's own notes before the firmware's (their versions are the app's)
     std::stable_sort(m_releases.begin(), m_releases.end(), [](const QVariant &a, const QVariant &b) {
+        const bool appA = a.toMap().value(QStringLiteral("app")).toBool(), appB = b.toMap().value(QStringLiteral("app")).toBool();
+        if (appA != appB) return appA;
         return Version::parse(b.toMap().value(QStringLiteral("version")).toString())
                < Version::parse(a.toMap().value(QStringLiteral("version")).toString());
     });

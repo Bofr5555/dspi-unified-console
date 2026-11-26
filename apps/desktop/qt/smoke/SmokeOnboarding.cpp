@@ -122,8 +122,11 @@ void onboardingSection(SmokeDriver &d) {
     // -- WP QP18 -- this app keeps the effect windows under Tools, as the Mac does
     d.check(QStringLiteral("qp17: the notes name this app's menu"),
             notesJson.contains(QLatin1String("Tools > Tube Modeller (Ctrl+Shift+D)")) && !notesJson.contains(QLatin1String("Effects > ")));
+    // -- WP UFW -- (UXP A8) the app's own notes first, then the firmware's, each newest first
     d.check(QStringLiteral("qp17: the notes are newest first"),
-            ob->releases().value(0).toMap().value(QStringLiteral("version")).toString() == "1.1.6");
+            ob->releases().value(0).toMap().value(QStringLiteral("app")).toBool()
+                && ob->releases().value(0).toMap().value(QStringLiteral("version")).toString() == "0.15"
+                && ob->releases().value(1).toMap().value(QStringLiteral("version")).toString() == "1.1.6");
     d.check(QStringLiteral("qp17: the bundled firmware is read from the images"), ob->bundledFirmware() == "1.1.6");
     d.check(QStringLiteral("qp17: firmware versions compare as the Mac's"),
             ob->firmwareMatch(QStringLiteral("1.1.6")) == "match" && ob->firmwareMatch(QStringLiteral("1.1.5")) == "older"
@@ -219,13 +222,15 @@ void onboardingSection(SmokeDriver &d) {
                 ob->releases().value(0).toMap().value(QStringLiteral("app")).toBool() && appearance
                     && appearance->property("text").toString() == QStringLiteral("Appearance…")
                     && qp17Item(notes->contentItem(), QStringLiteral("WhatsNew.action.ai")));
+        auto *appPart = qobject_cast<QQuickItem *>(qp17Item(notes->contentItem(), QStringLiteral("WhatsNew.part.app")));
+        const bool appHeading = appPart && appPart->isVisible() && !appPart->property("text").toString().isEmpty();
         if (list) QMetaObject::invokeMethod(list, "positionViewAtIndex", Q_ARG(int, 1), Q_ARG(int, 1 /* ListView.Beginning */));
         d.spin(100);
         QStringList below;
         qp17Texts(notes->contentItem(), &below);
-        d.check(QStringLiteral("ufw: the firmware's notes under their own heading"),
-                qp17Item(notes->contentItem(), QStringLiteral("WhatsNew.part.app")) && below.contains(QStringLiteral("DSPi firmware")));
+        d.check(QStringLiteral("ufw: the firmware's notes under their own heading"), appHeading && below.contains(QStringLiteral("DSPi firmware")));
         if (list) QMetaObject::invokeMethod(list, "positionViewAtBeginning");
+        d.spin(100);
         d.grab(notes, QStringLiteral("window-whatsNew.png"));
         if (QObject *done = qp17Item(notes->contentItem(), QStringLiteral("WhatsNew.done"))) QMetaObject::invokeMethod(done, "click");
         d.spin(200);

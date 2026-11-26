@@ -254,6 +254,17 @@ void openPart(Palette &p) {
 
 // ---- What is in it ------------------------------------------------------------------
 
+// -- WP UFW -- Row `i`'s title in Modern (ChannelInfo.titleOf, UXP A1): its name, then an
+// output's number unless the name starts with it ("Left woofer · 1", "Out 1 · L")
+QString ufwTitle(ChannelListModel *channels, int i) {
+    const QString label = channels->get(i, QStringLiteral("label")).toString();
+    const QString name = channels->get(i, QStringLiteral("displayName")).toString().isEmpty() ? label : channels->get(i, QStringLiteral("displayName")).toString();
+    if (channels->get(i, QStringLiteral("kind")).toString() != QLatin1String("output")) return name;
+    const QString n = QString::number(channels->get(i, QStringLiteral("number")).toInt() + 1);
+    const QRegularExpressionMatch own = QRegularExpression(QStringLiteral("^(?:Out )?(\\d+)(?!\\d)")).match(name);
+    return own.hasMatch() && own.captured(1) == n ? name : name + QStringLiteral(" · ") + n;
+}
+
 void contentsPart(Palette &p) {
     p.open();
     const QStringList ids = p.ids();
@@ -296,13 +307,8 @@ void contentsPart(Palette &p) {
     p.check("the settings pages", pages >= 10);
     ChannelListModel *channels = p.d.app().device->channels();
     bool every = channels->rowCount() > 4;
-    for (int i = 0; i < channels->rowCount(); ++i) {
-        // -- WP UFW -- an output the speaker layout names: "Left woofer · 1"
-        const QString name = channels->get(i, QStringLiteral("displayName")).toString(), label = channels->get(i, QStringLiteral("label")).toString();
-        const bool named = channels->get(i, QStringLiteral("kind")).toString() == QLatin1String("output") && !name.isEmpty() && name != label;
-        const QString want = named ? name + QStringLiteral(" · ") + QString::number(channels->get(i, QStringLiteral("number")).toInt() + 1) : label;
-        every = every && p.row(QStringLiteral("channel:%1").arg(channels->get(i, QStringLiteral("channel")).toInt())).value(QStringLiteral("title")) == want;
-    }
+    for (int i = 0; i < channels->rowCount(); ++i)   // -- WP UFW -- as Modern names it (UXP A1)
+        every = every && p.row(QStringLiteral("channel:%1").arg(channels->get(i, QStringLiteral("channel")).toInt())).value(QStringLiteral("title")) == ufwTitle(channels, i);
     p.check("every channel, by its name", every);
     p.check("no device: the open one is the only one", ids.filter(QRegularExpression(QStringLiteral("^device:"))).isEmpty());
 
@@ -370,19 +376,19 @@ void wordsPart(Palette &p) {
                 && refused.endsWith(QStringLiteral("/docs/manual/measurement.md#4-the-safety-rules-and-what-they-mean-for-you"))
                 && p.row(QStringLiteral("help:refused")).value(QStringLiteral("kind")).toString() == QLatin1String("help"));
     p.check("ufw: the manual itself is a row the shell runs", p.shell->handles(QStringLiteral("help.manual")));
-    // A channel the speaker layout names: its name first, its number second
+    // An output by its words (ChannelInfo's keywords, UXP A1): its number, its slot's name
     ChannelListModel *channels = p.d.app().device->channels();
     for (int i = 0; i < channels->rowCount(); ++i) {
-        const QString name = channels->get(i, QStringLiteral("displayName")).toString(), label = channels->get(i, QStringLiteral("label")).toString();
-        if (channels->get(i, QStringLiteral("kind")).toString() != QLatin1String("output") || name.isEmpty() || name == label) continue;
-        const int channel = channels->get(i, QStringLiteral("channel")).toInt();
-        const QString id = QStringLiteral("channel:%1").arg(channel);
+        if (channels->get(i, QStringLiteral("kind")).toString() != QLatin1String("output")) continue;
+        const QString id = QStringLiteral("channel:%1").arg(channels->get(i, QStringLiteral("channel")).toInt());
         const QString number = QString::number(channels->get(i, QStringLiteral("number")).toInt() + 1);
-        p.type(name);
-        p.check("ufw: a layout's channel by its name, then its number",
-                p.ids().value(0) == id && p.row(id).value(QStringLiteral("title")).toString() == name + QStringLiteral(" · ") + number);
         p.type(QStringLiteral("out ") + number);
-        p.check("ufw: and by its number", p.ids().mid(0, 3).contains(id));
+        p.check("ufw: an output by its number", p.ids().mid(0, 3).contains(id) && p.row(id).value(QStringLiteral("title")).toString() == ufwTitle(channels, i));
+        const QString name = channels->get(i, QStringLiteral("displayName")).toString();
+        if (!name.isEmpty() && name != channels->get(i, QStringLiteral("label")).toString()) {
+            p.type(name);
+            p.check("ufw: a layout's output by its name, its number second", p.ids().value(0) == id && p.row(id).value(QStringLiteral("title")).toString().startsWith(name + QStringLiteral(" · ")));
+        }
         break;
     }
     p.close();

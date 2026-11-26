@@ -84,6 +84,9 @@ Popup {
 
     // ---- What there is to find ------------------------------------------------
 
+    // -- WP UFW -- one channel's names and words, read for each in turn
+    ChannelInfo { id: channelInfo }
+
     // The names Modern shows for a row besides its own
     readonly property var aliases: ({
         "device.commit": [qsTr("Commit Parameters")],   // -- WP UFW -- its old name finds it
@@ -205,26 +208,24 @@ Popup {
         add({ id: classic.id, kind: "action", title: classic.text, where: qsTr("Layout"), enabled: LayoutController.switchBlocker.length === 0 })
 
         // ---- The channels
-        // -- WP UFW -- (UXP A8, A1) by the speaker's name first and its number
-        // second ("Left tweeter · 2"), found by name, role, slot and number
+        // -- WP UFW -- (UXP A8, A1) as Modern names them, the speaker's name
+        // first and its number second ("Left tweeter · 2"), and found by
+        // ChannelInfo's keywords: name, side, role, "Out 2", "2"
         for (let i = 0; i < DeviceModel.channels.count; ++i) {
             const channel = DeviceModel.channels.get(i, "channel")
             const label = DeviceModel.channels.get(i, "label")
             const descriptor = DeviceModel.channels.get(i, "descriptor")
-            const output = DeviceModel.channels.get(i, "kind") === "output"
-            const number = (DeviceModel.channels.get(i, "number") ?? -1) + 1
-            const name = DeviceModel.channels.get(i, "displayName") || label
-            const named = output && name !== label && number > 0
+            channelInfo.channel = channel
+            const title = channelInfo.title || label
             add({
                 id: "channel:" + channel, kind: "channel", arg: channel, icon: "sliders-vertical", enabled: free && !sender,
-                //: %1 is the speaker's name, %2 the output's number
-                title: named ? qsTr("%1 · %2").arg(name).arg(number) : label,
-                where: named ? qsTr("Channel") + " · " + label
+                title: title,
+                where: title !== label ? qsTr("Channel") + " · " + label
                      : descriptor.length && descriptor !== label ? qsTr("Channel") + " · " + descriptor : qsTr("Channel"),
-                keywords: [descriptor, label, name, DeviceModel.channels.get(i, "shortName") || ""].concat(
-                    number > 0 ? [(output ? qsTr("Out %1") : qsTr("In %1")).arg(number), String(number)] : [])
+                keywords: channelInfo.keywords.length ? channelInfo.keywords.slice() : [descriptor]
             })
         }
+        channelInfo.channel = -1
 
         // ---- Settings, by what is on each page
         for (const s of SettingsController.searchEntries())
