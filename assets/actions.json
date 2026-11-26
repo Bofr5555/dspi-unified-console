@@ -702,6 +702,14 @@
       ]
     },
     {
+      "id": "channel.solo",
+      "text": "Solo",
+      "textOn": "End Solo",
+      "places": [
+        "channel.act"
+      ]
+    },
+    {
       "id": "channel.routing",
       "text": "Edit Routing…",
       "of": "tools.matrix",
@@ -976,6 +984,7 @@
       [
         "channel.identify",
         "channel.mute",
+        "channel.solo",
         "channel.routing",
         "channel.headphone"
       ],
