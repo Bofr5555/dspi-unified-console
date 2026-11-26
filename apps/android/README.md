@@ -20,11 +20,12 @@ It is one of the clients in the `dspi-unified-console` repository; the root
 
 > Status: the app is on Google Play as "uConsole for DSPi" (app ID `se.bofr.dspi_console_android`; called "DSPi
 > Console for Android" up to 0.13.0). It was granted production access on 2026-11-20 and is being rolled out to
-> production, after closed testing up to version **0.13.0** (versionCode 13); 0.12.0 (tag `android-v0.12.0`) was the
-> first release on the core. *(2026-11-26: `main` builds 0.16.0, versionCode 16, for the next release; what it adds is in
-> [`docs/STATUS.md`](../../docs/STATUS.md) and the changelog. Installing: [`docs/INSTALL.md`](../../docs/INSTALL.md#android);
-> what works where, and which features need the DSPi fork firmware (†):
-> [`docs/FEATURES.md`](../../docs/FEATURES.md).)*
+> production, after closed testing up to version 0.13.0 (versionCode 13); 0.12.0 (tag `android-v0.12.0`) was the
+> first release on the core. The current release is **0.16.0** (versionCode 16, 2026-11-26; 0.15.0 was not
+> published). What it adds since 0.14.0 is in [`CHANGELOG-0.16.0.md`](../../CHANGELOG-0.16.0.md) and
+> [`CHANGELOG-0.15.0.md`](../../CHANGELOG-0.15.0.md). **Android 0.16.0 has not run on a phone:** its new pages are
+> tested in unit tests (Robolectric). Installing: [`docs/INSTALL.md`](../../docs/INSTALL.md#android); what works where,
+> and which features need the DSPi fork firmware (†): [`docs/FEATURES.md`](../../docs/FEATURES.md).
 
 What you need: an Android phone or tablet with Android 8.0 or newer. **No DSPi required**: the app has a
 Demo mode, so every screen can be tried without hardware. With a DSPi: firmware **v1.1.6** for full
@@ -38,35 +39,60 @@ psychoacoustic bass, subharmonic synth, tube modeller, upmixer, output limiters 
 official Unsaved Changes flow, import/export, filter files, AutoEQ · settings with the Save / Revert
 bar (pins, outputs, I2S, inputs, global parameters, control interfaces, control surfaces) · test
 signals, spectrum analyser, statistics, interrupt monitor · firmware installer (the bundled 1.1.6
-images or a local `.uf2`) · demo mode without a device.
+images or a local `.uf2`) · demo mode without a device, with **Reset demo**.
 
-DSPi Link (optional, off by default; turned on in Networking: Settings › Networking, "Connect over DSPi
-Link" on the main page when no DSPi is connected, or "DSPi Link…" in the device list): control a DSPi through a DSPi Link hub
-on the local network, such as DSPi Console on a Mac, this repository's `uconsole hub` or Qt app, or a DSPi
-ESP32 bridge — hub discovery or address entry, PIN pairing, reconnect. *(Until 0.12.0 the protocol was
-plaintext. On `main` since 2026-11-16, WP SECAN:)* the connection to this project's hubs is TLS, with the
-hub's key pinned at pairing (compare the fingerprint the hub shows with its PIN); a hub without TLS,
-such as an upstream one, shows as unsecured
+New in 0.16.0 (since 0.14.0):
+
+- **Home is a remote:** the volume with **Mute** beside it, the input source and the presets. The
+  notification's volume steps are 1 dB.
+- **Modes and the installer's lock:** Simple, Advanced and Installer (**Mode…** in the top bar); phones open in
+  Advanced. A DSPi locked by its installer shows Home (and Settings' About and the installer's note); a tap on
+  anything else says why, with **Unlock…**. The locked user may change the volume, mute, the input source and the
+  presets.
+- **Settings › Speakers** and a Speakers step in Getting Started: the role (woofer, mid, tweeter, sub, full range)
+  and side of each output, the tweeter's floor, Confirm. Under the installer's lock the speaker layout cannot be
+  changed (neither the page nor the step is offered).
+- **Touch editing:** on a phone a band opens in a sheet at the bottom with − and + per value; the crossover sits in
+  two rows above the bands, with **Same for the right side** for a left/right pair; the graph legend's pills choose
+  the channel.
+- **The phone's volume buttons** set the DSPi's User Volume (below).
+- Notices when the USB DSPi goes away and comes back; on a phone, **Exit demo** and **Allow USB access** are
+  buttons on the bar.
+- DSPi Link from the main page, reconnecting to the last hub at start, and amber instead of red for an unencrypted
+  connection (below). Outputs no input is routed to are left out of Home, Spectrum and Stats. The app's own colours,
+  readable in light and dark. A number field writes only what you typed.
+- Measurement, auto-tune, AI agents and the Modern layout are **not** on Android, and neither is From Speaker
+  Layout. Not done yet on Android: navigation like the Modern layout's (a bottom bar with sections) and support
+  for large font sizes.
+
+DSPi Link (optional, off by default; turned on in Settings › Networking; with no DSPi connected the strip offers
+"Connect over DSPi Link", and the device list always offers "DSPi Link…"): control a DSPi through a DSPi Link hub
+on the local network, such as this repository's desktop app or `uconsole hub`, Weeb Labs' DSPi Console on a Mac,
+or a DSPi ESP32 bridge — hub discovery or address entry, PIN pairing, reconnect. The connection to this project's
+hubs is TLS, with the hub's key pinned at pairing (compare the fingerprint the hub shows with its PIN); until
+0.12.0 the protocol was plaintext. A hub without TLS, such as an upstream one, shows as unsecured
 ([`docs/integrator/security.md`](../../docs/integrator/security.md)): the strip under the top bar ends in
-"(unsecured)" with an info button, in an amber warning tone. *(Unreleased, WP ANSEC:)* the info dialog's "I understand,
-don't highlight this hub" (on a phone also the strip's overflow menu) gives that hub's strip the normal colours; the
-words and the info button stay. It is remembered per hub, dropped when the hub is next seen encrypted or another hub
-answers at a typed address, and forgotten in Settings › Networking › Acknowledged Unsecured Hubs.
+"(unsecured)" with an info button, in an amber warning tone. The info dialog's "I understand, don't highlight this
+hub" (on a phone also the strip's overflow menu) gives that hub's strip the normal colours; the words and the info
+button stay. It is remembered per hub, dropped when the hub is next seen encrypted or another hub answers at a
+typed address, and forgotten in Settings › Networking › Acknowledged Unsecured Hubs. When the app starts it
+reconnects to the hub used last, unless you disconnected from it or a DSPi is plugged in over USB
+("Reconnect to the last hub at start" in Settings › Networking, on by default). A hub that was once encrypted is
+only ever reached encrypted.
 
-Since 0.12.0, all through the core: the PRO phase 1 screens (snapshots,
-A/B, safe apply, limits profiles, the installer lock and PIN, offline documents and templates, document
-diff and partial import, AutoEQ preview), the hub's limits, PIN and pinned modes (HUBADMIN); shared
-snapshots, the hub's history, the alarm banner and Identify † (P2AN); the device info with the firmware
-generation, the update check before the bootloader entry and the core's write gate for firmware 1.1.6
-and 1.1.7 (PGAND); the audio link's System screen † with S/PDIF units, view only; and the alink sender's own
-page †, where the write keys do nothing (QTSENDER). Measurement and auto-tune come in a
-later batch (`docs/core-merge/PLAN-P5.md`).
+Since 0.12.0, all through the core: snapshots, A/B, safe apply (a snapshot applied for a while with Keep or
+Revert; the Snapshots page still calls it that), limits profiles, the installer lock and PIN, offline documents
+and templates, document diff and partial import, AutoEQ preview; the hub's limits, PIN and pinned modes; shared
+snapshots, the hub's history, the alarm banner and Identify †; the device info with the firmware generation, the
+update check before the bootloader entry and the core's write gate for firmware 1.1.6 and 1.1.7; the audio
+link's System screen † with S/PDIF units, view only; and the alink sender's own page †, where the write keys do
+nothing.
 
 Android specifics: auto-launch on plug-in, a foreground-service notification with volume / mute /
 next preset, and the app claims only the DSPi's vendor control interface, so audio keeps playing
 (Android's own USB audio or a player such as USB Audio Player PRO).
 
-Volume buttons *(unreleased, WP ANVOL)*: while the app is in front and a DSPi is the current device (USB,
+Volume buttons: while the app is in front and a DSPi is the current device (USB,
 DSPi Link or the demo), the device's volume buttons change the DSPi's **User Volume** (`vol.user`, the
 Home "User Volume" slider) in 1 dB steps on the whole-dB grid the firmware uses, -60 to 0 dB. Holding a
 button repeats; writes are paced to at most 10 a second, and the last level always goes out. The Home
@@ -90,11 +116,12 @@ DSPi's User Volume.
   - **V17–V31** (v1.1.5-beta3 to v1.1.6-beta3): that firmware's settings. Tools and rows it does not
     have are hidden, and so, for now, are the hardware options under the channel and settings pages.
   - **Newer than V32:** the settings this version of the app understands.
-- *(On `main`, 2026-11-19.)* Upstream firmware **1.1.7**, which speaks the newer paged protocol with the
-  same V32 settings image, is full control through the core's adapter; firmware with a newer protocol
-  major is refused with a notice ([`docs/manual/notices.md`](../../docs/manual/notices.md)).
   - **Older, or a format the app cannot map:** the settings cannot be read, and the banner says the
     values on screen are defaults.
+- Upstream firmware **1.1.7** (the paged 1.1.7 beta as of 2026-11-18; later 1.1.7 betas may need an update),
+  which speaks the newer paged protocol with the same V32 settings image, is full control through the core's
+  adapter (since 0.14.0); firmware with a newer protocol major is refused with a notice
+  ([`docs/manual/notices.md`](../../docs/manual/notices.md)).
 - † **Needs the DSPi fork firmware** on the device ([Bofr5555/DSPi](https://github.com/Bofr5555/DSPi), release
   [v1.1.6-bofr1](https://github.com/Bofr5555/DSPi/releases/tag/v1.1.6-bofr1)): the crossfeed pair map, the core voltage, Identify and the audio link (the System screen,
   USB-direct and S/PDIF units, the alink sender). Stock firmware has none of these, and the app does not offer
@@ -102,10 +129,12 @@ DSPi's User Volume.
 
 ## Installing without Google Play
 
-A universal `.apk` (arm64, armv7, x86_64) can be made from a release bundle with `bundletool
-build-apks --mode=universal` ([`docs/RELEASE.md`](docs/RELEASE.md), section 4). It is signed with the
-developer's upload key, not Google Play's key, so it cannot update a Play install and Play cannot update
-it: to switch between the two, uninstall first.
+Each release also carries `uConsole-for-DSPi-<version>.apk` (arm64, armv7, x86_64). It is the same app built
+as a separate one: app ID `se.bofr.dspi_console_android_apk`, named "uConsole for DSPi (APK)", so it installs
+next to the Play version instead of over it, and the two never update each other. It is built with
+`-Pdspi.sideload=true :app:assembleRelease` ([`docs/RELEASING.md`](../../docs/RELEASING.md)). For testing a Play
+bundle on your own phone, `bundletool build-apks --mode=universal` makes an APK of the bundle itself
+([`docs/RELEASE.md`](docs/RELEASE.md), section 4).
 
 ## Fork-only extra: crossfeed output pairs
 
@@ -155,9 +184,10 @@ app ID, Play App Signing, testing tracks, store listing, privacy and licensing �
 | `bridge` | `DspiBridge`: port of the Qt bridge (polling, notifications, throttled live edits, confirmation gate for flash writes, read-only guard) |
 | `fake-core` | stateful fake device for tests and previews |
 | `usb` | USB permission / attach / foreground service / bootloader locator |
-| `ui-common`, `feature-*` | Compose UI (home, graph, matrix, tools, presets, settings, analysis, firmware) |
+| `link` | DSPi Link on Android: session engine, hub discovery (NSD), the token store in the Android Keystore |
+| `ui-common`, `feature-*` | Compose UI (home, graph, matrix, tools, presets, settings, analysis, firmware, onboarding) |
 | `app` | wiring, navigation, demo mode |
-| `docs/` | package map, macOS→Android port map, deviations, supply chain |
+| `docs/` | Play release checklist, supply chain, deviations from upstream, macOS→Android port map, DSPi Link phone checklist; the original port's plan (package map, agent rules, control-surface spike) |
 
 ## Credits and licensing
 

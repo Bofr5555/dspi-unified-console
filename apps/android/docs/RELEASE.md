@@ -23,25 +23,26 @@ copies — the GPL allows charging — but such copies must publish their source
 cannot use the name or icon, and a copy that does can be reported to Google
 Play (impersonation / IP complaint).
 
-Remaining before a public release:
+Remaining for each public release:
 - make the source public for each released version (this repository, or a
-  public mirror of the release tag) — the in-app "Source code" link points to
-  https://github.com/Bofr5555/dspi-unified-console (from 0.13.x, REL013M2); the
-  store listing and the privacy policy still point to
-  https://github.com/Bofr5555/dspi-android;
+  public mirror of the release tag): the app's About › Licence › "Source code"
+  row says the source is published with each release as its `-source.tar.gz`
+  archive, beside the downloads; the privacy policy is at
+  https://github.com/Bofr5555/dspi-unified-console (the app links it); the
+  store listing has no source link yet;
 - keep the third-party notices current: `tools/ci.sh settings` fails when
   `assets/licenses/rust-crates.txt` is stale
   (`tools/dev.sh python3 tools/gen_third_party_licenses.py` regenerates it);
   update `THIRD_PARTY` in `LicensesView.kt` and `NOTICE.md` when a JVM
   dependency or bundled asset changes;
-- firmware source: the bundled UF2s are WeebLabs/DSPi `v1.1.6-beta5`; bump the
-  link with the images;
+- firmware source: the bundled UF2s are Weeb Labs' release `v1.1.6`
+  (`docs/SUPPLY-CHAIN.md`, `NOTICE.md`); bump the link with the images;
 - store listing: say the app is GPL-3.0, link the source, credit Weeb Labs.
 
 ## 1. Play Console account **(owner)**
 
 1. Create a developer account at https://play.google.com/console/signup
-   (one-time USD 25 fee, identity verification with an official ID, and a
+   (a one-time registration fee, identity verification with an official ID, and a
    verified contact email and phone number). Choose a *personal* account
    unless you have a registered organisation (an organisation account needs a
    D-U-N-S number but skips the testing requirement in step 7).
@@ -109,7 +110,7 @@ tools/dev.sh keytool -list -v -keystore keystore/upload.jks -alias upload
      (no debug info) for arm64-v8a, armeabi-v7a and x86_64, whatever
      `dspi.rustProfile` says (that property only affects debug builds);
    - runs R8 (code shrinking, optimisation, obfuscation) and resource
-     shrinking (WP AN15). UniFFI's bindings reach the native library through JNA
+     shrinking. UniFFI's bindings reach the native library through JNA
      reflection; the keep rules for that are `ffi/consumer-rules.pro`, the app's
      own are `app/proguard-rules.pro`. The bundle carries R8's mapping
      (`BUNDLE-METADATA/.../proguard.map`), which Play uses to retrace crash
@@ -119,19 +120,25 @@ tools/dev.sh keytool -list -v -keystore keystore/upload.jks -alias upload
    - targets API 36 (`gradle/libs.versions.toml`), Google Play's requirement
      for new apps and updates from 2026-08-31
      (https://developer.android.com/google/play/requirements/target-sdk).
-3. Optional check of the same bundle, as CI does it:
+3. The APK for the release page, `uConsole-for-DSPi-<versionName>.apk`:
+   `tools/dev.sh ./gradlew -Pdspi.sideload=true :app:assembleRelease`, output in
+   `app/build/outputs/apk/release/`. It is the same app as a separate one (app ID
+   `se.bofr.dspi_console_android_apk`, named "uConsole for DSPi (APK)"), so it
+   installs next to the Play copy; it is signed with the upload key. Never upload
+   it to Play.
+4. Optional check of the same bundle, as CI does it:
    `tools/ci.sh release` (also part of `tools/ci.sh all`) builds with a throwaway key, runs
    `bundletool validate`, checks the manifest and the native libraries, and
    prints sizes. It deletes its key and bundle afterwards: **never upload a
    bundle built by `tools/ci.sh release`**.
-4. Optional local install of the bundle on your phone (you, not an agent: the
+5. Optional local install of the bundle on your phone (you, not an agent: the
    container has no USB access): `bundletool build-apks --mode=universal`
    in the container, then install the `.apk` from the extracted `.apks` with
    adb on the host.
 
 ## 5. Create the app and enrol in Play App Signing **(owner)**
 
-1. Play Console → Create app. App name (see step 0.3), default language,
+1. Play Console → Create app. App name (step 2), default language,
    "App", "Free". Free cannot later become paid.
 2. Test and release → App integrity → App signing: keep **Use a
    Google-generated app signing key** (recommended). New apps must use Play
@@ -157,7 +164,8 @@ A DSPi board is rare hardware, so recruit testers who own one (WeebLabs
 community). Organisation accounts skip this.
 
 Done: the closed test ran up to 0.13.0, and the app was granted production
-access on 2026-11-20; 0.14.0 is the first release for production.
+access on 2026-11-20; 0.14.0 is the first release for production. 0.15.0 was
+not published; the release after 0.14.0 is 0.16.0 (versionCode 16).
 
 ## 8. App content (Policy → App content) **(owner)**
 
@@ -167,7 +175,7 @@ Answers specific to this app. Verify each against the build you upload
 - **Privacy policy (URL required, in the listing and in the app).** Done:
   [`PRIVACY.md`](../PRIVACY.md), public at
   https://github.com/Bofr5555/dspi-unified-console/blob/main/apps/android/PRIVACY.md
-  (from 0.15.0; up to 0.14.0 the app linked the archived dspi-android copy); the
+  (in the app from 0.16.0; up to 0.14.0 it linked the archived dspi-android copy); the
   app links it from Settings › About › Licence. Enter that URL in Play Console (App
   content → Privacy policy). Keep it in step with what the app does.
 - **Data safety.** *DSPi Link (approved by the owner 2026-11-06, together with
@@ -186,12 +194,17 @@ Answers specific to this app. Verify each against the build you upload
   not collected in that sense, and none of it is a Play user-data type. No
   third-party SDKs (no analytics, crash reporting or ads). "Is all of the user
   data collected by your app encrypted in transit?": not applicable (none is
-  collected); the DSPi Link protocol itself is plaintext on the LAN, which the
-  privacy policy states. Re-checked for WP AN4, which binds the process to Wi-Fi
+  collected); DSPi Link to this project's hubs is TLS, while DSPi Link to Weeb
+  Labs' DSPi Console or a DSPi bridge is plaintext on the LAN, which the privacy
+  policy states. Re-checked when the app began to bind the process to Wi-Fi
   while a Link session exists and the Wi-Fi has no validated internet: same data,
-  same hub, no new permission, so this answer stands. "Users can request deletion" → not applicable
+  same hub, no new permission, so this answer stands. The AutoEQ menu's
+  Update Database... › Download... fetches a database from an https address the
+  user types (since 0.13.0); the request sends no user data (its User-Agent is
+  the app's name and version), so the answer stands, but the privacy policy now
+  says so (0.16.0, needs the owner's OK). "Users can request deletion" → not applicable
   (uninstall deletes everything, `allowBackup="false"`).
-  *Owner decision D8 (2026-11-06): answer "No" as above.* The
+  *Owner decision (2026-11-06): answer "No" as above.* The
   conservative alternative, kept for reference if Play support disagrees: declare "Device
   or other IDs" and "App activity" as collected (not shared, not encrypted in
   transit, optional: only with DSPi Link on). When in doubt, ask Play support
@@ -225,22 +238,25 @@ Answers specific to this app. Verify each against the build you upload
 
 ## 9. Store listing **(owner)**
 
-- DSPi Link (approved 2026-11-06): the full description has, after the second
-  paragraph: "Optional DSPi Link (off by default): control a DSPi that is
-  connected to DSPi Console, or wired to a DSPi bridge, over your local
-  network. The connection is not encrypted; use it on networks you trust."
-  (AN33, 2026-11-07: "plugged into a Mac running DSPi Console" became
-  "connected to DSPi Console", no host-device nouns.) (added to `store/play/listing/en-US/full_description.txt` on
-  `feature/link`; it ships with the first DSPi Link build.)
-  *WP ANSEC (2026-11-21, needs the owner's OK before the next listing update):* "The connection is
-  not encrypted; use it on networks you trust." became "DSPi Link connections to a uConsole for DSPi
-  hub are encrypted, and pairing pins the hub's key. DSPi Link connections to Weeb Labs' DSPi Console
-  or to a DSPi bridge are not encrypted; use those only on networks you trust." (SECAN made the first
-  case TLS); PRIVACY.md's Security bullet says the same. The Data safety answer above is unchanged
-  (some DSPi Link traffic is still plaintext).
+- The text is in `store/play/listing/en-US/` (`title.txt`, `short_description.txt`,
+  `full_description.txt`); the release notes are in `store/play/release-notes/`.
+  The full description says: a DSPi is required (Demo mode without one); the
+  app is the Android client of uConsole for DSPi, made by Bofr5555 with Weeb
+  Labs' permission; firmware v1.1.6 for full features; speakers are set up in
+  the app, measuring is in the desktop and web consoles; and DSPi Link is
+  optional and off by default. The DSPi Link paragraph was approved on
+  2026-11-06 ("The connection is not encrypted; use it on networks you trust");
+  since the hubs of this project use TLS it says that links to a uConsole for
+  DSPi hub are encrypted, with the hub's key pinned at pairing, and that links
+  to Weeb Labs' DSPi Console or to a DSPi bridge are not (the owner's OK is
+  needed before the next listing update). `PRIVACY.md`'s Security bullet says
+  the same. The Data safety answer above is unchanged (some DSPi Link traffic
+  is still plaintext). The listing names no host device ("in the app", not
+  "on the phone" or "on a Mac").
 - Short description (80 chars), full description (4000). State clearly:
   needs a DSPi board and a phone/tablet with USB host (OTG) support;
-  unofficial if so (step 0.3); GPL-3.0 with a source link (step 0.2).
+  made by Bofr5555 with Weeb Labs' permission; GPL-3.0 with a source link
+  (step 0; not in the listing yet).
 - Graphics: 512×512 icon, 1024×500 feature graphic, at least 2 phone
   screenshots (Demo mode is fine for screenshots), tablet screenshots if you
   want the app shown as tablet-ready.
@@ -273,7 +289,7 @@ From targetSdk 35 to 36:
 - **Edge-to-edge:** enforced since targetSdk 35; 36 removes the
   `windowOptOutEdgeToEdgeEnforcement` opt-out. The app never used the opt-out;
   `AppScaffold` is a Material 3 `Scaffold`, which applies the system bar
-  and display cutout insets (AN27: no title bar; `NoTitleBarAn27Test`). No change.
+  and display cutout insets (no title bar; `NoTitleBarAn27Test`). No change.
 - **Predictive back:** on by default at 36. The app already sets
   `enableOnBackInvokedCallback="true"` and every back path goes through the
   `OnBackPressedDispatcher` (NavHost, `BackHandler`s); nothing overrides

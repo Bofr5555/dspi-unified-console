@@ -3,13 +3,15 @@
 *Effective 6 November 2026. Applies to the Android app "uConsole for DSPi"
 (`se.bofr.dspi_console_android`, called "DSPi Console for Android" up to version 0.13.0) by Bofr5555.
 20 November 2026: the app's new name only; nothing else changed.
-Version 0.15.0: the app also keeps, on the phone, the hub you used last (to reconnect at start) and the hubs you chose
-not to highlight; DSPi Link's encryption is described per kind of hub.*
+Version 0.16.0 (the first release since 0.14.0): the app also keeps, on the phone, the hub you used last (to
+reconnect at start), the hubs you chose not to highlight and the speaker layout you confirm for each DSPi; DSPi
+Link's encryption is described per kind of hub.*
 
 **In short: the app collects no personal data and sends nothing to the developer or to any third
 party.** It has no accounts, no ads, no analytics and no crash reporting. It uses the network only
 for the optional **DSPi Link** feature, which is **off until you turn it on**, and then only to talk
-to a DSPi hub that you choose on your own local network.
+to a DSPi hub that you choose on your own local network, and, when you ask for it, to download an
+AutoEQ database from an address you type (see "Bundled data").
 
 ## What the app does with data
 
@@ -19,23 +21,27 @@ to a DSPi hub that you choose on your own local network.
   device's serial number. This data stays between the phone and the device (or the hub).
 - **Settings stored on the phone.** App preferences (display options, graph settings, which input
   channels you linked, per device serial number, and the DSPi Link settings) are stored in the
-  app's private storage on your phone. They are not backed up to the cloud (Android backup is
+  app's private storage on your phone, and so, per device serial number, is the speaker layout you
+  confirm in Settings › Speakers (which output drives which speaker). They are not backed up to the cloud (Android backup is
   turned off for this app) and are removed when you uninstall the app.
 - **Files you choose.** When you import or export presets or filter files, or install firmware from
   a file, the app reads or writes only the file you pick in Android's file picker. When you share a
   preset, a temporary copy is placed in the app's cache for the app you share it with.
 - **Bundled data.** The AutoEQ headphone database and the official DSPi firmware images ship inside
-  the app; using them involves no download.
+  the app; using them involves no download. Only if you choose AutoEQ › Update Database... › Download...
+  and type an https address does the app fetch a database from that address. The request names only
+  the app and its version (and, as any connection does, shows that server your network address); the
+  file replaces the database in use once it has been checked.
 - **Notifications.** While a DSPi is connected (over USB or DSPi Link), the app shows a notification
   with volume, mute and next-preset controls (Android requires a visible notification for this). It
   contains nothing but the device status.
 
 ## DSPi Link (optional, local network)
 
-DSPi Link lets the app control a DSPi that is plugged into another computer running DSPi Console
-(a "hub"), or wired to a DSPi bridge (an ESP32 board), over your local network. It is **off by
-default**: until you turn it on in Settings › Networking, the app opens no network connection and
-does not look for hubs.
+DSPi Link lets the app control a DSPi that is plugged into another computer running uConsole for DSPi or
+Weeb Labs' DSPi Console (a "hub"), or wired to a DSPi bridge (an ESP32 board), over your local network. It is **off by
+default**: until you turn it on in Settings › Networking, the app opens no network connection (other
+than an AutoEQ download you ask for) and does not look for hubs.
 
 When you turn it on:
 

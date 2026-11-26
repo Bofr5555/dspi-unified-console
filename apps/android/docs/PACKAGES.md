@@ -1,5 +1,14 @@
 # Work packages
 
+> **History.** This is the plan the Android port was built by in November 2026, in its own repository
+> (`dspi-android`), before it moved into this one. The paths `rust/` and `third_party/`, the submodule and
+> `../PLAN-NATIVE-ANDROID.md`, the waves and the roles (a coordinator, one package per agent) are from that time.
+> Today the core is this repository's `crates/` (no patches, no submodule), the modules are listed in the
+> [README](../README.md#project-layout) (`feature-onboarding` and `link` came later), and the checks are
+> `tools/ci.sh` and `ci/check.sh --step android-tests`. The gating policy below still holds; what differs from
+> upstream on purpose is in [`UPSTREAM-DEVIATIONS.md`](UPSTREAM-DEVIATIONS.md), the file map in
+> [`PORT-MAP.md`](PORT-MAP.md).
+
 Plan: `../PLAN-NATIVE-ANDROID.md` (§3 architecture, §4 protocol, §5 Android,
 §7 tracking, §8 tests). Mapping of macOS files to Android files: `PORT-MAP.md`.
 Agent workflow (branches, worktrees, container, CI): `CONTRIBUTING-AGENTS.md`.

@@ -1,6 +1,6 @@
 # DSPi Link client: hardware-in-the-loop checklist
 
-For the owner / coordinator (agents never run these). Branch `feature/link`.
+For the owner (agents never run these; none of it has run for 0.16.0).
 Build: `tools/dev.sh ./gradlew :app:assembleDebug -Pdspi.rustProfile=release`,
 install with adb as usual. Logs: `adb logcat -s DspiApplication DspiLink dspi-core`.
 
@@ -13,10 +13,11 @@ Record for each item: pass / fail, phone, hub, firmware, and the numbers asked f
 | **Fake hub** (no hardware) | `tools/link-fakehub.sh [--auth none\|window:123456\|fixed:482913] [--bridge] [--role viewer]` on this host; port 11915 published. Add it by address (`<host LAN IP>`), or, for discovery, advertise it from the host: `avahi-publish -s "Fake Hub" _dspi._tcp 11915 v=1 hid=6f1a2b3c-4d5e-4f60-8a9b-0c1d2e3f4a5b kind=console auth=pin n=1`. Emulator: `10.0.2.2`. |
 | **macOS Console hub** | DSPi Console 1.1.6 (`release/v1.1.6`) in the macOS VM, DSPi passed through (QMP id `dspi`), Settings › Networking › "Share Devices on This Network" on. The VM must be bridged onto the LAN for DNS-SD; with NAT, forward 11915 and add by address. Access "Require Pairing" (Console default) and "Open". |
 | **ESP32 bridge** | DSPi-Link `bridge/esp32` on the DSPi UART (1 Mbaud, `notify_enable` on), PIN mode fixed. |
+| **uConsole for DSPi hub** (TLS) | This repository's desktop app sharing its DSPi (Settings › Networking), or `uconsole hub`, with a DSPi on USB. The only hub kind here that encrypts (section 7). |
 
 ## 1. Opt-in and privacy (any hub)
 
-- [ ] Fresh install: Settings › Networking shows "Control DSPi devices over the network" **off**; the strip under the top bar (no DSPi on USB) shows "Connect over DSPi Link" and "Try the demo", and the device list "DSPi Link…" but no hub (WP ANLINK); both open Networking with the switch still off; nothing on the network (`adb shell dumpsys connectivity` / router: no traffic from the app; no `_dspi._tcp` queries).
+- [ ] Fresh install: Settings › Networking shows "Control DSPi devices over the network" **off**; the strip under the top bar (no DSPi on USB) shows "Connect over DSPi Link" and "Try the demo", and the device list "DSPi Link…" but no hub; both open Networking with the switch still off; nothing on the network (`adb shell dumpsys connectivity` / router: no traffic from the app; no `_dspi._tcp` queries).
 - [ ] Play/Settings › App info lists the network permissions; no other new permission.
 - [ ] Turn it on: the trusted-network notice is shown; "Find hubs automatically" browses only while the page is open, or while a session looks for its hub (section 6); leave the page with no session: queries stop.
 - [ ] `adb logcat` never shows a PIN or a token.
@@ -65,17 +66,17 @@ Record for each item: pass / fail, phone, hub, firmware, and the numbers asked f
 | Reconnect after hub restart | | |
 | Battery: 30 min background REMOTE, % | | |
 
-## 6. Network handling (WP AN4; agents had no phone, so none of this has run on one)
+## 6. Network handling (none of this has run on a phone)
 
 - [ ] Hub off, tap it: "failed". Wait 2 min: no dial in the hub's log, no retry on a timer. Turn phone Wi-Fi off and on: exactly one dial per return.
 - [ ] Failed with the app in front and the hub starts: DNS-SD sees it, one dial, connected.
-- [ ] Change the hub's DHCP lease during a session (F5): connection lost, then connected at the new address with no PIN, board and settings kept. Also after power-cycling an ESP32 bridge that gets a new address: if the phone does not find it until the app is brought to the front, record that (NsdManager may not report a known name again).
-- [ ] Wi-Fi without internet, mobile data on (F10): the hub connects; `adb shell dumpsys connectivity` shows Wi-Fi not validated; the app's sockets go over Wi-Fi. Then a Wi-Fi with internet: the binding is gone (no `bind` warning in logcat `DspiLink`).
+- [ ] Change the hub's DHCP lease during a session: connection lost, then connected at the new address with no PIN, board and settings kept. Also after power-cycling an ESP32 bridge that gets a new address: if the phone does not find it until the app is brought to the front, record that (NsdManager may not report a known name again).
+- [ ] Wi-Fi without internet, mobile data on: the hub connects; `adb shell dumpsys connectivity` shows Wi-Fi not validated; the app's sockets go over Wi-Fi. Then a Wi-Fi with internet: the binding is gone (no `bind` warning in logcat `DspiLink`).
 - [ ] Reconnecting with the screen off, hub stopped: after 10 min the notification goes, logcat says the service stops, `_dspi._tcp` queries stop. Bring the app to the front: notification back, "reconnecting" still shown, the hub reconnects when started.
 - [ ] Same, hub restarted after the notification went, app still in the background: when it reconnects, no crash; the notification comes back when the app is next in front.
 - [ ] Battery: `adb shell dumpsys batterystats` over a night with a hub that stays away, no multicast lock held after the first 10 min (`dumpsys wifi`).
 
-### F10's items, as decided (`LINK-HUB-FINDINGS.md`)
+### Decisions on the hub findings
 
 | Item | Decision | Why |
 |---|---|---|
@@ -85,3 +86,16 @@ Record for each item: pass / fail, phone, hub, firmware, and the numbers asked f
 | Wi-Fi without internet | **Used** | `bindProcessToNetwork` while a session exists and no local network is validated (`LinkNetworkEdges`). Lifted otherwise, so other traffic is untouched. Not bound with validated Wi-Fi. Data safety re-checked in `RELEASE.md`: the answer stands. |
 | Partial write on the reader | No work: fixed | `socket.rs`: a failed flush marks the pipe broken and nothing more goes out; `dspi-link` tests that. |
 | Command slots | **Rejected** | `RATE_LIMITED` fails the write and the user sees it. Retrying would be the write queue the owner's rule forbids. |
+
+## 7. Encryption and reconnect at start
+
+- [ ] uConsole for DSPi hub: after pairing, Settings › Networking › Paired Hubs shows "Key SHA256:…", the same
+  fingerprint the hub shows with its PIN; the strip has no "(unsecured)". App restart: it connects again without a
+  prompt.
+- [ ] macOS Console hub, ESP32 bridge or fake hub: the strip ends in "(unsecured)" in amber, with an info button.
+  "I understand, don't highlight this hub" (the info dialog, or on a phone the strip's overflow menu) gives the
+  strip the normal colours; the words and the info button stay. Settings › Networking › Acknowledged Unsecured Hubs
+  forgets it, and the amber comes back.
+- [ ] Reconnect at start: connected to a hub, close the app and open it again: it reconnects to that hub without a
+  tap. Not after Disconnect, not with a DSPi on USB, and not with "Reconnect to the last hub at start" off
+  (Settings › Networking).

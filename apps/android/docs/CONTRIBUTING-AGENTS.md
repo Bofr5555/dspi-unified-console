@@ -1,7 +1,11 @@
 # Contributing (agents)
 
-Read first: `PACKAGES.md` (what you own), `PORT-MAP.md` (what you port),
-`../PLAN-NATIVE-ANDROID.md` (why).
+Rules for AI agents working on the Android app. They were written for the original port (see
+[`PACKAGES.md`](PACKAGES.md), now history) and still hold where they speak of the device, the container and the
+supply chain.
+
+Read first: `PORT-MAP.md` (what is ported from where), `UPSTREAM-DEVIATIONS.md` (what differs on purpose);
+`PACKAGES.md` for the gating policy.
 
 ## Hard rules
 
@@ -29,7 +33,7 @@ Read first: `PACKAGES.md` (what you own), `PORT-MAP.md` (what you port),
 tools/dev.sh --build-image        # once (or after container/Containerfile changes)
 tools/dev.sh                      # interactive shell in the container
 tools/dev.sh ./gradlew :feature-tools:assembleDebug
-tools/dev.sh bash -c 'cd rust && cargo test -p dspi-ffi'
+tools/dev.sh bash -c 'cd ../.. && cargo test -p dspi-ffi'   # the Rust workspace is the repository's top
 tools/ci.sh <package>             # your package's checks (re-execs itself in the container)
 ```
 
@@ -40,7 +44,7 @@ What `dev.sh` does:
 - Keeps caches in named volumes:
   - `dspi-android-cargo` (crates registry),
   - `dspi-android-gradle` (shared Gradle wrapper and downloaded dependencies, read-only for builds),
-  - `dspi-android-target-<hash of checkout path>` (one Rust target dir and one Gradle home per worktree, so parallel agents don't thrash each other's builds or collide on Gradle's locks).
+  - `dspi-android-target-<hash of the app's path>` (one Rust target dir and one Gradle home per worktree, so parallel agents don't thrash each other's builds or collide on Gradle's locks).
 
 Inside the container these are set:
 - `ANDROID_HOME`, `ANDROID_NDK_HOME` (r27c)
@@ -54,13 +58,12 @@ Only `:ffi` and `:app` builds compile Rust: cargo-ndk, the NDK, and roughly 1 to
 
 ## Branches and worktrees
 
-- One branch per package: `pkg/<name>`, e.g. `pkg/ffi`, `pkg/usb`, `pkg/bridge`, `pkg/home`, `pkg/graph`, …, branched from `main`.
-- Work in a worktree beside the main checkout:
+- One branch per piece of work, branched from `main`.
+- Work in a worktree beside the main checkout (no submodule to initialise: the core is `crates/`):
   ```
-  git -C dspi-android worktree add ../wt/<name> -b pkg/<name> main
-  cd ../wt/<name>
-  git submodule update --init          # the submodule is needed by :ffi/:app/contract only
-  tools/ci.sh <name>
+  git worktree add ../<name> -b <branch> main
+  cd ../<name>/apps/android
+  tools/ci.sh <package>
   ```
 - Never commit on `main`. The coordinator merges `pkg/*` branches.
 - Rebase on `main` when the coordinator asks (contracts may have moved). Do not merge `main` into your branch.
