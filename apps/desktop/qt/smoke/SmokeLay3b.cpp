@@ -291,9 +291,13 @@ void buttonMenusPart(Menus &m) {
     m.check("Save ▾ opens", m.click(QStringLiteral("TopBar.save.more")) && m.open("TopBar.save.menu"));
     holds("save", "TopBar.save.menu");
     m.d.grab(m.main, QStringLiteral("modern-save-menu.png"));
-    // -- WP UFW -- (UXP A3, C1) Factory Reset is a device tab's (devicePart), not Save's
-    m.check("Factory Reset is not one slip away from Save", m.row("TopBar.save.menu", "device.revert") && !m.row("TopBar.save.menu", "device.factoryReset"));
-    m.close("TopBar.save.menu");
+    // -- WP UA3 -- (UXP C1) Factory Reset is not in Save ▾ (ua3-savestate: on Devices)
+    m.check("Factory Reset is not in it", !m.row("TopBar.save.menu", "device.factoryReset"));
+    m.check("Revert to Saved asks", m.choose("TopBar.save.menu", "device.revert"));
+    QObject *question = m.d.object(QStringLiteral("FilesHost.deviceQuestion"));
+    m.check("its question shows", question && m.d.waitFor(2000, [&] { return question->property("opened").toBool(); }));
+    if (question) QMetaObject::invokeMethod(question, "finish", Q_ARG(QVariant, QStringLiteral("reject")));
+    m.settle();
 
     // Undo ▾: what was changed, the newest first
     const double before = m.device()->state()->output_gain_db[0];
@@ -332,7 +336,8 @@ void buttonMenusPart(Menus &m) {
             && autoeqMenu->findChild<QObject *>(QStringLiteral("AutoEqWindow.menu.autoeq.clearFavorites")));
     if (autoeqMenu) QMetaObject::invokeMethod(autoeqMenu, "close");
     m.settle();
-    for (const char *name : { "TopBar.undo.button", "TopBar.redo", "TopBar.save.button", "TopBar.ab", "TopBar.preset", "DeviceTabs.add", "Dock.mute",
+    // -- WP UA3 -- TopBar.ab shows while a compare runs only (ua3-savestate)
+    for (const char *name : { "TopBar.undo.button", "TopBar.redo", "TopBar.save.button", "TopBar.preset", "DeviceTabs.add", "Dock.mute",
                               "Dock.bypass" })
         m.d.check(QStringLiteral("lay3b: %1, a place that is a control, shows").arg(QLatin1String(name)), m.shown(QString::fromLatin1(name)) != nullptr);
     m.go("overview", "overview");

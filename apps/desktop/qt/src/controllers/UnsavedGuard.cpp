@@ -16,6 +16,8 @@
 #include "Shell.h"
 #include "SidebarController.h"
 #include "Snapshot.h"
+#include "SnapshotsController.h"   // -- WP UA3 --
+#include "TuneController.h"        // -- WP UA3 --
 
 #include "CoreApi.h"
 
@@ -28,7 +30,9 @@
 #include <QQmlApplicationEngine>
 #include <QQuickWindow>
 #include <QTimer>
+#include <algorithm>
 #include <memory>
+#include <tuple>
 
 static const Registrar::Controller<UnsavedGuard> unsavedGuard;
 
@@ -52,6 +56,31 @@ QString failure(uint8_t status) {
     return status == kPresetLocked ? UnsavedGuard::tr("Another console is applying changes")
                                    : UnsavedGuard::tr("error %1").arg(status);
 }
+
+// -- WP UA3 -- Saves the live state into `slot` of `model`'s device (a slot
+// without a name gets "Preset N" first, so the popup stops calling it "Empty");
+// `done` gets whether it went through and the core's status
+void saveInto(SessionModel *model, int slot, std::function<void(bool, uint8_t)> done) {
+    const QByteArray fallback = UnsavedGuard::tr("Preset %1").arg(slot + 1).toUtf8();
+    auto status = std::make_shared<uint8_t>(0xFF);
+    model->write(
+        QStringLiteral("preset save"),
+        [slot, fallback, status](FfiCore *c) {
+            char name[CHANNEL_NAME_LEN] = {};
+            if (!dspi_get_preset_name(c, uint8_t(slot), name, sizeof name) || name[0] == 0)
+                dspi_set_preset_name(c, uint8_t(slot), fallback.constData());
+            *status = Confirm::savePreset(c, uint8_t(slot));   // -- WP P1QT2 -- token
+            return *status == PRESET_OK;
+        },
+        [status, done = std::move(done)](bool ok) { done(ok, *status); });
+}
+
+// -- WP UA3 -- What Save All asks about one device. Worker thread.
+struct SaveRead {
+    bool dirty = false;
+    QStringList changes;
+    QString name;
+};
 } // namespace
 
 UnsavedGuard::UnsavedGuard(const AppContext &ctx, QObject *parent) : QObject(parent), m_ctx(ctx) {
@@ -285,8 +314,7 @@ void UnsavedGuard::answer(const QString &answer) {
         finish();
         return;
     }
-    // Save into the active slot; a slot without a name gets "Preset N" first,
-    // so the popup stops calling it "Empty"
+    // Save into the active slot
     // -- WP MDQT2b -- the slot and the write of the device asked about
     SessionModel *model = m_target ? m_target->model() : nullptr;
     const DspState *state = model ? model->state() : nullptr;
@@ -295,35 +323,24 @@ void UnsavedGuard::answer(const QString &answer) {
         askNext();
         return;
     }
-    const QByteArray fallback = tr("Preset %1").arg(slot + 1).toUtf8();
-    auto status = std::make_shared<uint8_t>(0xFF);
     const QPointer<DeviceSession> target = m_target;
-    model->write(
-        QStringLiteral("preset save"),
-        [slot, fallback, status](FfiCore *c) {
-            char name[CHANNEL_NAME_LEN] = {};
-            if (!dspi_get_preset_name(c, uint8_t(slot), name, sizeof name) || name[0] == 0)
-                dspi_set_preset_name(c, uint8_t(slot), fallback.constData());
-            *status = Confirm::savePreset(c, uint8_t(slot));   // -- WP P1QT2 -- token
-            return *status == PRESET_OK;
-        },
-        [this, status, target](bool ok) {
-            // -- WP QPI2 -- a device gone meanwhile has nothing left to save:
-            // the switch or the quit goes on
-            if (ok || !target || !target->model()->connected()) {
-                askNext();
-                return;
-            }
-            const QString why = failure(*status);
-            bringBack();
-            if (m_op == QLatin1String("quit")) {
-                m_shown = true;   // -- WP LAY7 --
-                emit saveFailed(m_op, tr("Save Failed"), tr("Failed to save preset (%1). Quit anyway?").arg(why));
-                return;   // still asking: answerSaveFailed() decides
-            }
-            emit saveFailed(m_op, tr("Save Failed"), tr("Failed to save preset (%1). Device switch aborted.").arg(why));
-            finish();
-        });
+    saveInto(model, slot, [this, target](bool ok, uint8_t status) {   // -- WP UA3 -- shared with Save All
+        // -- WP QPI2 -- a device gone meanwhile has nothing left to save:
+        // the switch or the quit goes on
+        if (ok || !target || !target->model()->connected()) {
+            askNext();
+            return;
+        }
+        const QString why = failure(status);
+        bringBack();
+        if (m_op == QLatin1String("quit")) {
+            m_shown = true;   // -- WP LAY7 --
+            emit saveFailed(m_op, tr("Save Failed"), tr("Failed to save preset (%1). Quit anyway?").arg(why));
+            return;   // still asking: answerSaveFailed() decides
+        }
+        emit saveFailed(m_op, tr("Save Failed"), tr("Failed to save preset (%1). Device switch aborted.").arg(why));
+        finish();
+    });
 }
 
 void UnsavedGuard::answerSaveFailed(const QString &answer) {
@@ -371,6 +388,7 @@ void UnsavedGuard::wire(QQuickWindow *window) {
     if (m_window) return;
     m_window = window;
     window->installEventFilter(this);
+    watchKeeps();   // -- WP UA3 -- every controller is there by now
 }
 
 // Nothing can be unsaved: no device, or the sidebar's last reading says clean
@@ -402,4 +420,159 @@ bool UnsavedGuard::eventFilter(QObject *watched, QEvent *event) {
         window->close();
     });
     return true;
+}
+
+// ---- -- WP UA3 -- Save All ----------------------------------------------------
+
+QString UnsavedGuard::presetText(int slot, const QString &name) {
+    //: %1 is a preset slot's number, counted from 1
+    if (name.isEmpty()) return tr("preset %1").arg(slot + 1);
+    //: %1 is a preset slot's number, counted from 1; %2 the preset's name
+    return tr("preset %1 “%2”").arg(QString::number(slot + 1), name);
+}
+
+void UnsavedGuard::askSaveAll() {
+    if (m_asking) {
+        refuseSecond(QStringLiteral("saveAll"));
+        return;
+    }
+    QList<QPointer<DeviceSession>> all;
+    if (m_ctx.registry)
+        for (DeviceSession *s : m_ctx.registry->sessions())
+            if (s->model()->connected()) all << s;
+    m_op = QStringLiteral("saveAll");
+    m_saveAll.clear();
+    setAsking(true);
+    // The last edit's echo first, as before the other questions
+    const qint64 left = std::max<qint64>(0, kSettleMs - m_sinceChange.elapsed());
+    QTimer::singleShot(int(left), this, [this, all] { collectSaveAll(all); });
+}
+
+// Each device in turn, on its own worker (after what was queued there)
+void UnsavedGuard::collectSaveAll(QList<QPointer<DeviceSession>> left) {
+    if (!m_asking || m_op != QLatin1String("saveAll")) return;
+    while (!left.isEmpty() && (!left.first() || !left.first()->model()->connected())) left.removeFirst();
+    if (!left.isEmpty()) {
+        const QPointer<DeviceSession> s = left.takeFirst();
+        const DspState *state = s->model()->state();
+        const int slot = state && state->active_preset_slot < MAX_PRESETS ? state->active_preset_slot : -1;
+        s->worker()->call(
+            this,
+            [slot](FfiCore *c) {
+                SaveRead r;
+                std::tie(r.dirty, r.changes) = readChanges(c);
+                char name[CHANNEL_NAME_LEN] = {};
+                if (slot >= 0 && dspi_get_preset_name(c, uint8_t(slot), name, sizeof name)) r.name = QString::fromUtf8(name);
+                return r;
+            },
+            [this, s, slot, left](const SaveRead &r) {
+                if (!m_asking || m_op != QLatin1String("saveAll")) return;
+                if (s && r.dirty && slot >= 0) m_saveAll.append({ s, slot, r.name, r.changes });
+                collectSaveAll(left);
+            });
+        return;
+    }
+    if (m_saveAll.isEmpty()) {
+        finish();
+        if (auto *notices = Registrar::instance<NoticeCenter>()) notices->post(tr("Nothing to save: no open device has unsaved changes."));
+        return;
+    }
+    QStringList rows;
+    for (const SaveTarget &t : std::as_const(m_saveAll)) {
+        const int n = int(t.changes.size());
+        // -- WP QPI2 -- spelt out: without a .qm "%n ... (s)" shows the "(s)"
+        const QString count = n == 1 ? tr("1 change") : tr("%1 changes").arg(n);
+        //: %1 is a device's name, %2 "preset 1 “Demo”", %3 "5 changes"
+        rows << QStringLiteral("• ") + tr("%1, %2: %3").arg(t.session ? t.session->title() : QString(), presetText(t.slot, t.name), count);
+    }
+    const int n = int(m_saveAll.size());
+    const QString head = n == 1 ? tr("Save the unsaved changes of 1 device?") : tr("Save the unsaved changes of %1 devices?").arg(n);
+    bringBack();
+    m_shown = true;
+    emit saveAllQuestion(tr("Save All"), head + QStringLiteral("\n\n") + rows.join(QLatin1Char('\n')));
+}
+
+void UnsavedGuard::answerSaveAll(const QString &answer) {
+    if (!m_asking || m_op != QLatin1String("saveAll")) return;
+    m_shown = false;
+    if (answer != QLatin1String("accept")) {
+        m_saveAll.clear();
+        finish();
+        return;
+    }
+    m_savedAll = 0;
+    m_saveAllFailed.clear();
+    saveNext();
+}
+
+void UnsavedGuard::saveNext() {
+    while (!m_saveAll.isEmpty()) {
+        const SaveTarget t = m_saveAll.takeFirst();
+        if (!t.session || !t.session->model()->connected()) continue;
+        const QPointer<DeviceSession> s = t.session;
+        saveInto(s->model(), t.slot, [this, s](bool ok, uint8_t status) {
+            if (ok) ++m_savedAll;
+            //: %1 is a device's name, %2 why its save failed
+            else if (s) m_saveAllFailed << tr("%1 (%2)").arg(s->title(), failure(status));
+            saveNext();
+        });
+        return;
+    }
+    const int saved = m_savedAll;
+    const QStringList failed = m_saveAllFailed;
+    m_saveAllFailed.clear();
+    finish();
+    if (auto *notices = Registrar::instance<NoticeCenter>()) {
+        if (!failed.isEmpty())
+            notices->post(tr("Not saved: %1.").arg(failed.join(QStringLiteral(", "))), QStringLiteral("error"));
+        else
+            notices->post(saved == 1 ? tr("Saved on 1 device.") : tr("Saved on %1 devices.").arg(saved));
+    }
+    emit savedAll(saved, failed);
+}
+
+// ---- -- WP UA3 -- Kept, and not saved yet ------------------------------------
+
+void UnsavedGuard::watchKeeps() {
+    if (auto *snaps = Registrar::instance<SnapshotsController>()) {
+        // The phase is the active device's: one seen on another device is no end
+        auto seen = std::make_shared<QPointer<DeviceSession>>(m_ctx.activeSession());
+        m_guardPhase = snaps->guardPhase();
+        connect(snaps, &SnapshotsController::guardChanged, this, [this, snaps, seen] {
+            const QString now = snaps->guardPhase();
+            const bool same = *seen == m_ctx.activeSession();
+            const bool kept = same && now == QLatin1String("kept") && m_guardPhase != now;
+            m_guardPhase = now;
+            *seen = m_ctx.activeSession();
+            if (kept) keptOn(m_ctx.activeSession());
+        });
+    }
+    if (auto *tune = Registrar::instance<TuneController>())
+        connect(tune, &TuneController::stepDone, this, [this](const QString &step, bool ok) {
+            if (ok && step == QLatin1String("keep")) keptOn(m_ctx.activeSession());
+        });
+}
+
+// A Keep leaves the device's preset with unsaved changes: the notice says so
+// and offers Save to Device (its question, for that device)
+void UnsavedGuard::keptOn(DeviceSession *session) {
+    if (!session) return;
+    const QPointer<DeviceSession> s = session;
+    session->worker()->call(this, &readChanges, [this, s](const std::pair<bool, QStringList> &r) {
+        auto *notices = Registrar::instance<NoticeCenter>();
+        if (!s || !r.first || !s->model()->connected() || !notices) return;
+        int open = 0;
+        if (m_ctx.registry)
+            for (DeviceSession *o : m_ctx.registry->sessions())
+                if (o->model()->connected()) ++open;
+        notices->postTagged(QStringLiteral("ua3.kept"),
+                            //: %1 is a device's name
+                            open > 1 ? tr("Kept on %1, not saved on the device yet.").arg(s->title())
+                                     : tr("Kept, not saved on the device yet."),
+                            tr("Save to Device…"), [this, s] {
+                                if (!s || !s->model()->connected()) return;
+                                if (m_ctx.registry && s != m_ctx.activeSession()) m_ctx.registry->activate(s);
+                                m_ctx.shell->trigger(QStringLiteral("device.commit"));
+                            });
+    });
 }
