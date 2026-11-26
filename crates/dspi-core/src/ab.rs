@@ -221,7 +221,8 @@ pub(crate) const NO_COMPARE: &str = "no A/B compare is running";
 /// The refusal of an A/B call while a guarded apply waits for Keep or Revert
 /// (P1SA): a toggle then would capture the guarded change into a side, and
 /// bring it back after the guard reverted it.
-pub(crate) const GUARD_WAITING: &str = "finish the safe apply first: Keep or Revert";
+// -- WP UFW -- (UXP D10) the countdown's one user word is "trial"
+pub(crate) const GUARD_WAITING: &str = "finish the trial first: Keep or Revert";
 
 /// What a snapshot document says about itself, checked before anything is
 /// sent: `(name, platform, inputs, outputs)`.

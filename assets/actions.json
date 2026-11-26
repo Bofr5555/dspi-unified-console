@@ -185,7 +185,7 @@
     },
     {
       "id": "device.commit",
-      "text": "Commit Parameters…",
+      "text": "Save to Device…",
       "menu": "Device",
       "shortcut": "Ctrl+S",
       "places": [
@@ -206,7 +206,7 @@
       "text": "Factory Reset…",
       "menu": "Device",
       "places": [
-        "save.reset"
+        "device.reset"
       ]
     },
     {
@@ -564,6 +564,23 @@
       ]
     },
     {
+      "id": "help.manual",
+      "text": "User Manual",
+      "menu": "Help",
+      "places": [
+        "appMenu.help"
+      ]
+    },
+    {
+      "id": "help.shortcuts",
+      "text": "Keyboard Shortcuts",
+      "menu": "Help",
+      "optional": true,
+      "places": [
+        "appMenu.help"
+      ]
+    },
+    {
       "id": "help.whatsNew",
       "text": "What's New in {app}",
       "menu": "Help",
@@ -883,6 +900,8 @@
       ],
       [
         "help.gettingStarted",
+        "help.manual",
+        "help.shortcuts",
         "help.whatsNew",
         "help.projectGithub",
         "help.firmwareGithub",
@@ -904,9 +923,6 @@
       [
         "file.saveMasterVolume",
         "file.saveOutputConfiguration"
-      ],
-      [
-        "device.factoryReset"
       ]
     ],
     "history": [
@@ -926,6 +942,9 @@
         "device.identify",
         "device.firmwareUpdate",
         "device.reconnect"
+      ],
+      [
+        "device.factoryReset"
       ],
       [
         "device.close"

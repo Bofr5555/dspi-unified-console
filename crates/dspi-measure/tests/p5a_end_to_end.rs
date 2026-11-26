@@ -336,7 +336,7 @@ fn wp_p5a_three_way_room_end_to_end() {
         proposal
             .notes
             .iter()
-            .any(|n| n.contains("outputs 1 and 2: no corner is clearly better")),
+            .any(|n| n.contains("outputs 2 and 3: no corner is clearly better")), // -- WP UFW -- from 1
         "{:?}",
         proposal.notes
     );
