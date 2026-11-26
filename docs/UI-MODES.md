@@ -1,11 +1,11 @@
 # UI modes: Simple, Advanced, Installer
 
-*Design, WP UIM1, 2026-11-12. Owner decisions of 2026-11-12 and 2026-11-13 (OD-P1c to OD-P1e). **Built in the core
-(WP P1LK, 2026-11-14):** the mode manifest (section 6), the installer PIN, the locked-user state and its write check
-(section 3), the hub-pinned mode's place in the resolution (section 4) and the defaults (section 5); calls and rules in
-[`integrator/installer-lock.md`](integrator/installer-lock.md). Also built: the Android Home order (section 8) and the
-web's slice order (`core-merge/PLAN-CLIENTS.md` section 5.5). The clients' mode switches, PIN dialogs and locked-user
-views are their P1 WPs.*
+*Design, 2026-11-12, brought up to date for release 0.16.0. Owner decisions of 2026-11-12 and 2026-11-13 (OD-P1c to
+OD-P1e) and of 2026-11-25 and 2026-11-26. **Built in the core:** the mode manifest (section 6), the installer PIN, the
+locked-user state and its write check (section 3), the hub-pinned mode's place in the resolution (section 4) and the
+defaults (section 5); calls and rules in [`integrator/installer-lock.md`](integrator/installer-lock.md). Also built:
+the Android Home order (section 8), the web's slice order (`core-merge/PLAN-CLIENTS.md` section 5.5), and each client's
+mode switch, PIN dialog and locked-user view (described below as each client has it).*
 
 Every client is one app per platform. The app has three **modes**, which decide what the user sees, and a **locked-user
 state**, which an installer can put a device in. A mode never changes the device and never grants a permission: what may be
@@ -14,27 +14,35 @@ changed is decided by the installer's limits and, on a hub, by the user's role (
 The names in the UI are **Simple**, **Advanced** and **Installer**. The new screens of the Advanced mode (System view, scene bar,
 status rail and the rest of section 2) are called the *Pro layer* in plans and code; "Pro" is not a word in the UI.
 
-*Home, the remote (WP UB2, UXP B2 and D4, owner 2026-11-25):* Simple's first screen and the locked user's screen is
-**Home**, a remote on every client width: the device and its connection, one big User volume (the Master is the
-Installer's) with Mute, the source as segments, the presets as a Recall list (no Save, no Copy Here), the rooms' and
-zones' volumes on an installation (web), and one health line; nothing else. Simple's dock has no Master volume and no
-Bypass EQ. In the locked-user state nothing that the lock refuses is offered: Save, undo and redo leave the top bar,
-and on the desktop every page that changes the device renders read-only (its controls off, its scroll on, one notice
-with Go to Home; Devices and Settings stay as they are, the Installer page holds the PIN). The web keeps the locked
-user to Home alone (`lockedUser.screens`). Built: web (`screens/home/`, `ui/screens.tsx`), Qt Modern
-(`HomeSection.qml`, SectionTable's `overview/home`, PageHost's `lockRead`); Android's Home uses the same words.
+*Home, the remote (owner, 2026-11-25):* Simple's first screen and the locked user's screen is **Home**, a remote on
+every client width: the device and its connection, one big User volume (the Master is the Installer's) with Mute, the
+source as segments, the presets as a Recall list (no Save, no Copy Here), the rooms' and zones' volumes on an
+installation (web), and one health line; nothing else. Simple's dock has no Master volume and no Bypass EQ. In the
+locked-user state nothing that the lock refuses is offered, each client in its own way:
+- **Qt Modern** opens on Overview › Home. Save, undo and redo leave the top bar, and every page that changes the device
+  renders read-only (its controls off, its scroll on, one notice, "Locked by the installer: this page is shown
+  read-only. Volume, mute and presets are on Home.", with Go to Home); Devices and Settings stay as they are, the
+  Installer page holds the PIN (`HomeSection.qml`, SectionTable's `overview/home` and `lockFree`, PageHost's
+  `lockRead`).
+- **The web** keeps the locked user to Home alone (`lockedUser.screens`; `screens/home/`, `ui/screens.tsx`
+  `lockedScreens()`), with the lock's line, the installer's note and Unlock…. It shows no other page read-only.
+- **Android**'s Home is its main page. A page or a tap the lock refuses does not open; a snackbar gives the core's line
+  with **Unlock…** (`AppScaffold.kt`). A locked user reaches Home, Settings (About and Installer only), Getting Started
+  and What's New.
 
-*0.16.0 (FIX016, the owner's answers to the REVG review):*
+*0.16.0 (the owner's answers to the last review before the release):*
 - **The locked user may change the source**, from Home: one core rule (`LOCKED_USER_WRITES` has the input source
   beside volume, mute and preset), so every client offers it as a control, not words.
-- **The speaker layout is the installer's under the lock**: the core refuses `speaker_layout_set` while locked and
-  not unlocked (the roles are what the tweeter guards trust), and Settings › Speakers, Android's Getting Started and
-  the Terminal's Speakers are read-only there.
+- **The speaker layout is the installer's under the lock**: the core refuses `speaker_layout_set` (and an agent's
+  stated roles) while locked and not unlocked (the roles are what the tweeter guards trust). Qt's Settings › Speakers
+  (both layouts) and the Terminal's Speakers are read-only there; Android offers no Speakers editor (Settings ›
+  Speakers is hidden and Getting Started leaves its Speakers step out); the web's locked user sees Home only.
 - **Qt Modern** offers no write the lock refuses: shortcuts, palette rows, Open in Window, panel windows and A|B are
   off under the lock but for volume, mute, preset and source.
-- **D4's read-only locked state is Modern, the web and Android.** Classic stays as it was: under the lock it is
-  live and the core refuses what the lock covers after the click (owner, 2026-11-26). The Terminal follows the core
-  the same way. Qt's Simple mode is Home first and a trimmed dock; its other sections stay.
+- **The read-only pages are Qt Modern's**; the web shows Home alone and Android refuses with Unlock… (above).
+  Classic stays as it was: under the lock it is live and the core refuses what the lock covers after the click
+  (owner, 2026-11-26). The Terminal follows the core the same way. Qt's Simple mode is Home first and a trimmed dock;
+  its other sections stay. Home is a page of Qt's Modern layout only.
 
 ## 1. The rule that comes first: nothing is locked unless someone locks it
 
@@ -48,15 +56,15 @@ user to Home alone (`lockedUser.screens`). Built: web (`screens/home/`, `ui/scre
 
 | | Simple | Advanced | Installer | Locked user (a state) |
 |---|---|---|---|---|
-| **For** | Listening on one device | Setting up and tuning; the default everywhere (phones too, owner D9 2026-11-25, until Simple means more there) | Installing and handing over a system | A system an installer has set up for someone else |
-| **First screen** | Home, a remote: device and connection, the User volume and mute, source, presets, one health line (UB2: no bypass; meters in the dock) | The classic main window today; the System view once the Pro layer exists (desktop, web). Phones: the front page | As Advanced | The front page, with a lock badge, one line saying what is locked, and the installer's contact |
-| **Navigation** | Home, EQ, Tools, Settings: today's screens, under the front page | Today's screens, plus the Pro layer: System view, Channels and EQ, Routing, Dynamics and effects, Hardware, History; a scene bar; a status rail | Advanced plus Limits and power-on; firmware, factory reset, core voltage | Home only; Settings shows About and the installer's note |
-| **Changes** | Everything today's screens offer | Everything the limits allow | Everything, the limits included | Volume, mute, source and preset, within the installer's ranges (source: owner D4) |
+| **For** | Listening on one device | Setting up and tuning; the default everywhere (phones, iPhone and iPad too, owner 2026-11-25 and 2026-11-26, until Simple means more there) | Installing and handing over a system | A system an installer has set up for someone else |
+| **First screen** | Home, a remote: device and connection, the User volume and mute, source, presets, one health line (no Bypass EQ, no Master volume; meters in the dock) | The main window (Classic) or the Overview (Qt Modern); the web's Overview. Phones: the main page | As Advanced | Home, with the lock's line, the installer's note and contact, and Unlock… |
+| **Navigation** | Home first; every other page stays a tab away | Every page: Overview, Equaliser, Routing, Effects, Measure, Analyse, Library, System, Devices, Settings (Qt Modern and web); Classic's menu bar and tool windows | Advanced plus Limits and power-on; firmware, factory reset, core voltage | Home first. Qt Modern: the other pages read-only with Go to Home; web: Home only; Android: Home, Settings (About, Installer), Getting Started, What's New |
+| **Changes** | Everything today's screens offer | Everything the limits allow | Everything, the limits included | Volume, mute, source and preset, within the installer's ranges (source: owner, 2026-11-26) |
 | **Monitoring** | Output meters and the health line | Meters with hold, limiter gain reduction, CPU, temperature, alarms, history (as the core gains them), the event log and the diagnostics bundle | The same | Meters and the health line |
 | **Operations that write flash or can harm hardware** | Behind their usual confirmations, in their usual places | With confirmation | Plus firmware, factory reset, core voltage, limits | None |
 
 Notes:
-- **Diagnostics are Advanced and up** (coordinator, 2026-11-13, after the web's Events screen): the diagnostics bundle
+- **Diagnostics are Advanced and up** (2026-11-13, after the web's Events screen): the diagnostics bundle
   (Save Diagnostics…) is offered in Advanced and Installer, as the desktop's Settings > Advanced has it; Simple does not show it.
 - **Simple hides nothing permanently.** It changes the first screen and the order of things; today's screens stay one tap away.
   It is not a restricted mode.
@@ -64,23 +72,27 @@ Notes:
   today's screens, and Simple as a front page in front of them.
 - **Installer** shows the pages that change how the system behaves for others: limits, power-on state, firmware, factory reset,
   core voltage. With no PIN set it is reachable like any other mode (section 1). With a PIN set it opens after the PIN.
-- **Phones** open in Advanced for now (owner D9, 2026-11-25: until Simple means more there than fewer snapshot buttons). Their Advanced is a subset of the Pro layer: the System view read-mostly, scenes, alarms and
-  history; strip editing stays on the desktop and the web.
+- **Phones** open in Advanced for now (owner, 2026-11-25: until Simple means more there than fewer snapshot buttons);
+  so do iPhone and iPad (owner, 2026-11-26; the Swift app is not in release 0.16.0). The plan for a phone's Advanced
+  is a subset of the Pro layer: the System view read-mostly, scenes, alarms and history; strip editing stays on the
+  desktop and the web. **Not done:** Android's Modern navigation (a bottom bar and sections) and larger font support on
+  Android are deferred past 0.16.0; Android keeps its own navigation.
 
 ## 3. The locked-user state and the installer PIN
 
 - An installer sets a PIN for a device in the Installer mode. Setting it is what makes a lock possible; the installer then
-  chooses what the lock covers (the limits profile's `lockedPages`, by the manifest's screen ids). *Built (P1LK):*
+  chooses what the lock covers (the limits profile's `lockedPages`, by the manifest's screen ids). *Built:*
   `installer_pin_set` (which also shows a recovery code once), `installer_lock_cover`.
 - A console enters the locked-user state by itself when the device it opens carries a lock and the console is not unlocked
-  for that device, or when the hub says so (section 4). It is not chosen from the mode switch.
+  for that device, or when the hub says so (section 4). It is not chosen from the mode switch. Under it the console
+  opens on Home.
 - Leaving it is the Installer unlock: the PIN. Unlocking lasts for the session, or until the user locks again; the status
   rail (or the phone's top bar) says "Installer" while it lasts.
 - **The PIN is a UI lock, not a security boundary.** Whoever has the device on USB can change it with any tool. The unlock
   dialog says so in one line: the lock is on this console, the DSPi itself is open (OD-P1d; notice
   `installer_lock.scope`). Where real access control is needed, it is the hub's roles (section 4).
-- *Built (P1LK):* in the locked-user state the core refuses every write but volume, mute, preset and (0.16.0) the
-  input source (within the limits) before anything is sent (`installer_lock.locked`). Repeated wrong PINs open a refusal window kept as the next allowed
+- *Built:* in the locked-user state the core refuses every write but volume, mute, preset and (0.16.0) the
+  input source (within the limits) before anything is sent (`installer_lock.locked`), the speaker layout included. Repeated wrong PINs open a refusal window kept as the next allowed
   time, never a sleep. A forgotten PIN (OD-P1c): on a hub an Admin clears it; off a hub the recovery code, then
   deleting the device's profile folder as the documented last resort; no "Remove lock" button.
 - Removing the PIN (in the Installer mode) removes the lock; the device is back to section 1.
@@ -114,20 +126,21 @@ PIN and roles fit into it as follows.
 
 - **Remembered per device, with an app default.** The console keeps the last mode for each device (by serial). A device it has
   never seen opens in the app default.
-- **Defaults:** every client opens in **Advanced** (phones too since owner D9, 2026-11-25; they opened in Simple before). A device
+- **Defaults:** every client opens in **Advanced** (phones too since 2026-11-25, and iPhone and iPad; they opened in Simple before). A device
   with a lock, or a hub role that pins a mode, overrides the default (sections 3 and 4).
-- **Switching:** a Mode control in each client's usual place (the desktop menu bar, the phone's top-bar menu, the web header)
-  opens a small dialog: Simple, Advanced, Installer (with the PIN field only when a PIN is set), and a choice between
-  "Remember for this device" (the default) and "Use for every device on this console".
+- **Switching:** a Mode control in each client's usual place opens a small dialog titled Mode: the desktop's Mode… (in
+  Classic's Window menu, in Modern's app menu), Android's Mode… (in the top bar's ⋮ menu on a phone), the web's
+  "Mode: …" button in the status bar. It offers the modes (Installer with the PIN field only when a PIN is set) and
+  "Use for every device on this console"; without it the choice is remembered for this device.
 - Switching never writes to the device and needs no confirmation. Unsaved edits stay unsaved across a switch.
 
 ## 6. The screen list per mode as data in the core
 
 The list of screens per mode, their order, their titles and which ones need the Installer mode live in the core as data, as
-CG10's onboarding text does (`assets/onboarding/`). A client renders the list it is given; it does not decide it. Adding a
+the onboarding text does (`assets/onboarding/`). A client renders the list it is given; it does not decide it. Adding a
 screen later is a data change plus one view per client. Wording comes from the same file, so the clients use the same words.
 
-*Built (P1LK):* `assets/modes/modes.json`, the typed `ModeManifest` (`mode_manifest()` on UniFFI, `dspi_mode_manifest`
+*Built:* `assets/modes/modes.json`, the typed `ModeManifest` (`mode_manifest()` on UniFFI, `dspi_mode_manifest`
 in C, `modeManifest` on the web), and `mode_resolve(platform, chosen)`. The built shape uses camelCase keys, as every
 binding record does, adds `platforms`, the locked-user state's `label` and `writes`, `first_in` for `locked_user`, and
 the `diagnostics` and `installer_pin` operations:
@@ -190,17 +203,17 @@ The proposal it was built from:
 - Saturated colour is kept for meaning: level (meters in one neutral colour, red for clipping), alarm states, selection.
 - Channels are told apart by position, name and their tag.
 
-Android's Home follows this from UIM1 (meters in one colour, neutral card strokes and band codes, the pills and dots as tags).
+Android's Home follows this (meters in one colour, neutral card strokes and band codes, the pills and dots as tags).
 The other clients follow when their Pro work or polish pass reaches the screen.
 
 ## 8. Client order
 
 | Client | First | Then |
 |---|---|---|
-| **Qt** (Linux, Windows) | The classic port as planned on `qtport`: today's screens, i.e. Advanced without the Pro layer | The Pro track after the swap to the new tree: the mode switch from the manifest, then the Pro screens |
-| **Android** | **Simple first.** Home reordered for the phone (UIM1): volume, preset and source, output meters with a health line, then the graph and the lists | The mode switch from the manifest; later the phone's subset of the Pro layer |
-| **Web** | **The Pro layer first**, since fleet handling is what the web is for: the WB6 slices put the System view (WB6d), the scene bar (WB6e) and the status rail (WB6f) before the remaining tool screens | The locked-user view as its simple page; the fleet screens with the hub's accounts and roles |
-| **Swift** (macOS, iOS) | Nothing before OD3 | After OD3: the same manifest and the same order as Qt and Android (Advanced by default on macOS and, since owner D9, on iOS too) |
+| **Qt** (Linux, Windows, macOS) | The Classic layout: today's screens, i.e. Advanced without the Pro layer | Built: the Modern layout, the mode switch from the manifest, Home and the locked-user state (read-only pages in Modern) |
+| **Android** | **Simple first.** Home reordered for the phone: volume, preset and source, output meters with a health line, then the graph and the lists | Built: the mode switch from the manifest (Advanced by default). Deferred: the phone's Modern navigation and its subset of the Pro layer |
+| **Web** | **The Pro layer first**, since fleet handling is what the web is for: the System view, the scene bar and the status rail before the remaining tool screens | Built: Home as the Simple and locked-user page; the fleet screens (Devices › Fleet) |
+| **Swift** (macOS, iOS) | Nothing before OD3; not in release 0.16.0 | After OD3: the same manifest and the same order as Qt and Android (Advanced by default on macOS and on iOS) |
 | **Terminal** | Nothing new: the TUI is an Advanced view already | A one-line health summary for scripts |
 
 ## 9. Open questions

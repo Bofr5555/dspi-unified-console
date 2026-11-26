@@ -20,7 +20,7 @@ in the build image. The light theme throughout, but the Terminal, which is shown
 | `qt-main.png` | The desktop app, Modern layout: Equaliser › PEQ with an output's bands, three units open as tabs |
 | `web-eq.png` | The web console on the demo DSPi: the Equaliser |
 | `web-system.png` | The web console on the demo hub: the System view of an alink installation |
-| `qt-overview.png` | The desktop app, Modern layout: the Overview of a three-way speaker and a sub |
+| `qt-overview.png` | The desktop app, Modern layout: the Overview of a three-way speaker and a sub, with the setup list |
 | `qt-measure.png` | The desktop app, Modern layout: Measure › Results, a result against its target (the simulated microphone) |
 | `terminal.png` | The `uconsole` Terminal's interface on the demo DSPi |
 

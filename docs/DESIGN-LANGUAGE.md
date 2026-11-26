@@ -1,11 +1,9 @@
-<!-- Copied from DESREV's spec (~/.cache/dspi-build/work/wp-DESREV/DESIGN-LANGUAGE.md) by WP DL0, with §19 added: the component map. The packages DL1-DL10 and MX1 work from this copy. -->
-
 # The Modern design language (Qt desktop, uConsole for DSPi)
 
-Derived from the approved mockup (`wp-MODLAY/mockup.html`, variant B: rail + page tabs, Grey tone) and from the best
+Derived from the approved mockup (variant B: rail + page tabs, Grey tone) and from the best
 Modern screens as built today (Equaliser › PEQ and Delay & Gain, the Settings pages, the Signal Generator, the AI
 popover and sheets). Every rule names the `Theme.qml` token or the shared component that carries it, or says that the
-component is missing. Written 2026-11-24 for the DESREV review; the owner's two rules come first.
+component is missing. Written 2026-11-24 for a design review, kept up to date for release 0.16.0; the owner's two rules come first.
 
 **Two rules above all the others**
 1. Surfaces are separated by tone and spacing, not by lines. A 1 px outline is allowed only where it means something: a
@@ -28,7 +26,7 @@ option. Values below are Grey; the Darker set is in `Theme.qml`.
 | Sidebar | `Theme.sidebar` | `#1c1c1c` | `#ebebeb` | the rail, the device-tab row, the dock, the settings sub-list |
 | Control | `Theme.control` | `#343434` | `#e8e8e8` | buttons, fields, chips, segments, slider tracks |
 | Control hover / pressed | `Theme.controlHover` / `controlPressed` | `#3c3c3c` / `#464646` | `#e2e2e2` / `#d8d8d8` | |
-| Control on a bar | `Theme.barControl` / `barControlHover` | = control / controlHover | = panel / window | buttons, fields and segments on a sidebar-tone bar (top bar, dock, the settings sub-list): in light the control tone is within 1.03:1 of the sidebar (Darker light: the same grey), REVDFIX |
+| Control on a bar | `Theme.barControl` / `barControlHover` | = control / controlHover | = panel / window | buttons, fields and segments on a sidebar-tone bar (top bar, dock, the settings sub-list): in light the control tone is within 1.03:1 of the sidebar (Darker light: the same grey) |
 | Selection | `Theme.selection` | `#3b3b3b` | `#e1e1e1` | the chosen row, tab, rail item, chip; never blue |
 | Text selection | `Theme.textSelection` | blue tint | blue tint | selected text inside a field only |
 | Separator | `Theme.separator` | `#303030` | `#e2e2e2` | the few lines that remain (table header rule, popover edge in dark) |
@@ -156,7 +154,7 @@ Page tools (the buttons at the right of the tab row) are secondary buttons with 
   card; never put one card alone on a page as a frame around everything (Snapshots, Events, the AI Agents activity).
 - A card's title, when it has one, is outside the card, 6 px above it: the group's 16 px Lucide icon in `textMuted`
   and its name in `fontBody` DemiBold (`text`), as Qt's Settings and Installer pages draw it (owner default
-  2026-11-24, REVEFIX; this replaces "a section label inside the card"). The card holds the rows; an on/off of a row
+  2026-11-24; this replaces "a section label inside the card"). The card holds the rows; an on/off of a row
   is a switch at the row's right edge, a limit that can be off is a check box at the left with its stepper at the
   right.
 
@@ -207,7 +205,7 @@ empty "Disabled / No curve yet" label; the plot stays each page's).
 ## 14. Banners, notices, toasts
 
 - **Status strip** (`StatusStrip`): only states that limit what can be done (demo device, read-only firmware, installer
-  lock, hub lost, safe-apply countdown, sender, offline file) and the AI working line. One line, 32 px, `bannerFill(kind)`
+  lock, hub lost, a trial's countdown, a solo, sender, offline file) and the AI working line. One line, 32 px, `bannerFill(kind)`
   with a 3 px left edge in `bannerEdge(kind)`, no full outline, icon 16, text, actions at the right as secondary buttons.
   The demo banner is `info` and should read as calm as the rest (today its blue fill is the loudest surface on screen).
 - **Notice row** (missing: `NoticeRow`): inline in a page where a condition blocks an action: 32 px, `bannerFill(kind)`,
@@ -247,7 +245,7 @@ Exists and is right: the Grey/Darker tone sets in `Theme.qml`; `PageTabs`, `NavR
 `CommandPalette`, `Inspector`/`InspectorSection`, `ChannelStrip`, `EqualiserDelayRow`, `BandRow`, `AiSheet`,
 `QuestionDialog`, `Pill`, `IconButton`, `AppSwitch`, the Settings row components, `SiggenTile`.
 
-To add or change in the shared layer (the first work package, DL0):
+To add or change in the shared layer (done first, see §19):
 - Tokens: `stripe`, `shadow`, `radiusControl`, `fontPageTitle`, `fontTable`, `spacingSection`, `topBarHeight`,
   `tabBarHeight`, `dockHeight`, `contentMaxWidth`; `rowHeight` 28 in Modern.
 - `Card`: border off in Modern. `AppButton`, `BorderedField`, `NumericField`, `AppComboBox`, `AppSpinBox`: border off in
@@ -256,19 +254,19 @@ To add or change in the shared layer (the first work package, DL0):
   (the Settings rows generalised).
 - `GraphPlot`: axis-label insets.
 
-## 19. Component map (DL0, 2026-11-24)
+## 19. Component map (2026-11-24)
 
-DL0 added every token and component marked "missing" above (`wp/DL0`). Everything that would change Classic is gated on
+Every token and component marked "missing" above has been added. Everything that would change Classic is gated on
 `LayoutController.modern`; Classic keeps its look. Each file's header comment has its full API and an example.
 
-**Tokens** (`qml/Theme/Theme.qml`, under `-- WP DL0 --`)
+**Tokens** (`qml/Theme/Theme.qml`)
 
 | Token | Value | Notes |
 |---|---|---|
 | `lineWidth` | 0 in Modern, 1 in Classic | the outline of a card, button, field, combo box, spin box, segment bar, the response graph |
 | `focusRingWidth` | 2 | with `focusRing` (accent): the one outline that stays in Modern |
 | `stripe` | `#06ffffff` dark / `#09000000` light | every second row |
-| `shadowColor`, `shadowOffset`, `shadowBlur` | `#80000000`, 12, 34 dark; `#29000000`, 10, 30 light | floating surfaces (for DL5's popovers; not yet drawn anywhere) |
+| `shadowColor`, `shadowOffset`, `shadowBlur` | `#80000000`, 12, 34 dark; `#29000000`, 10, 30 light | floating surfaces (drawn by `FloatingBackground`: popovers, menus, combo boxes, the device switcher, the preset popover, sheets) |
 | `radiusControl` | 6 in Modern (Classic: `radiusSmall`, 4) | buttons, fields, segments, toggle chips, notices |
 | `radiusChip` | 12 | option chips |
 | `spacingSection` | 24 | between sections; under an intro row |
@@ -307,13 +305,14 @@ DL0 added every token and component marked "missing" above (`wp/DL0`). Everythin
 | `GraphFrame` | §12 previews, Measure, Live, AutoEQ | `xTicks`/`yTicks`/`rightTicks` (`{at, text}`), `grid`, `filled`, `empty` + `emptyText`, `hint`, `tools` (ToggleChips), the plot as its child (fills `plotArea`) |
 | `AxisLabels` | labels over any plot, whole inside | `xTicks`, `yTicks`, `rightTicks`, `inset`, `font`, `color`, `rightColor` |
 
-Not done in DL0 (left to the packages that own the places): the floating-surface shadow (DL5), the page title in
-`PageTabs` and the status strip (DL4/DL5), `SectionHeading`'s 24/8 spacing (a page's layout), Settings rows on `FormRow`
-(DL7), `Pill` and `IconButton` (already as the spec says).
+Not done with the tokens, left to the places that own them: the floating-surface shadow (since drawn by
+`FloatingBackground`), the page title in `PageTabs` (since done) and the status strip, `SectionHeading`'s 24/8 spacing
+(a page's layout), Settings rows on `FormRow` (the Settings pages still use their own row components), `Pill` and
+`IconButton` (already as the spec says).
 
-## 20. Outline controls and the Comfortable density (UB13, 2026-11-26)
+## 20. Outline controls and the Comfortable density (2026-11-26)
 
-The owner's rule 1 stands for the default look. Two opt-in settings (UXP B13, D11), both off on a mouse desktop
+The owner's rule 1 stands for the default look. Two opt-in settings (owner, 2026-11-25), both off on a mouse desktop
 (Settings › Appearance › Accessibility; `LayoutController.outlineControls`, `.density`):
 
 | Token | Off / Standard | On / Comfortable | Notes |

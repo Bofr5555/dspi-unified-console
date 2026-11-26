@@ -1,8 +1,9 @@
 # Glossary
 
-*WP P0U, 2026-11-12. The source of truth for the words every client shows.*
+*The source of truth for the words every client shows. Brought up to date for release 0.16.0.*
 
-*For users: the words page is [`docs/manual/words.md`](manual/words.md) (WP UFW); this file is the writers' list.*
+*For users: the words page is [`docs/manual/words.md`](manual/words.md); this file is the writers' list. The two use
+the same words.*
 
 The parameter registry (`crates/dspi-proto/src/registry.rs`) gives each parameter a `label`, a `plain` line of help, a unit
 and a range. This file explains the words in it. Clients take labels, help lines, units and ranges from the core (the registry
@@ -12,7 +13,8 @@ through `describe` on the web, `by_path(..)` in the Terminal) and follow this fi
 ## 1. Rules for every client
 
 - **One word per concept.** Use the term in section 3, not a synonym. "Input trim", not "Preamp" or "Pre-gain"; "Q", not
-  "Width" or "Bandwidth"; "Input source" for where audio comes from, "Input" for an input channel.
+  "Width" or "Bandwidth"; "Bell", not "Peaking"; "Save to Device", not "Commit Parameters"; "trial", not "safe apply";
+  "Input source" for where audio comes from, "Input" for an input channel.
 - **Never name the host device** (owner rule). No "phone", "tablet", "computer", "Mac", "PC", "laptop" and no "host" in
   text a user reads; say it with no device noun. **Device** always means the DSPi.
 - **Spelling is British:** centre, leveller, modeller, analyser, equaliser, colour, synthesised in prose. The one exception is
@@ -64,8 +66,8 @@ The DSP blocks have proper names, used as section and window titles and as the l
 | **Frequency** | Centre or corner frequency of a band | Hz, 10 to 24000 | `eq.freq` |
 | **Q** | How narrow a band is; higher is narrower. Never "Width" or "Bandwidth" | no unit, 0.1 to 20 | `eq.q` |
 | **Target frequency**, **Target Q** | The Linkwitz Transform's target alignment | Hz; no unit | `eq.fp`, `eq.qp` |
-| **Filter type** | The shape of a band: peak, low shelf, high pass, ... | | `eq.type` |
-| **High-pass**, **low-pass** | Written with a hyphen in prose and labels | | |
+| **Filter type** | The shape of a band: Bell (never "Peaking"), Low Shelf, High Shelf, Low Cut, High Cut, Notch, All Pass; a crossover's High pass or Low pass | | `eq.type` |
+| **High pass**, **Low pass** | A crossover's two filter types, as labels and in the type lists (the web's Crossover and Passes, Android's XO tab, Qt's crossover rows). Prose about a driver's filter still writes "high-pass" with a hyphen ("a tweeter's high-pass"), and the slope words still differ between clients ("LR 24", "LR24", "LR4") | | |
 | **Crossover** | The filters that split a signal between drivers (LR, BW, Bessel bands). Not the crossfeed's cutoff | | `eq.*` bands 20 to 23 |
 | **EQ bypass**, **Band bypass** | Pass audio without the whole equaliser, or without one band | | `bypass`, `eq.bypass` |
 | **Delay** | Time alignment of a channel or an output. Always in milliseconds; a client may show a distance beside it | ms, 0 to 21 (RP2040) or 42 (RP2350) | `ch.delay`, `out.delay` |
@@ -95,7 +97,7 @@ The DSP blocks have proper names, used as section and window titles and as the l
 | **Preset** | A stored set of settings in a slot (10 slots). Save, load, delete | | `preset.*` |
 | **Startup preset** | The preset that loads at power on | | `preset.startup` |
 | **Live** | A setting not yet saved: lost at power off unless a preset is saved | | |
-| **Snapshot** | A whole-device state kept by the app, not on the device: every live setting plus the device's name, the input sources' names, the output latency and the control surfaces. Capture, recall, rename, add a note, export, import. One word: not "scene" (the hub's, below) and not "preset" (a slot on the device) (OD-P1a, WP P1SN) | | |
+| **Snapshot** | A whole-device state kept by the app, not on the device: every live setting plus the device's name, the input sources' names, the output latency and the control surfaces. Capture, recall, rename, add a note, export, import. One word: not "scene" (the hub's, below) and not "preset" (a slot on the device). The web keeps them in the browser per DSPi | | |
 | **Recall** | Putting a snapshot back on the device as it was captured. The result is live, not saved to a preset slot, and ends the undo history | | |
 | **Sample rate** | The rate the device runs at when it is the clock master | Hz, 44100 to 96000 | `in.rate` |
 | **Clock master**, **clock slave** | Whether the device generates the I2S clock or follows it (firmware words) | | `in.i2s.clock` |
@@ -109,8 +111,8 @@ The DSP blocks have proper names, used as section and window titles and as the l
 
 ### 3.1 The audio link
 
-*WP SW1, 2026-11-12. The multi-unit link of the SYS2 design (the fork's `extension_channel_spec.md` 2.8). The core's calls
-are `alink_*`, `fetch_alink_frame_counter` and `apply_at_frame`.*
+*The multi-unit audio link (the fork's `extension_channel_spec.md` 2.8). The core's calls are `alink_*`,
+`fetch_alink_frame_counter` and `apply_at_frame`.*
 
 | Term | Meaning | Unit and range | Registry |
 |---|---|---|---|
@@ -122,7 +124,7 @@ are `alink_*`, `fetch_alink_frame_counter` and `apply_at_frame`.*
 | **Locked**, **Searching**, **Holdover**, **Off** | The link's state. Holdover: the link was lost, the outputs are muted and the clock is held until it returns | | |
 | **Line class** | The link's speed: L1 (TOSLINK parts), L2 (50 MBd parts), L3 (SFP) | L1, L2, L3 | |
 | **Phase lock** | Every receiver plays an audio link frame the same fixed delay after it arrives, so all devices play in step. The other mode, **Fill servo**, is how S/PDIF and ADAT inputs follow their source | on or off | |
-| **Audio link frame** | One sample period of the audio link's stream, counted by the sender (the frame counter); the audio link delay, scenes and apply at frame are given in them. Not "link frame" in text a user reads (ALINK1) | frames | |
+| **Audio link frame** | One sample period of the audio link's stream, counted by the sender (the frame counter); the audio link delay, scenes and apply at frame are given in them. Not "link frame" in text a user reads | frames | |
 | **Audio link delay** | The fixed delay of phase lock, in audio link frames, with ms beside it (one frame is one sample period). The plans' `D_local` | frames (ms) | |
 | **System delay** | The delay D every unit's audio link delay is worked out from, so all units of one sender play an audio link frame at the same moment. The hub picks the smallest every unit takes unless an installer fixes it. The plans' `D` | frames (ms) | |
 | **Audio link delay range** | The shortest and longest audio link delay a unit takes; it follows its output latency (`d_local_min`..`d_local_max`) | frames | |
@@ -130,12 +132,12 @@ are `alink_*`, `fetch_alink_frame_counter` and `apply_at_frame`.*
 | **Re-anchor** | Restarting the outputs in step after a loss or a new audio link delay: a short silence (2 to 6 ms). Not "Resync" in text a user reads | | |
 | **Frame counter** | The link's running count of frames, the same on every device of one sender | frames | |
 | **Apply at frame** | A change (mute, unmute, preset, master volume, output delay, rate, test click) that every device makes at the same audio link frame | | |
-| **Scene** | A hub's audio link system change: mute, preset load, master volume or delay, made at one audio link frame across units. Not a snapshot, which is one device's whole state (OD-P1a) | | |
+| **Scene** | A hub's audio link system change: mute, preset load, master volume or delay, made at one audio link frame across units. Not a snapshot, which is one device's whole state | | |
 
 ### 3.2 The hub's services
 
-*WP P2DOC, 2026-11-15. PRO phase 2, the hub as a server ([`docs/integrator/hub-api.md`](integrator/hub-api.md)). The words a
-client shows for what the hub keeps and does.*
+*The hub as a server ([`docs/integrator/hub-api.md`](integrator/hub-api.md)). The words a client shows for what the hub keeps
+and does.*
 
 | Term | Meaning | Unit and range | Registry |
 |---|---|---|---|
@@ -153,9 +155,9 @@ client shows for what the hub keeps and does.*
 
 ### 3.3 The fleet
 
-*WP P3DOC, 2026-11-16. PRO phase 3, the fleet in the web console ([`docs/core-merge/PLAN-P3.md`](core-merge/PLAN-P3.md);
-the contract: [`docs/integrator/hub-api.md`](integrator/hub-api.md) sections 5 and 19 to 21). The words a client shows for
-many devices at once.*
+*The fleet in the web console ([`docs/core-merge/PLAN-P3.md`](core-merge/PLAN-P3.md); the contract:
+[`docs/integrator/hub-api.md`](integrator/hub-api.md) sections 5 and 19 to 21). The words a client shows for many devices at
+once. A page served by a hub opens on Devices › Fleet.*
 
 | Term | Meaning | Unit and range | Registry |
 |---|---|---|---|
@@ -167,7 +169,7 @@ many devices at once.*
 
 ### 3.4 Measurement and auto-tune
 
-*WP P5MDOC, 2026-11-16. PRO phase 5 ([`docs/core-merge/PLAN-P5.md`](core-merge/PLAN-P5.md); the contract:
+*Measurement ([`docs/core-merge/PLAN-P5.md`](core-merge/PLAN-P5.md); the contract:
 [`docs/integrator/measurement.md`](integrator/measurement.md)). The words a client shows for tuning with a measurement
 microphone.*
 
@@ -183,7 +185,7 @@ microphone.*
 | **Coupler** | The fixture a headphone is measured on: an IEC 60318-4 ear simulator, a flat-plate coupler, or a head and torso simulator. Each has its own default target. Not "Rig" or "Dummy head" | | |
 | **Way** | One driver's share of a loudspeaker on its own output: Full, Sub, Low, Mid or High. A High way is never measured without its protective high-pass | | |
 | **Alignment group** | The outputs measured in one run and aligned to each other: by default one speaker's ways, or the whole system when it fits in one run. Delays are only compared within a group | | |
-| **Auto-tune** | The guided tune of a speaker from its measurement: delay and polarity, crossover corner and levels, then a target EQ fit, shown as one proposal and applied only with a guarded apply between a "Before" and an "After" snapshot. Not "Room correction" | | |
+| **Auto-tune** | The guided tune of a speaker from its measurement: delay and polarity, crossover corner and levels, then a target EQ fit, shown as one proposal and applied only on trial (a guarded apply) between a "Before" and an "After" snapshot. Not "Room correction" | | |
 | **Live response** | The measured response of one output, updated after each short sweep or as pink noise plays, shown with the target and the predicted curve of a pending change | | |
 | **Microphone RTA** | The real-time spectrum of what the measurement microphone hears, with pink noise or programme audio. Always "Microphone RTA" in full: "RTA" alone is ambiguous | 1/1 to 1/48 octave | |
 | **Device analyser** | The device's own spectrum of its inputs and outputs (the firmware's analyser). Not the Microphone RTA | | `rta.*` |
@@ -191,7 +193,7 @@ microphone.*
 
 ### 3.5 Several units, the guard, and the firmware generations
 
-*WP DOCSYNC, 2026-11-19. Measuring several units together (PLAN-AT,
+*Measuring several units together (PLAN-AT,
 [`docs/integrator/multi-unit-measurement.md`](integrator/multi-unit-measurement.md)), the hub's guard of a system apply
 ([`docs/integrator/hub-api.md`](integrator/hub-api.md) section 23.4) and both firmware generations (PLAN-PG,
 [`docs/integrator/protocol-generations.md`](integrator/protocol-generations.md)). The words as the notices
@@ -206,14 +208,40 @@ microphone.*
 | **Anchor output** | The output every run of a large group repeats, so the runs can be joined through it; by default the first unit's first output | | |
 | **Lateness** | How much later than the others a unit plays what it is sent (its output delays, a USB-direct stream's start offset). The planner spaces the sweeps and the listening for it; a unit more than a second later is refused before anything plays | ms, up to 1000 | |
 | **Summed check** | Playing together the outputs where two drivers or two units meet, and comparing the sum with the prediction, before anything is applied and again in the verify. A disagreement of more than 1.5 dB withdraws the timing and crossover changes (between units: every delay between them) | dB | |
-| **Guard** | The way back of a guarded apply: a countdown after the change, during which Keep keeps it; when it runs out, or the console goes away, the settings from before are put back by themselves (by the hub, for a system apply or a guarded recall over DSPi Link). The feature is called Safe apply; the hub's side of a system apply is `docs/integrator/hub-api.md` section 23.4 | s | |
+| **Guard** | The way back of a guarded apply: a countdown after the change, during which Keep keeps it; when it runs out, or the console goes away, the settings from before are put back by themselves (by the hub, for a system apply or a guarded recall over DSPi Link). Users read it as a **trial** (section 3.6; it was called "safe apply"); the hub's side of a system apply is `docs/integrator/hub-api.md` section 23.4 | s | |
 | **Generation** | Which protocol a device's firmware speaks: **legacy** (1.1.6 and older, page 0, with or without this fork's extension channel) or **paged** (upstream 1.1.7 and later, commands by page and id). Shown in the device info; decided once per connection | | |
 | **Extension channel** | This fork's own requests (`REQ_EXTENSION` 0x00 on legacy firmware, the tunnel on page 0xE0 on paged firmware): the crossfeed pair map, core voltage, the audio link and its time base. Absent on stock firmware, where its features are hidden | | |
 | **alink sender** | The device that feeds the audio link from USB (section 3.1's Sender); it connects as its own device kind with its device info, its audio link block and the firmware update, and has no DSP screens. The core and our hub recognise it on either generation: its firmware is dual-stack (1.1.6 and paged). Clients grey or leave out the DSP controls while it is open | | |
 | **Overlapped starts** | In a run of several units, the passes after the first in which every unit starts together, each a fixed 50 to 200 ms after the one before, so a microphone's clock wander is common to the units heard together. Falls back to **interleaved passes** (one unit after the other) when the units cannot be told apart. The result names the plan it used | | |
 | **Kind stamp**, **voltage stamp** | Marks in every firmware image of this fork: what kind of device it is for (`dsp` or `alink_sender`) and its core voltage. The update check refuses an image for the other kind; an unstamped image may be upstream's | | |
 | **Fork firmware** (†) | The DSPi fork firmware (Bofr5555/DSPi, branch `bofr-main`): stock DSPi plus the extension channel. Feature lists mark what needs it with †; everything else works on stock firmware ([`FEATURES.md`](FEATURES.md#firmware-stock-vs-fork)) | | |
-| **Revert not fully successful** | What every client says when a revert (a safe apply, an auto-tune, a system apply's guard) could not put everything back: "The revert was not fully successful", and to check the settings or restore a backup (a snapshot) | | |
+| **Revert not fully successful** | What every client says when a revert (a trial, an auto-tune, a system apply's guard) could not put everything back: "The revert was not fully successful", and to check the settings or restore a backup (a snapshot) | | |
+
+### 3.6 Everyday use (0.16.0)
+
+*The words of the everyday features, as the clients show them and as [`docs/manual/everyday.md`](manual/everyday.md)
+explains them to users.*
+
+| Term | Meaning | Unit and range | Registry |
+|---|---|---|---|
+| **Save to Device** | Writes the live settings into the device's active preset (`Ctrl+S`). One name in every client and both layouts; Classic's menu said "Commit Parameters". Its question in Modern names the device, the slot and the preset ("Save 3 changes to Demo 1, preset 1 “Music”?") | | `preset.save` |
+| **Save All** | With two or more devices open (Qt Modern): saves every open device with unsaved changes after one question. "Save All…", "Save All (2 devices)…" | | |
+| **Unsaved** (count) | What differs from the active preset as saved, listed as "Out 1 · L gain". Save to Device shows the count with the list as its tooltip; a device tab shows a dot and "N unsaved" (Qt Modern). Edits on B count while A plays | | |
+| **Trial** | A change applied for a while with **Keep** and **Revert** and a countdown: a snapshot recalled with rollback, an auto-tune, a hub's system apply. Never "safe apply" or "timed preview" in new text (the web's alert name, Android's Snapshots and the agent texts still have the old words) | s | |
+| **A/B** | **A** is the preset **as saved** on the device, **B** is **now** (the live settings), from the first edit; or two snapshots by name (Library › Snapshots). Key **B**. A toggle keeps the volume, mute and master volume. The Terminal's A/B is still now against a snapshot | | |
+| **Solo**, **End Solo** | Only one output plays: the others are muted on the device, never in the mirror, a save, a snapshot or the journal. Not "monitor" or "isolate" | | `out.mute` |
+| **Home** | The remote page: the device, the User volume and Mute, the source, the presets as a Recall list, one health line. First in Simple and for the locked user. Qt: Overview › Home | | |
+| **All devices** | The dock's link with two or more devices open (Qt Modern): the User volume, Mute and a preset recall act on every open device, each within its limits and keeping its offset. Not "group" (the hub's) or "zone" | | |
+| **Setup list** | The Overview's "Set up this DSPi · N of 5 done": speakers confirmed, inputs routed, crossovers set, measured, saved to the device (Qt) | | |
+| **Speaker layout** | Which output drives which way of which speaker, confirmed in Settings › Speakers. The roles the tweeter guards trust; the installer's under the lock | | |
+| **Role** | What an output's driver plays: **Full range**, **Subwoofer** (Android "Sub"), **Woofer**, **Mid driver** (Android "Mid"), **Tweeter**. Not "midrange" or "high" in text a user reads | | |
+| **Speaker** (name) | The name that groups a layout's outputs into one speaker ("Left"); outputs of one speaker are measured together, and the name gives the side From Speaker Layout routes by | | |
+| **From Speaker Layout** | Sets the crossovers and the routing the confirmed layout asks for on Apply, as one undo step (Qt: Equaliser › Crossover, Routing, and Settings › Speakers' "Crossovers and Routing…"). Not on the web or Android yet | | |
+| **Tweeter floor** | A tweeter's high-pass at 1 kHz or above (or the installer profile's high-pass minimum, if higher), 12 dB/oct or steeper; a mid driver's at 80 Hz | Hz, dB/oct | |
+| **N unused** | The row that folds the outputs nothing plays to in Qt Modern's Crossover and Delay & Gain tables ("3 unused"); opened, each reads "3 · None". Never folded: a layout output, one with a crossover or EQ band, one a test signal plays on | | |
+| **Agent Activity** | The panel of what agents did and do, with Undo per change; also Device › Agent Activity… | | |
+| **Stop Agents** | The one Stop for agents (not the measurement's Stop) | | |
+| **Reset Demo** | Puts the demo device back as it opens: a tuned two-way speaker (Android: "Reset demo") | | |
 
 ## 4. Units
 
@@ -234,9 +262,9 @@ From `docs/UI-MODES.md`; the words a client shows.
 
 | Term | Meaning |
 |---|---|
-| **Simple** | The front page first; a phone's default until owner D9 (2026-11-25: phones open in Advanced too). It hides nothing permanently |
-| **Advanced** | Today's screens; the default everywhere: desktops, the web and (since owner D9) phones |
+| **Simple** | Home first, and a dock without the master volume and Bypass EQ. It hides nothing permanently |
+| **Advanced** | Every page; the default everywhere: desktops, the web and phones (iPhone and iPad too) |
 | **Installer** | Advanced plus limits, power-on state, firmware, factory reset and core voltage; behind the PIN when one is set |
-| **Locked user** | A state, not a mode: what an installer has left a user to change (volume, mute, preset) |
+| **Locked user** | A state, not a mode: what an installer has left a user to change (volume, mute, source, preset). Opens on Home; the speaker layout is the installer's |
 | **Installer PIN** | A UI lock an installer sets; not a security boundary |
 | **Pro layer** | The plans' name for the new Advanced screens. Not a word in the UI |
