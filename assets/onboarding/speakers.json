@@ -7,7 +7,7 @@
     "paragraphs": [
       {
         "id": "speakers.intro",
-        "text": "Tell uConsole what each output plays: a full-range speaker, a woofer, a mid, a tweeter or a subwoofer. The suggestion comes from the DSPi's filters and routing: check it, then confirm."
+        "text": "Tell uConsole what each output plays: a full-range speaker, a woofer, a mid, a tweeter or a subwoofer. The suggestion comes from the DSPi's filters and routing: check it and confirm it, or leave it for later."
       },
       {
         "id": "speakers.safety",
@@ -16,10 +16,12 @@
     ],
     "no_device": "Connect your DSPi to set this up. You can also do it later in Settings › Speakers.",
     "confirmed": "Confirmed. You can change it later in Settings › Speakers.",
-    "later": "You can skip this step and confirm the layout later in Settings › Speakers.",
+    "later": "Not sure yet? Choose Later: measuring and auto-tune ask for this before they start, and AI agents cannot measure until it is confirmed. It waits for you in Settings › Speakers.",
     "buttons": {
       "confirm": "Confirm",
-      "suggestion": "Use the Suggestion"
+      "suggestion": "Use the Suggestion",
+      "later": "Later",
+      "confirm_continue": "Confirm and Continue"
     }
   }
 }
