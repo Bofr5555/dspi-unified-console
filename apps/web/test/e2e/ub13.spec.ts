@@ -1,0 +1,125 @@
+// WP UB13 e2e (UXP B13, D11): Settings › Appearance's "Outline controls" and control size. A mouse desktop
+// starts with neither (the owner's look); the outline draws Qt's 3:1 line round fields, menus and buttons;
+// Comfortable makes the controls 32 px and the PEQ table's "plays" disc a 44 px target; a touch screen
+// (a coarse pointer) gets Comfortable by itself. Screenshots in both themes when SHOTS_DIR names a directory.
+
+import { expect, test, type Locator, type Page } from "@playwright/test";
+import { openPage, openSetting } from "../nav";
+
+const OUTLINE = "rgb(130, 130, 130)"; // --control-outline, access.css
+
+function errorsOf(page: Page) {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  page.on("console", (m) => {
+    if (m.type() === "error") errors.push(m.text());
+  });
+  return errors;
+}
+
+async function shot(page: Page, name: string) {
+  const dir = process.env.SHOTS_DIR;
+  const project = test.info().project.name;
+  if (!dir || project === "firefox") return;
+  for (const scheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.waitForTimeout(150);
+    await page.screenshot({ path: `${dir}/ub13-${project}-${name}-${scheme}.png` });
+  }
+  await page.emulateMedia({ colorScheme: null });
+}
+
+async function noSidewaysScroll(page: Page) {
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+}
+
+/** Venue A's demo device on the embedding page, on its PEQ page with three bands. */
+async function openEq(page: Page): Promise<{ one: Locator; session: Locator; list: Locator }> {
+  await page.goto("/test/embed.html?one");
+  const one = page.locator("#one");
+  await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
+  const session = one.getByRole("article").first();
+  await expect(session).toHaveAttribute("data-status", "open");
+  await openPage(session, "EQ");
+  await session.locator(".eq-pick", { hasText: "OUT1" }).click();
+  const list = session.getByRole("region", { name: /^Bands of OUT1/ });
+  await expect(list).toBeVisible();
+  return { one, session, list };
+}
+
+const borderColour = (l: Locator) => l.evaluate((e) => getComputedStyle(e).borderTopColor);
+const height = async (l: Locator) => (await l.boundingBox())?.height ?? 0;
+
+test("UB13: a mouse desktop has neither; Outline controls draws the 3:1 line, Comfortable the 32 px controls; both kept", async ({ page }) => {
+  const errors = errorsOf(page);
+  const { one, session, list } = await openEq(page);
+  const root = one.locator(".dspi-web");
+  const type = list.getByRole("combobox").first();
+  const dockButton = session.locator(".dock button:visible").first();
+  await expect(root).not.toHaveAttribute("data-outline", /./);
+  await expect(root).not.toHaveAttribute("data-density", /./);
+  expect(await borderColour(dockButton)).toBe("rgba(0, 0, 0, 0)");
+  expect(await height(dockButton)).toBeLessThan(31);
+  const disc = list.getByRole("checkbox", { name: "Band 1 plays" });
+  expect((await disc.boundingBox())?.width).toBeLessThan(20);
+  await shot(page, "peq-off");
+
+  await openPage(session, "Settings");
+  await openSetting(session, "Appearance");
+  const card = session.getByRole("region", { name: "Appearance" });
+  await card.getByRole("group", { name: "Outline controls" }).getByRole("radio", { name: "On", exact: true }).check();
+  await expect(root).toHaveAttribute("data-outline", "on");
+  await card.getByRole("group", { name: "Control size" }).getByRole("radio", { name: "Comfortable", exact: true }).check();
+  await expect(root).toHaveAttribute("data-density", "comfortable");
+  await noSidewaysScroll(page);
+  await shot(page, "appearance-both");
+
+  await openPage(session, "EQ");
+  expect(await borderColour(dockButton)).toBe(OUTLINE);
+  expect(await borderColour(type)).toBe(OUTLINE);
+  expect(await height(dockButton)).toBeGreaterThanOrEqual(31.5);
+  const box = await list.getByRole("checkbox", { name: "Band 1 plays" }).boundingBox();
+  expect(box?.width).toBeGreaterThanOrEqual(44);
+  expect(box?.height).toBeGreaterThanOrEqual(44);
+  await noSidewaysScroll(page);
+  await shot(page, "peq-both");
+
+  // Kept in this browser
+  await page.reload();
+  await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
+  await expect(root).toHaveAttribute("data-outline", "on");
+  await expect(root).toHaveAttribute("data-density", "comfortable");
+  // Standard and off: the owner's look again
+  await openPage(session, "Settings");
+  await openSetting(session, "Appearance");
+  await card.getByRole("group", { name: "Outline controls" }).getByRole("radio", { name: "Off", exact: true }).check();
+  await card.getByRole("group", { name: "Control size" }).getByRole("radio", { name: "Standard", exact: true }).check();
+  await expect(root).not.toHaveAttribute("data-outline", /./);
+  await expect(root).not.toHaveAttribute("data-density", /./);
+  expect(errors).toEqual([]);
+});
+
+test.describe("UB13 on a touch screen", () => {
+  // A phone: Chromium's touch emulation makes its pointer coarse (Firefox has no isMobile)
+  test.skip(({ browserName }) => browserName !== "chromium", "touch emulation is Chromium's");
+  test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
+
+  test("UB13: Automatic is Comfortable on a touch screen; Standard is not", async ({ page }) => {
+    const errors = errorsOf(page);
+    const { one, session, list } = await openEq(page);
+    const root = one.locator(".dspi-web");
+    expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true);
+    await expect(root).toHaveAttribute("data-density", "comfortable");
+    await expect(root).not.toHaveAttribute("data-outline", /./);
+    const box = await list.getByRole("checkbox", { name: "Band 1 plays" }).boundingBox();
+    expect(box?.width).toBeGreaterThanOrEqual(44);
+    await noSidewaysScroll(page);
+    await shot(page, "touch-peq");
+    await openPage(session, "Settings");
+    await openSetting(session, "Appearance");
+    const card = session.getByRole("region", { name: "Appearance" });
+    await card.getByRole("group", { name: "Control size" }).getByRole("radio", { name: "Standard", exact: true }).check();
+    await expect(root).not.toHaveAttribute("data-density", /./);
+    expect(errors).toEqual([]);
+  });
+});

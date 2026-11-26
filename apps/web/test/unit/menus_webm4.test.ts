@@ -149,7 +149,7 @@ test("WEBM4 arrangement: as kept (WEBM1's key, which held the sections alone), d
   const a = withChoice(withChoice(DEFAULT_ARRANGEMENT, "theme", "dark")!, "deviceTabs", "rail")!;
   assert.equal(withChoice(a, "theme", "purple"), null, "not one of its choices");
   saveArrangement(kv, a);
-  assert.deepEqual(loadArrangement(kv), { navigation: "rail", deviceTabs: "rail", theme: "dark" });
+  assert.deepEqual(loadArrangement(kv), { ...DEFAULT_ARRANGEMENT, navigation: "rail", deviceTabs: "rail", theme: "dark" }); // -- WP UB13 -- and the access choices
   assert.equal(loadNavigation(kv), "rail", "WEBM1's reading of it still works");
   saveArrangement(kv, withChoice(a, "navigation", "tabs")!);
   assert.equal(loadNavigation(kv), "tabs");
