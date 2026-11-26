@@ -1723,8 +1723,8 @@ void PeqOverlay::refreshChip() {
         rows << row(Peq::Freq, tr("Freq"), f.first, f.second, true);
         if (Peq::usesGain(p.filter_type)) rows << row(Peq::Gain, tr("Gain"), Peq::truncated(p.gain, true), tr("dB"), true);
         if (Peq::usesQ(p.filter_type))
-            // "Width", as the band list calls it, with Q as its unit
-            rows << row(Peq::Width, tr("Width"), Peq::truncated(p.q), tr("Q"), true);
+            // -- INT016 -- (A10 one filter vocabulary) "Q", as the band list calls it (was Width)
+            rows << row(Peq::Width, tr("Q"), Peq::truncated(p.q), tr("Q"), true);
         else if (shape == Peq::AllPass)
             rows << row(Peq::Width, tr("Order"), tr("1st"), QString(), false);
         else

@@ -170,7 +170,10 @@ private fun SheetValueRow(editor: PeqGraphEditor, state: PeqHudState, row: PeqHu
         TextButton(
             onClick = { onEditField(row.field) },
             modifier = Modifier.heightIn(min = 48.dp).widthIn(min = 112.dp)
-                .semantics { contentDescription = "${row.label} ${row.number} ${row.unit}, edit" }
+                // -- INT016 -- (A10 one filter vocabulary) Q has no unit after its number now
+                .semantics {
+                    contentDescription = listOf(row.label, row.number, row.unit).filter { it.isNotEmpty() }.joinToString(" ") + ", edit"
+                }
         ) { Text("${row.number} ${row.unit}".trim(), style = MaterialTheme.typography.bodyLarge) }
         StepButton("+", peqStepLabel(row, up = true)) { editor.accessibilityAdjust(state.band, row.field, up = true) }
     }

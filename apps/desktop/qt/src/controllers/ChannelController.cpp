@@ -182,7 +182,7 @@ QVariantList ChannelController::typeMenu(bool includeLinkwitz) const {
     };
     static const Group groups[] = {
         { QT_TR_NOOP("Off"), { FILTER_FLAT } },
-        { QT_TR_NOOP("Peaking"), { FILTER_PEAKING } },
+        { QT_TR_NOOP("Bell"), { FILTER_PEAKING } }, // -- INT016 -- (A10 one filter vocabulary)
         { QT_TR_NOOP("Low Shelf"), { FILTER_LOWSHELF1, FILTER_LOWSHELF } },
         { QT_TR_NOOP("High Shelf"), { FILTER_HIGHSHELF1, FILTER_HIGHSHELF } },
         { QT_TR_NOOP("High Cut"), { FILTER_LOWPASS1, FILTER_LOWPASS } },

@@ -2,7 +2,7 @@
 //! the channels as the person knows them ([`crate::channel_words`]): what an
 //! AI agent's change says in the app's toast and its activity log.
 //!
-//! "Centre: PEQ band 1 Peaking 2 kHz +3 dB Q 1", "LFE → Left woofer off",
+//! "Centre: PEQ band 1 Bell 2 kHz +3 dB Q 1", "LFE → Left woofer off",
 //! "Centre woofer: gain −6 dB". Bands, presets and outputs count from 1.
 // Indices are bytes: "+ 1" to number them as the screens do cannot overflow.
 #![allow(clippy::arithmetic_side_effects)]
@@ -253,7 +253,8 @@ mod tests_wp_showfix {
         );
         assert_eq!(
             change_text(&xover, &w),
-            "Left tweeter: crossover filter 1 LR4 High Pass 400 Hz"
+            // -- INT016 -- (A10 one filter vocabulary)
+            "Left tweeter: crossover filter 1 LR4 High pass 400 Hz"
         );
         let many = vec![gain.clone(), route.clone(), peq.clone(), xover];
         assert!(changes_text(&many, &w).ends_with("; and 2 more"));

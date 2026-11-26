@@ -122,7 +122,7 @@ class BandSheetWpUanTest {
         rule.onNodeWithContentDescription("Response graph").performTouchInput { click(at) }
         settle { sheetShown() }
         // 48dp rows: each step button and the value buttons
-        for (name in listOf("Lower Freq", "Raise Freq", "Lower Gain", "Raise Gain", "Lower Width", "Raise Width")) {
+        for (name in listOf("Lower Freq", "Raise Freq", "Lower Gain", "Raise Gain", "Lower Q", "Raise Q")) {
             val b = rule.onNodeWithContentDescription(name).fetchSemanticsNode().boundsInRoot
             assertTrue("$name ${b.height}", b.height >= 47.5f && b.width >= 47.5f)
         }

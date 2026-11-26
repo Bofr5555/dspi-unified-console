@@ -588,7 +588,7 @@ private fun PeqHudTextDialog(editor: PeqGraphEditor, field: PeqHudField, onField
         when (field) {
             PeqHudField.FREQ -> "Freq"
             PeqHudField.GAIN -> "Gain"
-            PeqHudField.Q -> "Width"
+            PeqHudField.Q -> "Q" // -- INT016 -- (A10 one filter vocabulary) was Width
         }
 
     fun apply(): Boolean {

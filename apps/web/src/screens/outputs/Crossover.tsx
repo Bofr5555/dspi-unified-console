@@ -1,9 +1,10 @@
 // An output's crossover (WP WB6c, B8 and M50), after the Console's XO tab
 // (`crossoverRowContent`, Components.swift): four bands, each with its bypass,
-// family (Off, Linkwitz-Riley, Butterworth, Bessel), pass (Low Pass, High
-// Pass), slope and frequency; Enable All / Bypass All (Bypass All asks first,
+// family (Off, Linkwitz-Riley, Butterworth, Bessel), pass (Low pass, High
+// pass), slope and frequency; Enable All / Bypass All (Bypass All asks first,
 // with the Console's warning) and Clear All below. The names a screen reader
-// hears are the core's ("LR4 High Pass", `filterTypeNames`).
+// hears are the core's ("LR4 High pass", `filterTypeNames`).
+// -- INT016 -- (A10 one filter vocabulary) the pass in sentence case, as the inspector and Qt's table say.
 //
 // The type goes through the core's `crossoverType` (the registry's `eq.type`
 // takes PEQ types only); frequency and bypass are `write`s of `eq.freq` and
@@ -142,8 +143,8 @@ export const CrossoverList = memo(function CrossoverList(props: {
                   >
                     {on ? (
                       <>
-                        <option value="lp">{compact ? "LP" : "Low Pass"}</option>
-                        <option value="hp">{compact ? "HP" : "High Pass"}</option>
+                        <option value="lp">{compact ? "LP" : "Low pass"}</option>
+                        <option value="hp">{compact ? "HP" : "High pass"}</option>
                       </>
                     ) : (
                       <option value="lp">–</option>

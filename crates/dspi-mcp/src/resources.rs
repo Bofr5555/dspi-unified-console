@@ -56,7 +56,8 @@ device the app shows is used. A device that is not open may be a known one
 ## Filters
 - Each channel has 10 PEQ slots. A slot of type `flat` is free.
 - An output's crossover is its high-pass and low-pass, in the crossover slots. A bandpass is
-  the crossover: a high-pass plus a low-pass. A narrow band boost or cut is a peaking band.
+  the crossover: a high-pass plus a low-pass. A narrow band boost or cut is a peaking band
+  (type `peaking`; the app and `type_label` call it Bell, as the user does).
 - `dspi_get_response` gives the model response of a channel's filters, or a measured one.
 
 ## Roles and safety

@@ -165,8 +165,8 @@ private fun hudRowsFull(p: FilterParams): List<PeqHudRow> {
         }
         rows +=
             when {
-                // "Width", as the band list's column header calls it, with Q as the unit.
-                FilterTypes.hasQ(p.filterType) -> PeqHudRow(PeqHudField.Q, "Width", PeqValueText.truncated(p.q.toDouble()), "Q", true)
+                // -- INT016 -- (A10 one filter vocabulary) "Q", as the band list's column header calls it (was Width, with Q as the unit).
+                FilterTypes.hasQ(p.filterType) -> PeqHudRow(PeqHudField.Q, "Q", PeqValueText.truncated(p.q.toDouble()), "", true)
                 so.first == PeqShape.ALL_PASS -> PeqHudRow(PeqHudField.Q, "Order", "1st", "", false)
                 else -> PeqHudRow(PeqHudField.Q, "Slope", "6", "dB/oct", false, inline = true)
             }

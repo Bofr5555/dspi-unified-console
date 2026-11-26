@@ -136,9 +136,9 @@ test("WB6b graph: add a band by double click, drag it, and the device keeps what
   // (On a phone the list shows it in short, "+1.0".)
   const short = `${moved.gain >= 0 ? "+" : ""}${moved.gain.toFixed(1)}`.replace(/[.+]/g, "\\$&");
   await expect(list.getByRole("textbox", { name: `Band ${slot + 1} gain` })).toHaveValue(new RegExp(`^${short}`));
-  // Every band is labelled for a screen reader, the chosen one said.
-  await expect(graph.locator(".graph-announce")).toContainText(`Band ${slot + 1}: Peaking`);
-  await expect(graph.getByRole("list", { name: "Bands on the graph" })).toContainText(`Band ${slot + 1}: Peaking`);
+  // Every band is labelled for a screen reader, the chosen one said (-- INT016 -- (A10) Bell, the core's word).
+  await expect(graph.locator(".graph-announce")).toContainText(`Band ${slot + 1}: Bell`);
+  await expect(graph.getByRole("list", { name: "Bands on the graph" })).toContainText(`Band ${slot + 1}: Bell`);
 
   // Pull a band out of the curve: drag from the curve far from any dot.
   const free = (await out1(page)).findIndex((b) => b.filterType === 0);

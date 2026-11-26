@@ -277,7 +277,7 @@ mod tests_wp_wb6b {
         assert_eq!(t.len(), 46);
         assert_eq!(t[0], json!({ "code": 0, "name": "Off" }));
         assert_eq!(t[12], json!({ "code": 12, "name": "High Cut (6dB)" }));
-        assert_eq!(t[14], json!({ "code": 32, "name": "LR2 Low Pass" }));
+        assert_eq!(t[14], json!({ "code": 32, "name": "LR2 Low pass" })); // -- INT016 -- (A10)
     }
 }
 

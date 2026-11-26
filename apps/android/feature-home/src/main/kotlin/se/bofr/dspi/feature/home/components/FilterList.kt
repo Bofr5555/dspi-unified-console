@@ -96,7 +96,7 @@ fun FilterListView(
                         Header("TYPE", FilterColumns.type)
                         Header("FREQ", FilterColumns.freq + FilterColumns.unit)
                         Header("GAIN", FilterColumns.gain + FilterColumns.unit)
-                        Header("WIDTH", FilterColumns.q + FilterColumns.unit)
+                        Header("Q", FilterColumns.q + FilterColumns.unit) // -- INT016 -- (A10 one filter vocabulary) was WIDTH
                     }
                 }
                 HorizontalRule(Modifier.fillMaxWidth())

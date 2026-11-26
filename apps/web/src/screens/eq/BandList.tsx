@@ -6,7 +6,7 @@
 //
 // -- WP WEB6 -- (REVE §3.1) Qt's table: the bypass disc first (filled in the band's colour while the
 // band plays, a ring when bypassed or off; a click switches it), the number, the type as Qt's picker
-// (a select drawn as its combo), FREQ, GAIN and WIDTH with their units after the fields, an off
+// (a select drawn as its combo), FREQ, GAIN and Q (WP UWN, was WIDTH) with their units after the fields, an off
 // band's values left out; Enable All and Bypass All at the left of the foot, Clear PEQ at the right.
 
 import { memo } from "preact/compat";

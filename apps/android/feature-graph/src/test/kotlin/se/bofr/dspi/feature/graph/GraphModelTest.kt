@@ -225,7 +225,7 @@ class GraphModelTest {
     @Test
     fun chipRowsFollowTheShape() {
         fun rows(t: Int, gain: Float = 0f) = hudRows(FilterTypes.band(t, 1234.5f, 0.707f, gain)).map { it.label }
-        assertEquals(listOf("Freq", "Gain", "Width"), rows(FILTER_PEAKING, 3f))
+        assertEquals(listOf("Freq", "Gain", "Q"), rows(FILTER_PEAKING, 3f))
         assertEquals(listOf("Freq", "Slope"), rows(FILTER_HIGHPASS1))
         assertEquals(listOf("Freq", "Order"), rows(FILTER_ALLPASS1))
         assertEquals(listOf("f0", "fp"), rows(FILTER_LINKWITZ_TRANSFORM, 25f))

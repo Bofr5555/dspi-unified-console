@@ -1,8 +1,10 @@
 //! The filter types' names, one table for every client (WP CG34).
 //!
 //! The names are the Console's band-list names (`FilterType.name`,
-//! DSPMath.swift at release/v1.1.6): "Off", "Peaking", "High Cut (12dB)" for
-//! a second-order low pass, "LR4 Low Pass" for a crossover. The table itself
+//! DSPMath.swift at release/v1.1.6): "Off", "Bell", "High Cut (12dB)" for
+//! a second-order low pass, "LR4 Low pass" for a crossover (-- INT016 -- (A10
+//! one filter vocabulary): Bell for the Console's Peaking, the direction in
+//! sentence case). The table itself
 //! is `dspi_proto::FilterType::display_name`, which the terminal UI reads
 //! directly; this module hands it to the bindings (UniFFI here, the C ABI
 //! and the web binding on top).
@@ -54,8 +56,9 @@ mod tests_wp_cg34 {
         assert_eq!(name(4), Some("High Cut (12dB)"));
         assert_eq!(name(13), Some("Low Cut (6dB)"));
         assert_eq!(name(11), Some("Linkwitz Transform"));
-        assert_eq!(name(35), Some("LR4 High Pass"));
-        assert_eq!(name(63), Some("BES8 High Pass"));
+        assert_eq!(name(1), Some("Bell")); // -- INT016 -- (A10 one filter vocabulary)
+        assert_eq!(name(35), Some("LR4 High pass"));
+        assert_eq!(name(63), Some("BES8 High pass"));
         for n in &t {
             assert_eq!(filter_type_name(n.code), n.name);
         }

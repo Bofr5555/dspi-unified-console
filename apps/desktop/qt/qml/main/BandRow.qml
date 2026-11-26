@@ -275,7 +275,7 @@ Rectangle {
                 objectName: row.objectName + ".direction"
                 Layout.preferredWidth: 100
                 label: qsTr("%1 type").arg(row.what)
-                model: [qsTr("Low Pass"), qsTr("High Pass")]
+                model: [qsTr("Low pass"), qsTr("High pass")] // -- INT016 -- (A10 one filter vocabulary) as the inspector says
                 currentIndex: ChannelController.isLowPass(row.type) ? 0 : 1
                 onActivated: index => ChannelController.setCrossoverLowPass(row.channel, row.band, index === 0)
             }
