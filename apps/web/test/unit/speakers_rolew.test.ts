@@ -135,7 +135,7 @@ after(() => {
 async function demo(): Promise<{ core: WasmCore; serial: string }> {
   const core = new WasmCore(await loadWasmModule(readFileSync(pageModule)));
   made.push(core);
-  const snap = await core.call("open", { kind: "demo" });
+  const snap = await core.call("open", { kind: "demo", blank: true }); // -- WP UB12 -- a new board
   return { core, serial: snap.device.serial };
 }
 
@@ -222,12 +222,12 @@ test("ROLEW on the demo: the session's open sets the page's copy again", { skip,
   try {
     const core = new WasmCore(await loadWasmModule(readFileSync(pageModule)));
     made.push(core);
-    const serial = (await core.call("open", { kind: "demo" })).device.serial;
+    const serial = (await core.call("open", { kind: "demo", blank: true })).device.serial; // -- WP UB12 -- a new board
     await core.call("close" as never, undefined as never);
     saveKept(store, serial, { layout: layout([[0, "mid", "C", 2]]), imported: false });
     const client = { call: (m: string, p: unknown) => core.call(m as never, p as never), subscribe: () => () => undefined, dispose: async () => undefined } as unknown as CoreClient;
     const session = new Session("s", "i", "Here", { kind: "demo" }, "control", client);
-    await session.open({ kind: "demo" });
+    await session.open({ kind: "demo", blank: true }); // -- WP UB12 -- a new board
     assert.equal(session.state.status, "open");
     const l = (await core.call("speakerLayout" as never, undefined as never)) as SpeakerLayoutRecord | null;
     assert.equal(l?.confirmedByUser, true);

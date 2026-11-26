@@ -33,8 +33,16 @@ async function openDemo(page: Page): Promise<Locator> {
   return session;
 }
 
+/** Pictures on the standalone page (the embedding page's own styles colour its buttons). */
 async function shot(page: Page, name: string) {
   if (test.info().project.name === "firefox") return;
+  await page.goto("/");
+  const picker = page.getByRole("navigation", { name: "DSPi devices" });
+  await picker.getByRole("listitem").filter({ hasText: "Demo DSPi" }).getByRole("button", { name: "Connect" }).click();
+  const session = page.getByRole("article", { name: "DSPi" });
+  await expect(session).toHaveAttribute("data-serial", "DEMO0000DSPI0001");
+  await openPage(session, "Overview");
+  await page.waitForTimeout(300);
   for (const scheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: scheme });
     await page.waitForTimeout(200);
@@ -51,7 +59,6 @@ test.describe("the demo every page opens", () => {
     const overview = session.getByRole("region", { name: "Overview" });
     for (const name of ["Left woofer", "Right woofer", "Left tweeter", "Right tweeter"]) await expect(overview.getByText(name).first()).toBeVisible();
     expect(await gain(page, 2)).toBe(-3);
-    await shot(page, "after");
 
     // The strip's button
     const reset = session.locator(".demo-strip").getByRole("button", { name: "Reset Demo" });
@@ -70,6 +77,7 @@ test.describe("the demo every page opens", () => {
     await expect(palette.getByRole("option", { name: /^Reset Demo/ })).toBeVisible();
     await page.keyboard.press("Enter");
     await expect.poll(() => gain(page, 2)).toBe(-3);
+    await shot(page, "after");
   });
 });
 
