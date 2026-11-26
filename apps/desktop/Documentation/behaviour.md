@@ -1,9 +1,13 @@
 # The desktop console: behaviour reference
 
-This document describes how the Linux and Windows desktop console behaves where the Mac console
-(`apps/apple`) and `docs/PARITY.md` do not already say it. It is the source for those behaviours when the desktop UI is
-rebuilt. Where the Mac app covers a screen, the Mac app is the reference and this file adds only the desktop
-differences.
+This document describes how the desktop console (Windows, Linux, and macOS where the Qt app runs there) behaves
+where the Mac console (`apps/apple`) and `docs/PARITY.md` do not already say it. It was written from the app before
+the rebuild, as the source for those behaviours when the desktop UI was rebuilt in Qt Quick. Where the Mac app covers a
+screen, the Mac app is the reference and this file adds only the desktop differences.
+
+The rebuilt app has two layouts: **Classic** (a menu bar and tool windows), which carries the behaviours below, and
+**Modern** (one window of sections and pages, no menu bar), where new installs start. What changed since the rebuild,
+up to release 0.16.0, is summarised in §28. Where this file and the code disagree, the code wins.
 
 Cite it by section, for example "behaviour.md §6.3".
 
@@ -26,15 +30,17 @@ Cite it by section, for example "behaviour.md §6.3".
 
 ### 1.1 Identity and start-up
 
-- Window title and product name: "uConsole for DSPi". The executable is `uconsole-for-dspi` (`uconsole-for-dspi.exe` on Windows; WP RN1).
+- Window title and product name: "uConsole for DSPi". The executable is `uconsole-for-dspi` (`uconsole-for-dspi.exe` on Windows).
   The rebuilt app takes the window title and every place a text names the product from its one identity constant
-  (`AppIdentity`, plan Q15), never from this paragraph: the name may change before packaging.
-- Settings organisation and application are both `uconsole-for-dspi` (§21; WP RN1).
+  (`AppIdentity`, plan Q15), never from this paragraph.
+- Settings organisation and application are both `uconsole-for-dspi` (§21).
 - `--demo` on the command line opens the demo device at start. Without it, the app starts with whatever USB device
   is present, or with nothing (§1.3).
-- First start, when the onboarding flag is unset: the main window shows the Getting Started flow (three steps:
-  Welcome, Board, Done) with "Skip Setup" and "Continue". Skipping or finishing sets the flag (§21), so the flow never
-  shows again by itself. Help menu entries reopen it and What's New.
+- First start, when the onboarding flag is unset: the main window shows the Getting Started flow (three steps in the
+  old app: Welcome, Board, Done; the rebuilt app adds Speakers before Done, which offers "Later") with "Skip Setup" and
+  "Continue". Skipping or finishing sets the flag (§21), so the flow never shows again by itself. Help menu entries
+  reopen it and What's New. A first start of the rebuilt app opens in Modern; an install whose flag is already set
+  keeps Classic.
 - What's New shows once per app version: the version last shown is stored (§21), and a newer version shows it again.
 
 ### 1.2 Main window
@@ -47,8 +53,11 @@ Cite it by section, for example "behaviour.md §6.3".
   and firmware (or that nothing is connected), Device, File, AutoEQ, Effects, Tools, Help, then Settings with Ctrl+,.
   With no device, File is disabled. Device holds "Devices…", Commit Parameters (Ctrl+S), Revert to Saved, Save Master
   Volume, Save Output Config, Firmware Update…, Factory Reset… (shown in a warning colour). Help holds Getting Started…,
-  What's New, and the two GitHub links. The new app's menu bar follows the plan's menu table; this paragraph records
-  only what exists today.
+  What's New, and the two GitHub links. That was the old app. The rebuilt app's Classic menu bar is the menu table
+  (`qml/main/MenuTable.qml`): File, Edit, Device, AutoEQ, Tools, Window, Help. There Commit Parameters is **Save to
+  Device…** (Ctrl+S), Revert to Saved… has Ctrl+Shift+R, Save Master Volume and Save Output Configuration are in File,
+  Settings… (Ctrl+,) is in Edit, and Device also holds the presets, Mute, Bypass Master EQ, Snapshots…, Toggle A/B
+  (B), Events…, Identify, **Agent Activity…** and Reconnect. Modern has no menu bar (§28).
 - Ctrl+Q quits from the main window (observed). Escape and Return shortcuts of a hidden tool window act only while
   that window has focus (QD36).
 
@@ -59,12 +68,12 @@ Cite it by section, for example "behaviour.md §6.3".
 - A banner at the top of the right pane says no DSPi is connected and offers "Open Demo". Choosing it opens the demo
   device in place (QD7). The graph and the filter grid stay visible with default content.
 - Settings, while nothing is connected, lists only the Application and Display categories; the System and Control
-  categories (device pages) appear when a device is open.
+  categories (device pages) appear when a device is open. The rebuilt app calls the System group Device.
 - The demo is never chosen by a scan or a hot-plug event; a rescan keeps an open demo and reads it again (QD7, QD36).
   Leaving the demo for a real device goes through the unsaved-changes question of M42.
 - A re-read of the device (a refresh, a reconnect, a Link session coming back) keeps what the unsaved-changes
   question compares with: edits stay unsaved until saved to a preset or reverted, and a change someone else made
-  meanwhile counts as unsaved too (owner, 2026-11-13, WP SWAPFIX). Another device or another active preset starts
+  meanwhile counts as unsaved too (owner, 2026-11-13). Another device or another active preset starts
   afresh. An output's delay is one line in the question's list.
 
 ### 1.4 Demo device
@@ -188,8 +197,8 @@ reconnect passes the expected hub id, so a different hub at the same address is 
 - A pairing's token is stored per hub id, so the device list can reconnect without the PIN.
 - Primary store: Windows Credential Manager, or the Secret Service on Linux (macOS keychain where the app runs
   there). The entries are named `uconsole-for-dspi/link/<hub id>` (Credential Manager) and carry the attribute
-  `application` = `uconsole-for-dspi` (Secret Service); WP RN1 renamed them, with nothing to migrate (no earlier
-  release).
+  `application` = `uconsole-for-dspi` (Secret Service); they were renamed before any release used the old names,
+  so there is nothing to migrate.
 - Fallback when no secret store answers: a JSON file `link-tokens.json` in the app's config directory (Linux:
   `$XDG_CONFIG_HOME/uconsole-for-dspi/uconsole-for-dspi/link-tokens.json`). It holds one object whose keys are hub ids (UUID strings)
   and whose values are the token strings. Mode 0600. A fresh file is `{}`.
@@ -208,13 +217,19 @@ reconnect passes the expected hub id, so a different hub at the same address is 
   Macros, Auxiliary Outputs). System and Control show only while a device is open.
 - Title bar of the content: back and forward arrows (page history within the window), the page title, a close button.
 - The last page shown is stored (§21) and opens next time.
+- In the rebuilt app the groups are Application (About, Updates, Advanced, Appearance, Networking, Installer, AI Agents,
+  This Computer), Display (Graphing, Spectrum Analyser), Device (Speakers first, then Outputs, Inputs, Global
+  Parameters, I2S Configuration, Overview) and Control (as above). With no page chosen yet it opens on Device ›
+  Speakers, or on About while no device is open. In Modern, Settings is a section of the main window with the groups
+  as its tabs; in Classic it is this window.
 - **Held changes and the save bar:** device settings changed on the System and Control pages are held, not sent,
   until Save. While anything is held, a bar along the bottom of the window shows "Unsaved changes" with "Revert" and
   "Save", whatever page is showing. If Save fails part way, the bar stays, with a line in orange naming what the
   device did not accept (for example the startup preset, or the latency, §16); nothing that failed reads as saved
   (QD31). Display pages (Graphing, Spectrum Analyser) are app preferences and apply at once.
-- Advanced also shows device facts (platform, firmware, serial, channel counts), Reset Channel Names (takes effect
-  at once), and a Core Voltage entry with the running voltage and "Open…" (§20).
+- Advanced also shows device facts (platform, firmware, serial, channel counts; in the rebuilt app also the protocol
+  rows and Raw Request…, moved from About), Reset Channel Names (takes effect at once), and a Core Voltage entry with
+  the running voltage and "Open…" (§20).
 
 ## 9. Settings search
 
@@ -502,7 +517,7 @@ extension. All warnings, limits and states come from the core (`dspi_core_vreg_*
 
 macOS uses the standard preferences plist for the same keys.
 
-Owner decision (2026-11-13, WP SWAPFIX): on Windows the settings are the INI file above, the same format as on Linux;
+Owner decision (2026-11-13): on Windows the settings are the INI file above, the same format as on Linux;
 nothing is read from or written to `HKCU\Software\uconsole-for-dspi`. The only registry entries the app writes are the
 login entry (§12.2) and, through the installer, the installer record. The file is part of the location contract once
 released. The uninstaller removes the settings file (and its folder when nothing else is in it), and Save Diagnostics
@@ -520,7 +535,7 @@ and the hand runs), plus the keys seen only when a control was changed by hand. 
 |---|---|---|---|
 | `onboarding/setupDone` | bool | false | Getting Started finished or skipped |
 | `onboarding/whatsNewShown` | string | — | last app version whose What's New was shown |
-| `settingsWindow/lastPage` | string | `about` | last Settings page as a lower-case id; observed values `about` and `updates` (the other ids are not observed). -- WP UA5 -- This app: none; the last page the person chose (a fallback is not stored); without one Settings opens on Device › Speakers, on About while no device is open |
+| `settingsWindow/lastPage` | string | `about` | last Settings page as a lower-case id; observed values `about` and `updates` (the other ids are not observed). The rebuilt app: no default; the last page the person chose (a fallback is not stored); without one Settings opens on Device › Speakers, on About while no device is open |
 | `sidebar/showMaster` | bool | false | volume mode: false = User Volume, true = Master (M47) |
 | `sidebar/width` | int | 270 | sidebar width, px |
 | `dashboard/cardsPerRow` | int | 0 | overview cards per row, 0 = automatic (M59) |
@@ -560,7 +575,7 @@ version, the demo choice, AutoEQ favourites. See §21.3.
 
 ### 21.3 Migration for the new app (plan Q12)
 
-- WP RN1 (owner 2026-11-12): organisation and application are `uconsole-for-dspi`; no release used the old names
+- Owner decision (2026-11-12): organisation and application are `uconsole-for-dspi`; no release used the old names
   (`DSPi` / `DSPi Console`), so nothing below is read from them any more.
 - Carry over: `onboarding/setupDone`, `onboarding/whatsNewShown`, `sidebar/showMaster`, `hub/*`, `tray/*`,
   `system/keepAwake`, `inputLinks/*`. Under new names, map them on first start and leave the old keys in place, so
@@ -651,8 +666,8 @@ The NSIS script and its test (`apps/desktop/packaging/windows/`) are kept. Behav
 - An install first removes the previous version's `qml` directory and the other bundled documentation directory, so no stale files stay.
 - The finish page offers to run the app, started through the shell as the Start menu would.
 - Uninstall removes the program directory, the shortcut, the registry entries and the settings file
-  `%APPDATA%\uconsole-for-dspi\uconsole-for-dspi.ini` (the folder only when empty: the hub store and caches stay;
-  WP SWAPFIX). It also removes the app's firewall rules: it reads, without rights, whether a rule named
+  `%APPDATA%\uconsole-for-dspi\uconsole-for-dspi.ini` (the folder only when empty: the hub store and caches stay).
+  It also removes the app's firewall rules: it reads, without rights, whether a rule named
   "uConsole for DSPi" exists (the app's own, §11.1, and Windows' own from its prompt, both named after the app), and
   only then runs `netsh advfirewall firewall delete rule` elevated (one UAC prompt). A declined prompt leaves the rule
   and the uninstall goes on.
@@ -676,7 +691,7 @@ The NSIS script and its test (`apps/desktop/packaging/windows/`) are kept. Behav
 - **Analyser following another console:** the analyser's status bar says it follows another console, with a "Take
   control" link (M13). The last choice made wins, ordered by the device's event sequence: a choice made here drives
   even if another console's earlier push is still unread, and a later push of theirs makes this console follow
-  (WP ANLAST; `rta_sharing_spec.md` 3.3a).
+  (`rta_sharing_spec.md` 3.3a).
 - **Settings save failures** are named per setter (§8).
 - **Hidden-window shortcuts** only act while their window has focus (§1.2).
 
@@ -718,3 +733,42 @@ Mechanics only; the wording and the texts are data shipped with the app, not wri
   outside the visible part of the About page screenshot, so their exact layout is **not observable**: use the
   Settings row style (§8).
 
+
+## 28. Since the rebuild (release 0.16.0)
+
+What the rebuilt app does that the sections above do not cover, in short. The details are in `CHANGELOG-0.16.0.md`,
+`CHANGELOG-0.15.0.md` (not published: 0.16.0 is the first release after 0.14.0) and the user manual.
+
+- **Two layouts.** Settings › Appearance › Layout switches between Classic and Modern at any time; the device, the
+  selected channel and open tool windows stay. Modern has a rail of sections (Overview, Equaliser, Routing, Effects,
+  Measure, Analyse, Library, System, Devices, Settings), each open device in a tab, a dock with the volume, meters,
+  Mute and Bypass EQ, and the command palette (Ctrl+K). States that limit what you can do show in a strip under the
+  top bar; other notices are behind the bell.
+- **Saving.** Save to Device (Ctrl+S; the old app's Commit Parameters) is in Modern's top bar, with the unsaved
+  changes listed in its tooltip, and each device tab says when it has unsaved changes. With several devices open, its
+  menu offers **Save All…**: one question for every device with unsaved changes. Factory Reset is not next to Save:
+  in Modern it is in the device tab's menu; in Classic it stays in the Device menu.
+- **Agent Activity** is the panel of what AI agents did: Device › Agent Activity… in Classic, the AI button's popover
+  in Modern's top bar. Its settings are Settings › AI Agents.
+- **Home.** In Simple mode, and on a DSPi locked by its installer, Modern opens on **Overview › Home**: the volume
+  with Mute, the source, the presets and one health line. Under the installer's lock the locked user may change only
+  the volume, mute, the input source and presets (the core's `LOCKED_USER_WRITES`); Modern shows every other page
+  read-only with a notice and "Go to Home", and Save, Undo, shortcuts and palette rows that would write are off. The
+  speaker layout cannot be changed under the lock. Classic stays live under the lock and refuses what the lock
+  covers after the click.
+- **Speakers and From Speaker Layout.** Settings › Speakers (both layouts, and a Speakers step in Getting Started)
+  says which output drives what, and you confirm it. Once it is confirmed, Modern's **Equaliser › Crossover › From
+  Speaker Layout…** and **Routing › From Speaker Layout…** set every output's high- and low-pass, or its routes, in
+  one step that one Undo takes back; Settings › Speakers offers both as **Crossovers and Routing…**. A tweeter's
+  high-pass is never set below the greater of 1 kHz and the installer profile's high-pass minimum, at 12 dB/oct or
+  steeper; a lower value is refused with the reason, and so is a route to a tweeter or mid driver without a
+  high-pass, unless the same Apply sets its crossover.
+- **A/B as saved against now.** Modern's top bar **A | B**, and Device › Toggle A/B (B) in Classic, compare the
+  preset as saved on the device (A) with what plays now (B), from the first edit. The volume and mute stay as they
+  are on both sides; edits on B count as unsaved while A plays, and Save to Device saves B.
+- **Solo.** Modern's Routing inspector and an output's menu offer **Solo**: only that output plays, the others are
+  muted on the device until **End Solo**. A solo never reaches a preset, a snapshot or a save; it ends before
+  anything is saved, loaded or measured, and before the device is closed.
+- **Output names.** In Modern an output is named as its speaker ("Left woofer · 1") in the Crossover and Delay & Gain
+  tables, the matrix, the Routing inspector and the Installer page; outputs nothing plays to fold under one
+  "N unused" row (§25 is Classic's labelling).

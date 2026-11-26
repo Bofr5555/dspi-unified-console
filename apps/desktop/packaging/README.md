@@ -1,10 +1,11 @@
 # Packaging the Qt desktop app: uConsole for DSPi
 
-<!-- WP QP20 --> The Qt app for Linux, Windows and (<!-- WP QTMAC -->) macOS, as people install it. The name they see is
+The Qt app for Linux, Windows and macOS, as people install it. The name they see is
 "uConsole for DSPi" (`qt/src/AppIdentity.h`); files, packages and commands are `uconsole-for-dspi`
 (`/usr/bin/uconsole-for-dspi`, the desktop entry and AppStream id `uconsole-for-dspi`) and the release files are
-`uConsole-for-DSPi-<version>-…`, below (WP RN1). The Mac release is this Qt app too, as a `.dmg`
-([macOS](#macos-the-dmg)); the Swift app (`apps/apple`) is deferred.
+`uConsole-for-DSPi-<version>-…`, below. The Mac release is this Qt app too, as a `.dmg`
+([macOS](#macos-the-dmg)); the Swift app (`apps/apple`) is deferred and not part of the release. The release's other
+files (Android, the Terminal, the web console, the full source) are made elsewhere; `docs/RELEASING.md` lists them all.
 
 ## Building a release
 
@@ -33,10 +34,10 @@ Arch; it is published to the AUR by hand.
 
 **These names are a contract.** The app's update checker (`qt/src/platform/AppUpdater.cpp`) counts a GitHub
 release as one for this app only when it carries `uConsole-for-DSPi-<v>-windows-…` (Windows),
-`uConsole-for-DSPi-<v>-linux-…` / `uConsole-for-DSPi-<v>-….AppImage` (Linux) or, <!-- WP QTMAC --> on macOS,
+`uConsole-for-DSPi-<v>-linux-…` / `uConsole-for-DSPi-<v>-….AppImage` (Linux) or, on macOS,
 `uConsole-for-DSPi-<v>-macos.dmg` exactly. Renaming them silently stops update notices for every installed copy.
 
-**The update feed** (`DSPI_UPDATE_FEED_URL`, QP17) is built into the project's own downloads only: the
+**The update feed** (`DSPI_UPDATE_FEED_URL`) is built into the project's own downloads only: the
 Windows zip and setup, the AppImage and the archive, and the macOS `.dmg` (`build-windows.sh`, `build-ubuntu.sh`,
 `macos/make-dmg.sh` pass the project's releases feed; set the variable empty to leave it out, as `ci/check.sh --step qt-windows`
 does). The `.deb`, the `.rpm` and the AUR package never carry it: their package manager updates them.
@@ -51,7 +52,7 @@ later. The release also carries the library sources (below).
 **Tests.** `linux/test-packages.sh <folder>` installs each Linux file in a clean container of its
 distributions (Debian 13; Fedora 43, 44) and runs the
 app on the demo device; it checks names, the udev rule, the notices, the feed rule and the archive's
-`install.sh`. <!-- WP APPIMG --> For the AppImage it runs `linux/test-appimage.sh`: on Ubuntu 24.04 and 25.04,
+`install.sh`. For the AppImage it runs `linux/test-appimage.sh`: on Ubuntu 24.04 and 25.04,
 Debian 13 and Fedora 44 with no Qt installed, `--version`, `ldd` over every ELF file in the AppImage, 15 s on the
 demo device on X11 and offscreen, and Help > About read from the running release binary (a test-only probe,
 `linux/appimage-probe.cpp`, preloaded): the version, the licence and the notice files, with every Qt library,
@@ -63,7 +64,7 @@ AppImage alone as the release does (`build-release.sh --appimage-only`). `window
 
 ## macOS: the .dmg
 
-<!-- WP QTMAC --> `uConsole-for-DSPi-<v>-macos.dmg` is made in the macOS VM from a clean commit, from the host:
+`uConsole-for-DSPi-<v>-macos.dmg` is made in a macOS virtual machine reached over SSH from a clean commit, from the host:
 
 ```
 apps/desktop/packaging/macos/build-macos.sh [--no-test] [output dir]
@@ -96,10 +97,10 @@ Every entry carries the name "uConsole for DSPi": the uninstall key (`HKCU\…\U
 the key that records the folder (`HKCU\Software\uConsole for DSPi`, `InstallDir`, where an update installs
 again), the folder (`%LOCALAPPDATA%\Programs\uConsole for DSPi`) and the Start menu shortcut
 ("uConsole for DSPi.lnk"). The exe is `uconsole-for-dspi.exe`. The app's own entries are the app's: open at
-login is the Run value "uConsole for DSPi" (QP14), which the uninstaller removes; settings are under
+login is the Run value "uConsole for DSPi", which the uninstaller removes; settings are under
 `%APPDATA%\uconsole-for-dspi` (QSettings `uconsole-for-dspi/uconsole-for-dspi`), and stay after an uninstall.
-WP RN1 renamed all of them; no release had used the earlier names, so nothing is carried over. The setup refuses to replace or remove the files while the app runs (also from the
-tray), with Retry; a silent run exits 2.
+No release used earlier names, so nothing is carried over. The setup refuses to replace or remove the files while
+the app runs (also from the tray), with Retry; a silent run exits 2.
 
 ## Linux: the udev rule
 
@@ -139,13 +140,13 @@ Every package carries the app's licence and, where it bundles libraries, theirs:
 | Windows `.zip` and setup | next to `uconsole-for-dspi.exe` | `NOTICE.txt`, `LICENSES/`: as the AppImage's, with `bundled/<Fedora package>/` (MinGW Qt's, GCC's runtime with its exception, the other DLLs') instead of ICU and the runtime |
 | `.deb` | `/usr/share/doc/uconsole-for-dspi/` | `copyright` and `NOTICE.txt` (the notice with the additional terms; the GPL is Debian's `/usr/share/common-licenses/GPL-3`), `LICENSES/`: `TERMS.txt`, `rust-crates.txt`, `Lucide/`, the firmware's notices, AutoEq's MIT |
 | `.rpm`, AUR, a plain `cmake --install` | `/usr/share/licenses/uconsole-for-dspi/` | `NOTICE.txt`, `LICENSES/`: as the `.deb`'s, with `GPL-3.0.txt` |
-| macOS `.dmg` <!-- WP QTMAC --> | `uConsole for DSPi.app/Contents/Resources/` | `NOTICE.txt`, `LICENSES/`: GPL-3.0, LGPL-3.0, `TERMS.txt`, `rust-crates.txt`, `Lucide/`, the firmware's notices, AutoEq's MIT, `Qt/` (Qt 6.8.3's, `licences/qt-6.8.3/`), `BUNDLED.txt` (Qt's frameworks, plugins and QML modules, and their source archives) |
+| macOS `.dmg` | `uConsole for DSPi.app/Contents/Resources/` | `NOTICE.txt`, `LICENSES/`: GPL-3.0, LGPL-3.0, `TERMS.txt`, `rust-crates.txt`, `Lucide/`, the firmware's notices, AutoEq's MIT, `Qt/` (Qt 6.8.3's, `licences/qt-6.8.3/`), `BUNDLED.txt` (Qt's frameworks, plugins and QML modules, and their source archives) |
 
-<!-- WP P5QCAP --> The app links Qt Multimedia for the measurement microphone (`QAudioSource`, capture only). The
+The app links Qt Multimedia for the measurement microphone (`QAudioSource`, capture only). The
 Windows package bundles `Qt6Multimedia.dll`, whose WASAPI audio backend is built in, and **no multimedia plugin**:
 no FFmpeg and no Media Foundation playback (`windows/deploy-mingw.sh` fails if either appears). Its source and
 third-party notices are in the Windows notice (`qt-modules.sh windows` lists `qtmultimedia`; `licences/qt-6.11.2/`).
-The `.deb` and `.rpm` take the distribution's Qt Multimedia through their library dependencies. <!-- WP FU1 --> The
+The `.deb` and `.rpm` take the distribution's Qt Multimedia through their library dependencies. The
 AppImage's Qt (6.8.3, `linux/qt-6.8.3.sha256`) includes Qt Multimedia from download.qt.io (pinned and checked as the
 other archives); the AppImage bundles `libQt6Multimedia.so.6` with **no multimedia plugin** (the PulseAudio audio
 backend is inside the library) and uses the system's `libpulse.so.0`, as it uses the system's ALSA; its notices are in
@@ -155,7 +156,7 @@ The app's About lists the files of whichever folder it finds (`AboutController`)
 notice (`licences/NOTICE-distro.txt.in`) for the `.deb` and `.rpm` are `qt/cmake/wp/qp20.cmake`'s
 (`DSPI_NOTICES=deb|rpm|none`).
 
-<!-- WP LIC1 --> Every notice states the additional terms under GPL-3.0 section 7 (the project's `NOTICE.md`),
+Every notice states the additional terms under GPL-3.0 section 7 (the project's `NOTICE.md`),
 verbatim from `licences/TERMS.txt`, which a test in `crates/dspi-session` (about.rs) holds equal to the words every
 client's About shows (`assets/about.json`). `licences/rust-crates.txt` lists the Rust crates in the core
 (`dspi_capi`) with their licence texts, for Linux, Windows and macOS together; `licences/gen_rust_notices.py`
@@ -205,7 +206,7 @@ and writes `MANIFEST.tsv` (packages, file, URL, SHA-256, how it was checked):
   (`scripts/common/install-dependencies.sh`) downloads and pins by SHA-256: libfuse 3.15.0 (LGPL-2.1, linked
   in statically, with the patch in the tree's `patches/libfuse/`; its release signature checked against its
   maintainer's key) and squashfuse 0.5.2.
-  <!-- WP LIC1 --> And the Alpine 3.21 packages the runtime links statically, as
+  And the Alpine 3.21 packages the runtime links statically, as
   `licences/appimage-runtime-<commit>/ALPINE.txt` pins them (musl 1.2.5-r11, zlib 1.3.2-r1, zstd 1.5.6-r2,
   mimalloc2 2.1.7-r0 for fedfad5, read from the log of the GitHub Actions job that built the released
   runtime): each package's aports directory (APKBUILD and patches) by git at the pinned commit, and the

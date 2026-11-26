@@ -15,6 +15,10 @@ libpulse0 (Debian, Ubuntu), pulseaudio-libs (Fedora) or libpulse (Arch, openSUSE
 
 Or install it for yourself, with a menu entry:
     ./install.sh            (./install.sh --uninstall removes it again)
+This copies the AppImage to ~/.local/bin/uconsole-for-dspi and adds the menu
+entry and the icon under ~/.local/share; no administrator is needed. To update,
+run the new version's install.sh the same way. --uninstall leaves the udev rule
+and your settings in place.
 
 Opening a DSPi needs permission to use its USB interface. If this account
 does not have it, the app says so and offers to install the same udev rule as
@@ -28,5 +32,13 @@ and the .deb, .rpm and AUR packages install.
 Updating the firmware puts the board in BOOTSEL mode, where it shows as a USB
 drive; your desktop mounts it as it does any drive.
 
+The app can tell you when a newer release is out (Settings › Updates, off until
+you turn it on); it never downloads or installs anything itself.
+
+If you connect Claude Desktop with Settings › AI Agents › Install in Claude
+Desktop… (or with the configuration you copied from that page), it names the
+AppImage where it was when you made it: make it again after you move the
+AppImage or install it with install.sh.
+
 Settings live in ~/.config/uconsole-for-dspi/. The licences of the app and of everything
-it bundles are in NOTICE.txt and LICENSES/ (also in the app: Settings > About).
+it bundles are in NOTICE.txt and LICENSES/ (also in the app: Settings › About).
