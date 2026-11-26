@@ -142,7 +142,8 @@ pub const INSTRUCTIONS: &str = "Reads and changes DSPi audio processors that are
 console app, and measures with the app's microphone. \
 A DSPi has no player: it plays what its input source receives from another program or box; \
 dspi_get_overview's programme names the source, dspi_get_host_audio what this computer plays \
-to it. Read dspi://guide first. Every tool takes an optional `device` (from dspi_list_devices); \
+to it. Read the guide first: the dspi://guide resource, or dspi_get_guide where you cannot read \
+resources. Every tool takes an optional `device` (from dspi_list_devices); \
 without it the device the app shows is used. Name channels as {\"output\": n} or \
 {\"input\": n}: wire channels count inputs first. Every number counts from 1, as the app \
 shows it: output 1 is Out 1, input 1 is In 1, preset 1 is the app's preset 1 (an input-source \
@@ -153,10 +154,15 @@ must confirm in the app, is in dspi_get_overview's agent_may. \
 You work beside a person who may change things at any time: a result's user_activity says \
 what they did since your last call (dspi_get_user_activity lists it). Read again what they \
 changed; never put their change back unasked. \"The user changed this\" means ask them first. \
-Status paused is the user's Pause: wait.";
+Status paused is the user's Pause: wait. \
+Send changes for several devices together, as parallel calls in one turn: the user answers one \
+question for them. Changes are live but not saved until saved on the device \
+(dspi_get_overview's preset.dirty): at the end of a task say so and offer to save them.";
 // -- WP MCP2a -- the last sentence: writes come with MCP2a's policy
 // -- WP FEAT2 -- "and changes", and measuring
 // -- WP FEAT3 -- the sentence on where the sound comes from
 // -- WP AIVIS -- the person beside you: user_activity, "the user changed this", paused
 // -- WP FFIX -- the numbering (FUNC1 bug 12)
 // -- WP SHOWFIX -- (SHOW2 finding 9) from 1, as the screen counts
+// -- WP UB5 -- (UXP B5) dspi_get_guide for hosts without resources; several
+// devices together; live until saved

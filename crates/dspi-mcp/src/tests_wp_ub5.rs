@@ -242,3 +242,55 @@ fn wp_ub5_the_group_is_the_apps_alone() {
         "{text}"
     );
 }
+
+#[test]
+fn wp_ub5_the_guide_reaches_an_agent_without_resources() {
+    let (set, _core) = demo("ub5-guide");
+    let mut s = server_of(&set, ConfirmMode::AskRisky);
+    let c = s.connect();
+    let r = call_at(&mut s, c, 1_000, "dspi_get_guide", json!({}));
+    assert_eq!(r["isError"], json!(false), "{r}");
+    assert_eq!(
+        r["structuredContent"]["guide"],
+        json!(crate::resources::GUIDE)
+    );
+    // The instructions every host passes on name it
+    let i = crate::protocol::INSTRUCTIONS;
+    assert!(i.contains("dspi_get_guide"), "{i}");
+    // Several devices together; live until saved, and say so at the end
+    let g = crate::resources::GUIDE;
+    assert!(g.contains("parallel tool calls in one turn"), "{g}");
+    assert!(g.contains("preset.dirty"), "{g}");
+    assert!(g.contains("offer to save them"), "{g}");
+    assert!(
+        i.contains("preset.dirty") && i.contains("offer to save"),
+        "{i}"
+    );
+}
+
+#[test]
+fn wp_ub5_a_refusal_names_the_place_where_the_user_does_it() {
+    use crate::policy::{JudgingCell, NO_POLICY_TEXT, core_error};
+    use dspi_core::DspiError;
+    let cell = JudgingCell::default();
+    let limit = core_error(
+        &cell,
+        DspiError::LimitExceeded {
+            code: "gain".into(),
+            msg: "Out 2 gain above the profile's +0 dB".into(),
+        },
+    );
+    assert!(limit.0.contains("Settings › Installer"), "{}", limit.0);
+    let layout = core_error(
+        &cell,
+        DspiError::ConfirmationRequired {
+            code: dspi_core::actor::USER_ONLY.into(),
+            msg: "The speaker layout is the user's to set, in the app; an agent cannot set it"
+                .into(),
+        },
+    );
+    assert!(layout.0.contains("Settings › Speakers"), "{}", layout.0);
+    assert!(NO_POLICY_TEXT.contains("Settings › AI Agents"));
+    // Still the words the earlier tests and agents know
+    assert!(NO_POLICY_TEXT.contains("does not let agents"));
+}
