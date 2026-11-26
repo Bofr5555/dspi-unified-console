@@ -190,12 +190,14 @@ Dialog {
                 color: Theme.textMuted
                 wrapMode: Text.Wrap
             }
+            // Counts, not the rows: an edit changes a row's values, never its delegate
+            // (a field that commits is still there after its commit)
             Repeater {
-                model: sheet.blocker.length === 0 ? sheet.rows : []
+                model: sheet.blocker.length === 0 ? sheet.rows.length : 0
                 ColumnLayout {
                     id: speaker
-                    required property var modelData
                     required property int index
+                    readonly property var modelData: sheet.rows[index] || ({ title: "", sameAs: -1, same: false, transitions: [] })
                     readonly property bool same: modelData.same && modelData.sameAs >= 0
                     objectName: "CrossoverFromLayout.speaker." + index
                     Layout.fillWidth: true
@@ -227,12 +229,11 @@ Dialog {
                         }
                     }
                     Repeater {
-                        model: speaker.same ? [] : speaker.modelData.transitions
+                        model: speaker.same ? 0 : speaker.modelData.transitions.length
                         RowLayout {
                             id: line
-                            required property var modelData
                             required property int index
-                            readonly property bool low: line.modelData.hz < line.modelData.floorHz - 0.5
+                            readonly property var modelData: speaker.modelData.transitions[index] || ({ words: "", hz: 0, floorHz: 0 })
                             objectName: speaker.objectName + ".transition." + index
                             Layout.fillWidth: true
                             spacing: Theme.spacing

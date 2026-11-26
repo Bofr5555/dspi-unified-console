@@ -94,7 +94,7 @@ signals:
 private:
     struct Way;
     QJsonObject layout() const;
-    QVariantList speakers(const QJsonObject &layout, QStringList *untouched) const;
+    QVariantList speakerRows(const QJsonObject &layout, QStringList *untouched) const;
     QVariantList routePlan(const QJsonObject &layout, QStringList *notes, QVariantList *lines) const;
     Floor floorFor(const QString &role, int output) const;
     QString outputTitle(int output) const;

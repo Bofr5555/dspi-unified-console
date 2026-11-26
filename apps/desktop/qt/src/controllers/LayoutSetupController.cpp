@@ -207,7 +207,7 @@ QString LayoutSetupController::inputName(int input) const {
 
 // ---- The crossovers ----------------------------------------------------------
 
-QVariantList LayoutSetupController::speakers(const QJsonObject &layout, QStringList *untouched) const {
+QVariantList LayoutSetupController::speakerRows(const QJsonObject &layout, QStringList *untouched) const {
     const auto *cc = Registrar::instance<ChannelController>();
     const DspState *s = m_ctx.device->state();
     if (!cc || !s) return {};
@@ -404,7 +404,7 @@ QVariantMap LayoutSetupController::plan() const {
     const QJsonObject l = blocker.isEmpty() ? layout() : QJsonObject();
     QStringList untouched, notes;
     QVariantList lines;
-    const QVariantList rows = l.isEmpty() || !cc->crossoverSupported() ? QVariantList() : speakers(l, &untouched);
+    const QVariantList rows = l.isEmpty() || !cc->crossoverSupported() ? QVariantList() : speakerRows(l, &untouched);
     const QVariantList routed = l.isEmpty() ? QVariantList() : routePlan(l, &notes, &lines);
     out.insert(QStringLiteral("speakers"), rows);
     out.insert(QStringLiteral("untouched"), untouched);
