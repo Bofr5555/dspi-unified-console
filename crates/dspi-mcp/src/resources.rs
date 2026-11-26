@@ -22,6 +22,7 @@ pub const FILTER_TYPES_URI: &str = "dspi://filter-types";
 // -- WP FEAT2 -- opening known devices, a room's volume, the measuring options
 // -- WP FEAT3 -- the section on where the sound comes from
 // -- WP INTF -- FEAT1's routing (sources, zones, slots, programme sources)
+// -- WP UB5 -- (UXP B5) dspi_get_guide; several devices at once; saving
 pub const GUIDE: &str = "# DSPi: how to read it well
 
 A DSPi is a digital signal processor for loudspeakers. The console app has one or more DSPis
@@ -29,6 +30,7 @@ open; `dspi_list_devices` lists them. Every tool takes an optional `device`; wit
 device the app shows is used. A device that is not open may be a known one
 (`dspi_list_known_devices`): `dspi_open_device` asks the app to open it, and
 `dspi_close_device` to close one you opened. Any other is the user's to open.
+`dspi_get_guide` gives this guide where the host cannot read the `dspi://guide` resource.
 
 ## Where the sound comes from
 - A DSPi has no player and no music of its own: it plays what its input source receives.
@@ -122,6 +124,21 @@ device the app shows is used. A device that is not open may be a known one
   (`devices`): the user then answers one question, not one per device and one per rename. Turning on an
   effect that adds level (loudness, psychoacoustic bass, the subharmonic synth, a leveller with
   gain) is treated as louder.
+- A change for several devices (night mode on every DSPi): put each device's changes in one
+  `dspi_apply_changes` and send those calls together, as parallel tool calls in one turn, not
+  one after another. The questions they raise come up in the app as one sheet, a row per device
+  and change, answered at once (the user may answer them one by one). At most 8 of your
+  questions wait at a time. Effects have a tool each: send every device's effect calls in
+  that same turn.
+
+## Saving
+- Changes are live at once, and not saved: a device forgets them when it is switched off or
+  loses power, unless they are saved on it. `dspi_get_overview`'s `preset.dirty` is true while
+  the device has unsaved changes.
+- At the end of a task, say which devices have changes that are live but not saved yet, and
+  offer to save them: the user presses Save to Device in the app, or you call
+  `dspi_preset_save` (several devices in one call), which the user may be asked to allow.
+  Never call your work saved, or the task done, without saying this.
 
 ## The person beside you
 - The user sees each of your calls in the app while it runs, and may change anything meanwhile.

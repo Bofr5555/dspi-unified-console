@@ -13,16 +13,16 @@ Item {
 
     readonly property var pairing: AiController.pairing
     readonly property var front: AiController.confirmations.length ? AiController.confirmations[0] : null
-    // -- WP UAG -- (UXP D2) the questions one agent raised together (within 1.5 s of the first) are one
-    // sheet, a row per device and change. One Allow answers exactly the questions shown: one added later
-    // changes the sheet's question, and the buttons arm again. "Answer One by One" splits them.
-    readonly property int togetherMs: 1500
+    // -- WP UAG -- (UXP D2) the questions one agent raised together are one sheet, a row per device and
+    // change. "Answer One by One" splits them.
+    // -- WP UB5 -- (UXP B5) the group is the server's (dspi-mcp confirm.rs): it comes here only once
+    // sealed and never takes another question, so the sheet's rows never grow while it is up and one
+    // Allow answers exactly the questions shown; one raised meanwhile is the next sheet.
     property bool oneByOne: false
     readonly property var group: {
         if (!front) return []
-        if (oneByOne || front.detect || front.roleCells.length) return [front]
-        return AiController.confirmations.filter(c => c.client === front.client && !c.detect && !c.roleCells.length
-                                                      && Math.abs(c.askedMs - front.askedMs) <= togetherMs)
+        if (oneByOne) return [front]
+        return AiController.confirmations.filter(c => c.group === front.group)
     }
     readonly property bool grouped: group.length > 1
     Connections {
@@ -45,9 +45,15 @@ Item {
         return c.batch && c.batch.length ? c.batch : c.riskLines.map(line => ({ said: line, risky: true }))
     }
     // -- WP UAG -- (UXP D2) a grouped sheet: each device once, then its questions' rows
+    // -- WP UB5 -- (UXP B5) each device once also when the calls came in mixed: by device, in the
+    // order the devices first asked
+    readonly property var byDevice: {
+        const devices = group.map(c => c.device).filter((d, i, all) => all.indexOf(d) === i)
+        return devices.reduce((all, d) => all.concat(group.filter(c => c.device === d)), [])
+    }
     readonly property var rows: !front ? []
-        : grouped ? group.reduce((all, c, i) => all.concat(i > 0 && group[i - 1].device === c.device ? []
-                                                           : [{ said: c.device, risky: false, head: true }], rowsOf(c)), [])
+        : grouped ? byDevice.reduce((all, c, i) => all.concat(i > 0 && byDevice[i - 1].device === c.device ? []
+                                                              : [{ said: c.device, risky: false, head: true }], rowsOf(c)), [])
         : rowsOf(front)
     // What a question's Allow leaves to do afterwards (-- WP UAG --: one function for one or a group)
     function afterOf(c) {
@@ -69,7 +75,7 @@ Item {
     function once(texts) {
         return texts.filter((t, i) => t.length && texts.indexOf(t) === i)
     }
-    readonly property int rowsShown: 8
+    readonly property int rowsShown: 12   // -- WP UB5 -- (UXP B5) was 8: a grouped sheet names its devices too
     // -- WP UAG -- (UXP A6) the speaker detection's mechanism waits under Details
     property bool detailsOpen: false
     onFrontChanged: detailsOpen = false
@@ -136,7 +142,8 @@ Item {
                  : host.front && host.front.heading ? host.front.heading
                  : qsTr("Allow this change?")
         // -- WP UAG -- (UXP D2) exactly the questions shown
-        onAnswered: allow => { for (const c of host.group) AiController.answer(c.id, allow) }
+        // -- WP UB5 -- all of them at once (answering one by one changed `group` under the loop)
+        onAnswered: allow => AiController.answerAll(host.group.map(c => c.id), allow)
 
         // -- WP UAG -- (UXP A6, C11) who asks, where the heading does not say it: the detection's and the roles'
         // questions (the agent's name without the "AI ·" the sheet already shows)

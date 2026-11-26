@@ -436,8 +436,12 @@ void aivisSection(SmokeDriver &d) {
     s.ok("dspi_get_overview");
     d.waitFor(1000, [&] { return !s.strip().isEmpty(); });
     d.check("aivis: a while after the last call it no longer counts as working",
-            d.waitFor(AiController::kWorkingMs + 3000, [&] { return !ai->working(); }) && s.strip().contains(QLatin1String("Last")));
-    d.check("aivis: and then the strip goes", d.waitFor(AiController::kLingerMs, [&] { return s.strip().isEmpty(); }));
+            d.waitFor(AiController::kWorkingMs + 3000, [&] { return !ai->working(); })
+                && (s.strip().contains(QLatin1String("Last")) || s.strip().contains(QLatin1String("not saved yet"))));   // -- WP UB5 --
+    // -- WP UB5 -- (UXP B5) or says what the agent's changes left unsaved, until the device is saved
+    d.check("aivis: and then the strip goes", d.waitFor(AiController::kLingerMs, [&] {
+        return s.strip().isEmpty() || s.strip().contains(QLatin1String("not saved yet"));
+    }));
     s.ok("dspi_get_overview");
     d.waitFor(1000, [&] { return !s.strip().isEmpty(); });
     d.check("aivis: Stop on the strip turns agents off", click(s.item(QStringLiteral("AiWorkBanner.stop")))

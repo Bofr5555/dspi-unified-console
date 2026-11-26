@@ -486,6 +486,24 @@ pub fn require(
     require_keyed(cell, kind, what, indices, None)
 }
 
+// -- WP UB5 -- (UXP B5) refusals say where the person does it
+/// The refusal of a write no setting of the user's lets an agent make.
+pub const NO_POLICY_TEXT: &str = "the server's policy does not let agents do this: what agents \
+     may do is the user's choice, in the app (Settings › AI Agents). Nothing was changed; do not \
+     retry.";
+
+/// Where in the app the person does what only they may do, by the core's
+/// words for it (`actor::user_only`).
+fn user_only_place(msg: &str) -> Option<&'static str> {
+    if msg.starts_with("The speaker layout") {
+        Some("Settings › Speakers")
+    } else if msg.starts_with("The speaker detection's setting") {
+        Some("Settings › AI Agents")
+    } else {
+        None
+    }
+}
+
 // -- WP INTI -- (review RF2)
 /// The key path of a test signal across a hub's units: [`require_system_signal`].
 pub const SYSTEM_SIGNAL_PATH: &str = "static.test_signal.system";
@@ -520,9 +538,7 @@ fn require_keyed(
 ) -> Result<(), ToolError> {
     let mut j = lock(cell);
     let Some(mode) = j.mode else {
-        return Err(ToolError::new(
-            "the server's policy does not let agents do this",
-        ));
+        return Err(ToolError::new(NO_POLICY_TEXT)); // -- WP UB5 --
     };
     let key = WriteKey::new(
         &path.map_or_else(|| format!("static.{}", kind.as_str()), str::to_owned),
@@ -577,9 +593,7 @@ pub fn require_detect(
 ) -> Result<(), ToolError> {
     let mut j = lock(cell);
     let Some(mode) = j.mode else {
-        return Err(ToolError::new(
-            "the server's policy does not let agents do this",
-        ));
+        return Err(ToolError::new(NO_POLICY_TEXT)); // -- WP UB5 --
     };
     if mode == ConfirmMode::NeverAsk {
         return if j.detect_allowed {
@@ -648,9 +662,7 @@ pub fn require_roles(
 ) -> Result<(), ToolError> {
     let mut j = lock(cell);
     let Some(mode) = j.mode else {
-        return Err(ToolError::new(
-            "the server's policy does not let agents do this",
-        ));
+        return Err(ToolError::new(NO_POLICY_TEXT)); // -- WP UB5 --
     };
     if mode == ConfirmMode::NeverAsk {
         if let Some(why) = demotes {
@@ -693,9 +705,7 @@ pub fn require_roles(
 pub fn require_change(cell: &JudgingCell, what: &str, indices: &[u8]) -> Result<(), ToolError> {
     let mut j = lock(cell);
     let Some(mode) = j.mode else {
-        return Err(ToolError::new(
-            "the server's policy does not let agents do this",
-        ));
+        return Err(ToolError::new(NO_POLICY_TEXT)); // -- WP UB5 --
     };
     let key = WriteKey::new("static.change", indices, ParamValue::Trigger);
     if mode != ConfirmMode::AskEverything || j.grant.contains(&key) {
@@ -795,18 +805,32 @@ pub fn core_error(cell: &JudgingCell, e: DspiError) -> ToolError {
         DspiError::ConfirmationRequired { code, msg } if code == AGENT_REFUSED => {
             ToolError::new(crate::untrusted::note(msg))
         }
-        DspiError::ConfirmationRequired { code, .. } if code == USER_ONLY => ToolError::new(
-            "only the user may do that, in the app; an agent never can. Do not retry.",
-        ),
+        // -- WP UB5 -- (UXP B5) and where
+        DspiError::ConfirmationRequired { code, msg } if code == USER_ONLY => {
+            ToolError::new(match user_only_place(msg) {
+                Some(place) => format!(
+                    "only the user may do that, in the app ({place}); an agent never can. Do \
+                     not retry."
+                ),
+                None => "only the user may do that, in the app; an agent never can. Do not retry."
+                    .to_owned(),
+            })
+        }
         DspiError::ConfirmationRequired { code, .. } if code == NOT_OWN_ENTRY => ToolError::new(
-            "that change is not this agent's; only the user can undo it. Do not retry.",
+            "that change is not this agent's; only the user can undo it, in the app (Undo or the \
+             History). Do not retry.", // -- WP UB5 -- (UXP B5) where
         ),
         DspiError::ConfirmationRequired { code, .. } if code == AGENT_READ_ONLY => {
-            ToolError::new("agents may only read on this computer. Do not retry.")
+            // -- WP UB5 -- (UXP B5) and where that is chosen
+            ToolError::new(
+                "agents may only read on this computer: what agents may do is the user's \
+                 choice, in the app (Settings › AI Agents). Do not retry.",
+            )
         }
         DspiError::LimitExceeded { .. } => ToolError::new(format!(
             "{} This is the installer's limits profile: it is not asked about and an \
-             agent cannot lift it.",
+             agent cannot lift it. Only the user can change the limits, in the app (Settings › \
+             Installer).", // -- WP UB5 -- (UXP B5) where
             ToolError::from(e).0
         )),
         DspiError::InstallerLock { .. } => ToolError::new(LOCKED_TEXT), // -- WP FUNC2c --
