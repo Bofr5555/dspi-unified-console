@@ -14,7 +14,7 @@
 .dspi-web .home-volume-icon { width: 22px; height: 22px; flex: none; }
 .dspi-web .home-slider { flex: 1 1 6rem; min-width: 6rem; height: 32px; margin: 0; }
 .dspi-web .home-volume-value { flex: none; min-width: 4.5rem; text-align: right; font: 600 1.25rem/1 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; }
-.dspi-web .home-mute { min-height: 40px; padding: 0 1rem; display: inline-flex; align-items: center; gap: 0.4rem; }
+.dspi-web .home-mute { min-height: 40px; padding: 0 1rem; display: inline-flex; align-items: center; gap: 0.4rem; color: var(--text); } /* a host page's button colour stays out */
 .dspi-web .home-volume .segments { align-self: center; }
 .dspi-web .home-volume .segments > button { min-height: 36px; padding: 0 0.9rem; font-size: 0.9rem; }
 .dspi-web .home-source { color: var(--muted); }
