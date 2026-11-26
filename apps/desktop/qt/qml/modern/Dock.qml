@@ -8,6 +8,10 @@ import UConsole
 // loads. The same controllers as Classic's sidebar (GlobalControls).
 // -- WP UA5 -- User and Master say what they are on hover; the two cores'
 // loads are one "DSP 3 %" readout (the busier core), both cores in its tooltip.
+// -- WP UB34 -- (UXP B4) With two or more devices open, an "All devices" chip
+// links them (DeviceLinkController, off by default): the User volume moves them
+// all keeping their differences, Mute mutes them all, a preset is recalled on
+// all after one question (asked here).
 Rectangle {
     id: dock
     objectName: "Dock"
@@ -93,6 +97,7 @@ Rectangle {
             function toDb(position) { return master ? SidebarController.masterPositionToDb(position) : SidebarController.userPositionToDb(position) }
             function send(db) {
                 if (master) SidebarController.setMasterVolume(db)
+                else if (DeviceLinkController.linked) DeviceLinkController.setUserVolume(db)   // -- WP UB34 --
                 else SidebarController.setUserVolume(db)
             }
             Layout.fillWidth: true
@@ -125,12 +130,68 @@ Rectangle {
             color: Theme.text
         }
 
+        // -- WP UB34 -- (UXP B4) the link: a chip, chosen while on
+        AbstractButton {
+            id: link
+            objectName: "Dock.link"
+            visible: DeviceLinkController.available
+            checkable: true
+            checked: DeviceLinkController.linked
+            enabled: dock.writable
+            implicitHeight: 28
+            implicitWidth: dock.narrow ? 30 : linkFace.implicitWidth + 16
+            hoverEnabled: true
+            focusPolicy: Qt.TabFocus
+            text: qsTr("All devices")
+            onToggled: DeviceLinkController.linked = checked
+            readonly property color ink: !enabled ? Theme.textDisabled : checked ? Theme.accentText : Theme.text
+            contentItem: Item {
+                Row {
+                    id: linkFace
+                    anchors.centerIn: parent
+                    spacing: 6
+                    Icon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: "link"
+                        size: 14
+                        color: link.ink
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: !dock.narrow
+                        textFormat: Text.PlainText
+                        text: link.text
+                        font: Theme.fontBody
+                        color: link.ink
+                    }
+                }
+            }
+            background: Rectangle {
+                radius: Theme.radiusSmall
+                color: link.checked && link.enabled ? Theme.selection
+                     : link.down ? Theme.controlPressed : link.hovered ? Theme.barControlHover : Theme.barControl
+                border.width: link.visualFocus ? 2 : 0
+                border.color: Theme.focusRing
+            }
+            HoverHandler { id: linkHover }
+            HelpTip {
+                objectName: "Dock.link.tip"
+                text: DeviceLinkController.help
+                visible: linkHover.hovered && text.length > 0
+            }
+            Accessible.role: Accessible.CheckBox
+            Accessible.name: text
+            Accessible.description: DeviceLinkController.help
+            Accessible.checkable: true
+            Accessible.checked: checked
+        }
+
         DockToggle {
             objectName: "Dock.mute"
             iconName: "volume-x"
             text: qsTr("Mute")
             on: ShortcutController.muted
-            onClicked: ShortcutController.toggleMute()
+            onClicked: ShortcutController.toggleMute()   // -- WP UB34 -- every device while linked
         }
         DockToggle {
             objectName: "Dock.bypass"
@@ -174,6 +235,23 @@ Rectangle {
         }
         // -- WP UA5 -- one readout (was "C0 0 %  C1 0 %")
         DspLoad {}
+    }
+
+    // -- WP UB34 -- a preset on every linked device: the one question
+    QuestionDialog {
+        id: recallQuestion
+        objectName: "Dock.recallQuestion"
+        parent: Overlay.overlay
+        acceptText: qsTr("Recall on All")
+        onAnswered: answer => DeviceLinkController.answerRecall(answer)
+    }
+    Connections {
+        target: DeviceLinkController
+        function onRecallQuestion(title, text) {
+            recallQuestion.title = title
+            recallQuestion.text = text
+            recallQuestion.open()
+        }
     }
 
     component DockToggle: AbstractButton {
