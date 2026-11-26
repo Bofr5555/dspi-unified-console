@@ -154,14 +154,17 @@ impl SiggenOutputs {
         }
     }
 
-    /// A start or stop event (`state`): whether the outputs have to be read
-    /// from the device (a start this connection did not make).
-    pub(crate) fn event(&mut self, state: u8) -> bool {
+    /// A start or stop event (`state`). A start this connection did not make
+    /// (another console's, a multi-unit run's) plays on every output as far
+    /// as the labels know, so nothing that may be loud is hidden: the device's
+    /// config is not read here, as a read in the notification path stalled a
+    /// hub's multi-unit run until its lease was aborted.
+    pub(crate) fn event(&mut self, state: u8) {
         if state == SIGGEN_STATE_IDLE {
             self.playing = 0;
-            return false;
+        } else if self.playing == 0 {
+            self.playing = u16::MAX;
         }
-        self.playing == 0
     }
 }
 
@@ -172,21 +175,6 @@ fn device_mask(conn: &mut crate::Connection) -> Option<u16> {
         .ok()?;
     let c = WireSiggenConfig::decode(&b).ok()?;
     (c.version == SIGGEN_VERSION).then_some(c.channel_mask)
-}
-
-impl DspiCore {
-    /// After a start event this connection did not cause: the outputs, from
-    /// the device's config; every output when it cannot be read, so nothing
-    /// that may be loud is hidden.
-    pub(crate) fn learn_siggen_outputs(&self) {
-        let mut guard = self.lock();
-        let Ok(conn) = guard.conn() else {
-            return;
-        };
-        if conn.siggen.playing == 0 {
-            conn.siggen.playing = device_mask(conn).unwrap_or(u16::MAX);
-        }
-    }
 }
 
 fn config_from_wire(c: WireSiggenConfig) -> SiggenConfig {
