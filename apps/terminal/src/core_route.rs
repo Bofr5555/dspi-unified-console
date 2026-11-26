@@ -755,6 +755,26 @@ pub(crate) fn connected_on(opened: &OpenedCore) -> Result<Connected, OpenError> 
     Ok(c)
 }
 
+// -- WP UB11 -- (UXP B11)
+/// [`connected_on`] for the plain line mode: the shell's verbs run on this
+/// core as on the interface's, and a dangerous write or a locked one asks
+/// as a one-shot command's does (`confirm`, `pins`), there being no dialog.
+pub(crate) fn connected_plain(
+    opened: &OpenedCore,
+    confirm: Confirm,
+    pins: PinSource,
+) -> Result<Connected, OpenError> {
+    let mut c = connected_on(opened)?;
+    let ctx = crate::context_for(&c.session);
+    c.session.set_route(Some(Box::new(CoreRoute::new(
+        Arc::clone(&opened.handle),
+        Some(ctx),
+        confirm,
+        pins,
+    ))));
+    Ok(c)
+}
+
 /// Open `target` on a core and connect the interface to it: for a device
 /// switch and a reconnect (nobody is asked for a PIN then; `prompt` keeps
 /// the warnings).

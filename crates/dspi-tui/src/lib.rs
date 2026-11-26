@@ -7,6 +7,8 @@ pub mod curves;
 pub mod graph;
 pub mod live;
 pub mod perf;
+// -- WP UB11 -- the plain line mode's sentences (UXP B11)
+pub mod plain;
 pub mod screens;
 // -- WP UTM -- the palette's search (UXP A13)
 pub mod search;

@@ -118,6 +118,8 @@ mod core_route;
 mod api;
 // -- WP P5TM -- `uconsole measure`: measurement documents and the tune
 mod measure;
+// -- WP UB11 -- `--plain`: the interface as lines (UXP B11)
+mod plain;
 // -- WP MCP3 -- `uconsole mcp`: the stdio relay for AI agents
 mod mcp;
 
@@ -219,6 +221,15 @@ fn main() -> ExitCode {
     // A script beats every other reading of the arguments: `-f` is explicit,
     // and a non-terminal standard input with nothing else to do can only mean
     // someone is piping commands in.
+    // -- WP UB11 -- (UXP B11, D16) `--plain` with no command, before a piped
+    // standard input is read as a script: the plain mode reads it line by line
+    if plain::wanted(
+        &flags,
+        std::env::var("TERM").ok().as_deref(),
+        std::io::IsTerminal::is_terminal(&std::io::stdin()),
+    ) {
+        return ExitCode::from(plain::run(target, &flags));
+    }
     let script = flag_value(&flags, "-f").or_else(|| flag_value(&flags, "--file"));
     if script.is_some() {
         return ExitCode::from(cmd_script(target, script, &flags, json));
@@ -560,8 +571,14 @@ fn prompt_pin(hub: &str, source: &str) -> Option<String> {
         eprint!("Open pairing on {hub}, and type the PIN it shows: ");
     }
     std::io::stderr().flush().ok()?;
-    let mut line = String::new();
-    std::io::stdin().read_line(&mut line).ok()?;
+    // -- WP UB11 -- the shared reader's line when it runs (the plain mode)
+    let line = if pro::stdin_shared() {
+        pro::stdin_answers().recv().ok()?
+    } else {
+        let mut line = String::new();
+        std::io::stdin().read_line(&mut line).ok()?;
+        line
+    };
     let pin = line.trim();
     (!pin.is_empty()).then(|| pin.to_owned())
 }
@@ -609,6 +626,10 @@ fn usage() {
 
 USAGE:
     {COMMAND}                 open the interface
+    {COMMAND} --plain         the interface as lines, for a screen reader, a
+                             log or a script: the overview as sentences, any
+                             command, each change said back (also with no
+                             command when TERM=dumb)
     {COMMAND} dump            connect and print the full device state
     {COMMAND} screenshot [w] [h] [screen]
                              render one frame of the interface as text
@@ -1269,9 +1290,11 @@ fn no_terminal(stdin_is_terminal: bool, stdout_is_terminal: bool) -> Option<Stri
         (true, false) => "standard output is",
         (false, false) => "standard input and output are",
     };
+    // -- WP UB11 -- the plain mode needs none
     Some(format!(
         "the interface needs a terminal, and {which} not one; \
-         give a command to run instead (see `{COMMAND} --help`)"
+         give a command to run instead, or --plain for the interface as lines \
+         (see `{COMMAND} --help`)"
     ))
 }
 

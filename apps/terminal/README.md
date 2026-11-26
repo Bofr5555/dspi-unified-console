@@ -119,6 +119,33 @@ hub (an address, or empty to look on the network) and `?` shows what
 (`uconsole flash`). One-shot commands still end with exit code 2 when there is
 no device.
 
+### Plain mode: lines for a screen reader, a log or a script
+
+`uconsole --plain` (and plain `uconsole` when `TERM=dumb`) is the interface as
+lines: no full-screen drawing, no colour, no box, braille or meter
+characters. It greets with the overview as sentences, then takes one command
+per line and says every change back as the command that makes it:
+
+```
+uconsole 0.15.0, plain mode. Connected to the demo device.
+Volume 0.0 dB, not muted.
+No unsaved changes.
+USB L: no filters, trim 0.0 dB
+Out 1 · L: 1 filter (high-pass 80 Hz LR4), gain 0.0 dB, not muted
+7 unused outputs are not listed (overview all lists them).
+Type a command, help for the list, or quit.
+dspi> vol.user -20
+vol.user -20.0
+```
+
+Every parameter and command of the shell's grammar works, as do `overview`
+(`overview all` adds the unused outputs), `show out 1`, `save` (Save to
+Device), `params`, `help` and the shell's `snapshot`, `ab`, `diff`, `lock`,
+`limits`, `status` and `measure docs`/`show`/`export`, on the same session.
+`quit` asks once when something is unsaved. With standard input piped
+(`uconsole --plain < session.txt`) there is no prompt, a mistake does not stop
+the rest, and the exit code is the first failure's.
+
 ## Building
 
 From the repository root:

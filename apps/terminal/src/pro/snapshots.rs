@@ -344,7 +344,7 @@ pub(crate) fn cmd_ab(target: &Target, flags: &[&str], json: bool) -> u8 {
     } else {
         Some(stdin_answers())
     };
-    ab_on(&opened.core, a, b, keep, answers.as_ref(), show, json)
+    ab_on(&opened.core, a, b, keep, answers.as_deref(), show, json)
 }
 
 fn print_compare(c: &AbCompare, json: bool) {
