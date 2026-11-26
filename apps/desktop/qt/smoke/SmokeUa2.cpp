@@ -359,7 +359,10 @@ void measureBarSection(SmokeDriver &d) {
         while (bar && bar->objectName() != QLatin1String("Measure.actionBar")) bar = bar->parentItem();
         QObject *question = bar ? bar->findChild<QObject *>(QStringLiteral("MeasureTune.applyQuestion")) : nullptr;
         d.check("ua2: Apply… asks first", question && d.waitFor(2000, [&] { return question->property("opened").toBool(); }));
-        if (question) QMetaObject::invokeMethod(question, "finish", Q_ARG(QVariant, QStringLiteral("accept")));
+        // (a tree without the bar: the tab's question, answered the same way)
+        QObject *answer = question ? question : d.object(QStringLiteral("MeasureTune.applyQuestion"));
+        if (answer && (question || d.waitFor(2000, [&] { return answer->property("opened").toBool(); })))
+            QMetaObject::invokeMethod(answer, "finish", Q_ARG(QVariant, QStringLiteral("accept")));
         else tc->apply(0);
         const bool applied = step(QStringLiteral("apply"), 15000) && d.waitIdle() && d.waitFor(3000, [&] { return tc->applied(); });
         d.spin(400);
