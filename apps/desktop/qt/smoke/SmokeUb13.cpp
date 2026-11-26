@@ -135,6 +135,7 @@ void peqReach(SmokeDriver &d, LayoutController *layout, QObject *theme) {
     if (!device->connected() || !device->demo() || device->remote()) device->openDemo();
     d.waitFor(10000, [&] { return device->connected() && device->demo(); });
     d.waitIdle();
+    const QSize sizeWas = main->size();   // -- FIX016 -- (R1-QT)
     main->resize(1280, 800);
     d.goTo(QStringLiteral("equaliser/peq"), 300);
     auto *ov = qobject_cast<PeqOverlay *>(d.item(QStringLiteral("PeqEditor.overlay")));
@@ -177,6 +178,7 @@ void peqReach(SmokeDriver &d, LayoutController *layout, QObject *theme) {
     layout->setDensity(QStringLiteral("automatic"));
     ed->writeBands(ch, back);
     d.waitIdle();
+    main->resize(sizeWas);   // -- FIX016 -- (R1-QT) the window's size as it found it
 }
 
 // Before and after, dark and light: the probe and three pages in each state
