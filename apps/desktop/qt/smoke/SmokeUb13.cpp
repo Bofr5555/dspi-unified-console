@@ -209,6 +209,8 @@ void pictures(SmokeDriver &d, LayoutController *layout) {
             if (probe) d.grab(probe, QStringLiteral("ub13-probe-") + tail);
             for (const char *page : { "equaliser/peq", "equaliser/delay", "routing/matrix" }) {
                 d.goTo(QString::fromLatin1(page), 250);
+                QTest::mouseMove(main, QPoint(main->width() - 4, main->height() / 2));   // no hover in the picture
+                d.spin(60);
                 d.grab(main, QStringLiteral("ub13-%1-").arg(QString::fromLatin1(page).replace(QLatin1Char('/'), QLatin1Char('-'))) + tail);
             }
             shell->trigger(QStringLiteral("edit.settings"));
