@@ -25,6 +25,7 @@
 #include <QTest>
 #include <cstdio>
 #include <memory>
+#include <utility>
 
 namespace {
 
@@ -178,6 +179,52 @@ void peqReach(SmokeDriver &d, LayoutController *layout, QObject *theme) {
     d.waitIdle();
 }
 
+// Before and after, dark and light: the probe and three pages in each state
+// (off, the outline, Comfortable, both), as ub13-<what>-<state>-<scheme>.png
+void pictures(SmokeDriver &d, LayoutController *layout) {
+    Shell *shell = d.app().shell;
+    QQuickWindow *main = d.mainWindow();
+    if (!shell || !main) return;
+    QQmlComponent component(d.app().engine);
+    component.setData(QByteArray(kProbe), QUrl(QStringLiteral("ub13.qml")));
+    std::unique_ptr<QObject> made(component.create());
+    auto *probe = qobject_cast<QQuickWindow *>(made.get());
+    const Qt::ColorScheme before = shell->colorSchemeOverride();
+    const QSize was = main->size();
+    main->resize(1280, 800);
+    struct State {
+        const char *name;
+        bool outline;
+        const char *density;
+    };
+    const State states[] = { { "off", false, "automatic" }, { "outline", true, "automatic" },
+                             { "comfortable", false, "comfortable" }, { "both", true, "comfortable" } };
+    for (const auto &[scheme, schemeName] : { std::pair{ Qt::ColorScheme::Dark, "dark" }, std::pair{ Qt::ColorScheme::Light, "light" } }) {
+        shell->setColorSchemeOverride(scheme);
+        for (const State &st : states) {
+            layout->setOutlineControls(st.outline);
+            layout->setDensity(QString::fromLatin1(st.density));
+            d.spin(150);
+            const QString tail = QStringLiteral("%1-%2.png").arg(QLatin1String(st.name), QLatin1String(schemeName));
+            if (probe) d.grab(probe, QStringLiteral("ub13-probe-") + tail);
+            for (const char *page : { "equaliser/peq", "equaliser/delay", "routing/matrix" }) {
+                d.goTo(QString::fromLatin1(page), 250);
+                d.grab(main, QStringLiteral("ub13-%1-").arg(QString::fromLatin1(page).replace(QLatin1Char('/'), QLatin1Char('-'))) + tail);
+            }
+            shell->trigger(QStringLiteral("edit.settings"));
+            Registrar::instance<SettingsController>()->open(QStringLiteral("appearance"));
+            d.spin(250);
+            d.grab(main, QStringLiteral("ub13-settings-appearance-") + tail);
+            d.goTo(QStringLiteral("overview/overview"), 120);
+        }
+    }
+    layout->setOutlineControls(false);
+    layout->setDensity(QStringLiteral("automatic"));
+    shell->setColorSchemeOverride(before);
+    main->resize(was);
+    if (probe) probe->close();
+}
+
 void ub13Section(SmokeDriver &d) {
     auto *layout = Registrar::instance<LayoutController>();
     QObject *theme = d.app().engine->singletonInstance<QObject *>("UConsole", "Theme");
@@ -285,6 +332,7 @@ void ub13Section(SmokeDriver &d) {
     d.spin(100);
 
     peqReach(d, layout, theme);
+    pictures(d, layout);
 
     layout->setOutlineControls(false);
     layout->setDensity(QStringLiteral("automatic"));
