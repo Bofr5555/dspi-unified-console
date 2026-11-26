@@ -13,6 +13,7 @@ import { useCurves, useGrid, type CurveRequest } from "./curves";
 import { bypassSupported, channelColour } from "./model";
 import { PassFields } from "./Passes";
 import { Pill } from "../../ui/Pill"; // -- WP WEB3 --
+import { toggleOutput } from "../outputs/enable"; // -- WP UWN --
 
 /** The plot's range: 20 Hz..20 kHz, ±25 dB (Qt's graph). */
 const PLOT = { minFreq: 20, maxFreq: 20000, dbTop: 25, dbBottom: -25 };
@@ -79,6 +80,8 @@ export function CrossoverCentre(props: {
         />
       </section>
       <section class="band-list xo-table eq-table" aria-label="Crossovers of every output">
+        {/* -- WP UWN -- (UXP A17) the short forms said before the table that uses them, not at its foot */}
+        <p class="eq-help xo-legend">LR is Linkwitz-Riley, BW Butterworth, BS Bessel.</p>
         <div class="tbl-scroll">
           <table>
             <thead>
@@ -104,14 +107,33 @@ export function CrossoverCentre(props: {
                         <span class="eq-who-name">{o.name}</span>
                       </button>
                     </th>
-                    <PassFields session={session} wire={o.wire} bands={bandsOf(o.wire)} freq={props.freq} disabled={ro} who={who} as="cells" />
+                    {o.enabled ? (
+                      <PassFields session={session} wire={o.wire} bands={bandsOf(o.wire)} freq={props.freq} disabled={ro} who={who} as="cells" />
+                    ) : (
+                      // -- WP UWN -- (UXP A17) an output that is off plays nothing: it says so, and turns on here
+                      // with Delay & Gain's question (the PDM output and the EQ worker's outputs)
+                      <td class="xo-off-cell" colSpan={4}>
+                        <span class="xo-off-word">Off</span>
+                        <button
+                          type="button"
+                          class="xo-turn-on"
+                          disabled={ro}
+                          aria-label={`Turn On ${who}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void toggleOutput(session, props.ask, o.index);
+                          }}
+                        >
+                          Turn On
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 );
               })}
             </tbody>
           </table>
         </div>
-        <p class="eq-help">LR is Linkwitz-Riley, BW Butterworth, BS Bessel.</p>
       </section>
       {chosenRow ? (
         // The chosen output's four bands: a family the table cannot show, a second pass, Bypass
