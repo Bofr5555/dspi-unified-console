@@ -17,12 +17,11 @@ through another console (section 5).
 
 1. **Turn agents on.** In uConsole for DSPi, open **Settings › AI Agents** and switch on **Allow AI agents to control
    uConsole for DSPi**. Read what it allows, then click **Allow**.
-2. **Copy the connection.** Under **Connect an Agent** (right under the switch until an agent is connected), choose
-   **Claude Desktop** or **Claude Code** and click **Copy**.
-   - Claude Desktop: paste it into `claude_desktop_config.json` (in Claude Desktop: Settings › Developer › Edit Config).
-     If the file already has an `"mcpServers"` section, put the `"dspi"` entry inside it, beside the others. Then quit
-     Claude Desktop and start it again.
-   - Claude Code: paste the command into a terminal and run it.
+2. **Add it to the agent app.** Under **Connect an Agent** (right under the switch until an agent is connected), choose
+   **Claude Desktop** or **Claude Code**.
+   - Claude Desktop: click **Install in Claude Desktop…**. Claude Desktop opens and shows the extension "uConsole for
+     DSPi": click **Install** there. (Or add the connection by hand, section 2.1.)
+   - Claude Code: click **Copy**, paste the command into a terminal and run it.
 3. **Allow it.** The first time the agent connects, uConsole for DSPi asks **Allow this AI agent?** and shows a
    four-digit code. The agent app shows the same code: in its log of the dspi server (Claude Desktop: Settings ›
    Developer; Claude Code: start it with `claude --debug`), and in the chat when the question comes up while the agent
@@ -80,8 +79,19 @@ running, or AI agents are turned off in it."
 
 ### 2.1 Claude Desktop
 
-Add this to `claude_desktop_config.json` (Claude Desktop: Settings › Developer › Edit Config), then quit and start Claude
-Desktop again:
+<!-- WP UB15 (UXP B15) -->
+**In one click.** In Settings › AI Agents, Claude Desktop, click **Install in Claude Desktop…**. The app writes a Claude
+Desktop extension (`uConsole for DSPi.mcpb`, in the app's own data folder) that starts this copy of the app with
+`--mcp`, and opens it: Claude Desktop shows its install sheet, and you click **Install**. Nothing else to edit or
+restart. If nothing opens it (Claude Desktop is not installed, or it is a version without extensions), the page says so
+and **Show File** shows where the file is: open it with Claude Desktop, or add the connection by hand as below. The
+extension names the program where it is now: after you move the app, or after an AppImage update with a new file name,
+click the button again. Use the extension or the hand-written entry, not both (Claude Desktop would start the app twice).
+Claude Desktop lists the extension in Settings › Extensions, where you can turn it off or remove it.
+
+**By hand.** Add this to `claude_desktop_config.json`, then quit and start Claude Desktop again. If the file already has
+an `"mcpServers"` section, put the `"dspi"` entry inside it, beside the others. The page shows where the file is on your
+computer, and **Open Config Folder** opens its folder (in Claude Desktop: Settings › Developer › Edit Config):
 
 ```json
 {
@@ -101,6 +111,14 @@ The program is:
 | Linux (installed) | `uconsole-for-dspi` |
 
 If you have the DSPi Terminal installed, `"command": "uconsole", "args": ["mcp"]` does the same.
+
+The file is in:
+
+| System | `claude_desktop_config.json` |
+|---|---|
+| Windows | `%APPDATA%\Claude\` (Claude Desktop from the Microsoft Store: `%LOCALAPPDATA%\Packages\Claude_…\LocalCache\Roaming\Claude\`) |
+| macOS | `~/Library/Application Support/Claude/` |
+| Linux | `~/.config/Claude/` |
 
 ### 2.2 Claude Code
 

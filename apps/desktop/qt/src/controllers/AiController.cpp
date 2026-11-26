@@ -59,7 +59,10 @@ static const SettingsRegistry::Page aiPage{
       QT_TRANSLATE_NOOP("SettingsPages", "Agent activity"), QT_TRANSLATE_NOOP("SettingsPages", "Port"),
       QT_TRANSLATE_NOOP("SettingsPages", "Use from another computer"),
       // -- WP FEATUI --
-      QT_TRANSLATE_NOOP("SettingsPages", "Loudest measurement, SPL cap"), QT_TRANSLATE_NOOP("SettingsPages", "Remembered devices") } };
+      QT_TRANSLATE_NOOP("SettingsPages", "Loudest measurement, SPL cap"), QT_TRANSLATE_NOOP("SettingsPages", "Remembered devices"),
+      // -- WP UB15 --
+      QT_TRANSLATE_NOOP("SettingsPages", "Install in Claude Desktop, extension"),
+      QT_TRANSLATE_NOOP("SettingsPages", "claude_desktop_config.json, config folder") } };
 
 namespace {
 
