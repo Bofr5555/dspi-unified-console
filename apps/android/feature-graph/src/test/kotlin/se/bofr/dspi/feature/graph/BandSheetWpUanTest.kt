@@ -129,7 +129,9 @@ class BandSheetWpUanTest {
         rule.onNodeWithContentDescription("Lower Gain").performClick()
         settle { bridge.filterGain(out1, 0) == 2.5f }
         assertTrue(rule.onAllNodes(hasContentDescription("Bypass band 1")).fetchSemanticsNodes().isNotEmpty())
-        rule.onNode(SemanticsMatcher.expectValue(SemanticsProperties.Text, listOf(androidx.compose.ui.text.AnnotatedString("Done")))).performClick()
+        rule.onNode(
+            SemanticsMatcher.expectValue(SemanticsProperties.Text, listOf(androidx.compose.ui.text.AnnotatedString("Done")))
+        ).performClick()
         settle { !sheetShown() }
     }
 
@@ -156,7 +158,10 @@ class BandSheetWpUanTest {
         assertEquals(false, pill.fetchSemanticsNode().config.getOrNull(SemanticsProperties.Selected))
         pill.performClick()
         settle { chosen.value == out1 }
-        assertEquals(true, rule.onNodeWithTag(GRAPH_LEGEND_PILL_TAG + out1).fetchSemanticsNode().config.getOrNull(SemanticsProperties.Selected))
+        assertEquals(
+            true,
+            rule.onNodeWithTag(GRAPH_LEGEND_PILL_TAG + out1).fetchSemanticsNode().config.getOrNull(SemanticsProperties.Selected)
+        )
         val shown = bridge.channelVisible(out1)
         rule.onNodeWithTag(GRAPH_LEGEND_PILL_TAG + out1).performTouchInput { longClick() }
         settle { bridge.channelVisible(out1) != shown }

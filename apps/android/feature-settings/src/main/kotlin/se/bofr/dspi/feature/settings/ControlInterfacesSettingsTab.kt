@@ -209,17 +209,29 @@ fun ControlInterfacesSettingsTab(bridge: DspiBridge, coordinator: SettingsSaveCo
                     ) { i2cDraft = i2cDraft.copy(sclPin = it) }
                     SettingRow("Target Address", "7-bit address, 0x08 - 0x77.", enabled = writeEnabled(connected)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            TextButton(onClick = {
-                                i2cDraft =
-                                    i2cDraft.copy(address = (i2cDraft.address - 1).coerceAtLeast(I2C_CTRL_ADDR_MIN))
-                            }, enabled = writeEnabled(connected), modifier = Modifier.semantics { contentDescription = "Lower the address" }) {
+                            TextButton(
+                                onClick = {
+                                    i2cDraft =
+                                        i2cDraft.copy(address = (i2cDraft.address - 1).coerceAtLeast(I2C_CTRL_ADDR_MIN))
+                                },
+                                enabled = writeEnabled(connected),
+                                modifier = Modifier.semantics {
+                                    contentDescription = "Lower the address"
+                                }
+                            ) {
                                 Text("−", Modifier.clearAndSetSemantics {}) // -- WP UAN -- (UXP A12) named
                             }
                             Text("0x%02X".format(i2cDraft.address), style = MaterialTheme.typography.bodyLarge)
-                            TextButton(onClick = {
-                                i2cDraft =
-                                    i2cDraft.copy(address = (i2cDraft.address + 1).coerceAtMost(I2C_CTRL_ADDR_MAX))
-                            }, enabled = writeEnabled(connected), modifier = Modifier.semantics { contentDescription = "Raise the address" }) {
+                            TextButton(
+                                onClick = {
+                                    i2cDraft =
+                                        i2cDraft.copy(address = (i2cDraft.address + 1).coerceAtMost(I2C_CTRL_ADDR_MAX))
+                                },
+                                enabled = writeEnabled(connected),
+                                modifier = Modifier.semantics {
+                                    contentDescription = "Raise the address"
+                                }
+                            ) {
                                 Text("+", Modifier.clearAndSetSemantics {}) // -- WP UAN --
                             }
                         }

@@ -106,12 +106,16 @@ internal fun CsMacroEditorPage(
                             TextButton(
                                 onClick = { editor.moveStep(i, 1) },
                                 enabled = can && i < steps.size - 1,
-                                modifier = Modifier.testTag("${stepTag(i)}.down").semantics { contentDescription = "Move step ${i + 1} down" }
+                                modifier = Modifier.testTag("${stepTag(i)}.down").semantics {
+                                    contentDescription = "Move step ${i + 1} down"
+                                }
                             ) { Text("↓", Modifier.clearAndSetSemantics {}) }
                             TextButton(
                                 onClick = { editor.removeStep(i) },
                                 enabled = can,
-                                modifier = Modifier.testTag("${stepTag(i)}.remove").semantics { contentDescription = "Remove step ${i + 1}" }
+                                modifier = Modifier.testTag("${stepTag(i)}.remove").semantics {
+                                    contentDescription = "Remove step ${i + 1}"
+                                }
                             ) {
                                 Text(
                                     "−",

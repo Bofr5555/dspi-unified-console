@@ -462,6 +462,12 @@ interface DspiBridge {
 
     fun setCrossoverBypass(ch: Int, band: Int, bypass: Boolean)
 
+    /**
+     * -- WP UAN -- (UXP B10) "Same for the right side": output [toCh]'s crossover bands become [fromCh]'s
+     * (type, frequency, bypass), one undo step. Nothing unless both are outputs (app ids).
+     */
+    fun copyCrossover(fromCh: Int, toCh: Int) {}
+
     fun setChannelDelay(ch: Int, ms: Float)
 
     fun clearPeq(ch: Int)

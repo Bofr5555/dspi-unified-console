@@ -1515,6 +1515,24 @@ class DspiBridgeImpl(
         }
     }
 
+    // -- WP UAN --
+    override fun copyCrossover(fromCh: Int, toCh: Int) {
+        if (map.outputOf(fromCh) < 0 || map.outputOf(toCh) < 0 || fromCh == toCh) return
+        val from = map.wire(fromCh)
+        val to = map.wire(toCh)
+        fire("setCrossover", Emit.CURVES) {
+            grouped(SAME_CROSSOVER_LABEL) {
+                for (band in 0 until MAX_XOVER_BANDS) {
+                    val p = core.getState().xover[from][band]
+                    val q = core.getState().xover[to][band]
+                    core.setCrossover(to, band, q.copy(filterType = p.filterType, freq = p.freq))
+                    if (core.getState().xover[to][band].bypass != p.bypass) core.setBandBypass(to, XOVER_BAND_BASE + band, p.bypass)
+                }
+            }
+            markDirty(toCh)
+        }
+    }
+
     override fun setChannelDelay(ch: Int, ms: Float) {
         val w = map.wire(ch)
         if (w < 0) return
@@ -2970,6 +2988,9 @@ class DspiBridgeImpl(
         const val ENABLE_ALL_LABEL = "Enable All"
         const val LINK_INPUTS_LABEL = "Link Inputs"
         const val CLEAR_ALL_LABEL = "Clear All"
+
+        /** -- WP UAN -- the undo step of [copyCrossover]. */
+        const val SAME_CROSSOVER_LABEL = "Crossover, same for the other side"
         const val DIRECT_ROUTING_LABEL = "Direct routing"
         const val CLEAR_ROUTING_LABEL = "Clear routing"
 
