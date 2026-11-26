@@ -8,6 +8,7 @@ import UConsole
 // are the next tab's (DevicesHubs). ModernShell keeps the lists live while one
 // of the two shows. -- WP DL3b -- A 760 px column at the left
 // (DESIGN-LANGUAGE §3), the devices as ListRows, sections 24 apart.
+// -- WP UA3 -- Factory Reset is among what is done to the device shown.
 Item {
     id: page
     objectName: "DevicesSection"
@@ -57,11 +58,17 @@ Item {
                 visible: DeviceModel.connected   // -- WP REVDFIX -- (REVD D8) as its heading
                 spacing: Theme.spacingSmall
                 // -- WP LAY3b -- MenuTable's place device, as the switcher
+                // -- WP UA3 -- (UXP C1) and Factory Reset, out of Save ▾: here
+                // whether or not MenuTable lists it for the place yet (A10's row)
                 Repeater {
-                    model: MenuTable.placeRows("device")[0].map(r => r.id)
+                    model: {
+                        const ids = MenuTable.placeRows("device")[0].map(r => r.id)
+                        return ids.indexOf("device.factoryReset") < 0 ? ids.concat(["device.factoryReset"]) : ids
+                    }
                     AppButton {
                         required property string modelData
                         objectName: "DevicesSection." + modelData
+                        danger: modelData === "device.factoryReset"   // -- WP UA3 -- DESIGN-LANGUAGE §7
                         visible: { const r = MenuTable.row(modelData); return !r.platformHidden || DeviceModel.platformName !== r.platformHidden }
                         // Except during a hub session (behaviour.md §3)
                         enabled: MenuTable.can(modelData) && (modelData !== "device.reconnect" || !DeviceModel.remote)
