@@ -15,6 +15,9 @@ import UConsole
 //       with its trim
 //   nothing  the device's routing in words
 // "Open in Equaliser" under the crosspoint's output or the channel.
+// -- WP UA1 -- (UXP A1) an output is named as the pages name it, name first and
+// number second ("Left tweeter · 2"); "also feeds" lists the outputs the input
+// feeds, and "+" connects it to another.
 Inspector {
     id: inspector
     objectName: "RoutingInspector"
@@ -49,7 +52,11 @@ Inspector {
             readonly property var mirror: cross && MatrixController.linkPairs ? MatrixController.mirrorOf(ci, co) : ({})
 
             function rowName(r) { const s = MatrixController.revision < 0 ? undefined : MatrixController.row(r); return s ? s.name : "" }
-            function colName(o) { const c = MatrixController.revision < 0 ? undefined : MatrixController.column(o); return c ? c.label : "" }
+            // -- WP UA1 -- the output's title ("Left tweeter · 2"), else the matrix's label
+            function colName(o) {
+                const c = MatrixController.revision < 0 ? undefined : MatrixController.column(o)
+                return !c ? "" : info.titleOf(ChannelController.outputChannel(o)) || c.label
+            }
             function db(v) { return (v > 0 ? "+" : "") + Number(v).toFixed(1) }
             // "3, 5–7": numbers in runs
             function runs(list) {
@@ -174,15 +181,16 @@ Inspector {
                     tint: ChannelPalette.output(body.co, body.dst && body.dst.pdm)
                 }
                 Text {
+                    objectName: "RoutingInspector.title.output"
                     Layout.fillWidth: true
                     textFormat: Text.PlainText
-                    text: body.dst ? body.dst.label : ""
+                    text: body.dst ? body.colName(body.co) : ""
                     font: Theme.fontTitle
                     color: Theme.text
                     elide: Text.ElideRight
                 }
                 Accessible.role: Accessible.Heading
-                Accessible.name: (body.src ? body.src.name : "") + " → " + (body.dst ? body.dst.label : "")
+                Accessible.name: (body.src ? body.src.name : "") + " → " + (body.dst ? body.colName(body.co) : "")
             }
             InspectorSection {
                 objectName: "RoutingInspector.crosspoint"
@@ -258,32 +266,71 @@ Inspector {
                 Layout.fillWidth: true
                 //: %1 is an input's name
                 title: qsTr("%1 also feeds").arg(body.src ? body.src.name : "")
+                // -- WP UA1 -- the other outputs it feeds (a click disconnects one), and the rest for "+"
+                readonly property var feeds: body.version < 0 || !body.cross ? [] : MatrixController.model.feeds(body.ci)
                 readonly property var others: {
                     const list = []
-                    for (let o = 0; o < MatrixController.columns; ++o) if (o !== body.co) list.push(o)
+                    for (let o = 0; o < MatrixController.columns; ++o) if (o !== body.co && feeds.indexOf(o) >= 0) list.push(o)
                     return list
                 }
-                ChipGroup {
-                    objectName: "RoutingInspector.alsoFeeds.chips"
+                readonly property var rest: {
+                    const list = []
+                    for (let o = 0; o < MatrixController.columns; ++o) if (o !== body.co && feeds.indexOf(o) < 0) list.push(o)
+                    return list
+                }
+                summary: others.length === 0 ? qsTr("nothing else") : ""
+                RowLayout {
                     Layout.fillWidth: true
-                    allNone: false
-                    enabled: MatrixController.writable
-                    model: alsoFeeds.others.map(o => body.colName(o))
-                    selected: {
-                        const on = []
-                        if (body.version < 0 || !body.cross) return on
-                        const feeds = MatrixController.model.feeds(body.ci)
-                        alsoFeeds.others.forEach((o, k) => { if (feeds.indexOf(o) >= 0) on.push(k) })
-                        return on
+                    spacing: 6
+                    ChipGroup {
+                        objectName: "RoutingInspector.alsoFeeds.chips"
+                        Layout.fillWidth: true
+                        Layout.maximumWidth: implicitWidth   // "+" right after the last chip
+                        visible: alsoFeeds.others.length > 0
+                        allNone: false
+                        enabled: MatrixController.writable
+                        model: alsoFeeds.others.map(o => ({
+                            text: body.colName(o),
+                            //: %1 is an output's name; a click disconnects it
+                            toolTip: qsTr("Disconnect from %1").arg(body.colName(o))
+                        }))
+                        selected: alsoFeeds.others.map((o, k) => k)
+                        onToggled: (index, on) => MatrixController.setConnected(body.ci, alsoFeeds.others[index], on)
                     }
-                    onToggled: (index, on) => MatrixController.setConnected(body.ci, alsoFeeds.others[index], on)
+                    IconButton {
+                        id: addFeed
+                        objectName: "RoutingInspector.alsoFeeds.add"
+                        Layout.alignment: Qt.AlignTop
+                        visible: alsoFeeds.rest.length > 0
+                        enabled: MatrixController.writable
+                        iconName: "plus"
+                        //: %1 is an input's name
+                        toolTip: qsTr("Connect %1 to another output").arg(body.src ? body.src.name : "")
+                        onClicked: addMenu.popup(addFeed, 0, addFeed.height + 2)
+                        AppMenu {
+                            id: addMenu
+                            objectName: "RoutingInspector.alsoFeeds.menu"
+                            Instantiator {
+                                model: alsoFeeds.rest
+                                delegate: AppMenuItem {
+                                    required property var modelData
+                                    objectName: "RoutingInspector.alsoFeeds.menu." + modelData
+                                    text: body.colName(modelData)
+                                    onTriggered: MatrixController.setConnected(body.ci, modelData, true)
+                                }
+                                onObjectAdded: (index, object) => addMenu.insertItem(index, object)
+                                onObjectRemoved: (index, object) => addMenu.removeItem(object)
+                            }
+                        }
+                    }
+                    Item { Layout.fillWidth: true }
                 }
             }
             InspectorSection {
                 objectName: "RoutingInspector.outputLine"
                 visible: body.cross
                 Layout.fillWidth: true
-                title: body.dst ? body.dst.label : ""
+                title: body.dst ? body.colName(body.co) : ""
                 summary: body.dst ? [body.dst.enabled ? qsTr("on") : qsTr("off"), qsTr("%1 dB").arg(body.db(body.dst.gain)),
                                      qsTr("%1 ms").arg(Number(body.dst.delay).toFixed(2))].join(" · ") : ""
                 Note {

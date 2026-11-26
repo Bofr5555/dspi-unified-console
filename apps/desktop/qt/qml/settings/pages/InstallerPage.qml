@@ -217,7 +217,9 @@ SettingsPage {
             required property int index
             readonly property int output: modelData.output
             objectName: "Installer.output." + output
-            title: modelData.name
+            // -- WP UA1 -- (UXP A1) Modern names it as its pages do, "Left woofer · 1"
+            title: LayoutController.modern && named.title.length ? named.title : modelData.name
+            ChannelInfo { id: named; channel: LayoutController.modern && ChannelController.revision >= 0 ? ChannelController.outputChannel(outGroup.output) : -1 }
             iconName: "volume-2"
             LimitField {
                 objectName: "Installer.output." + outGroup.output + ".maxGain"
