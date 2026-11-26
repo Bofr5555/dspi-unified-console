@@ -8,6 +8,10 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QGuiApplication>    // -- FIX016 --
+#include <QJsonDocument>      // -- FIX016 --
+#include <QMap>               // -- FIX016 --
+#include <QSettings>          // -- FIX016 --
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QImage>
@@ -244,7 +248,9 @@ void SmokeDriver::run() {
         if (s.mode != want) continue;
         if (!only.isEmpty() && !only.contains(QString::fromLatin1(s.name))) continue;
         section(s.name);
+        const QMap<QString, QString> before = stateNow();   // -- FIX016 --
         s.run(*this);
+        stateLeft(s.name, before);                          // -- FIX016 --
         ++ran;
     }
     if (!only.isEmpty()) check(QStringLiteral("DSPI_SMOKE_SECTION names a section"), ran > 0);
@@ -393,6 +399,83 @@ QObject *SmokeDriver::object(const QString &name) const {
     if (QObject *open = findPopup(w->contentItem(), name, &closed)) return open;
     if (!named.isEmpty()) return named.first();
     return it ? it : closed;
+}
+
+// -- FIX016 -- (R1-QT) What a section can leave behind for the next one: the
+// layout and its options, the lock and the mode, the agents, the measurement's
+// microphone and its runs, a solo, the dock's channel and volume, the demo,
+// the windows and the focus, and every setting. A section that leaves one
+// changed says so ("smoke: LEFT <section>: <what>: <before> -> <after>"), so an
+// order dependence is found by its culprit, not by the section after it.
+// DSPI_SMOKE_STATE_FAIL=1 makes each such line a failure.
+static QString stateText(const QVariant &v) {
+    QVariant plain = v.canConvert<QJSValue>() ? v.value<QJSValue>().toVariant() : v;
+    QString text;
+    if (plain.typeId() == QMetaType::QVariantList || plain.typeId() == QMetaType::QVariantMap
+        || plain.typeId() == QMetaType::QStringList)
+        text = QString::fromUtf8(QJsonDocument::fromVariant(plain).toJson(QJsonDocument::Compact));
+    else
+        text = plain.toString();
+    return text.size() > 160 ? text.left(157) + QLatin1String("...") : text;
+}
+
+QMap<QString, QString> SmokeDriver::stateNow() const {
+    QMap<QString, QString> st;
+    static const std::pair<const char *, const char *> kProps[] = {
+        { "LayoutController", "layout" }, { "LayoutController", "theme" }, { "LayoutController", "density" },
+        { "LayoutController", "outlineControls" }, { "LayoutController", "touchScreen" },
+        { "LimitsController", "locked" }, { "ModeController", "mode" },
+        { "AiController", "enabled" }, { "AiController", "running" }, { "AiController", "paused" },
+        { "AiController", "confirmMode" }, { "AiController", "working" }, { "AiController", "followAgent" },
+        { "AiController", "confirmations" },
+        { "MeasureController", "micChoice" }, { "MeasureController", "measuring" }, { "MeasureController", "running" },
+        { "MeasureController", "liveActive" }, { "MeasureController", "passiveActive" },
+        { "SoloController", "output" }, { "DemoController", "demoOpen" },
+        { "SidebarController", "volumeMode" }, { "SidebarController", "userVolumeDb" },
+        { "SidebarController", "bypassOn" }, { "SidebarController", "unsaved" }, { "SidebarController", "openWindows" },
+        { "DeviceLinkController", "linked" }, { "SpeakersController", "status" },
+    };
+    for (const auto &[type, prop] : kProps) {
+        QObject *o = m_.engine->singletonInstance<QObject *>("UConsole", type);
+        st.insert(QStringLiteral("%1.%2").arg(QLatin1String(type), QLatin1String(prop)), o ? stateText(o->property(prop)) : QStringLiteral("?"));
+    }
+    st.insert(QStringLiteral("device"), QStringLiteral("connected %1 demo %2 remote %3")
+                                            .arg(m_.device->connected()).arg(m_.device->demo()).arg(m_.device->remote()));
+    if (QQuickWindow *w = mainWindow()) {
+        st.insert(QStringLiteral("window.size"), QStringLiteral("%1x%2").arg(w->width()).arg(w->height()));
+        QQuickItem *f = w->activeFocusItem();
+        st.insert(QStringLiteral("window.focus"), f ? f->objectName() : QString());
+    }
+    QStringList shown;
+    for (QWindow *t : QGuiApplication::topLevelWindows())
+        if (t->isVisible() && t != mainWindow()) shown << (t->objectName().isEmpty() ? t->title() : t->objectName());
+    shown.sort();
+    st.insert(QStringLiteral("windows"), shown.join(QLatin1Char(',')));
+    const QSettings settings;
+    for (const QString &k : settings.allKeys()) {
+        // Where windows were and when things were last done: not state a section depends on
+        if (k.contains(QLatin1String("geometry"), Qt::CaseInsensitive) || k.contains(QLatin1String("Geometry"))
+            || k.endsWith(QLatin1String("At")) || k.contains(QLatin1String("time"), Qt::CaseInsensitive))
+            continue;
+        st.insert(QStringLiteral("setting ") + k, stateText(settings.value(k)));
+    }
+    return st;
+}
+
+void SmokeDriver::stateLeft(const char *section, const QMap<QString, QString> &before) {
+    const QMap<QString, QString> now = stateNow();
+    QStringList keys = before.keys() + now.keys();
+    keys.removeDuplicates();
+    keys.sort();
+    const bool fail = qEnvironmentVariableIntValue("DSPI_SMOKE_STATE_FAIL") == 1;
+    for (const QString &k : keys) {
+        const QString a = before.value(k, QStringLiteral("(none)")), b = now.value(k, QStringLiteral("(none)"));
+        if (a == b) continue;
+        const QString line = QStringLiteral("smoke: LEFT %1: %2: %3 -> %4").arg(QLatin1String(section), k, a, b);
+        if (fail) check(line, false);
+        else printf("%s\n", qPrintable(line));
+    }
+    fflush(stdout);
 }
 
 // -- WP LAY7 --

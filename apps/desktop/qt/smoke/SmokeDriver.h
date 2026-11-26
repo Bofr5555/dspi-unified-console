@@ -1,6 +1,7 @@
 #ifndef SMOKEDRIVER_H
 #define SMOKEDRIVER_H
 
+#include <QMap>
 #include <QObject>
 #include <QString>
 #include <functional>
@@ -114,6 +115,9 @@ private:
     void sectionTimes();
     void summary();
     static int qmlErrors();
+    // -- FIX016 -- (R1-QT) the state a section may leave behind, and what it did
+    QMap<QString, QString> stateNow() const;
+    void stateLeft(const char *section, const QMap<QString, QString> &before);
 
     App m_;
     int m_failures = 0;
