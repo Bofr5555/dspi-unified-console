@@ -186,12 +186,13 @@ export function draw(ctx: CanvasRenderingContext2D, s: Scene): void {
     }
     ctx.stroke();
     ctx.restore();
-    // Its scale at the right: ±extent, ±extent/2 and 0 (Qt's BodeTicks.phase)
+    // Its scale at the right: ±extent/2, 0 and -extent of Qt's BodeTicks.phase; the top one would
+    // be under the graph's chips (RTA, Phase, All Curves) in the corner
     ctx.fillStyle = theme.text;
     ctx.font = "10px system-ui, sans-serif";
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
-    for (const tick of phaseTicks(extent)) {
+    for (const tick of phaseTicks(extent).filter((t) => t.at > 0)) {
       ctx.fillText(tick.text, g.width - LABEL_INSET, Math.min(Math.max(tick.at * g.height, LABEL_INSET + 5), g.height - LABEL_INSET - 18));
     }
     ctx.textAlign = "start";

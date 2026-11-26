@@ -81,7 +81,8 @@ test("GAP1 phase: drawn dotted on its own axis with its scale only while asked",
   draw(on.ctx, scene({ curve, extent: 180 }));
   assert.ok(on.calls.some((c) => c.name === "setLineDash" && (c.args[0] as number[])[0] === 0.1), "dotted");
   const scale = on.calls.filter((c) => c.name === "fillText" && String(c.args[0]).endsWith("°")).map((c) => c.args[0]);
-  assert.deepEqual(scale, ["+180°", "+90°", "0°", "−90°", "−180°"]);
+  // The top tick is left out: the graph's chips sit in that corner
+  assert.deepEqual(scale, ["+90°", "0°", "−90°", "−180°"]);
   // The line's points: 0° in the middle, -180° at the bottom
   const lines = on.calls.filter((c) => c.name === "lineTo" || c.name === "moveTo");
   const ys = lines.map((c) => c.args[1] as number);
