@@ -18,12 +18,23 @@ status rail and the rest of section 2) are called the *Pro layer* in plans and c
 **Home**, a remote on every client width: the device and its connection, one big User volume (the Master is the
 Installer's) with Mute, the source as segments, the presets as a Recall list (no Save, no Copy Here), the rooms' and
 zones' volumes on an installation (web), and one health line; nothing else. Simple's dock has no Master volume and no
-Bypass EQ. In the locked-user state nothing that the lock refuses is offered: the source is shown in words, Save,
-undo and redo leave the top bar, and on the desktop every page that changes the device renders read-only (its
-controls off, its scroll on, one notice with Go to Home; Devices and Settings stay as they are, the Installer page
-holds the PIN). The web keeps the locked user to Home alone (`lockedUser.screens`). Built: web
-(`screens/home/`, `ui/screens.tsx`), Qt Modern (`HomeSection.qml`, SectionTable's `overview/home`, PageHost's
-`lockRead`); Classic and the Terminal are unchanged; Android's Home uses the same words.
+Bypass EQ. In the locked-user state nothing that the lock refuses is offered: Save, undo and redo leave the top bar,
+and on the desktop every page that changes the device renders read-only (its controls off, its scroll on, one notice
+with Go to Home; Devices and Settings stay as they are, the Installer page holds the PIN). The web keeps the locked
+user to Home alone (`lockedUser.screens`). Built: web (`screens/home/`, `ui/screens.tsx`), Qt Modern
+(`HomeSection.qml`, SectionTable's `overview/home`, PageHost's `lockRead`); Android's Home uses the same words.
+
+*0.16.0 (FIX016, the owner's answers to the REVG review):*
+- **The locked user may change the source**, from Home: one core rule (`LOCKED_USER_WRITES` has the input source
+  beside volume, mute and preset), so every client offers it as a control, not words.
+- **The speaker layout is the installer's under the lock**: the core refuses `speaker_layout_set` while locked and
+  not unlocked (the roles are what the tweeter guards trust), and Settings › Speakers, Android's Getting Started and
+  the Terminal's Speakers are read-only there.
+- **Qt Modern** offers no write the lock refuses: shortcuts, palette rows, Open in Window, panel windows and A|B are
+  off under the lock but for volume, mute, preset and source.
+- **D4's read-only locked state is Modern, the web and Android.** Classic stays as it was: under the lock it is
+  live and the core refuses what the lock covers after the click (owner, 2026-11-26). The Terminal follows the core
+  the same way. Qt's Simple mode is Home first and a trimmed dock; its other sections stay.
 
 ## 1. The rule that comes first: nothing is locked unless someone locks it
 
@@ -68,8 +79,8 @@ Notes:
 - **The PIN is a UI lock, not a security boundary.** Whoever has the device on USB can change it with any tool. The unlock
   dialog says so in one line: the lock is on this console, the DSPi itself is open (OD-P1d; notice
   `installer_lock.scope`). Where real access control is needed, it is the hub's roles (section 4).
-- *Built (P1LK):* in the locked-user state the core refuses every write but volume, mute and preset (within the limits)
-  before anything is sent (`installer_lock.locked`). Repeated wrong PINs open a refusal window kept as the next allowed
+- *Built (P1LK):* in the locked-user state the core refuses every write but volume, mute, preset and (0.16.0) the
+  input source (within the limits) before anything is sent (`installer_lock.locked`). Repeated wrong PINs open a refusal window kept as the next allowed
   time, never a sleep. A forgotten PIN (OD-P1c): on a hub an Admin clears it; off a hub the recovery code, then
   deleting the device's profile folder as the documented last resort; no "Remove lock" button.
 - Removing the PIN (in the Installer mode) removes the lock; the device is back to section 1.
