@@ -387,6 +387,10 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
     if let Some(r) = crate::firmware::dispatch(&core, &req.method, req.params.clone()) {
         return r;
     }
+    // -- WP GAP1 -- the crossfeed's output pair map (src/pair_map.rs)
+    if let Some(r) = crate::pair_map::dispatch(&core, &req.method, req.params.clone()) {
+        return r;
+    }
     match req.method.as_str() {
         "open" => open(h, &core, params(req.params)?),
         "state" => {
@@ -840,6 +844,9 @@ fn snapshot(core: &DspiCore, demo: bool) -> Value {
         // them, worked out once per snapshot (src/output_labels.rs in the core)
         "outputLabels": tidy(&core.output_labels()),
         "outputCards": tidy(&core.output_cards()),
+        // -- WP GAP1 -- each output's polarity from its routes
+        // (dspi_core::output_polarity): none, normal, inverted, mixed
+        "outputPolarity": tidy(&dspi_core::output_polarity::output_polarities(&s)),
     })
 }
 

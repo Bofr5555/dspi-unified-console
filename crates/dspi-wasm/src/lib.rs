@@ -143,6 +143,8 @@ pub mod protocol;
 pub mod firmware;
 // -- WP ROLE0 -- the speaker layout (MPLAN 2.2)
 pub mod speaker_layout;
+// -- WP GAP1 -- the crossfeed's output pair map
+pub mod pair_map;
 
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 #[allow(unsafe_code)]

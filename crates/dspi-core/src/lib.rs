@@ -173,6 +173,8 @@ pub mod actor;
 pub mod speaker_layout;
 // -- WP WEB6 -- the effect pages' drawings (Qt's C++ curves, moved to the core)
 pub mod effect_curves;
+// -- WP GAP1 -- an output's polarity from its routes (the web's snapshot, Qt's rule)
+pub mod output_polarity;
 // -- WP SHOWFIX -- the names a person knows a channel by
 pub mod change_words;
 pub mod channel_words; // -- WP SHOWFIX -- (finding 4)
