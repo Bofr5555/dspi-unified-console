@@ -430,7 +430,17 @@ private fun DspiRoutesHost(
         screen(nav, allow, refused, DspiRoutes.SYSTEM) { _, go, back -> SystemScreen(bridge, go, back) }
         screen(nav, allow, refused, DspiRoutes.ANALYSIS) { _, go, back -> AnalysisScreen(bridge, go, back) }
         // -- WP AN32 -- each Tools-menu entry opens its own analysis page
-        screen(nav, allow, refused, DspiRoutes.ANALYSIS_PAGE, listOf(navArgument("page") { type = NavType.StringType })) { entry, go, back ->
+        screen(
+            nav,
+            allow,
+            refused,
+            DspiRoutes.ANALYSIS_PAGE,
+            listOf(
+                navArgument("page") {
+                    type = NavType.StringType
+                }
+            )
+        ) { entry, go, back ->
             AnalysisScreen(bridge, go, back, open = entry.arguments?.getString("page"))
         }
         screen(nav, allow, refused, DspiRoutes.FIRMWARE) { _, go, back -> FirmwareRoute(bridge, go, back, bootloaderLocator, remote) }

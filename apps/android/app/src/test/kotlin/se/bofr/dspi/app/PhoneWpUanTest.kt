@@ -181,7 +181,9 @@ class PhoneWpUanTest {
         for (b in buttons) assertTrue("$name ${b.config} ${b.size}", b.size.height >= min && b.size.width >= min)
     }
 
-    private fun onBar(text: String) = rule.onAllNodes(hasText(text) and hasClickAction() and hasAnyAncestor(hasTestTag(CONNECTION_STRIP_TAG)))
+    private fun onBar(text: String) = rule.onAllNodes(
+        hasText(text) and hasClickAction() and hasAnyAncestor(hasTestTag(CONNECTION_STRIP_TAG))
+    )
         .fetchSemanticsNodes().isNotEmpty()
 
     @Test
