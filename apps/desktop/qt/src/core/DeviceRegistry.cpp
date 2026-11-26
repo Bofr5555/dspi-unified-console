@@ -419,7 +419,9 @@ void DeviceRegistry::open(const QJsonObject &target, Done done, bool activate) {
                 return;
             }
             auto *session = new DeviceSession(o.core, false, this);
-            const QString kind = target.value(QLatin1String("kind")).toString();
+            QString kind = target.value(QLatin1String("kind")).toString();
+            // -- INT016 -- (WP UB12) the smoke build's blank demo is a demo too: its name, its demo state
+            if (kind == QLatin1String("demoBlank")) kind = QStringLiteral("demo");
             m_sessions.append(session);
             track(session);
             session->setBackground(true);
