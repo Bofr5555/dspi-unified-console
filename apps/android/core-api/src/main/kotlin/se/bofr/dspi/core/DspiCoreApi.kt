@@ -5386,6 +5386,11 @@ interface DspiCoreApi : AutoCloseable {
      * What differs from the active preset, one sentence each, in the Mac
      * console's words and order. Empty without a device or a baseline. No
      * I/O: input source titles come from the names the core keeps.
+     *
+     * -- FIX016 -- (REVG R3) While a compare of "as saved" against "now"
+     * stands on A, B's changes are listed too (after the live ones): they
+     * are unsaved edits the person left on B, so every client's question
+     * before a switch, a close or a quit asks for them.
      */
     fun presetChanges(): List<String>
 
@@ -5831,7 +5836,10 @@ interface DspiCoreApi : AutoCloseable {
      * lacks, more than 16, or a speaker name over 64 characters (nothing
      * kept); [`DspiError::Io`] when the file cannot be written;
      * [`DspiError::ConfirmationRequired`] `user_only` inside another actor's
-     * [`crate::actor::ActorScope`] (WP INT1).
+     * [`crate::actor::ActorScope`] (WP INT1); -- FIX016 -- (REVG R4)
+     * [`DspiError::InstallerLock`] in the locked-user state (the console's
+     * lock or the hub's), as any write but those the lock lets through: the
+     * roles are what the tweeter guards trust.
      */
     @Throws(DspiException::class)
     fun speakerLayoutSet(layout: SpeakerLayout): SpeakerLayout

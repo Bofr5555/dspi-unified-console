@@ -1256,10 +1256,6 @@ An output&apos;s short name: %1 is its number</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>and %1 more</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Output</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1273,6 +1269,15 @@ An output&apos;s short name: %1 is its number</extracomment>
     </message>
     <message>
         <source>Nothing has played yet. Sound cannot be taken back once it plays; Stop Measuring in the agent strip ends it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 · %2</source>
+        <extracomment>A change not asked about on a sheet of several devices: %1 the device, %2 the change</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Also in these calls, not asked about:</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1347,8 +1352,18 @@ An output&apos;s short name: %1 is its number</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>These questions ask about %1 changes, more than one sheet shows. Answer them one by one, so you see each change you allow.</source>
+        <extracomment>%1 how many changes the agent asks about, more than one sheet shows</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Asked: %1</source>
         <extracomment>Read out before an AI agent&apos;s change that the question is about; %1 the change</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>and %1 more changes not asked about</source>
+        <extracomment>%1 how many changes of the calls are not shown; none of them is asked about</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -9563,7 +9578,11 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>No PIN is set: nothing is locked and nothing asks for one. Set a PIN to lock this console&apos;s settings for everyday use; volume, mute and presets stay open.</source>
+        <source>No PIN is set: nothing is locked and nothing asks for one. Set a PIN to lock this console&apos;s settings for everyday use; volume, mute, source and presets stay open.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>When locked, only volume, mute, source and presets can be changed on this console.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -9604,10 +9623,6 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     </message>
     <message>
         <source>Lock the settings</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>When locked, only volume, mute and presets can be changed on this console.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -9888,6 +9903,11 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>%1 gets both sides at %2 each, so it plays no louder than before.</source>
+        <extracomment>%1 an output (&quot;Sub · 5&quot;), %2 a gain (&quot;−18.0 dB&quot;)</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>%1 is off: it plays nothing until you turn it on in Delay &amp; Gain.</source>
         <extracomment>An output the routing reaches that is switched off</extracomment>
         <translation type="unfinished"></translation>
@@ -9936,6 +9956,11 @@ Choose which channel&apos;s filters and trim to copy onto the other. This overwr
     <message>
         <source>%1: a %2&apos;s high pass needs %3 dB/oct or steeper.</source>
         <extracomment>%1 the speaker, %2 its way, %3 dB/oct</extracomment>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 would play full range: a tweeter or mid driver needs its high pass first. Set the crossovers in the same Apply, or give it a high pass on the Crossover page.</source>
+        <extracomment>%1 the outputs (&quot;Left tweeter · 2, Right tweeter · 4&quot;)</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -18950,6 +18975,10 @@ Save before continuing?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Locked by the installer: the speakers are not detected.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>This connection may not change the DSPi.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -19030,6 +19059,10 @@ Save before continuing?</source>
     </message>
     <message>
         <source>Which output drives what? The measurement and its safety checks take each output&apos;s role from here.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Locked by the installer: the speaker layout is shown, not changed.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -20966,6 +20999,10 @@ This wiring is a board-level setting: it is stored on the device, survives prese
     <name>ToolWindow</name>
     <message>
         <source>This is an audio link sender. It has no DSP, so this window has nothing to show or change.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Locked by the installer: this window is shown read-only. Volume, mute and presets are on Home.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

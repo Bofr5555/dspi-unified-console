@@ -5368,6 +5368,11 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * What differs from the active preset, one sentence each, in the Mac
      * console's words and order. Empty without a device or a baseline. No
      * I/O: input source titles come from the names the core keeps.
+     *
+     * -- FIX016 -- (REVG R3) While a compare of "as saved" against "now"
+     * stands on A, B's changes are listed too (after the live ones): they
+     * are unsaved edits the person left on B, so every client's question
+     * before a switch, a close or a quit asks for them.
      */
     func presetChanges()  -> [String]
     
@@ -7006,7 +7011,10 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * lacks, more than 16, or a speaker name over 64 characters (nothing
      * kept); [`DspiError::Io`] when the file cannot be written;
      * [`DspiError::ConfirmationRequired`] `user_only` inside another actor's
-     * [`crate::actor::ActorScope`] (WP INT1).
+     * [`crate::actor::ActorScope`] (WP INT1); -- FIX016 -- (REVG R4)
+     * [`DspiError::InstallerLock`] in the locked-user state (the console's
+     * lock or the hub's), as any write but those the lock lets through: the
+     * roles are what the tweeter guards trust.
      */
     func speakerLayoutSet(layout: SpeakerLayout) throws  -> SpeakerLayout
     
@@ -13413,6 +13421,11 @@ open func preampMaxDb() -> Float  {
      * What differs from the active preset, one sentence each, in the Mac
      * console's words and order. Empty without a device or a baseline. No
      * I/O: input source titles come from the names the core keeps.
+     *
+     * -- FIX016 -- (REVG R3) While a compare of "as saved" against "now"
+     * stands on A, B's changes are listed too (after the live ones): they
+     * are unsaved edits the person left on B, so every client's question
+     * before a switch, a close or a quit asks for them.
      */
 open func presetChanges() -> [String]  {
     return try!  FfiConverterSequenceString.lift(try! rustCall() {
@@ -15808,7 +15821,10 @@ open func speakerLayoutPropose()throws  -> SpeakerLayout  {
      * lacks, more than 16, or a speaker name over 64 characters (nothing
      * kept); [`DspiError::Io`] when the file cannot be written;
      * [`DspiError::ConfirmationRequired`] `user_only` inside another actor's
-     * [`crate::actor::ActorScope`] (WP INT1).
+     * [`crate::actor::ActorScope`] (WP INT1); -- FIX016 -- (REVG R4)
+     * [`DspiError::InstallerLock`] in the locked-user state (the console's
+     * lock or the hub's), as any write but those the lock lets through: the
+     * roles are what the tweeter guards trust.
      */
 open func speakerLayoutSet(layout: SpeakerLayout)throws  -> SpeakerLayout  {
     return try  FfiConverterTypeSpeakerLayout_lift(try rustCallWithError(FfiConverterTypeDspiError_lift) {
@@ -75737,7 +75753,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_preamp_max_db() != 3403) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_preset_changes() != 34020) {
+    if (uniffi_dspi_core_checksum_method_dspicore_preset_changes() != 52122) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_preset_dirty() != 1680) {
@@ -76148,7 +76164,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_speaker_layout_propose() != 65330) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_speaker_layout_set() != 50039) {
+    if (uniffi_dspi_core_checksum_method_dspicore_speaker_layout_set() != 2) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_speaker_layout_set_dir() != 19602) {
