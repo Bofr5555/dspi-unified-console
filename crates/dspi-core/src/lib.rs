@@ -71,6 +71,7 @@ mod cs;
 mod cs_rules;
 mod curves;
 mod device;
+mod demo_example; // -- WP UB12 --
 mod ext;
 // -- WP FWX --
 mod ext_diag;
