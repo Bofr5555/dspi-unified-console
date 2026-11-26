@@ -111,7 +111,13 @@ the room, which only a calibrated microphone can say.
 prompt). Enter it in the app that wants to connect.
 
 **Installer lock and limits.** An installer can lock a DSPi with a PIN and a limits profile: the highest levels, the
-tweeter floor, what a user may change. A locked app says who locked it and what still works.
+tweeter floor, what a user may change. A locked app says who locked it and what still works, opens on Home, and
+shows the other pages read-only, so nothing you press is refused.
+
+**Simple and Home.** Simple is a mode for listening (Mode… in the app menu; on the web, Mode in the status bar).
+It opens on **Home**, a remote: the volume, Mute, the source, the presets to recall and, on a hub's installation,
+each room's volume. Every other page stays a tab away. Advanced, the desktop's and the web's default, opens where
+the work is.
 
 ## AI agents
 

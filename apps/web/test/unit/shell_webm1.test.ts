@@ -50,7 +50,7 @@ test("WEBM1 sections: the pages of each mode; a mode's empty sections are not in
     assert.deepEqual([...pages].sort(), [...shown, CONNECT].sort(), m);
   }
   // Locked, the front page alone; with nothing open, the devices alone.
-  assert.deepEqual(sectionsFor(lockedScreens()).map((s) => [s.id, ids(s.pages)]), [["overview", ["main"]], ["devices", [CONNECT]]]);
+  assert.deepEqual(sectionsFor(lockedScreens()).map((s) => [s.id, ids(s.pages)]), [["overview", ["home"]], ["devices", [CONNECT]]]); // -- WP UB2 -- Home
   assert.deepEqual(ids(sectionsFor([])), ["devices"]);
   assert.deepEqual(sectionsFor([]).map((s) => s.foot), [true]);
   // A host's own screen goes with what no section lists.

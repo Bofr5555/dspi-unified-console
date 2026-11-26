@@ -11,9 +11,9 @@ ToolWindow {
     objectName: "ModeWindow"
     windowId: "mode"
     defaultWidth: 380
-    defaultHeight: 190
+    defaultHeight: 240   // -- WP UB2 -- with what Simple is
     minimumWidth: 320
-    minimumHeight: 170
+    minimumHeight: 220
     title: qsTr("Mode")
 
     ColumnLayout {
@@ -36,6 +36,17 @@ ToolWindow {
                     onClicked: ModeController.choose(modelData.id, everyDevice.checked)
                 }
             }
+        }
+        // -- WP UB2 -- (UXP B2) what the two modes are
+        Text {
+            objectName: "ModeWindow.about"
+            Layout.fillWidth: true
+            wrapMode: Text.Wrap
+            font: Theme.fontBody
+            color: Theme.text
+            text: ModeController.mode === "simple"
+                  ? qsTr("Simple opens on Home: volume, mute, source and presets, like a remote. Every other page stays a tab away.")
+                  : qsTr("Advanced opens where the work is: every page, the Master volume and Bypass EQ in the dock.")
         }
         AppCheckBox {
             id: everyDevice

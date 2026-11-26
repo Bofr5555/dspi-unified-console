@@ -124,7 +124,8 @@ test("P1WB2 screens: the Installer page in the Installer mode only, last; the lo
   assert.ok(!ids("simple").includes("installer"));
   assert.deepEqual(
     lockedScreens().map((x) => x.id),
-    ["main"],
+    ["home"], // -- WP UB2 -- (UXP B2) the front page is Home, the remote
+
   );
 });
 

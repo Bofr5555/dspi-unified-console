@@ -86,6 +86,8 @@ if (args.has("--unit")) {
   cpSync(join(root, "src/page.css"), join(out, "page.css"));
   // -- job ICON1 -- the standalone page's icons (assets/icon/render.sh makes them)
   cpSync(join(root, "icons"), out, { recursive: true });
+  // -- WP UB2 -- the web app manifest (Add to Home Screen opens the console as an app, its icons above)
+  cpSync(join(root, "manifest.json"), join(out, "manifest.json"));
   writeFileSync(join(out, "THIRD-PARTY-NOTICES.txt"), notices());
   // -- WP WB6K -- the built-in AutoEQ database, beside the console's script (fetched when AutoEQ is opened)
   cpSync(join(root, "../../crates/dspi-session/autoeq/autoeq_database.json"), join(out, "autoeq_database.json"));

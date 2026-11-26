@@ -556,6 +556,14 @@
       ]
     },
     {
+      "id": "window.mode",
+      "text": "Mode…",
+      "menu": "Window",
+      "places": [
+        "appMenu.settings"
+      ]
+    },
+    {
       "id": "help.gettingStarted",
       "text": "Getting Started…",
       "menu": "Help",
@@ -896,6 +904,7 @@
       ],
       [
         "edit.settings",
+        "window.mode",
         "app.classicLayout"
       ],
       [

@@ -52,4 +52,7 @@ cp "$src/dspi-icon-rounded.svg" "$web/favicon.svg"
 icotool -c -o "$web/favicon.ico" "$work"/r{16,32,48}.png
 magick "$src/dspi-icon-square-1024.png" -filter Lanczos -resize 180x180 -strip \
     -define png:exclude-chunks=date,time "PNG24:$web/apple-touch-icon.png"
+# -- WP UB2 -- the web app manifest's icons (Add to Home Screen; apps/web/manifest.json)
+png "$src/dspi-icon-rounded-1024.png" 192 "$web/icon-192.png"
+cp "$work/r512.png" "$web/icon-512.png"
 echo "render: done"

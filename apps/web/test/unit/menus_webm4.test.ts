@@ -27,7 +27,7 @@ const rows = (items: ReturnType<typeof menuItems>) => items.map((m) => (m === "s
 const run = () => undefined;
 
 test("WEBM4 actions.json: the desktop's rows and menus, every menu row a row", () => {
-  assert.equal(ACTIONS.length, 70); // -- WP UFW -- Help › User Manual, Keyboard Shortcuts
+  assert.equal(ACTIONS.length, 71); // -- WP UFW -- Help › User Manual, Keyboard Shortcuts -- WP UB2 -- Window › Mode…
   assert.equal(ITEM_ACTIONS.length, 33);
   for (const [menu, groups] of Object.entries(MENUS)) for (const id of groups.flat()) assert.ok(isAction(id), `${menu}: ${id}`);
   // -- INTC -- "files": the desktop Equaliser's Files ▾ (MenuTable's place, DL8 fold)

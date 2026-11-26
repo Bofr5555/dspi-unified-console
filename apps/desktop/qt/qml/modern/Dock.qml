@@ -19,6 +19,9 @@ Rectangle {
     property Item dialogs: null
     readonly property bool writable: DeviceModel.connected && !DeviceModel.readOnly
     readonly property bool narrow: width < 1180
+    // -- WP UB2 -- (UXP B2, D4) Simple and the locked user: the User volume and Mute (no
+    // Master, the Installer's; no Bypass EQ, setting up); the lock refuses a source change
+    readonly property bool simple: ModeController.mode === "simple" || LimitsController.locked
 
     implicitHeight: 44
     color: Theme.sidebar
@@ -44,7 +47,7 @@ Rectangle {
             model: SidebarController.sources
             textRole: "title"
             valueRole: "value"
-            enabled: dock.writable
+            enabled: dock.writable && !LimitsController.locked   // -- WP UB2 --
             // The device's, not the click's; again when the list changes
             function follow() { currentIndex = Qt.binding(() => indexOfValue(SidebarController.source)) }
             Component.onCompleted: follow()
@@ -66,6 +69,7 @@ Rectangle {
             objectName: "Dock.mode"
             track: Theme.barControl   // -- WP REVDFIX -- D1
             label: qsTr("Volume mode")
+            visible: !dock.simple   // -- WP UB2 --
             model: [qsTr("User"), qsTr("Master")]
             current: volume.master ? 1 : 0
             onChosen: index => SidebarController.volumeMode = index === 1 ? "master" : "user"
@@ -91,7 +95,7 @@ Rectangle {
             id: volume
             objectName: "Dock.volume"
             AiTouched { objectName: "Dock.volume.touched"; path: "vol." }   // -- WP AIVIS --
-            readonly property bool master: SidebarController.volumeMode === "master"
+            readonly property bool master: !dock.simple && SidebarController.volumeMode === "master"   // -- WP UB2 --
             readonly property real deviceDb: master ? SidebarController.masterVolumeDb : SidebarController.userVolumeDb
             function toPosition(db) { return master ? SidebarController.masterDbToPosition(db) : SidebarController.userDbToPosition(db) }
             function toDb(position) { return master ? SidebarController.masterPositionToDb(position) : SidebarController.userPositionToDb(position) }
@@ -197,6 +201,7 @@ Rectangle {
             objectName: "Dock.bypass"
             iconName: "circle-x"
             text: qsTr("Bypass EQ")
+            visible: !dock.simple   // -- WP UB2 --
             on: ShortcutController.bypassed
             onClicked: ShortcutController.toggleBypass()
         }

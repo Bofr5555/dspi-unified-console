@@ -14,6 +14,17 @@ changed is decided by the installer's limits and, on a hub, by the user's role (
 The names in the UI are **Simple**, **Advanced** and **Installer**. The new screens of the Advanced mode (System view, scene bar,
 status rail and the rest of section 2) are called the *Pro layer* in plans and code; "Pro" is not a word in the UI.
 
+*Home, the remote (WP UB2, UXP B2 and D4, owner 2026-11-25):* Simple's first screen and the locked user's screen is
+**Home**, a remote on every client width: the device and its connection, one big User volume (the Master is the
+Installer's) with Mute, the source as segments, the presets as a Recall list (no Save, no Copy Here), the rooms' and
+zones' volumes on an installation (web), and one health line; nothing else. Simple's dock has no Master volume and no
+Bypass EQ. In the locked-user state nothing that the lock refuses is offered: the source is shown in words, Save,
+undo and redo leave the top bar, and on the desktop every page that changes the device renders read-only (its
+controls off, its scroll on, one notice with Go to Home; Devices and Settings stay as they are, the Installer page
+holds the PIN). The web keeps the locked user to Home alone (`lockedUser.screens`). Built: web
+(`screens/home/`, `ui/screens.tsx`), Qt Modern (`HomeSection.qml`, SectionTable's `overview/home`, PageHost's
+`lockRead`); Classic and the Terminal are unchanged; Android's Home uses the same words.
+
 ## 1. The rule that comes first: nothing is locked unless someone locks it
 
 - With **no installer PIN set** on a device, nothing is locked: every mode is reachable from the mode switch, with no PIN
@@ -27,7 +38,7 @@ status rail and the rest of section 2) are called the *Pro layer* in plans and c
 | | Simple | Advanced | Installer | Locked user (a state) |
 |---|---|---|---|---|
 | **For** | Listening on one device | Setting up and tuning; the default everywhere (phones too, owner D9 2026-11-25, until Simple means more there) | Installing and handing over a system | A system an installer has set up for someone else |
-| **First screen** | A front page: device and connection, volume, mute and bypass, presets, source, output meters, one health line | The classic main window today; the System view once the Pro layer exists (desktop, web). Phones: the front page | As Advanced | The front page, with a lock badge, one line saying what is locked, and the installer's contact |
+| **First screen** | Home, a remote: device and connection, the User volume and mute, source, presets, one health line (UB2: no bypass; meters in the dock) | The classic main window today; the System view once the Pro layer exists (desktop, web). Phones: the front page | As Advanced | The front page, with a lock badge, one line saying what is locked, and the installer's contact |
 | **Navigation** | Home, EQ, Tools, Settings: today's screens, under the front page | Today's screens, plus the Pro layer: System view, Channels and EQ, Routing, Dynamics and effects, Hardware, History; a scene bar; a status rail | Advanced plus Limits and power-on; firmware, factory reset, core voltage | Home only; Settings shows About and the installer's note |
 | **Changes** | Everything today's screens offer | Everything the limits allow | Everything, the limits included | Volume, mute and preset, within the installer's ranges |
 | **Monitoring** | Output meters and the health line | Meters with hold, limiter gain reduction, CPU, temperature, alarms, history (as the core gains them), the event log and the diagnostics bundle | The same | Meters and the health line |

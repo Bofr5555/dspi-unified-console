@@ -45,7 +45,13 @@ Item {
     // Classic's selection stays, and shows
     Component.onCompleted: {
         if (SidebarController.selectedChannel >= 0) pages.go("equaliser", "peq")
+        if (SectionTable.homeShown) pages.go("overview", "home")   // -- WP UB2 --
         pages.trail = []
+    }
+    // -- WP UB2 -- (UXP B2, D4) Simple, or the installer's lock, opens on Home
+    Connections {
+        target: SectionTable
+        function onHomeShownChanged() { if (SectionTable.homeShown && !shell.wizard) pages.go("overview", "home") }
     }
     Connections {
         target: SidebarController
@@ -219,6 +225,18 @@ Item {
                     tab: pages.tab
                     pills: shell.topTabs
                     onChosen: tab => pages.go(pages.section, tab)
+                }
+                // -- WP UB2 -- (UXP B2) a page the installer's lock shows read-only says so once
+                NoticeRow {
+                    objectName: "ModernShell.lockRead"
+                    Layout.fillWidth: true
+                    Layout.leftMargin: Theme.spacing
+                    Layout.rightMargin: Theme.spacing
+                    visible: pages.lockRead && !shell.senderPage
+                    iconName: "lock"
+                    text: qsTr("Locked by the installer: this page is shown read-only. Volume, mute and presets are on Home.")
+                    actionText: qsTr("Go to Home")
+                    onAction: pages.go("overview", "home")
                 }
                 Item {
                     Layout.fillWidth: true

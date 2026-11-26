@@ -77,7 +77,8 @@ export function useSessionBar(props: {
     ),
     right: (
       <div class="session-actions" role="group" aria-label="Device actions">
-        <UndoButtons session={session} state={state} />
+        {/* -- WP UB2 -- (UXP B2) the locked user's undo would be refused: not offered, as Save */}
+        {props.locked ? null : <UndoButtons session={session} state={state} />}
         {props.locked ? null : (
           <span class={`save-split${n ? " primary" : ""}`}>
             {/* -- WP UWN -- (UXP A15) one name with the count in words ("Save to Device, 1 unsaved change"), never "Save to Device0" */}

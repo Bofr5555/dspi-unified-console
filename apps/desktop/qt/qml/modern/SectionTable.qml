@@ -38,7 +38,12 @@ QtObject {
     readonly property var sections: [
         {
             id: "overview", title: qsTr("Overview"), icon: "layout-dashboard", sender: true,
-            tabs: [{ tab: "overview", title: qsTr("Overview"), icon: "layout-dashboard", content: "OverviewSection", tools: "OverviewTools" }]
+            tabs: [
+                // -- WP UB2 -- (UXP B2, D4) Home, the remote: Simple's first page and the locked user's
+                { tab: "home", title: qsTr("Home"), icon: "house", content: "HomeSection" },
+                { tab: "overview", title: qsTr("Overview"), icon: "layout-dashboard", content: "OverviewSection", tools: "OverviewTools" }
+            ],
+            shows: tab => tab !== "home" || SectionTable.homeShown   // -- WP UB2 --
         },
         {
             id: "equaliser", title: qsTr("Equaliser"), icon: "sliders-vertical",
@@ -124,6 +129,13 @@ QtObject {
             now: () => SettingsController.groupOf(SettingsController.currentPage)
         }
     ]
+
+    // -- WP UB2 -- (UXP B2, D4) Home is there in Simple and for the locked user
+    readonly property bool homeShown: ModeController.mode === "simple" || LimitsController.locked
+    // -- WP UB2 -- Under the installer's lock a page that changes the device is shown
+    // read-only; Home (what the lock lets through), Devices and Settings (the app's
+    // own settings, the Installer page's Unlock) stay as they are
+    function lockFree(id, tab) { return id === "devices" || id === "settings" || (id === "overview" && tab === "home") }
 
     function section(id) { return sections.find(s => s.id === id) || null }
 

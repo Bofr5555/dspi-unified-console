@@ -83,6 +83,7 @@ import { HistoryScreen } from "../screens/history/HistoryScreen"; // -- WP WEBM3
 // -- WP WEB7 -- Library's Presets and AutoEQ tabs (Qt's LibraryPresets, AutoEqPanel)
 import { PresetsScreen } from "../screens/presets/PresetsScreen";
 import { AutoEqScreen } from "../screens/autoeq/AutoEqScreen";
+import { HomeScreen } from "../screens/home/HomeScreen"; // -- WP UB2 -- (UXP B2) the remote
 
 // -- WP WEBM1 -- the Modern shell
 import { Frame } from "./shell/Frame";
@@ -131,6 +132,11 @@ export interface ScreenProps {
   // -- WP P2WB1 --
   /** The session's hub: its devices, health and alarms (the hub screen). */
   hub?: HubFeed;
+  // -- WP UB2 --
+  /** The session's health, for Home's one line. */
+  health?: HealthFeed;
+  /** The locked-user state (the installer's lock): Home leaves out what the lock refuses. */
+  locked?: boolean;
 }
 
 export interface ScreenDef {
@@ -140,6 +146,7 @@ export interface ScreenDef {
 }
 
 export const SCREENS: ScreenDef[] = [
+  { id: "home", label: "Home", View: HomeScreen }, // -- WP UB2 -- (UXP B2) Simple's first page, the locked user's only one
   { id: "main", label: "Dashboard", View: MainScreen },
   // -- WP WB6b --
   { id: "eq", label: "PEQ", View: EqScreen }, // -- WP WEBM2 -- the Equaliser's PEQ tab (MODLAY 2)
@@ -197,9 +204,11 @@ const TOOLS = new Set(["generator", "analyser", "stats", "monitor", "measure" /*
  */
 export function screensFor(mode: Mode, installation: boolean): ScreenDef[] {
   // -- WP WB8 -- the event log last, in Advanced and Installer
-  const today = SCREENS.filter((x) => x.id !== "system" && !isSystemPage(x.id) /* -- WP WEB7 -- */ && x.id !== "events" && x.id !== "installer" && !TOOLS.has(x.id) && x.id !== "settings"); // -- WP WB6J -- tools -- WP WB6I -- settings
+  // -- WP UB2 -- (UXP B2, D4) Home, the remote, is Simple's first page (and the locked user's only one), in no other mode
+  const home = SCREENS.filter((x) => x.id === "home");
+  const today = SCREENS.filter((x) => x.id !== "home" && x.id !== "system" && !isSystemPage(x.id) /* -- WP WEB7 -- */ && x.id !== "events" && x.id !== "installer" && !TOOLS.has(x.id) && x.id !== "settings"); // -- WP WB6J -- tools -- WP WB6I -- settings
   const settings = SCREENS.filter((x) => x.id === "settings"); // -- WP WB6I -- last, in every mode
-  if (mode === "simple") return [...today.filter((x) => !SETUP.has(x.id)), ...settings]; // -- WP P1WB1 -- -- WP WB6I -- settings
+  if (mode === "simple") return [...home, ...today.filter((x) => !SETUP.has(x.id)), ...settings]; // -- WP UB2 -- home // -- WP P1WB1 -- -- WP WB6I -- settings
   const tools = SCREENS.filter((x) => TOOLS.has(x.id)); // -- WP WB6J --
   const system = SCREENS.find((x) => x.id === "system")!;
   const systemTabs = SCREENS.filter((x) => isSystemPage(x.id)); // -- WP WEB7 --
@@ -210,9 +219,9 @@ export function screensFor(mode: Mode, installation: boolean): ScreenDef[] {
 }
 
 // -- WP P1WB2 --
-/** The locked-user state's screens: the front page alone (the manifest's `lockedUser.screens`). */
+/** The locked-user state's screens: the front page alone (the manifest's `lockedUser.screens`). -- WP UB2 -- Home, the remote */
 export function lockedScreens(): ScreenDef[] {
-  return SCREENS.filter((x) => x.id === "main");
+  return SCREENS.filter((x) => x.id === "home");
 }
 
 // -- WP P2WB1 --
@@ -532,7 +541,7 @@ export function Screens(props: {
       dock={
         // -- WP UWN -- (UXP A16) the link away: nothing here writes (the strip says why), as the hub page fences itself
         <fieldset class="link-fence" disabled={away}>
-          <Dock session={session} state={st} locked={lockedUser} meters={props.meters} load={<CoreLoad feed={health} /> /* -- WP REVEFIX -- */} />
+          <Dock session={session} state={st} locked={lockedUser} simple={mode === "simple" || lockedUser /* -- WP UB2 -- */} meters={props.meters} load={<CoreLoad feed={health} /> /* -- WP REVEFIX -- */} />
         </fieldset>
       }
     >
@@ -544,7 +553,7 @@ export function Screens(props: {
       ) : (
         // -- WP UWN -- (UXP A16) fenced while the link is away; the fieldset is always there, so a screen keeps its state
         <fieldset class="link-fence" disabled={away} aria-disabled={away || undefined} title={away ? "The DSPi is not reached now: nothing can be changed until the link is back" : undefined}>
-          <screen.View key={`${screen.id}:${jump}` /* -- WP WEBM4 -- */} session={session} ask={ask} unsaved={unsaved} system={system} mode={mode} desk={desk} open={openAt} target={target} hub={hub} /* -- WP P2WB1 -- */ go={setCurrent} /* -- WP INTD -- */ />
+          <screen.View key={`${screen.id}:${jump}` /* -- WP WEBM4 -- */} session={session} ask={ask} unsaved={unsaved} system={system} mode={mode} desk={desk} open={openAt} target={target} hub={hub} /* -- WP P2WB1 -- */ go={setCurrent} /* -- WP INTD -- */ health={health} locked={lockedUser} /* -- WP UB2 -- */ />
         </fieldset>
       )}
       {shortcutsOpen ? <ShortcutsDialog screens={shownIds} onClose={() => setShortcutsOpen(false)} /> : null}

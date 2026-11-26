@@ -336,7 +336,7 @@ test.describe("P1WB2 on a hub", () => {
     hub = undefined;
   });
 
-  test("P1WB2 lock: the locked-user view, a refused write in the hub's words, the one prompt naming the hub; unlocked, the pinned mode", async ({ page }) => {
+  test("P1WB2 lock: the locked-user view (-- WP UB2 -- Home, nothing refused), the one prompt naming the hub; unlocked, the pinned mode", async ({ page }) => {
     test.setTimeout(90_000);
     const errors = errorsOf(page);
     const serial = "DEMO-ALINK-A";
@@ -360,18 +360,22 @@ test.describe("P1WB2 on a hub", () => {
       await expect(activeRow.getByRole("menuitem", { name: item })).toBeDisabled();
     await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");
-    // Volume passes; Bypass is refused, by the hub, in its notice row's words (-- WP INTD -- the
-    // Overview's output trims are gone; the dock's Bypass is the write the lock leaves out there).
-    const volume = session.getByRole("slider", { name: "Volume" });
-    const shown = await session.locator(".volume-value").textContent();
+    // Volume passes (-- WP UB2 -- on Home, the remote, the locked user's page).
+    const home = session.locator(".home-screen");
+    await expect(home.getByRole("region", { name: "Presets" })).toBeVisible();
+    const volume = home.getByRole("slider", { name: "Volume" });
+    const shown = await home.locator(".home-volume-value").textContent();
     await volume.fill("100");
     await volume.dispatchEvent("change");
-    await expect(session.locator(".volume-value")).not.toHaveText(shown!);
+    await expect(home.locator(".home-volume-value")).not.toHaveText(shown!);
     await expect(session.locator("p.error")).toHaveCount(0);
-    await session.getByRole("button", { name: "Bypass EQ", exact: true }).click();
-    const refused = session.locator("p.error.notice");
-    await expect(refused).toHaveAttribute("data-key", /^installer_lock/);
-    await shot(page, "locked-refused", refused);
+    // -- WP UB2 -- (UXP B2) nothing that the lock refuses is offered: no Bypass EQ, no Master, no undo, the source as words
+    await expect(session.getByRole("button", { name: "Bypass EQ", exact: true })).toHaveCount(0);
+    await expect(session.getByRole("button", { name: "Master", exact: true })).toHaveCount(0);
+    await expect(session.getByRole("button", { name: "Undo", exact: true })).toHaveCount(0);
+    await expect(home.getByRole("group", { name: "Source" })).toHaveCount(0);
+    await expect(home.locator(".home-source")).toContainText("Source: ");
+    await expect(session.locator(".dock-source")).toBeDisabled();
     // The mode switch says why it is not switchable.
     await rail.getByRole("button", { name: "Mode: Locked" }).click();
     const modes = page.getByRole("dialog", { name: "Mode" });
@@ -396,9 +400,8 @@ test.describe("P1WB2 on a hub", () => {
     await rail.getByRole("button", { name: /^Mode:/ }).click();
     await expect(page.getByRole("dialog", { name: "Mode" })).toContainText("This console is pinned to Simple for this DSPi.");
     await page.getByRole("dialog", { name: "Mode" }).getByRole("button", { name: "Cancel" }).click();
-    // -- WP INTD -- unlocked, the Bypass the lock refused goes through
-    await session.getByRole("button", { name: "Bypass EQ", exact: true }).click();
-    await expect(session.getByRole("button", { name: "Bypass EQ", exact: true })).toHaveAttribute("aria-pressed", "true");
+    // -- WP UB2 -- unlocked and pinned to Simple: Home, its source a control again (the lock no longer refuses it)
+    await expect(session.locator(".home-screen").getByRole("group", { name: "Source" })).toBeVisible();
     await expect(session.locator("p.error")).toHaveCount(0);
     await shot(page, "unlocked-pinned");
     expect(errors).toEqual([]);

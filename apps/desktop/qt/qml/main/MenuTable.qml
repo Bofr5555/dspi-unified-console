@@ -134,7 +134,10 @@ QtObject {
                 { id: "window.popOutGraph", text: qsTr("Pop Out Graph"), modern: ["graph.view"] },
                 // -- WP LKUI1 -- the hub's audio link installation (SystemController)
                 { separator: true },
-                { id: "window.system", text: qsTr("System…"), optional: true }
+                { id: "window.system", text: qsTr("System…"), optional: true },
+                // -- WP UB2 -- (UXP B2, D4) the modes have come: Simple is Home, a remote, first
+                { separator: true },
+                { id: "window.mode", text: qsTr("Mode…"), modern: ["appMenu.settings"] }
                 // -- WP QP18 -- docs/UI-MODES.md §5 (ModeController)
                 // -- WP QPI5 -- hidden until the modes come (owner, 2026-11-13);
                 // ModeController and ModeWindow stay, and the rows come back as
