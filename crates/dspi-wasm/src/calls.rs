@@ -1454,7 +1454,11 @@ mod tests {
         assert_eq!(ok(h, "speakerLayout", Value::Null)["confirmedByUser"], true);
         // Not on a document: only the demo DSPi does that
         let doc = include_str!("../../../tests/fixtures/preset/k340-bug1.dspipreset");
-        ok(h, "documentOpen", json!({ "text": doc, "fileName": "k340.dspipreset" }));
+        ok(
+            h,
+            "documentOpen",
+            json!({ "text": doc, "fileName": "k340.dspipreset" }),
+        );
         let r = run(h, "demo", json!({ "action": "reset" }));
         assert_eq!(r["ok"], false, "{r}");
         session_free(h).unwrap();

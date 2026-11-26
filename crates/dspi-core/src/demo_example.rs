@@ -168,11 +168,14 @@ impl DspiCore {
 
     /// Open the demo device as the bundled capture left it, without the
     /// example (no filters, USB 1 and 2 on outputs 1 and 2, nothing named, no
-    /// speaker layout): for tests of a new board. Replaces any open device.
+    /// speaker layout: one kept for its serial is forgotten): for tests of a
+    /// new board. Replaces any open device.
     pub fn open_demo_blank(&self) -> Result<()> {
         let demo = FakeDevice::demo();
         let serial = demo.descriptor().serial.clone();
-        self.attach_probed(Box::new(demo), serial, 0)
+        self.attach_probed(Box::new(demo), serial.clone(), 0)?;
+        self.speaker_layouts.forget(&serial);
+        Ok(())
     }
 }
 
