@@ -305,6 +305,26 @@ void ub7Section(SmokeDriver &d) {
     for (const QVariant &v : tc->layout()) tuneTicks = tuneTicks || ub7Shown(tune, QStringLiteral("MeasureTune.output.%1").arg(v.toMap().value(QStringLiteral("output")).toInt()));
     check("the outputs to tune as tick boxes", tc->layout().isEmpty() || tuneTicks);
     d.grab(d.mainWindow(), QStringLiteral("ub7-tune.png"));
+    // An output left out of this tune stays out when the tab shows again (its feeds read again)
+    auto tuneOn = [&](int o) {
+        for (const QVariant &v : tc->layout())
+            if (v.toMap().value(QStringLiteral("output")).toInt() == o) return v.toMap().value(QStringLiteral("on")).toBool();
+        return true;
+    };
+    int leftOut = -1;
+    for (const QVariant &v : tc->layout())
+        if (v.toMap().value(QStringLiteral("on")).toBool()) leftOut = v.toMap().value(QStringLiteral("output")).toInt();
+    if (leftOut >= 0) {
+        ub7Toggle(ub7Shown(tune, QStringLiteral("MeasureTune.output.%1").arg(leftOut)));
+        settle();
+        d.goTo(QStringLiteral("measure/results"), 200);
+        d.goTo(QStringLiteral("measure/tune"), 400);
+        settle();
+        check("an output left out of the tune stays out when the tab shows again", !tuneOn(leftOut) && !tc->layout().isEmpty());
+        tc->setOutputOn(leftOut, true);
+    } else {
+        d.notRun(QStringLiteral("ub7: the tune's choices kept"), QStringLiteral("no output on in the tune's layout"));
+    }
 
     // ---- Left as found ---------------------------------------------------------------------------
     if (!found.value(QLatin1String("value")).isNull() && found.contains(QLatin1String("outputs"))) ub7Keep(d, found, foundConfirmed);

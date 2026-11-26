@@ -147,7 +147,7 @@ public:
     QString error() const { return session()->error(); }
     bool busy() const { return session()->busy(); }
 
-    Q_INVOKABLE void reloadLayout() { session()->reloadLayout(); }
+    Q_INVOKABLE void reloadLayout(bool keepChoices = false) { session()->reloadLayout(keepChoices); }   // -- WP UB7 -- keepChoices
     Q_INVOKABLE void setOutputOn(int output, bool on) { session()->setOutputOn(output, on); }
     Q_INVOKABLE void setOutputRole(int output, const QString &role) { session()->setOutputRole(output, role); }
     Q_INVOKABLE void setOutputSpeaker(int output, const QString &speaker) { session()->setOutputSpeaker(output, speaker); }

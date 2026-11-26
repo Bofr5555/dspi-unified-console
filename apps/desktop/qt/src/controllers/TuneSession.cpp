@@ -13,6 +13,7 @@
 #include <QCoreApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QSet>   // -- WP UB7 --
 #include <QTimer>
 #include <algorithm>
 #include <cmath>
@@ -280,10 +281,15 @@ void TuneSession::takeLayout(const QJsonObject &layout) {
     if (changed) emit layoutChanged();
 }
 
-void TuneSession::reloadLayout() {
+void TuneSession::reloadLayout(bool keepChoices) {
     MeasureSession *m = measure();
     if (!m) return;
     const quint64 epoch = m_layoutEpoch;
+    // -- WP UB7 -- the outputs the person left out of this tune
+    QSet<int> leftOut;
+    if (keepChoices)
+        for (const QVariant &v : std::as_const(m_layout))
+            if (!v.toMap().value(QStringLiteral("on")).toBool()) leftOut.insert(v.toMap().value(QStringLiteral("output")).toInt());
     m->onLoop(this,
               [](FfiCore *c) {
                   // -- WP ROLEQ -- the proposal's feeds with the roles,
@@ -306,9 +312,9 @@ void TuneSession::reloadLayout() {
                   o.insert(QStringLiteral("outputs"), outs);
                   return QJsonDocument(o).toJson(QJsonDocument::Compact);
               },
-              [this, m, epoch](const QByteArray &r) {
+              [this, m, epoch, leftOut, keepChoices](const QByteArray &r) {
                   if (epoch != m_layoutEpoch) {   // -- WP RCFIX --
-                      reloadLayout();
+                      reloadLayout(keepChoices);
                       return;
                   }
                   const QJsonObject o = MeasureSession::object(r);
@@ -327,7 +333,7 @@ void TuneSession::reloadLayout() {
                       const QString word = words.value(QLatin1String("outputs")).toArray().at(n).toString();
                       rows.append(QVariantMap{ { QStringLiteral("output"), n },
                                                { QStringLiteral("label"), word.isEmpty() ? m->outputName(n) : word },
-                                               { QStringLiteral("on"), measured(n) },
+                                               { QStringLiteral("on"), measured(n) && !leftOut.contains(n) },   // -- WP UB7 --
                                                { QStringLiteral("role"), str(p, "role") },
                                                { QStringLiteral("speaker"), str(p, "speaker") },
                                                { QStringLiteral("group"), p.value(QLatin1String("group")).toInt() },

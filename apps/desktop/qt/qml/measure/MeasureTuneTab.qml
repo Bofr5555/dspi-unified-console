@@ -34,7 +34,7 @@ ScrollView {
     readonly property bool beforeApply: !tc.applied && tc.stage !== "kept"
     // -- WP UB7 -- (was the button "Propose from the Device") the feeds read
     // again each time the tab shows, before a proposal
-    onVisibleChanged: if (visible && idle && beforeApply && !tc.hasProposal) tc.reloadLayout()
+    onVisibleChanged: if (visible && idle && beforeApply && !tc.hasProposal) tc.reloadLayout(true)
 
     // -- WP DL2 -- Modern: the steps as dots over sections (a label, no box,
     // no number), one notice for what is missing, the state of each line in

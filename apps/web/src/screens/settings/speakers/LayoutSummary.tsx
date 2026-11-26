@@ -10,13 +10,15 @@ export function LayoutSummary(props: { view: LayoutView; loaded: boolean; onEdit
   const text = loaded ? layoutSummary(baseOf(view), !!view.stored) : "";
   if (!text) return null;
   return (
-    <p class="layout-summary" role="status" aria-label="Speaker layout summary">
-      <span class="layout-summary-text">{text}</span>
+    <div class="layout-summary">
+      <span class="layout-summary-text" role="status" aria-label="Speaker layout summary">
+        {text}
+      </span>
       {onEdit ? (
         <button type="button" onClick={onEdit}>
           Edit in Speakers…
         </button>
       ) : null}
-    </p>
+    </div>
   );
 }

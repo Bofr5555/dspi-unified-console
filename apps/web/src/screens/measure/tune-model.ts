@@ -514,8 +514,10 @@ export class TuneDesk {
     if (st) this.state = st;
     this.proposal = p;
     this.ab = ab?.active ? ab : null;
-    // -- WP UB7 -- (was the button "Propose from the Device") the feeds read again each time the tab shows, before a proposal
-    if (!this.layout || (!this.proposal && !this.applied && !this.running)) await this.loadLayout();
+    // -- WP UB7 -- (was the button "Propose from the Device") the feeds read again each time the tab
+    // shows, before a proposal; the outputs left out of this tune stay out
+    if (!this.layout) await this.loadLayout();
+    else if (!this.proposal && !this.applied && !this.running) await this.loadLayout(true);
     this.changed();
   }
 
@@ -530,10 +532,10 @@ export class TuneDesk {
     await this.closeMic();
   }
 
-  async loadLayout(): Promise<void> {
+  async loadLayout(keepOff = false): Promise<void> {
     try {
       this.layout = await this.call("measureLayoutProposal", undefined);
-      this.off = new Set();
+      if (!keepOff) this.off = new Set(); // -- WP UB7 --
     } catch (e) {
       this.fail(e);
     }
