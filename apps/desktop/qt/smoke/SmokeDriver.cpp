@@ -434,11 +434,15 @@ QMap<QString, QString> SmokeDriver::stateNow() const {
         { "SidebarController", "volumeMode" }, { "SidebarController", "userVolumeDb" },
         { "SidebarController", "bypassOn" }, { "SidebarController", "unsaved" }, { "SidebarController", "openWindows" },
         { "DeviceLinkController", "linked" }, { "SpeakersController", "status" },
+        { "NoticeCenter", "current" },   // a toast left showing takes the clicks under it
     };
     for (const auto &[type, prop] : kProps) {
         QObject *o = m_.engine->singletonInstance<QObject *>("UConsole", type);
         st.insert(QStringLiteral("%1.%2").arg(QLatin1String(type), QLatin1String(prop)), o ? stateText(o->property(prop)) : QStringLiteral("?"));
     }
+    // The agents paired (how many: a client's entry is not for the log)
+    if (QObject *ai = m_.engine->singletonInstance<QObject *>("UConsole", "AiController"))
+        st.insert(QStringLiteral("AiController.clients"), QString::number(ai->property("clients").toList().size()));
     st.insert(QStringLiteral("device"), QStringLiteral("connected %1 demo %2 remote %3")
                                             .arg(m_.device->connected()).arg(m_.device->demo()).arg(m_.device->remote()));
     if (QQuickWindow *w = mainWindow()) {
