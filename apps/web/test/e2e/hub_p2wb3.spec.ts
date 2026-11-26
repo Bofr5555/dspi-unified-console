@@ -10,7 +10,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { openPage } from "../nav";
+import { hubDetails, openHubPart, openOnHub, openPage } from "../nav"; // -- WP UB6 -- the Fleet, the hub page's parts
 
 const DEMO = "DEMO0000DSPI0001";
 const AWAY = "DEMO-OFFLINE-0042";
@@ -81,10 +81,7 @@ async function stopHub(h: OwnHub): Promise<void> {
 /** The demo DSPi opened from the hub's inventory, in Advanced. */
 async function openDemo(page: Page, hub: OwnHub): Promise<Locator> {
   await page.goto(`http://127.0.0.1:${hub.port}/console/`);
-  const picker = page.getByRole("navigation", { name: "DSPi devices" });
-  await picker.getByRole("listitem").filter({ hasText: "· online" }).getByRole("button", { name: "Connect" }).click();
-  const session = page.getByRole("article").last();
-  await expect(session).toHaveAttribute("data-serial", new RegExp(DEMO));
+  const session = await openOnHub(page, { host: `127.0.0.1:${hub.port}`, serial: DEMO }); // -- WP UB6 -- the Fleet's Open
   await setMode(session, page, "Advanced");
   return session;
 }
@@ -118,13 +115,14 @@ test.describe("P2WB3 on a hub", () => {
     // Identify: the demo blinks now (hubIdentifySerial).
     await own.getByRole("button", { name: "Identify" }).click();
     await expect(devices.getByRole("status", { name: "Action result" })).toContainText(/blinking for \d+ s\./);
-    // An offline row: no Identify, an Admin's Edit and Forget.
+    // An offline row: no Identify, an Admin's Edit and Forget (-- WP UB6 -- in its details).
     const away = devices.getByRole("row", { name: "Bar" });
     await expect(away.getByRole("button", { name: "Identify" })).toHaveCount(0);
-    await expect(own.getByRole("button", { name: /^Forget/ })).toHaveCount(0);
+    await expect(devices.locator("tbody").filter({ has: own }).getByRole("button", { name: /^Forget/ })).toHaveCount(0);
+    let awayBody = await hubDetails(devices, "Bar");
 
     // The details: location, note, tags, saved at the hub and shown from its answer.
-    await away.getByRole("button", { name: "Edit the details of Bar" }).click();
+    await awayBody.getByRole("button", { name: "Edit the details of Bar" }).click();
     const form = devices.getByRole("form", { name: "Details of Bar" });
     await form.getByLabel("Location").fill("Back bar");
     await form.getByLabel("Note").fill("Spare unit");
@@ -133,10 +131,11 @@ test.describe("P2WB3 on a hub", () => {
     await form.getByRole("button", { name: "Save" }).click();
     await expect(form).toHaveCount(0);
     await expect(away).toContainText("Back bar");
-    await expect(away.locator(".hub-tags")).toHaveText("spare, bar");
-    await expect(away.locator(".hub-note")).toHaveText("Spare unit");
+    await expect(awayBody.locator(".hub-tags dd")).toHaveText("spare, bar");
+    await expect(awayBody.locator(".hub-note dd")).toHaveText("Spare unit");
 
-    // Rename the hub.
+    // Rename the hub (-- WP UB6 -- the Hub part).
+    await openHubPart(session, "Hub");
     const own2 = session.getByRole("region", { name: "The hub" });
     await own2.getByRole("button", { name: "Rename the Hub…" }).click();
     await own2.getByLabel("New name").fill("Studio hub");
@@ -148,12 +147,14 @@ test.describe("P2WB3 on a hub", () => {
     expect(JSON.stringify(info)).toContain("Studio hub");
 
     // Forget the offline DSPi: asked first; Cancel keeps it.
-    await away.getByRole("button", { name: "Forget Bar" }).click();
+    await openHubPart(session, "Devices"); // -- WP UB6 --
+    awayBody = await hubDetails(devices, "Bar");
+    await awayBody.getByRole("button", { name: "Forget Bar" }).click();
     const ask = page.getByRole("dialog", { name: "Forget the DSPi" });
     await expect(ask).toContainText("snapshots");
     await ask.getByRole("button", { name: "Cancel" }).click();
     await expect(away).toHaveCount(1);
-    await away.getByRole("button", { name: "Forget Bar" }).click();
+    await awayBody.getByRole("button", { name: "Forget Bar" }).click();
     await page.getByRole("dialog", { name: "Forget the DSPi" }).getByRole("button", { name: "Forget and Delete Its Snapshots" }).click();
     await expect(devices.getByRole("status", { name: "Action result" })).toContainText("Forgot Bar and its snapshots");
     await expect(devices.getByRole("row", { name: "Bar" })).toHaveCount(0);

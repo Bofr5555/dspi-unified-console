@@ -12,7 +12,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { openPage } from "../nav";
+import { openHubPart, openPage, openOnHub } from "../nav"; // -- WP UB6 -- openOnHub, the hub page's parts
 
 const ONE = "DEMO-ALINK-A";
 const TWO = "DEMO-ALINK-D";
@@ -103,16 +103,8 @@ async function stopHub(h: OwnHub): Promise<void> {
 /** Connect the serving hub (pairing with its PIN when it asks), open `serial`, Advanced mode. */
 async function openUnit(page: Page, hub: OwnHub, serial: string): Promise<Locator> {
   await page.goto(`http://127.0.0.1:${hub.port}/console/`);
-  const row = page.getByRole("navigation", { name: "DSPi devices" }).getByRole("listitem").filter({ hasText: `Hub 127.0.0.1:${hub.port}` });
-  await row.getByRole("button", { name: "Connect" }).click();
-  const session = page.getByRole("article").last();
-  if (hub.pin) {
-    await session.getByLabel("PIN").fill(hub.pin);
-    await session.getByRole("button", { name: "Pair" }).click();
-  }
-  const entry = session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: serial.slice(-8) });
-  await entry.getByRole("button", { name: "Open" }).click();
-  await expect(session).toHaveAttribute("data-serial", new RegExp(serial));
+  // -- WP UB6 -- the Fleet's Open, or (a hub that wants its PIN) its entry, the PIN and its list
+  const session = await openOnHub(page, { host: `127.0.0.1:${hub.port}`, serial: serial, pin: hub.pin });
   const rail = session.getByRole("complementary", { name: "Status" });
   await expect(rail.getByLabel("Connection")).toHaveText(/^Connected/);
   await expect(session.locator(".banner")).toHaveCount(0);
@@ -143,6 +135,7 @@ test.describe("P3WGR on a hub", () => {
     hub = await startHub(seededStore(false), "--open");
     const session = await openUnit(page, hub, ONE);
     await openPage(session, "Hub");
+    await openHubPart(session, "Groups"); // -- WP UB6 --
     const groups = session.getByRole("region", { name: "Groups" });
     await expect(groups).toContainText("The hub has no groups yet.");
 
@@ -162,11 +155,14 @@ test.describe("P3WGR on a hub", () => {
     await expect(details.locator(`li[data-serial="${ONE}"]`)).toContainText("Online");
     await expect(details.locator(`li[data-serial="${TWO}"]`)).toContainText("Online");
 
-    // The health board filters by the group: the offline member listed below.
-    const board = session.getByRole("region", { name: "Health board" });
+    // The device table (-- WP UB6 -- the Devices part, the health board in it) filters by the group: the offline member listed below.
+    await openHubPart(session, "Devices");
+    const board = session.getByRole("region", { name: "Devices on the hub" });
     await board.getByRole("combobox", { name: "Group", exact: true }).selectOption({ label: "Front" });
     await expect(board.locator("tr.hub-health-row")).toHaveCount(3);
     await board.getByRole("combobox", { name: "Group", exact: true }).selectOption({ label: "Every DSPi" });
+    await openHubPart(session, "Groups");
+    await expect(front).toHaveAttribute("aria-pressed", "true");
 
     // A volume with an offset on the second DSPi: what each will get, then each row as the hub answered it.
     const actions = groups.locator(".hub-group-actions");
@@ -247,6 +243,7 @@ test.describe("P3WGR on a hub", () => {
     const session = await openUnit(page, hub, ONE);
     await openPage(session, "Hub");
     await expect(session.getByRole("region", { name: "Devices on the hub" }).locator(".hub-role-tag")).toHaveText("Control");
+    await openHubPart(session, "Groups"); // -- WP UB6 --
     const groups = session.getByRole("region", { name: "Groups" });
     const details = groups.locator(".hub-group");
     await expect(details.getByRole("heading", { name: "Front" })).toBeVisible();
