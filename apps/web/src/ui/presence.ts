@@ -21,6 +21,20 @@ export function presenceText(p: HubPresenceRecord, deviceName: (serial: string) 
   return `${who}${via} is working${on}${what ? `: ${what}` : "."}`;
 }
 
+// -- WP UAG -- (UXP A7) the strip names it and changes nothing: it says where Pause and Stop are
+/** Where the person here stops an agent of `by`'s console, and what Mute here does. */
+export function stopHint(by: string): string {
+  const where = cleanPresence(by);
+  return where
+    ? `Pause and Stop are in the console on ${where}; Mute here silences this device.`
+    : "Pause and Stop are in the agent's console; Mute here silences this device.";
+}
+
+/** A device of the hub by the name its inventory gives it, else its serial. */
+export function nameFrom(names: ReadonlyMap<string, string>): (serial: string) => string {
+  return (serial) => cleanPresence(names.get(serial) ?? "") || serial;
+}
+
 // -- WP ADETW -- (AUTODES 5.2) an agent detecting the speakers: "Detecting speakers: Out 3"
 /** Whether an entry's work is a speaker detection (its console says "Detecting speakers…"). */
 export function detectingSpeakers(what: string): boolean {
@@ -32,6 +46,9 @@ export const DETECTING_HERE = "Quiet test sweeps play on its outputs in turn: ke
 
 class PresenceWatch {
   rows: HubPresenceRecord[] = [];
+  /** -- WP UAG -- the hub's devices by serial, from its inventory (empty on a hub without one). */
+  names: Map<string, string> = new Map();
+  private inventory = false;
   private readonly listeners = new Set<() => void>();
   private stopHub: (() => void) | null = null;
   private reading = false;
@@ -71,8 +88,14 @@ class PresenceWatch {
       if (first) {
         const caps = await this.session.core.call("hubCaps", undefined).catch(() => null);
         if (!caps?.onHub || !(caps.caps ?? []).includes("presence")) return;
+        this.inventory = caps.inventory === true; // -- WP UAG --
       }
       const rows = await this.session.core.call("hubPresenceList", undefined).catch(() => null);
+      // -- WP UAG -- a device the strip names that the page does not know yet: the inventory again
+      if (rows && this.inventory && rows.some((r) => r.serial && !this.names.has(r.serial))) {
+        const devices = await this.session.core.call("hubInventory", undefined).catch(() => null);
+        if (devices) this.names = new Map(devices.map((d) => [d.serial, d.name]));
+      }
       if (rows) this.set(rows);
     } finally {
       this.reading = false;
@@ -107,6 +130,12 @@ export function usePresence(s: Session): HubPresenceRecord[] {
   const [, bump] = useState(0);
   useEffect(() => w.watch(() => bump((n) => n + 1)), [w]);
   return w.rows;
+}
+
+// -- WP UAG --
+/** The hub's devices by serial, as its inventory names them, for the strip (read with the list). */
+export function presenceNames(s: Session): ReadonlyMap<string, string> {
+  return watchOf(s).names;
 }
 
 // -- WP ODEC --
