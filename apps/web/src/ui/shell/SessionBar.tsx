@@ -11,6 +11,7 @@ import { ActionMenuButton } from "../menus/ActionMenu";
 import { menuItems } from "../menus/actions";
 import { factoryReset as askFactoryReset } from "../menus/session-actions";
 import { PresetPopover } from "./PresetPopover"; // -- WP INTD --
+import { AbSegment } from "./AbSegment"; // -- WP UB34 --
 import { UndoButtons, appleKeys } from "../undo";
 import { runKey, type Ask, type Unsaved } from "../screens";
 import type { Session, SessionState } from "../session";
@@ -59,7 +60,13 @@ export function useSessionBar(props: {
   const mod = appleKeys(navigator.platform ?? "") ? "⌘" : "Ctrl+";
   return {
     // -- WP INTD -- the presets as one popover (DL5), in place of the slot picker; -- WP REVEFIX -- (REVE C3) a locked user's Recall only
-    left: <PresetPopover session={session} state={state} ask={ask} unsaved={unsaved} disabled={busy} locked={props.locked} />,
+    // -- WP UB34 -- (UXP B3) then A | B: as saved against now from the first edit
+    left: (
+      <>
+        <PresetPopover session={session} state={state} ask={ask} unsaved={unsaved} disabled={busy} locked={props.locked} />
+        <AbSegment desk={desk} unsaved={n} locked={props.locked} />
+      </>
+    ),
     right: (
       <div class="session-actions" role="group" aria-label="Device actions">
         <UndoButtons session={session} state={state} />
