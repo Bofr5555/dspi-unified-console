@@ -4,7 +4,8 @@ import UConsole
 
 // Settings > Advanced (the Mac's AdvancedSettingsTab): reset the channel
 // names, the debug switch, and on the desktop the open device's facts and the
-// Core Voltage entry (behaviour.md §8). Sections other packages add (the
+// Core Voltage entry (behaviour.md §8). -- WP UA5 -- and its protocol and Raw
+// Request… (they were About's). Sections other packages add (the
 // onboarding developer rows, behind the debug switch) go below.
 SettingsPage {
     id: page
@@ -68,6 +69,31 @@ SettingsPage {
             title: qsTr("Channels")
             value: qsTr("%1 in, %2 out").arg(DeviceModel.numInputs).arg(DeviceModel.numOutputs)
         }
+    }
+
+    // -- WP PGQT -- The open device's protocol (read once per connection), and
+    // the raw request by command id. -- WP UA5 -- moved here from About
+    SettingsGroup {
+        objectName: "Advanced.protocol"
+        visible: DeviceModel.connected
+        title: qsTr("Protocol")
+        iconName: "cpu"
+        DeviceInfoRows {}
+        RowLayout {
+            Layout.fillWidth: true
+            Item { Layout.fillWidth: true }
+            AppButton {
+                objectName: "Advanced.raw"
+                text: qsTr("Raw Request…")
+                enabled: DeviceModel.connected
+                onClicked: rawDialog.open()
+            }
+        }
+    }
+
+    RawRequestDialog {
+        id: rawDialog
+        parent: page.Window.window ? page.Window.window.contentItem : page
     }
 
     // The entry to the Core Voltage page, once a package registers it, on

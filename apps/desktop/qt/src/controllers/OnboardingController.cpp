@@ -39,8 +39,22 @@ const SettingsRegistry::Section developerSection{ "advanced", 50, "OnboardingDev
 // The keys behaviour.md §21.2 names, so a user's state carries over
 const char *const kSetupDoneKey = "onboarding/setupDone";
 const char *const kWhatsNewKey = "onboarding/whatsNewShown";
+// -- WP UFW -- (UXP C8) the newest of the app's own notes read
+const char *const kAppNotesKey = "onboarding/appNotesShown";
 
 using Version = AppUpdater::Version;
+
+// -- WP UFW -- (UXP A8, C8) The newest of the app's own notes (the core's
+// What's New marks them `app`), invalid for none
+Version newestAppNotes(const QVariantList &releases) {
+    Version newest;
+    for (const QVariant &r : releases) {
+        const QVariantMap m = r.toMap();
+        const Version v = Version::parse(m.value(QStringLiteral("version")).toString());
+        if (m.value(QStringLiteral("app")).toBool() && v.valid && (!newest.valid || newest < v)) newest = v;
+    }
+    return newest;
+}
 
 QJsonDocument coreJson(uint32_t (*fill)(char *, uint32_t), uint32_t first) {
     return QJsonDocument::fromJson(readSized([fill](char *buf, uint32_t len) { return fill(buf, len); }, first));
@@ -71,8 +85,11 @@ OnboardingController::OnboardingController(const AppContext &ctx, QObject *paren
     m_gettingStarted = coreJson(dspi_onboarding_getting_started_json, 16384).object().toVariantMap();
     withSpeakersStep(m_gettingStarted);
     m_releases = coreJson(dspi_onboarding_whats_new_json, 16384).array().toVariantList();
-    // Newest first whatever the file's order (the Mac's rule)
+    // Newest first whatever the file's order (the Mac's rule); -- WP UFW -- the
+    // app's own notes before the firmware's (their versions are the app's)
     std::stable_sort(m_releases.begin(), m_releases.end(), [](const QVariant &a, const QVariant &b) {
+        const bool appA = a.toMap().value(QStringLiteral("app")).toBool(), appB = b.toMap().value(QStringLiteral("app")).toBool();
+        if (appA != appB) return appA;
         return Version::parse(b.toMap().value(QStringLiteral("version")).toString())
                < Version::parse(a.toMap().value(QStringLiteral("version")).toString());
     });
@@ -102,8 +119,15 @@ void OnboardingController::showReleaseNotesIfUnread() {
     // Release notes are not onboarding: a new install has nothing to catch up
     // on and starts caught up; after an update the unread notes open once
     const QString shown = whatsNewShown();
-    if (shown.isEmpty()) markWhatsNewRead();
-    else if (!unreadSince(shown).isEmpty()) m_ctx.shell->showTool(QStringLiteral("help.whatsNew"));   // -- WP LAY3 --
+    if (shown.isEmpty()) {
+        markWhatsNewRead();
+        return;
+    }
+    // -- WP UFW -- (UXP C8) by itself only when the app's own notes have news
+    // not read yet; the firmware's notes alone wait in Help › What's New
+    const Version app = newestAppNotes(m_releases);
+    const Version read = Version::parse(QSettings().value(QLatin1String(kAppNotesKey)).toString());
+    if (app.valid && (!read.valid || read < app)) m_ctx.shell->showTool(QStringLiteral("help.whatsNew"));   // -- WP LAY3 --
 }
 
 void OnboardingController::setInstaller(QObject *installer) {
@@ -146,6 +170,8 @@ QVariantList OnboardingController::unreadSince(const QString &shown) const {
 }
 
 void OnboardingController::markWhatsNewRead() {
+    // -- WP UFW -- the app's own notes are read with them
+    if (const Version app = newestAppNotes(m_releases); app.valid) QSettings().setValue(QLatin1String(kAppNotesKey), app.text());
     const QString bundled = bundledFirmware();
     if (bundled.isEmpty() || bundled == whatsNewShown()) return;
     QSettings().setValue(QLatin1String(kWhatsNewKey), bundled);
@@ -156,6 +182,7 @@ void OnboardingController::resetOnboarding() {
     QSettings s;
     s.remove(QLatin1String(kSetupDoneKey));
     s.remove(QLatin1String(kWhatsNewKey));
+    s.remove(QLatin1String(kAppNotesKey));   // -- WP UFW --
     emit whatsNewShownChanged();
     emit wizardShownChanged();
 }

@@ -291,7 +291,9 @@ void buttonMenusPart(Menus &m) {
     m.check("Save ▾ opens", m.click(QStringLiteral("TopBar.save.more")) && m.open("TopBar.save.menu"));
     holds("save", "TopBar.save.menu");
     m.d.grab(m.main, QStringLiteral("modern-save-menu.png"));
-    m.check("Factory Reset asks", m.choose("TopBar.save.menu", "device.factoryReset"));
+    // -- WP UA3 -- (UXP C1) Factory Reset is not in Save ▾ (ua3-savestate: on Devices)
+    m.check("Factory Reset is not in it", !m.row("TopBar.save.menu", "device.factoryReset"));
+    m.check("Revert to Saved asks", m.choose("TopBar.save.menu", "device.revert"));
     QObject *question = m.d.object(QStringLiteral("FilesHost.deviceQuestion"));
     m.check("its question shows", question && m.d.waitFor(2000, [&] { return question->property("opened").toBool(); }));
     if (question) QMetaObject::invokeMethod(question, "finish", Q_ARG(QVariant, QStringLiteral("reject")));
@@ -334,7 +336,8 @@ void buttonMenusPart(Menus &m) {
             && autoeqMenu->findChild<QObject *>(QStringLiteral("AutoEqWindow.menu.autoeq.clearFavorites")));
     if (autoeqMenu) QMetaObject::invokeMethod(autoeqMenu, "close");
     m.settle();
-    for (const char *name : { "TopBar.undo.button", "TopBar.redo", "TopBar.save.button", "TopBar.ab", "TopBar.preset", "DeviceTabs.add", "Dock.mute",
+    // -- WP UA3 -- TopBar.ab shows while a compare runs only (ua3-savestate)
+    for (const char *name : { "TopBar.undo.button", "TopBar.redo", "TopBar.save.button", "TopBar.preset", "DeviceTabs.add", "Dock.mute",
                               "Dock.bypass" })
         m.d.check(QStringLiteral("lay3b: %1, a place that is a control, shows").arg(QLatin1String(name)), m.shown(QString::fromLatin1(name)) != nullptr);
     m.go("overview", "overview");
@@ -367,8 +370,19 @@ void devicePart(Menus &m) {
         return item && !item->isVisible() && item->height() < 1;
     };
     m.check("a right-click on a device tab opens its menu", tab && openMenu());
-    for (const char *which : { "device.identify", "device.reconnect", "device.firmwareUpdate", "device.close" })
+    for (const char *which : { "device.identify", "device.reconnect", "device.firmwareUpdate", "device.factoryReset", "device.close" })
         m.d.check(QStringLiteral("lay3b: %1 is in it").arg(QLatin1String(which)), row(which) != nullptr);
+    // -- WP UFW -- (UXP A3, C1) Factory Reset is the device's, and asks first
+    auto *reset = qobject_cast<QQuickItem *>(row("device.factoryReset"));
+    m.check("Factory Reset is there for the shown device", reset && reset->isEnabled());
+    m.settle();   // the menu in place before the click
+    if (reset) QTest::mouseClick(m.main, Qt::LeftButton, Qt::NoModifier, m.point(reset));
+    m.settle();
+    QObject *question = m.d.object(QStringLiteral("FilesHost.deviceQuestion"));
+    m.check("Factory Reset asks", question && m.d.waitFor(3000, [&] { return question->property("opened").toBool(); }));
+    if (question) QMetaObject::invokeMethod(question, "finish", Q_ARG(QVariant, QStringLiteral("reject")));
+    m.settle();
+    m.check("the tab's menu opens again", openMenu());
     m.check("Close works while nothing pins the device", row("device.close") && row("device.close")->property("enabled").toBool() && noReason());
     shut();
     firmware->pretendRunForTest(session);
@@ -395,6 +409,7 @@ void devicePart(Menus &m) {
     for (const char *which : { "device.identify", "device.reconnect", "device.firmwareUpdate" })
         m.d.check(QStringLiteral("lay3b: the switcher has %1").arg(QLatin1String(which)), m.shown(QStringLiteral("DeviceSwitcher.") + QLatin1String(which)) != nullptr);
     m.check("and not a tab's Close", !m.shown(QStringLiteral("DeviceSwitcher.device.close")));
+    m.check("nor Factory Reset", !m.shown(QStringLiteral("DeviceSwitcher.device.factoryReset")));   // -- WP UFW --
     if (switcher) QMetaObject::invokeMethod(switcher, "close");
     m.settle();
 }

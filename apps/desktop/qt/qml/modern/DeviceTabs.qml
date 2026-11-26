@@ -9,6 +9,10 @@ import UConsole
 // with none a tab says so. Choosing a tab makes its device the active one;
 // the active tab itself opens the switcher. `vertical` is the rail's narrow
 // column of them (LayoutController.arrangement.deviceTabs).
+// -- WP UA3 -- A tab whose device has unsaved changes carries a dot after its
+// name and "5 unsaved" under it (DeviceRegistry's rows). A click on the
+// active tab does nothing; its ▾ opens the device menu ("+" opens the
+// switcher). The tooltip shows only what the tab cuts off.
 Item {
     id: tabs
     objectName: "DeviceTabs"
@@ -106,11 +110,18 @@ Item {
         }
         // What the tab shows, for the smoke driver
         readonly property string shownName: name + (unsecured ? " (" + LinkController.unsecuredLabel + ")" : "")
+        // -- WP UA3 -- the device's unsaved changes
+        readonly property bool dirty: !none && modelData.dirty === true
+        readonly property int unsaved: dirty ? modelData.unsaved : 0
+        readonly property string unsavedText: !dirty ? ""
+            : unsaved > 0 ? qsTr("%1 unsaved").arg(unsaved) : qsTr("unsaved")
+        // Something the tab shows is cut off: the tooltip has it whole
+        readonly property bool elided: tabs.vertical || hNameText.truncated || detailText.truncated
         readonly property string detail: none ? qsTr("Choose a device")
             : modelData.state === "lost" ? qsTr("Not connected")
             : modelData.state === "reconnecting" ? qsTr("Reconnecting…")
             : busy && modelData.job ? modelData.job   // -- WP INT3 --
-            : tabs.transportName(modelData)
+            : (dirty ? unsavedText + " · " : "") + tabs.transportName(modelData)   // -- WP UA3 --
               //: %1 is the firmware's version
               + (active && DeviceModel.firmwareVersion.length ? " · " + qsTr("firmware %1").arg(DeviceModel.firmwareVersion) : "")
         objectName: tabs.objectName + ".tab." + (none ? "none" : modelData.id)
@@ -118,8 +129,9 @@ Item {
         hoverEnabled: true
         focusPolicy: Qt.TabFocus
         onClicked: {
-            if (active) Shell.trigger("device.devices")
-            else DevicesController.chooseOpen(modelData.id)
+            // -- WP UA3 -- the active tab stays where it is (its ▾ has the menu)
+            if (none) Shell.trigger("device.devices")
+            else if (!active) DevicesController.chooseOpen(modelData.id)
         }
 
         contentItem: Item {
@@ -137,9 +149,15 @@ Item {
                         Layout.fillWidth: true
                         spacing: 4
                         NameText {
+                            id: hNameText
                             Layout.fillWidth: true
+                            Layout.maximumWidth: Math.ceil(implicitWidth)   // -- WP UA3 -- the dot right after it (whole pixels: never elided for a fraction)
                             text: tab.name
                             active: tab.active
+                        }
+                        UnsavedDot {
+                            objectName: tabs.objectName + ".dirty." + tab.modelData.id
+                            visible: tab.dirty
                         }
                         Text {
                             objectName: tabs.objectName + ".unsecured"
@@ -148,8 +166,10 @@ Item {
                             font: Theme.fontSmall
                             color: Theme.dangerText
                         }
+                        Item { Layout.fillWidth: true }   // -- WP UA3 --
                     }
                     Text {
+                        id: detailText
                         Layout.fillWidth: true
                         text: tab.detail
                         textFormat: Text.PlainText
@@ -170,6 +190,17 @@ Item {
                     toolTip: qsTr("A DSPi was found that cannot be opened. Show how to give access.")
                     onClicked: DeviceAccess.offer()
                 }
+                // -- WP UA3 -- the active tab's menu (a click on the tab does nothing)
+                IconButton {
+                    id: moreButton
+                    objectName: tabs.objectName + ".more." + tab.modelData.id
+                    visible: tab.active && !tab.none
+                    iconName: "chevron-down"
+                    iconSize: 12
+                    //: %1 is a device's name
+                    toolTip: qsTr("More for %1").arg(tab.name)
+                    onClicked: tabMenu.popupFor({}, moreButton, 0, moreButton.height + 2)
+                }
                 IconButton {
                     objectName: tabs.objectName + ".close." + tab.modelData.id
                     visible: !tab.none
@@ -189,6 +220,12 @@ Item {
                     anchors.horizontalCenter: parent.horizontalCenter
                     row: tab.modelData
                     busy: tab.busy
+                    // -- WP UA3 -- the unsaved dot at its side
+                    UnsavedDot {
+                        x: parent.width + 3
+                        y: -2
+                        visible: tab.dirty
+                    }
                 }
                 NameText {
                     anchors.horizontalCenter: parent.horizontalCenter
@@ -227,6 +264,7 @@ Item {
                 // Except during a hub session (behaviour.md §3)
                 "device.reconnect": { enabled: () => tab.active && !DeviceModel.remote },
                 "device.firmwareUpdate": { enabled: () => tab.active },
+                "device.factoryReset": { enabled: () => tab.active },   // -- WP UFW -- (UXP A10) the shown device's only
                 "device.close": {
                     enabled: () => !tab.none,
                     why: () => tab.pinned,
@@ -235,7 +273,7 @@ Item {
             })
         }
         HelpTip {
-            visible: tab.hovered
+            visible: tab.hovered && tab.elided   // -- WP UA3 --
             text: [tab.shownName, tab.detail,
                    tab.active && DeviceModel.remote ? LinkController.sessionTip : tab.modelData.serial,
                    tab.pinned].filter(t => t && t.length).join("\n")   // -- WP INT3 -- pinned
@@ -268,6 +306,14 @@ Item {
             border.width: 1
             border.color: Theme.accent
         }
+    }
+    // -- WP UA3 -- unsaved changes: the accent, as on Save to Device
+    component UnsavedDot: Rectangle {
+        implicitWidth: 6
+        implicitHeight: 6
+        radius: 3
+        color: Theme.accentText
+        Accessible.ignored: true
     }
     component NameText: Text {
         property bool active: false
