@@ -211,7 +211,7 @@ test("P1WB2 tokens and groups: tokens on, Save asks and saves; an EQ Clear All i
   await call(page, "write", { path: "out.gain", indices: [0], value: { float: -2 } });
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await page.keyboard.press("Control+s");
-  await page.getByRole("dialog", { name: "Save Preset" }).getByRole("button", { name: "Save" }).click();
+  await page.getByRole("dialog", { name: "Save to Device" }).getByRole("button", { name: "Save" }).click();
   await expect(presetsButton(session)).not.toHaveAccessibleName(/unsaved/); // -- WP INTD --
   await expect(session.locator("p.error")).toHaveCount(0);
 
@@ -234,7 +234,7 @@ test("P1WB2 AutoEQ: a profile previewed on the graph writes nothing; Apply write
   const errors = errorsOf(page);
   const session = await openDemo(page);
   await openPage(session, "EQ");
-  await session.getByRole("button", { name: "Headphone Profile…" }).click(); // -- WP WEB6 -- Qt's tool on an input's page (was AutoEQ…)
+  await session.getByRole("button", { name: "AutoEQ…" }).click(); // -- WP UWN -- (UXP A17) AutoEQ… again, as the docs say
   const panel = session.getByRole("region", { name: "AutoEQ" });
   const profile = { id: "o/Sony A", manufacturer: "Sony", model: "A", preamp: -4, filters: [{ type: "PK", freq: 105, q: 0.7, gain: 3 }] };
   await panel.getByLabel("AutoEQ profile").setInputFiles({ name: "sony-a.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(profile)) });

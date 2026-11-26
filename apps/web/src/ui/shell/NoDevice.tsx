@@ -10,6 +10,7 @@ import { EmptyState, Glyph } from "../design";
 import { screensFor } from "../screens";
 import type { ShellProps } from "../components";
 import { Frame } from "./Frame";
+import { NoDeviceSettings } from "../../screens/settings/SettingsScreen"; // -- WP UWN --
 import { CONNECT, sectionOf, sectionsFor, type SectionId } from "./sections";
 
 const NO_PAGES: ReadonlyMap<SectionId, string> = new Map();
@@ -51,6 +52,8 @@ export function NoDeviceFrame(props: {
   /** On the way to a device (connecting, a PIN, a hub's list): the Devices section alone, as before a device answers. */
   connecting?: boolean;
   empty?: (overview: boolean) => ComponentChildren;
+  /** -- WP UWN -- (UXP A16) over the devices' page: why the last connect failed, with its way out. */
+  connectNote?: ComponentChildren;
 }) {
   const { shell } = props;
   const connecting = props.connecting === true;
@@ -64,7 +67,19 @@ export function NoDeviceFrame(props: {
   const overview = sectionOf(page) === "overview";
   return (
     <Frame bar={shell.top()} strip={props.strip} sections={sections} page={page} last={NO_PAGES} onPage={go}>
-      {page === CONNECT && !(connecting && !shell.picking) ? shell.connect : props.empty ? props.empty(overview) : <NoDeviceEmpty overview={overview} onChoose={() => go(CONNECT)} />}
+      {page === CONNECT && !(connecting && !shell.picking) ? (
+        <>
+          {props.connectNote}
+          {shell.connect}
+        </>
+      ) : page === "settings" && !connecting ? (
+        // -- WP UWN -- (UXP A16) Settings' Application and Display parts need no DSPi
+        <NoDeviceSettings />
+      ) : props.empty ? (
+        props.empty(overview)
+      ) : (
+        <NoDeviceEmpty overview={overview} onChoose={() => go(CONNECT)} />
+      )}
     </Frame>
   );
 }
