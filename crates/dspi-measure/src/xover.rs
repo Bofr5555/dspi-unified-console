@@ -737,7 +737,7 @@ fn search(
             if levels.is_empty() {
                 notes.push(format!(
                     "output {}: no trusted passband to judge its level; its gain is kept",
-                    d.output
+                    d.output.saturating_add(1)
                 ));
                 level.push(None);
             } else {
@@ -781,7 +781,9 @@ fn search(
                 if delta < -constraints.max_level_cut_db {
                     notes.push(format!(
                         "output {}: its level would need a cut of {:.1} dB; held to {:.1} dB",
-                        d.output, -delta, constraints.max_level_cut_db
+                        d.output.saturating_add(1),
+                        -delta,
+                        constraints.max_level_cut_db
                     ));
                     delta = -constraints.max_level_cut_db;
                 }
@@ -892,8 +894,8 @@ fn search(
         if allowed.is_empty() {
             let reason = format!(
                 "outputs {} and {}: no corner inside both drivers' trusted range one octave each side{}; the crossover and this pair's timing are kept",
-                da.output,
-                db.output,
+                da.output.saturating_add(1),
+                db.output.saturating_add(1),
                 if rule_a.is_some() || rule_b.is_some() {
                     " that keeps the protective high-pass"
                 } else {
@@ -1062,8 +1064,8 @@ fn search(
                 "outputs {} and {}: no corner is clearly better than the current one (the sum \
                  through the transition differs by less than {:.0} % or {:.2} dB): the corner is \
                  kept",
-                da.output,
-                db.output,
+                da.output.saturating_add(1),
+                db.output.saturating_add(1),
                 CORNER_MIN_GAIN_FRACTION * 100.0,
                 CORNER_MIN_GAIN_DB
             ));
@@ -1079,8 +1081,8 @@ fn search(
             notes.push(format!(
                 "outputs {} and {}: the best corner lies on the edge of the search ({:.0} Hz), so \
                  the minimum is outside it; {}",
-                da.output,
-                db.output,
+                da.output.saturating_add(1),
+                db.output.saturating_add(1),
                 edge_hz,
                 if current.is_some() {
                     "the corner is kept and only this pair's timing is proposed"
@@ -1098,7 +1100,8 @@ fn search(
                         "outputs {} and {}: the best corner lies on the edge of the search and \
                          the current one is not a candidate; the crossover and this pair's \
                          timing are kept",
-                        da.output, db.output
+                        da.output.saturating_add(1),
+                        db.output.saturating_add(1)
                     );
                     edges.push(Edge {
                         low: t.low,
@@ -1141,8 +1144,8 @@ fn search(
                 "outputs {} and {}: the best timing at {:.0} Hz lay more than {:.2} ms from the \
                  measured arrivals (a half or whole cycle off); the timing proposed is the best \
                  within that",
-                da.output,
-                db.output,
+                da.output.saturating_add(1),
+                db.output.saturating_add(1),
                 corner,
                 timing_hold_ms(*corner)
             ));
@@ -1448,7 +1451,10 @@ pub fn predict_sum(
                     .checked_shl(u32::from(d.output))
                     .filter(|_| d.output < 32)
                     .ok_or_else(|| {
-                        MeasureError::Invalid(format!("output {} has no invert bit", d.output))
+                        MeasureError::Invalid(format!(
+                            "output {} has no invert bit",
+                            d.output.saturating_add(1)
+                        ))
                     })?;
                 if invert_mask & bit != 0 {
                     Cx { re: -1.0, im: 0.0 }
@@ -1616,7 +1622,8 @@ fn check_modelled(
         .find(|b| !b.bypass && b.filter_type != 0 && !model.models(b))
     {
         return Err(MeasureError::Invalid(format!(
-            "output {output}: a band of type {} cannot be modelled",
+            "output {}: a band of type {} cannot be modelled",
+            output.saturating_add(1),
             b.filter_type
         )));
     }

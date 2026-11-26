@@ -66,8 +66,14 @@ Panel {
         return hit ? hit.id : ""
     }
 
+    // -- WP UA5 -- the landing page: the last one chosen, else Device › Speakers.
+    // After the show (a tab chosen while the page host is moving is not taken)
+    function land() { if (shown) SettingsController.land() }
     onShownChanged: {
-        if (shown) SettingsController.ensureShown()
+        if (shown) {
+            SettingsController.ensureShown()
+            Qt.callLater(panel.land)
+        }
         Qt.callLater(panel.takePart)   // -- WP LAY5b --
     }
 

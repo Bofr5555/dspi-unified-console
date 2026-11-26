@@ -200,9 +200,10 @@ impl Platform {
 fn term(name: &str, platform: Platform) -> Option<&'static str> {
     use Platform::{Android, Ios, Linux, MacOs, Windows};
     let word = match (name, platform) {
-        // The settings page that holds outputs and pins.
-        ("hardware_page", MacOs | Android | Ios) => "Hardware",
-        ("hardware_page", Windows | Linux) => "Outputs",
+        // The settings page that holds outputs and pins. -- WP UFW -- Android's
+        // page is "Outputs" too (UXP A10); the Apple consoles' is "Hardware".
+        ("hardware_page", MacOs | Ios) => "Hardware",
+        ("hardware_page", Windows | Linux | Android) => "Outputs",
         // Only in `desktop` lines: mobile systems have no such choice.
         ("sound_settings", MacOs) => "macOS Sound settings",
         ("sound_settings", Windows) => "Windows Sound settings",
@@ -289,11 +290,27 @@ pub(crate) fn render_value(value: Value, platform: Platform) -> Option<Value> {
 }
 
 /// One release in What's New. Typed so that its fields keep the Swift file's order.
+/// -- WP UFW -- (UXP A8, C8) `app`: the notes of the app's own release (its
+/// version is the app's, not the firmware's), listed before the firmware's;
+/// `actions`: buttons to the places the notes name. Both left out when unset,
+/// so a firmware release reads as before (and macOS has no app notes).
 #[derive(Serialize, Deserialize)]
 struct Release {
     version: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    app: bool,
     headline: String,
     items: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    actions: Vec<NoteAction>,
+}
+
+/// -- WP UFW -- A button under an app release's notes: `page` is a Settings
+/// page's id ("appearance", "ai"), `text` its label.
+#[derive(Serialize, Deserialize)]
+struct NoteAction {
+    page: String,
+    text: String,
 }
 
 /// An asset is valid JSON: the tests parse and render it for every platform. If it
@@ -390,6 +407,28 @@ mod tests_wp_cg10 {
         }
         assert_eq!(link_phase_from_key("connecting"), None);
         assert_eq!(link_phase_from_key(""), None);
+    }
+
+    // -- WP UFW -- (UXP A10) a page is called what the app calls it: Android's
+    // Settings page for outputs and pins is "Outputs"
+    #[test]
+    fn wp_ufw_android_names_its_outputs_page() {
+        let android = all_text(Platform::Android);
+        assert!(android.contains("in Settings under Outputs."), "{android}");
+        assert!(!android.contains("under Hardware"));
+        assert!(all_text(Platform::Ios).contains("in Settings under Hardware."));
+    }
+
+    // -- WP UFW -- (UXP A10) the PIN prompt says where a hub run in a terminal
+    // gives one, not only the desktop app's Settings page
+    #[test]
+    fn wp_ufw_the_pairing_prompt_names_the_hubs_terminal() {
+        let text = link_phase_text(LinkPhase::NeedsPairing, "window".to_owned()).text;
+        assert!(text.contains("Settings > Networking"), "{text}");
+        assert!(
+            text.contains("uconsole hub") && text.contains("type pair"),
+            "{text}"
+        );
     }
 
     #[test]
@@ -694,8 +733,13 @@ mod tests_wp_cg10 {
         #[serde(deny_unknown_fields)]
         struct Rendered {
             version: String,
+            #[serde(default)]
+            app: bool, // -- WP UFW --
             headline: String,
             items: Vec<String>,
+            #[serde(default)]
+            #[allow(dead_code)]
+            actions: Vec<Value>, // -- WP UFW --
         }
         for platform in ALL {
             let releases: Vec<Rendered> =
@@ -706,8 +750,63 @@ mod tests_wp_cg10 {
                 assert!(!r.items.is_empty(), "{}", r.version);
                 assert!(r.items.iter().all(|i| !i.is_empty()), "{}", r.version);
             }
-            let orders: Vec<_> = releases.iter().map(|r| order(&r.version)).collect();
+            // -- WP UFW -- the app's notes first, then the firmware's, each newest first
+            let apps = releases.iter().take_while(|r| r.app).count();
+            assert!(releases.iter().skip(apps).all(|r| !r.app), "{platform:?}");
+            let app_orders: Vec<_> = releases
+                .iter()
+                .take(apps)
+                .map(|r| order(&r.version))
+                .collect();
+            assert!(app_orders.windows(2).all(|w| w[0] > w[1]), "{app_orders:?}");
+            let orders: Vec<_> = releases
+                .iter()
+                .skip(apps)
+                .map(|r| order(&r.version))
+                .collect();
             assert!(orders.windows(2).all(|w| w[0] > w[1]), "{orders:?}");
+        }
+    }
+
+    // -- WP UFW -- (UXP A8, C8) What's New on Windows and Linux opens with the
+    // app's own 0.15 notes and buttons to their places; the firmware's notes
+    // follow. The phone and the Apple consoles have no such section.
+    #[test]
+    fn wp_ufw_whats_new_opens_with_the_apps_own_release() {
+        for platform in [Platform::Windows, Platform::Linux] {
+            let doc: Value = serde_json::from_str(&render_whats_new(platform)).unwrap();
+            let first = &doc[0];
+            assert_eq!(first["app"], true, "{platform:?}");
+            assert_eq!(first["version"], "0.15");
+            let pages: Vec<&str> = first["actions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|a| a["page"].as_str().unwrap())
+                .collect();
+            assert_eq!(pages, ["appearance", "ai"]);
+            let items = first["items"].as_array().unwrap();
+            assert!(
+                items
+                    .iter()
+                    .any(|i| i.as_str().unwrap().contains("Modern layout"))
+            );
+            assert!(
+                items
+                    .iter()
+                    .any(|i| i.as_str().unwrap().contains("AI agent"))
+            );
+            assert!(doc[1].get("app").is_none(), "the firmware's notes follow");
+        }
+        for platform in [Platform::MacOs, Platform::Ios, Platform::Android] {
+            let doc: Value = serde_json::from_str(&render_whats_new(platform)).unwrap();
+            assert!(
+                doc.as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|r| r.get("app").is_none()),
+                "{platform:?}"
+            );
         }
     }
 

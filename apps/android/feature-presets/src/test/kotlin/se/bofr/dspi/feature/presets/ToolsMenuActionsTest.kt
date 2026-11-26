@@ -92,6 +92,8 @@ class ToolsMenuActionsTest {
         val t = ToolsMenuActions(b, this, host)
         t.factoryReset()
         assertEquals("Factory Reset", host.alert.value!!.messageText)
+        // -- WP UFW -- (UXP A10) the Tools menu's word for saving
+        assertTrue(host.alert.value!!.informativeText.endsWith("unless you run 'Save to Device'."))
         assertEquals(AlertButtonRole.DESTRUCTIVE, host.alert.value!!.button("Reset").role)
         host.press("Reset")
         runCurrent()

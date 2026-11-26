@@ -38,11 +38,12 @@ const fn words(key: &'static str, text: &'static str) -> LinkWords {
 pub const IDLE: LinkWords = words("idle", "Not connected to a hub");
 /// The hub wants its PIN, and that PIN is fixed.
 pub const NEEDS_PAIRING_FIXED: LinkWords = words("needs_pairing.fixed", "Enter the hub's PIN.");
-/// The hub wants a PIN from a pairing window, or does not say.
+/// The hub wants a PIN from a pairing window, or does not say. -- WP UFW -- (UXP
+/// A10) both places that give one: the desktop app and a hub in a terminal.
 pub const NEEDS_PAIRING_WINDOW: LinkWords = words(
     "needs_pairing.window",
-    "Enter the PIN shown on the hub. In uConsole for DSPi, open Settings > Networking \
-     and choose Allow a New Client to get one.",
+    "Enter the PIN shown on the hub. To get one, choose Allow a New Client in uConsole for DSPi's \
+     Settings > Networking, or type pair at the prompt of a hub run in a terminal (uconsole hub).",
 );
 /// Connected, and the hub has no DSPi to offer.
 pub const NO_DEVICE: LinkWords = words("no_device", "Connected to hub, no DSPi found");

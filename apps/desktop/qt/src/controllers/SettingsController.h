@@ -32,6 +32,8 @@ class QJSEngine;
 //       Application  about 10, updates 20, advanced 30, networking 40
 //       Display      graphing 10, spectrum 20
 //       System       overview 10, inputs 20, outputs 30, i2s 40, global 50
+//                    (-- WP UA5 -- listed as Speakers, Outputs, Inputs, Global,
+//                    I2S, Overview: groupPages' deviceRank)
 //       Control      surfaces 10, interfaces 20, groups 30, macros 40, aux 50
 //   A page of group Hidden is not in the sidebar; another page opens it with
 //   SettingsController.open(id) (the Core Voltage page, from Advanced).
@@ -187,8 +189,13 @@ public:
     Q_INVOKABLE void forward();
     // Opens the Settings window on page `id`
     Q_INVOKABLE void showPage(const QString &id);
-    // When the window opens: a page the device does not have falls back to About
+    // A page the device does not have falls back to the landing page: the last
+    // page chosen, else Device › Speakers, else About. -- WP UA5 --
     Q_INVOKABLE void ensureShown();
+    // -- WP UA5 -- When Settings opens: ensureShown, and a page the app chose
+    // (not the person) gives way to the landing page once that can show
+    Q_INVOKABLE void land();
+    Q_INVOKABLE QString landingPage() const;
 
     // Advanced: every channel's name back to the device's default, at once
     Q_INVOKABLE void resetChannelNames();
@@ -210,10 +217,13 @@ signals:
     void pinsChanged();
     void coreVoltageChanged();
     void analyserChanged();
+    // -- WP UA5 -- the action help.shortcuts: the Modern shell shows the list
+    void shortcutsRequested();
 
 private:
     const SettingsRegistry::PageEntry *entry(const QString &id) const;
-    void navigate(const QString &id, bool record);
+    void navigate(const QString &id, bool record, bool chosen = true);
+    bool canShow(const QString &id) const;   // -- WP UA5 --
     void onSnapshot();
     void readPins();
     // -- WP QTSENDER -- a System or Control page while the alink sender is open
@@ -225,6 +235,7 @@ private:
     QString m_current;
     QStringList m_history;
     int m_historyIndex = 0;
+    bool m_appChosen = false;   // -- WP UA5 -- the page showing was not the person's choice
     int m_pagesRevision = 0;
     QHash<QString, bool> m_unavailable;
     QHash<QString, QStringList> m_extraTerms;
