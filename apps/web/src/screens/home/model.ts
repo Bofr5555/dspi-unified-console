@@ -28,8 +28,8 @@ export function recallRows(s: Pick<DspState, "activePresetSlot" | "presetNames" 
 
 /**
  * Whether the Home page lets the source be chosen: when there is more than one.
- * -- FIX016 -- (LOCKSRC, owner D4) the locked user too: the installer's lock lets the source
- * through as it does volume, mute and preset loads (the core's rule, crates/dspi-core/src/limits/lock.rs).
+ * -- FIX016 -- (LOCKSRC, owner D4) the locked user too: the installer's lock lets volume, mute,
+ * the source and preset loads through (the core's rule, LOCKED_USER_WRITES in crates/dspi-core/src/limits/lock.rs).
  */
 export function sourceChoosable(choices: number): boolean {
   return choices > 1;

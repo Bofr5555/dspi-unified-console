@@ -35,7 +35,7 @@ export function useSessionBar(props: {
   desk: SnapshotDesk;
   ask: Ask;
   unsaved: () => Promise<Unsaved>;
-  /** The locked-user state: what the front page allows (volume, mute, presets), and its own Unlock. */
+  /** The locked-user state: what the front page allows (volume, mute, the source, presets), and its own Unlock. */
   locked: boolean;
   onUnlock: () => void;
 }): { left: ComponentChildren; right: ComponentChildren } | undefined {

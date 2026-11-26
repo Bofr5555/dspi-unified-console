@@ -38,7 +38,7 @@ import se.bofr.dspi.ui.UiModes
  * as P1AN1's tests): with no PIN nothing is asked and every mode opens; a
  * limits profile clamps and reports, and a write past it is refused with the
  * core's notice; a PIN, the lock's cover and Lock now give the locked-user
- * state (only volume, mute and preset pass), a wrong PIN is refused and the
+ * state (only volume, mute, source and preset pass), a wrong PIN is refused and the
  * right one unlocks; tokens are required and a confirmed save passes; Clear
  * All, direct routing and protect all outputs are one undo step each; the
  * AutoEQ preview writes nothing and the apply changes only its pair.
@@ -146,7 +146,7 @@ class InstallerWpP1an2Test {
         onMain { bridge.installer.lockNow() }.getOrThrow()
         until("locked user") { m.mode.value == UiModes.LOCKED_USER }
         assertTrue(bridge.installer.lock.value!!.locked)
-        // Only volume, mute and preset pass
+        // Only volume, mute, source (-- FIX016 -- LOCKSRC) and preset pass
         val refused = refusals()
         onMain { bridge.setOutputGain(0, -5f) }
         until("refused") { refused.any { it.error is DspiException.InstallerLock } }
@@ -258,7 +258,7 @@ class InstallerWpP1an2Test {
         assertEquals(-128f, r["masterVolumeMaxDb"]?.min)
         assertEquals("ms", r["delayMaxMs"]?.unit)
         val banner = onMain { bridge.installer.notice(LOCK_BANNER_NOTICE_KEY) }
-        assertEquals("Locked by the installer: only volume, mute and presets can be changed.", banner?.reason)
+        assertEquals("Locked by the installer: only volume, mute, source and presets can be changed.", banner?.reason)
         // review p1e-a F1: the backstop is the row's reason alone, as the web and Qt
         assertEquals("The hub puts them back too if this console goes away.", onMain { bridge.snapshots.backstopWords() })
     }

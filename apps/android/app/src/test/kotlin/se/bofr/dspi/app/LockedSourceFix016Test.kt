@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -40,9 +41,8 @@ import se.bofr.dspi.ui.settings.LocalAppSettings
 
 /**
  * -- FIX016 -- (LOCKSRC, owner D4) the locked user may change the input source from Home, the remote: the
- * phone's lock Home offers it as a control (the picker, not words), and a choice goes to the core. Until the core
- * agent's LOCKSRC rule is in this tree the core's lock refuses it (its sentence); after it the source changes.
- * Either way the core was asked, never the page refusing on its own. Over the real core's demo device.
+ * phone's lock Home offers it as a control (the picker, not words), and a choice changes it: the core's lock lets
+ * `in.source` through (LOCKED_USER_WRITES). Over the real core's demo device.
  */
 @RunWith(DspiRobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class, qualifiers = "w400dp-h2000dp-port-mdpi")
@@ -106,9 +106,10 @@ class LockedSourceFix016Test {
         val item = hasText(other.name) and hasAnyAncestor(isPopup())
         pumpUntil("the list") { rule.onAllNodes(item).fetchSemanticsNodes().isNotEmpty() }
         rule.onNode(item).performClick()
-        // The core was asked: the source changed, or the core's lock refused it in its own words
-        pumpUntil("the core's answer") {
-            bridge.inputSource == other.id || failures.any { "locked" in it.lowercase() }
-        }
+        // The source changes under the lock, and nothing was refused
+        pumpUntil("the source changed") { bridge.inputSource == other.id || failures.isNotEmpty() }
+        assertEquals("nothing refused", emptyList<String>(), failures)
+        assertEquals(other.id, bridge.inputSource)
+        assertTrue("still locked", bridge.installer.lock.value?.locked == true)
     }
 }

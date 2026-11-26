@@ -345,7 +345,7 @@ test.describe("P1WB2 on a hub", () => {
     const rail = session.getByRole("complementary", { name: "Status" });
     await expect(rail.getByRole("button", { name: "Mode: Locked" })).toBeVisible();
     const banner = session.getByRole("region", { name: "Locked" });
-    await expect(banner).toContainText("Locked by the installer: only volume, mute and presets can be changed.");
+    await expect(banner).toContainText("Locked by the installer: only volume, mute, source and presets can be changed.");
     await expect(banner).toContainText("Venue A: volume and presets only, please.");
     await expect(sections(session).getByRole("button")).toHaveText(["Overview", "Devices"]);
     await expect(session.getByRole("tablist", { name: "Pages" })).toHaveCount(0); // -- WP REVEFIX -- the device's own tab is in the bar
@@ -379,20 +379,13 @@ test.describe("P1WB2 on a hub", () => {
     await expect(home.locator(".home-source")).toHaveCount(0);
     await expect(session.locator(".dock-source")).toBeEnabled();
     await expect(source.getByRole("button").first()).toBeEnabled();
-    // A choice goes to the core: it plays the other source, or, until the core's LOCKSRC rule is in
-    // this tree (the core agent's commit), the core's lock refuses it; never the page on its own
+    // A choice plays the other source: the lock lets `in.source` through, nothing is refused
     const other = source.locator("button[aria-pressed=false]").first();
     const otherName = (await other.textContent())!.trim();
     await other.click();
-    await expect(async () => {
-      const played = (await source.getByRole("button", { name: otherName, exact: true }).getAttribute("aria-pressed")) === "true";
-      const refused = (await session.locator("p.error").filter({ hasText: /locked/i }).count()) > 0;
-      expect(played || refused, "the core was asked").toBe(true);
-    }).toPass({ timeout: 10_000 });
-    // a write that passes clears a refusal's line
-    await volume.fill("90");
-    await volume.dispatchEvent("change");
+    await expect(source.getByRole("button", { name: otherName, exact: true })).toHaveAttribute("aria-pressed", "true", { timeout: 10_000 });
     await expect(session.locator("p.error")).toHaveCount(0);
+    await expect(banner).toBeVisible();
     // The mode switch says why it is not switchable.
     await rail.getByRole("button", { name: "Mode: Locked" }).click();
     const modes = page.getByRole("dialog", { name: "Mode" });

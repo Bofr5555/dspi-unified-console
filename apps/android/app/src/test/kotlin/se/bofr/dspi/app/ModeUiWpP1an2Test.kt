@@ -208,7 +208,7 @@ class ModeUiWpP1an2Test {
         scaffold(bridge, InMemoryUiModeStore())
         pumpUntil("banner") { shown(LOCK_BANNER_TAG) }
         // -- WP P1EFIX -- the line is the core's installer_lock.banner row, no glyph
-        val line = "Locked by the installer: only volume, mute and presets can be changed."
+        val line = "Locked by the installer: only volume, mute, source and presets can be changed."
         pumpUntil("banner line") { textShown(line) }
         assertFalse(textShown("\uD83D\uDD12"))
         rule.onNodeWithTag(STRIP_MENU_TAG).performClick()

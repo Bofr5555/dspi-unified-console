@@ -145,7 +145,7 @@ class PhoneWpUanTest {
         }
         pumpUntil("locked") { done && bridge.installer.lock.value?.locked == true }
         pumpUntil("banner") { shown(LOCK_BANNER_TAG) }
-        val line = "Locked by the installer: only volume, mute and presets can be changed."
+        val line = "Locked by the installer: only volume, mute, source and presets can be changed."
         assertFalse("no notice before the tap", noticeShows(UNLOCK_ENTRY))
         // The graph's full-screen page is not a locked user's: the tap says so
         rule.onNode(hasContentDescription("Open the graph full screen")).performClick()

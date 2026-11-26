@@ -51,7 +51,7 @@ user to Home alone (`lockedUser.screens`). Built: web (`screens/home/`, `ui/scre
 | **For** | Listening on one device | Setting up and tuning; the default everywhere (phones too, owner D9 2026-11-25, until Simple means more there) | Installing and handing over a system | A system an installer has set up for someone else |
 | **First screen** | Home, a remote: device and connection, the User volume and mute, source, presets, one health line (UB2: no bypass; meters in the dock) | The classic main window today; the System view once the Pro layer exists (desktop, web). Phones: the front page | As Advanced | The front page, with a lock badge, one line saying what is locked, and the installer's contact |
 | **Navigation** | Home, EQ, Tools, Settings: today's screens, under the front page | Today's screens, plus the Pro layer: System view, Channels and EQ, Routing, Dynamics and effects, Hardware, History; a scene bar; a status rail | Advanced plus Limits and power-on; firmware, factory reset, core voltage | Home only; Settings shows About and the installer's note |
-| **Changes** | Everything today's screens offer | Everything the limits allow | Everything, the limits included | Volume, mute and preset, within the installer's ranges |
+| **Changes** | Everything today's screens offer | Everything the limits allow | Everything, the limits included | Volume, mute, source and preset, within the installer's ranges (source: owner D4) |
 | **Monitoring** | Output meters and the health line | Meters with hold, limiter gain reduction, CPU, temperature, alarms, history (as the core gains them), the event log and the diagnostics bundle | The same | Meters and the health line |
 | **Operations that write flash or can harm hardware** | Behind their usual confirmations, in their usual places | With confirmation | Plus firmware, factory reset, core voltage, limits | None |
 
@@ -142,7 +142,7 @@ the `diagnostics` and `installer_pin` operations:
     { "id": "installer", "label": "Installer", "defaultOn": [], "needsPinWhenSet": true }
   ],
   "lockedUser": { "label": "Locked", "screens": ["front"], "settings": ["about", "installer_note"],
-                  "writes": ["vol.master", "vol.user", "vol.mute", "out.mute", "preset.load"] },
+                  "writes": ["vol.master", "vol.user", "vol.mute", "out.mute", "preset.load", "in.source"] },
   "screens": [ { "id": "front", "title": "Home", "modes": ["simple", "locked_user"], "firstIn": ["simple", "locked_user"] }, "..." ],
   "operations": [ { "id": "firmware", "title": "Firmware Update", "modes": ["installer"], "platforms": ["desktop"], "confirm": true }, "..." ]
 }

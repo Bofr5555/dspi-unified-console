@@ -24,7 +24,7 @@ export interface SessionContext {
   /** Show a screen, at an effect or a channel (`ChainTarget`'s fields). */
   open: (screen: string, at?: Record<string, unknown>) => void;
   sections: readonly Section[];
-  /** The locked-user front page: presets, mute and volume only. */
+  /** The locked-user front page: presets, mute, volume and the source (-- FIX016 -- LOCKSRC) only. */
   locked: boolean;
 }
 

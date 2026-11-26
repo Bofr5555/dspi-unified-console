@@ -155,7 +155,7 @@ final class InstallerP1SW2Tests: XCTestCase, CoreDomainTesting {
         XCTAssertEqual(installer.scopeLine, CoreInstaller.reason("installer_lock.scope"),
                        "the lock is on this console (OD-P1d)")
 
-        // Only volume, mute and presets.
+        // Only volume, mute, the source and presets (-- FIX016 -- LOCKSRC).
         vm.setOutputGain(output: 1, db: -2)
         let lockedRow = CoreInstaller.line(for: .InstallerLock(code: "locked", msg: ""))
         XCTAssertTrue(spinUntil(5) { DeviceLock.notice.message == lockedRow },

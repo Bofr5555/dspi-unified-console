@@ -362,7 +362,8 @@ internal fun InstallerSettingsTab(bridge: DspiBridge, lockedUser: Boolean) {
         if (lockedUser) {
             item {
                 SettingsSection("Installer") {
-                    FormCaption("This DSPi is locked by the installer: volume, mute and presets can be changed.")
+                    // -- FIX016 -- (LOCKSRC) the source passes the lock too
+                    FormCaption("This DSPi is locked by the installer: volume, mute, source and presets can be changed.")
                     lock?.note?.takeIf { it.isNotBlank() }?.let { FormCaption(it) }
                     lock?.contact?.takeIf { it.isNotBlank() }?.let { FormCaption("Contact: $it") }
                     FormCaption("To unlock, choose Unlock… in the top bar and enter the installer's PIN.")

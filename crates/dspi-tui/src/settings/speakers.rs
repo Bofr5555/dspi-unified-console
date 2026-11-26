@@ -628,7 +628,7 @@ mod tests {
     // -- FIX016 -- (REVG R4)
     #[test]
     fn fix016_under_the_installers_lock_the_page_changes_nothing() {
-        let why = "Locked by the installer: only volume, mute and presets can be changed.";
+        let why = "Locked by the installer: only volume, mute, source and presets can be changed.";
         let layouts = Rc::new(Layouts {
             locked: Some(why.into()),
             ..Layouts::default()

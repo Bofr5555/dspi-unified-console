@@ -48,7 +48,7 @@ export function HomeScreen(props: ScreenProps) {
     if (slot === s.activePresetSlot || busy) return;
     setBusy(true);
     try {
-      // The locked user has nothing to save (only volume, mute and presets change): a plain load
+      // The locked user has nothing to save (only volume, mute, the source and presets change): a plain load
       if (!locked) {
         const a = await props.unsaved();
         if (a === "cancel") return;

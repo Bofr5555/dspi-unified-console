@@ -15,7 +15,7 @@ every write passes as it does without this feature. A console never invents a lo
 | No PIN | the default | all (within the limits) | open to anyone |
 | PIN set, unlocked | after `installer_pin_set` or `installer_unlock`, this session | all (within the limits) | open |
 | PIN set, locked, nothing covered | `lockedPages` empty | all (within the limits) | need the PIN (`pin_required`) |
-| **Locked user** | PIN set, `lockedPages` not empty, not unlocked | only `vol.master`, `vol.user`, `vol.mute`, `out.mute`, `preset.load`, within the limits | need the PIN |
+| **Locked user** | PIN set, `lockedPages` not empty, not unlocked | only `vol.master`, `vol.user`, `vol.mute`, `out.mute`, `preset.load`, `in.source`, within the limits | need the PIN |
 
 - The locked-user state refuses every other write **before anything is sent**: `DspiError::InstallerLock { code:
   "locked" }`, notice key `installer_lock.locked`. The check sits where every write to the device starts, so a typed
@@ -164,14 +164,14 @@ only. A PIN typed at a terminal is not echoed (WP P1EFIX).
 on the core's link, so the lock holds all of its writes, not only the commands that
 were written for the core: `uconsole set`, `uconsole eq`, `undo`/`redo`, scripts of
 them, `uconsole raw out`/`war`, `ext xfeed-map`, `ext vreg`, `cs import`, the
-imports and the interface (the TUI). Locked, only volume, mute and a preset recall go
+imports and the interface (the TUI). Locked, only volume, mute, the input source and a preset recall go
 through (and the analyser's own requests, which only look); anything else is refused
 before it is sent, with the `installer_lock.banner` row's sentence and exit code 3
 (an import that had writes refused also exits 3, `"ok": false`):
 
 ```sh
 $ uconsole set out.gain 0 -3
-uconsole: Locked by the installer: only volume, mute and presets can be changed.
+uconsole: Locked by the installer: only volume, mute, source and presets can be changed.
       Give the installer's PIN: on a terminal it asks; in a script set DSPI_INSTALLER_PIN or pass --installer-pin - with the PIN as a line of standard input.
 ```
 

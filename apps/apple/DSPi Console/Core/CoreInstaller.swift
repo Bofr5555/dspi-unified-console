@@ -187,7 +187,7 @@ final class CoreInstaller: ObservableObject {
         // core's), else the platform's default.
         return chosen.isEmpty || chosen == "installer" ? Self.defaultMode(manifest) : chosen
     }
-    /// The locked-user state: only volume, mute and presets.
+    /// The locked-user state: only volume, mute, the source and presets (-- FIX016 -- LOCKSRC).
     var lockedUser: Bool { mode == "locked_user" || lock.locked }
     /// Simple (or locked): the Snapshots window shows Recall and A/B only.
     var simple: Bool { mode == "simple" || lockedUser }

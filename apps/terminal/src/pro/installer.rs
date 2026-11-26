@@ -407,7 +407,7 @@ fn print_lock(st: &LockState, json: bool) {
         "unlocked for this command"
     } else if st.locked {
         // -- WP TMCORE -- every write of this Terminal is held to it now
-        "locked: only volume, mute and presets can be changed"
+        "locked: only volume, mute, source and presets can be changed"
     } else {
         "set; the Installer settings need it"
     };
