@@ -20,6 +20,9 @@ cmake -S apps/desktop/qt -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
       -DDSPI_NOTICES=deb -DDSPI_UPDATE_FEED_URL=
 cmake --build "$build" -j"${JOBS:-4}" --target uconsole-for-dspi
 "$here/check-binary.sh" "$build/uconsole-for-dspi" 2.41
+# -- WP FIN015 -- the build folder is kept between releases: an older version's package left in it
+# would be copied out with this one
+rm -f "$build"/uconsole-for-dspi_*_amd64.deb
 (cd "$build" && cpack -G DEB)
 mkdir -p "$out"
 cp "$build"/uconsole-for-dspi_*_amd64.deb "$out/"

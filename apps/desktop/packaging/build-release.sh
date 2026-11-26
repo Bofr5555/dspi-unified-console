@@ -88,7 +88,7 @@ for fc in $FEDORAS; do
     build "fedora$fc" 'apps/desktop/packaging/linux/build-fedora.sh /dist'
 done
 image uconsole-for-dspi-windows "$here/windows/Containerfile" "$here/windows"
-build windows 'apps/desktop/packaging/windows/build-windows.sh /work/dist && cp /work/dist/uConsole-for-DSPi-*-windows-x86_64.zip /work/dist/uConsole-for-DSPi-*-windows-x86_64-setup.exe /dist/'
+build windows 'rm -f /work/dist/uConsole-for-DSPi-*-windows-x86_64.zip /work/dist/uConsole-for-DSPi-*-windows-x86_64-setup.exe && apps/desktop/packaging/windows/build-windows.sh /work/dist && cp /work/dist/uConsole-for-DSPi-*-windows-x86_64.zip /work/dist/uConsole-for-DSPi-*-windows-x86_64-setup.exe /dist/'
 "$repo/ci/release-source.sh" --with-desktop "$version" "$dist" >/dev/null
 fi
 failed=
