@@ -90,6 +90,9 @@ void DeviceRegistry::track(DeviceSession *session) {
     connect(session, &DeviceSession::clipHoldChanged, this, &DeviceRegistry::devicesChanged);
     // -- WP MDQT2c --
     connect(session, &DeviceSession::jobsChanged, this, &DeviceRegistry::devicesChanged);
+    // -- WP UA3 -- the tab's unsaved mark, for the device shown or not
+    connect(session->model(), &SessionModel::applied, this, [this, session](uint) { readUnsaved(session); });
+    connect(session, &DeviceSession::identityChanged, this, [this, session] { readUnsaved(session); });
     connect(session->model(), &SessionModel::replacing, this, [this, session] { emit sessionStopping(session); });
     // -- WP XDEV1 -- (review RB B4) DeviceModel forwards only the active one's
     connect(session->model(), &SessionModel::writeRefused, this,
@@ -131,6 +134,12 @@ QVariantList DeviceRegistry::devices() const {
         row.insert(QStringLiteral("clip"), s->clipHold() != 0);
         row.insert(QStringLiteral("busy"), s->busy());   // -- WP MDQT2c --
         row.insert(QStringLiteral("job"), s->job());     // -- WP MDQT2c --
+        // -- WP UA3 --
+        const bool unsaved = dirty(s);
+        const QStringList changes = unsaved ? unsavedChanges(s) : QStringList();
+        row.insert(QStringLiteral("dirty"), unsaved);
+        row.insert(QStringLiteral("unsaved"), int(changes.size()));
+        row.insert(QStringLiteral("changes"), changes);
         out.append(row);
     }
     return out;
@@ -185,6 +194,49 @@ void DeviceRegistry::readRows() {
             // -- WP LAY7 -- one opened while this reading was queued, whose own
             // reading found it queued and left it at that
             if (!all) readRows();
+        });
+}
+
+// -- WP UA3 -- The core's dirty flag and lines of each open device, read after
+// every snapshot applied on it (as SidebarController reads the active one's)
+bool DeviceRegistry::dirty(DeviceSession *session) const {
+    return session && session->model()->connected() && m_unsaved.value(session).dirty;
+}
+
+QStringList DeviceRegistry::unsavedChanges(DeviceSession *session) const {
+    return dirty(session) ? m_unsaved.value(session).changes : QStringList();
+}
+
+void DeviceRegistry::readUnsaved(DeviceSession *session) {
+    if (!m_set || !session->handle() || !m_sessions.contains(session)) return;
+    Unsaved &u = m_unsaved[session];
+    if (u.inFlight) {
+        u.again = true;
+        return;
+    }
+    u.inFlight = true;
+    session->worker()->call(
+        session,
+        [](FfiCore *c) {
+            QStringList lines;
+            const QJsonArray list =
+                QJsonDocument::fromJson(readSized([c](char *b, uint32_t n) { return dspi_preset_changes(c, b, n); })).array();
+            for (const QJsonValue &v : list)
+                lines.append(v.toString());
+            return std::make_pair(dspi_preset_dirty(c), lines);
+        },
+        [this, session](const std::pair<bool, QStringList> &r) {
+            if (!m_sessions.contains(session)) {
+                m_unsaved.remove(session);
+                return;
+            }
+            Unsaved &u = m_unsaved[session];
+            u.inFlight = false;
+            const bool moved = u.dirty != r.first || u.changes != r.second;
+            u.dirty = r.first;
+            u.changes = r.second;
+            if (std::exchange(u.again, false)) readUnsaved(session);
+            if (moved) emit devicesChanged();
         });
 }
 
@@ -462,6 +514,7 @@ void DeviceRegistry::endSession(DeviceSession *s, const QByteArray &wire) {
     // a hub ends); then its worker runs dry, and only then its core closes
     emit sessionClosing(s);
     m_sessions.removeOne(s);
+    m_unsaved.remove(s);   // -- WP UA3 --
     m_closing.append(s);
     s->setBackground(false);
     emit devicesChanged();
