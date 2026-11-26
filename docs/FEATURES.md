@@ -77,6 +77,7 @@ alink sender already speaks both ([`STATUS.md`](STATUS.md)). On our hub the fork
 | Classic layout: menu bar and tool windows, as before | – | ✓ (installs from before 0.15.0) | – | – | – | – |
 | Several devices open at once, one tab each, each with its own edits, history and measurement | – | ✓ Modern (Classic shows one and lists the others) | – | ✓ device tabs | – (one per command) | – |
 | Light, dark or the system's theme | – | ✓ | ✓ (the system's) | ✓ | – | – |
+| Outline controls (a 3:1 line round fields, menus and buttons) and a Comfortable control size, automatic on a touch screen (both off on a mouse desktop; 0.16, WP UB13) | – | ✓ Settings › Appearance › Accessibility (the size in Modern) | – | ✓ Settings › Appearance | – | – |
 | The redrawn matrix mixer (tiles with gain and polarity, keyboard, Link L/R pairs, Direct 1:1, Clear, Dense) | stock | ✓ | – (its own matrix) | ✓ | – | – |
 | Presets in one popover (Recall, Save, Copy Here, the slot's menu) | stock | ✓ Modern | – | ✓ | – | – |
 | Outputs nothing is routed to left out of the views that only show (meters, Overview, Spectrum, Stats) and named "3 · None" where they must show | stock | ✓ | ✓ | ✓ | ✓ | – |

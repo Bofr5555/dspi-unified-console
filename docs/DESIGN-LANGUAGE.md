@@ -310,3 +310,22 @@ DL0 added every token and component marked "missing" above (`wp/DL0`). Everythin
 Not done in DL0 (left to the packages that own the places): the floating-surface shadow (DL5), the page title in
 `PageTabs` and the status strip (DL4/DL5), `SectionHeading`'s 24/8 spacing (a page's layout), Settings rows on `FormRow`
 (DL7), `Pill` and `IconButton` (already as the spec says).
+
+## 20. Outline controls and the Comfortable density (UB13, 2026-11-26)
+
+The owner's rule 1 stands for the default look. Two opt-in settings (UXP B13, D11), both off on a mouse desktop
+(Settings › Appearance › Accessibility; `LayoutController.outlineControls`, `.density`):
+
+| Token | Off / Standard | On / Comfortable | Notes |
+|---|---|---|---|
+| `outlined` | false | true | "Outline controls", both layouts |
+| `controlOutline` | | grey dark `#828282`, light `#828282`; darker dark `#767676`, light `#7a7a7a` | 3:1 or more on every surface and on the control tone (WCAG 1.4.11; `tools/contrast.py`) |
+| `controlLineWidth`, `controlLine` | `lineWidth`, `border` | 1, `controlOutline` | `AppButton` (not primary or destructive), `BorderedField`, `NumericField`, `AppSpinBox`, `AppComboBox`, `ToolSegments`' bar, `MatrixField` |
+| `chipLineWidth` | 0 | 1 | `OptionChip`, `ToggleChip` |
+| `comfortable` | false | true in Modern | chosen, or Automatic on a touch screen; Classic keeps the Mac's sizes |
+| `controlHeight`, `chipHeight`, `peqHitRadius` | 24, 24, 10 | 32, 28, 20 | `PeqOverlay.dotHit` takes `peqHitRadius` |
+
+The web has the same two choices (Settings › Appearance; `data-outline`, `data-density` on the console,
+`src/ui/arrangement/access.css`): Automatic is Comfortable with a coarse pointer; Comfortable also makes the PEQ
+table's "plays" disc a 44 px target.
+
