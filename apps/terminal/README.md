@@ -92,12 +92,14 @@ Everywhere:
 
 | Key | Does |
 |---|---|
-| `Tab` | Next region: channels, footer, detail |
-| `↑ ↓` | Select a channel; `Enter` returns to the overview |
+| `Tab` | Next region: channels, the page, the footer (one region: `↑ ↓` move inside it) |
+| `↑ ↓` | Select a channel; `Enter` or `→` goes into its page, `Esc` back to the overview. Outputs nothing is routed to are folded under "N unused ▸" (`Enter` opens it) |
+| `[` `]` | The listening volume down, up by 1 dB, on every page; `{` `}` (with Shift) by 3 dB |
+| `m` | Mute or unmute the listening volume, on every page |
 | `Space` | Toggle: a bypass, a feature in the quick strip, mute on the volume row |
 | `;` | Page commands: a small grammar scoped to the current page, with live hints (`1 2 > 3` routes on the matrix, `3 peak 1k -2` sets a band, `gain -3` trims an output) |
-| `Ctrl-P` | Search every parameter, tool and action |
-| `:` | Command line, the same grammar as the shell |
+| `Ctrl-P` | Search: words find places, tools, actions, verbs and parameters ("crossover", "mute", "low pass", "snapshot"); `Enter` goes there, `Tab` puts a command on the `:` line |
+| `:` | Command line, the shell's grammar (numbers take `k`: `1k`); `:help` is `?`. `snapshot`, `ab`, `diff`, `lock`, `limits`, `status` and `measure docs`, `show`, `export` run here on this device, with the terminal handed back while they run |
 | `Ctrl-S` | Commit Parameters to the active preset |
 | `Ctrl-Z` `Ctrl-Y` | Undo, redo |
 | `= g p . + - h l` | Graph height, pop-out, phase, linked partner, zoom, cursor |
@@ -109,6 +111,13 @@ Everywhere:
 
 The echo line prints every change as the `:` command that would make it, so
 anything done in the interface can be pasted into a script.
+
+With no DSPi attached, `uconsole` opens on a page that waits for one and opens
+it the moment it is plugged in; meanwhile `d` opens the demo, `l` a DSPi Link
+hub (an address, or empty to look on the network) and `?` shows what
+`uconsole doctor` finds. A board in BOOTSEL shows as the drive RPI-RP2 instead
+(`uconsole flash`). One-shot commands still end with exit code 2 when there is
+no device.
 
 ## Building
 

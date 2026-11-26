@@ -73,6 +73,46 @@ pub enum DialogOutcome {
     Checked(Vec<bool>, usize),
 }
 
+// -- WP UTM -- (UXP A14) the unsaved-changes list was one run-on sentence
+/// A dialog's body in lines of at most `width`: each line of the text
+/// wrapped on its own, so a list stays a list, and a blank line between
+/// paragraphs kept. Twelve lines at most, the last cut with "…".
+fn body_lines(body: &str, width: usize) -> Vec<String> {
+    const MAX: usize = 12;
+    let mut out: Vec<String> = Vec::new();
+    for line in body.trim().lines() {
+        if line.trim().is_empty() {
+            if out.last().is_some_and(|l| !l.is_empty()) {
+                out.push(String::new());
+            }
+            continue;
+        }
+        // A list item's second line sits under its text, not its dash.
+        let (indent, text) = match line.strip_prefix("- ") {
+            Some(rest) => ("  ", rest),
+            None => ("", line),
+        };
+        for (i, part) in wrap(text, width.saturating_sub(indent.len()).max(1), MAX)
+            .into_iter()
+            .enumerate()
+        {
+            let lead = match (indent.is_empty(), i) {
+                (true, _) => "",
+                (false, 0) => "- ",
+                (false, _) => indent,
+            };
+            out.push(format!("{lead}{part}"));
+        }
+    }
+    if out.len() > MAX {
+        out.truncate(MAX);
+        if let Some(last) = out.last_mut() {
+            *last = truncate(&format!("{last} …"), width);
+        }
+    }
+    out
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Dialog {
     pub title: String,
@@ -382,7 +422,7 @@ impl Dialog {
         }
         .min(max.width.saturating_sub(4))
         .max(20);
-        let body_lines = wrap(&self.body, w as usize - 4, 12).len() as u16;
+        let body_lines = body_lines(&self.body, w as usize - 4).len() as u16; // -- WP UTM --
         let kind_rows = match &self.kind {
             DialogKind::Confirm => 0,
             DialogKind::Text { .. } => 2,
@@ -424,7 +464,8 @@ impl Dialog {
         let bottom = inner.y + inner.height;
         let button_rows = u16::from(!self.buttons.is_empty()) * 2;
 
-        for line in wrap(&self.body, w, 12) {
+        for line in body_lines(&self.body, w) {
+            // -- WP UTM --
             if y + button_rows >= bottom {
                 break;
             }
@@ -689,5 +730,28 @@ mod tests {
         assert!(s.contains("█████"), "{s}");
         assert!(s.contains("Writing settings"), "{s}");
         assert_eq!(d.handle(key(KeyCode::Enter)), None);
+    }
+
+    // -- WP UTM -- (UXP A14)
+    #[test]
+    fn utm_a_list_in_the_body_stays_a_list() {
+        let lines = body_lines(
+            "The current preset has unsaved changes:\n\n- Global: Volume\n- Out 1 · L: Gain -3 dB\n\nSave before continuing?",
+            40,
+        );
+        assert_eq!(
+            lines,
+            [
+                "The current preset has unsaved changes:",
+                "",
+                "- Global: Volume",
+                "- Out 1 · L: Gain -3 dB",
+                "",
+                "Save before continuing?",
+            ]
+        );
+        // A long item wraps under its text.
+        let lines = body_lines("- one two three four five six", 12);
+        assert_eq!(lines, ["- one two", "  three four", "  five six"]);
     }
 }

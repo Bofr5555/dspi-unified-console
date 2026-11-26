@@ -8,9 +8,13 @@ pub mod graph;
 pub mod live;
 pub mod perf;
 pub mod screens;
+// -- WP UTM -- the palette's search (UXP A13)
+pub mod search;
 pub mod settings;
 pub mod shell;
 pub mod theme;
+// -- WP UTM -- the interface before there is a device (UXP A13)
+pub mod waiting;
 pub mod widgets;
 
 /// The terminal's current size, or `None` when stdout is not a terminal.

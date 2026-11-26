@@ -32,6 +32,7 @@ fn item(
         clipped: false,
         inactive: false,
         index,
+        unused: false, // -- WP UTM --
     }
 }
 

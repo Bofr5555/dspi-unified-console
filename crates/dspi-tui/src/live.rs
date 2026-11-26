@@ -268,7 +268,47 @@ pub const APP_VERBS: &[(&str, &str)] = &[
     ("subharm", "Subharmonic Synthesizer"),
     // -- WP TMCOREF --
     ("unlock", "Unlock with the installer's PIN"),
+    // -- WP UTM -- (UXP A13)
+    ("help", "The keys here and everywhere (?)"),
 ];
+
+// -- WP UTM -- (UXP A13, C10)
+/// The shell's own verbs the `:` line runs too, on this interface's device,
+/// instead of telling the person to leave and run them (UXP C10). The
+/// embedder runs them ([`Live::set_shell_verbs`]): they are the binary's.
+pub const SHELL_VERBS: &[(&str, &str)] = &[
+    (
+        "snapshot",
+        "Snapshots: save NAME, list, recall ID, diff ID, delete ID",
+    ),
+    ("ab", "A/B: [A] B, two snapshots or the device now and one"),
+    ("diff", "What differs from the saved preset or a snapshot"),
+    (
+        "lock",
+        "The installer lock: status, unlock, set-pin, clear-pin",
+    ),
+    ("limits", "The installer's limits: show, set FILE, clear"),
+    ("status", "The device, its link and its lock"),
+    ("measure", "Measurement documents: docs, show ID, export ID"),
+];
+
+// -- WP UTM --
+/// The `measure` words the `:` line runs: the documents only. Measuring and
+/// the auto-tune stay one-shot commands (UXP A13).
+const MEASURE_HERE: &[&str] = &["docs", "show", "export"];
+
+// -- WP UTM --
+/// Whether `verb` needs more words before it can run, so the palette puts it
+/// on the `:` line rather than running it.
+pub fn verb_takes_words(verb: &str) -> bool {
+    matches!(verb, "snapshot" | "ab" | "lock" | "limits" | "measure")
+}
+
+// -- WP UTM --
+/// Runs one of [`SHELL_VERBS`] (its words, the verb first) on the device of
+/// `target`, with the interface's terminal handed back for the time it runs:
+/// its output and its questions are the shell's. Answers the exit code.
+pub type ShellVerbs = dyn Fn(&[String], Option<&Target>) -> u8;
 
 /// The sub meter's poll period: the Console's 10 Hz
 /// (`SubharmonicSynthView.swift:101`), and the brief's ceiling.
@@ -303,6 +343,9 @@ pub struct Prompt {
     pub input: String,
     pub candidates: Vec<Candidate>,
     pub index: usize,
+    // -- WP UTM --
+    /// The palette's finds, one per candidate (empty on the `:` line).
+    pub hits: Vec<crate::search::Hit>,
 }
 
 impl Prompt {
@@ -312,12 +355,40 @@ impl Prompt {
             input: String::new(),
             candidates: Vec::new(),
             index: 0,
+            hits: Vec::new(),
         };
         p.refresh(ctx);
         p
     }
 
     pub fn refresh(&mut self, ctx: &Context) {
+        // -- WP UTM -- (UXP A13) the palette searches words; the `:` line completes
+        if self.palette {
+            self.hits = crate::search::search(&self.input, ctx);
+            self.candidates = self
+                .hits
+                .iter()
+                .map(|h| Candidate {
+                    value: h.value.clone(),
+                    detail: h.detail.clone(),
+                    kind: match h.rank {
+                        crate::search::Rank::Parameter => {
+                            dspi_cmd::complete::CandidateKind::Parameter
+                        }
+                        _ => dspi_cmd::complete::CandidateKind::Verb,
+                    },
+                })
+                .collect();
+            if self.hits.is_empty() && !self.input.trim().is_empty() {
+                self.candidates.push(Candidate {
+                    value: String::new(),
+                    detail: crate::search::no_match(&self.input),
+                    kind: dspi_cmd::complete::CandidateKind::Hint,
+                });
+            }
+            self.index = 0;
+            return;
+        }
         let ends_with_space = self.input.ends_with(' ');
         let mut tokens: Vec<&str> = self.input.split_whitespace().collect();
         let partial = if ends_with_space {
@@ -332,6 +403,7 @@ impl Prompt {
         if tokens.is_empty() {
             let mine: Vec<Candidate> = APP_VERBS
                 .iter()
+                .chain(SHELL_VERBS) // -- WP UTM --
                 .filter(|(name, _)| name.starts_with(partial))
                 .map(|(name, detail)| Candidate {
                     value: (*name).to_string(),
@@ -347,11 +419,41 @@ impl Prompt {
         self.index = 0;
     }
 
+    // -- WP UTM --
+    /// What Enter does in the palette: the chosen find's action, or `None`
+    /// to run the line as typed (a whole command typed into the palette
+    /// still runs, as it always has).
+    pub fn chosen(&self, ctx: &Context) -> Option<crate::search::Action> {
+        let tokens = dspi_cmd::tokenize(&self.input);
+        let refs: Vec<&str> = tokens.iter().map(String::as_str).collect();
+        let command = refs.len() > 1
+            && (dspi_cmd::parse(&refs, ctx).is_ok()
+                || APP_VERBS
+                    .iter()
+                    .chain(SHELL_VERBS)
+                    .any(|(n, _)| *n == refs[0]));
+        if command {
+            return None;
+        }
+        self.hits.get(self.index).map(|h| h.action.clone())
+    }
+
     /// Returns `Some(line)` on Enter, `Some("")` on Escape.
     pub fn handle(&mut self, key: KeyEvent, ctx: &Context) -> Option<String> {
         match key.code {
             KeyCode::Esc => Some(String::new()),
             KeyCode::Enter => Some(std::mem::take(&mut self.input)),
+            // -- WP UTM -- a find that goes to the `:` line goes there on Tab too
+            KeyCode::Tab if self.palette => {
+                if let Some(crate::search::Action::Complete(text)) =
+                    self.hits.get(self.index).map(|h| h.action.clone())
+                {
+                    self.palette = false;
+                    self.input = text;
+                    self.refresh(ctx);
+                }
+                None
+            }
             KeyCode::Tab => {
                 if let Some(c) = self.candidates.get(self.index)
                     && !c.value.is_empty()
@@ -787,6 +889,13 @@ pub struct Live {
     /// embedder opens it otherwise than [`Target::connect`]: the Terminal
     /// puts it on a console core and routes the session's writes there.
     opener: Option<std::sync::Arc<connect::TargetOpener>>,
+    // -- WP UTM --
+    /// Runs the shell's verbs on this device; `None`: the `:` line says they
+    /// are the shell's.
+    shell_verbs: Option<std::rc::Rc<ShellVerbs>>,
+    /// A shell verb's words, for the run loop to run with the terminal
+    /// handed back.
+    pub shell_run: Option<Vec<String>>,
 }
 
 impl Live {
@@ -853,9 +962,41 @@ impl Live {
             clock: None,
             // -- WP TMCORE --
             opener: None,
+            shell_verbs: None, // -- WP UTM --
+            shell_run: None,
         };
         live.sync_model();
         live
+    }
+
+    // -- WP UTM --
+    /// Run the shell's verbs ([`SHELL_VERBS`]) on the `:` line with `run`.
+    pub fn set_shell_verbs(&mut self, run: std::rc::Rc<ShellVerbs>) {
+        self.shell_verbs = Some(run);
+    }
+
+    // -- WP UTM --
+    /// Run the shell verb [`Live::shell_run`] holds, with the terminal already
+    /// handed back by the run loop. Answers its exit code.
+    pub fn run_shell_verb(&mut self, words: &[String]) -> u8 {
+        match self.shell_verbs.clone() {
+            Some(run) => run(words, self.target.as_ref()),
+            None => 0,
+        }
+    }
+
+    // -- WP UTM --
+    /// Back from a shell verb: re-read what it may have changed, and say how
+    /// it ended.
+    pub fn shell_verb_done(&mut self, session: &mut Session, words: &[String], code: u8) {
+        self.refresh(session);
+        self.refresh_presets(session);
+        let line = words.join(" ");
+        self.note(if code == 0 {
+            format!("Ran :{line}")
+        } else {
+            format!(":{line} ended with code {code}")
+        });
     }
 
     // -- WP TMCORE --
@@ -927,6 +1068,9 @@ impl Live {
                 clipped: s.is_clipped(ch),
                 inactive,
                 index: ch as u8,
+                // -- WP UTM -- folded as the views that show levels hide it: an
+                // unused output a test signal plays on stays (FIN015 R1)
+                unused: screens::channel_hidden(s, ch),
             };
         let active_inputs = s.meters.active_inputs as usize;
         m.inputs = (0..ni)
@@ -1621,9 +1765,23 @@ impl Live {
             self.app_verb(session, first, &args);
             return;
         }
+        // -- WP UTM -- (UXP A13, C10)
+        if let Some(first) = tokens.first()
+            && SHELL_VERBS.iter().any(|(n, _)| n == first)
+        {
+            self.shell_verb(tokens);
+            return;
+        }
         let refs: Vec<&str> = tokens.iter().map(String::as_str).collect();
         let cmd = match dspi_cmd::parse(&refs, &self.ctx) {
             Ok(c) => c,
+            // -- WP UTM -- (UXP C10) the way on is in here, not in the shell
+            Err(dspi_cmd::ParseError::Unknown(word)) => {
+                self.note(format!(
+                    "No parameter or command called `{word}` · Ctrl-P searches, ? lists the keys"
+                ));
+                return;
+            }
             Err(e) => {
                 self.note(e.to_string());
                 return;
@@ -1697,6 +1855,88 @@ impl Live {
         }
     }
 
+    // -- WP UTM --
+    /// One of the shell's verbs: handed to the run loop, which gives the
+    /// terminal back while it runs. `measure` runs its documents only.
+    fn shell_verb(&mut self, tokens: Vec<String>) {
+        if self.shell_verbs.is_none() {
+            self.note(format!("`{}` only works from the shell", tokens[0]));
+            return;
+        }
+        if tokens[0] == "measure"
+            && !tokens
+                .get(1)
+                .is_some_and(|w| MEASURE_HERE.contains(&w.as_str()))
+        {
+            self.note(format!(
+                ":measure takes {} here; measuring and the auto-tune run as `{} measure`",
+                MEASURE_HERE.join(", "),
+                dspi_cmd::COMMAND
+            ));
+            return;
+        }
+        if tokens.len() == 1 && verb_takes_words(&tokens[0]) && tokens[0] != "ab" {
+            let words = SHELL_VERBS
+                .iter()
+                .find(|(n, _)| *n == tokens[0])
+                .map_or("", |(_, d)| d);
+            self.note(format!(":{} takes words: {words}", tokens[0]));
+            return;
+        }
+        self.shell_run = Some(tokens);
+    }
+
+    // -- WP UTM --
+    /// What a palette find does when it is chosen.
+    fn palette_action(&mut self, session: &mut Session, action: crate::search::Action) {
+        use crate::search::Action;
+        match action {
+            Action::Event(ev) => self.handle_event(session, ev),
+            Action::Line(line) => {
+                self.flush_writes(session, true);
+                self.run_command(session, &line);
+            }
+            Action::Complete(text) => {
+                let mut p = Prompt::new(false, &self.ctx);
+                p.input = text;
+                p.refresh(&self.ctx);
+                self.prompt = Some(p);
+            }
+            Action::Help => self.shell.help = true,
+            Action::Volume => {
+                self.shell.focus = crate::shell::Focus::Footer(crate::shell::FooterRow::Volume)
+            }
+            Action::Crossover => self.open_crossover(session),
+        }
+    }
+
+    // -- WP UTM --
+    /// The selected output's page on its XO tab; the first output in use
+    /// when no output is selected.
+    fn open_crossover(&mut self, session: &mut Session) {
+        let outputs = self.shell.model.outputs.len();
+        if outputs == 0 {
+            self.note("No outputs: no device is open");
+            return;
+        }
+        let o = match self.shell.model.selection {
+            Selection::Output(o) => o,
+            _ => {
+                let ni = usize::from(self.state.caps.num_inputs);
+                (0..outputs)
+                    .find(|o| !screens::channel_unused(&self.state, ni + o))
+                    .unwrap_or(0)
+            }
+        };
+        self.handle_event(session, ShellEvent::Select(Selection::Output(o)));
+        self.shell.focus = crate::shell::Focus::Screen;
+        let x = KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE);
+        let ev = self.shell.detail.handle(x, &self.state);
+        if ev == crate::shell::ScreenEvent::Unhandled {
+            self.note("This device has no crossover tab");
+        }
+    }
+
     /// One of the interface's own verbs: the Console's File, Tools and AutoEQ
     /// menus.
     ///
@@ -1731,6 +1971,8 @@ impl Live {
             },
             // -- WP TMCOREF --
             "unlock" => self.ask_unlock(session),
+            // -- WP UTM --
+            "help" => self.shell.help = true,
             "device" => self.open_device_picker(),
             "subharm" => self.open_tool(Tool::Subharm),
             "autoeq" => match args.first().copied() {
@@ -3079,6 +3321,27 @@ impl Live {
             self.abort_reconnect();
             return;
         }
+        // -- WP UTM -- (UXP A13) Enter in the palette does what the find is
+        if let Some(p) = &self.prompt
+            && p.palette
+            && key.code == KeyCode::Enter
+        {
+            match p.chosen(&self.ctx) {
+                Some(action) => {
+                    self.prompt = None;
+                    self.palette_action(session, action);
+                    return;
+                }
+                // Nothing found and not a command: the no-match line stays.
+                None if p.hits.is_empty() && dspi_cmd::tokenize(&p.input).len() < 2 => {
+                    if p.input.trim().is_empty() {
+                        self.prompt = None;
+                    }
+                    return;
+                }
+                None => {}
+            }
+        }
         if let Some(p) = &mut self.prompt {
             if let Some(line) = p.handle(key, &self.ctx) {
                 self.prompt = None;
@@ -3797,6 +4060,18 @@ pub fn run(mut live: Live, session: &mut Session) -> io::Result<()> {
                 }
                 live.handle_key(session, key);
             }
+            // -- WP UTM -- (UXP A13) a shell verb from the `:` line runs with the
+            // terminal handed back, so its output and its questions are the shell's
+            if let Some(words) = live.shell_run.take() {
+                live.flush_writes(session, true);
+                ratatui::restore();
+                println!("\r\n:{}", words.join(" "));
+                let code = live.run_shell_verb(&words);
+                back_to_the_interface(code)?;
+                terminal = ratatui::try_init()?;
+                terminal.clear()?;
+                live.shell_verb_done(session, &words, code);
+            }
             // The event wait is shorter than the write interval, so a held
             // write goes out on time.
             live.flush_writes(session, false);
@@ -3831,6 +4106,22 @@ pub fn run(mut live: Live, session: &mut Session) -> io::Result<()> {
     })();
     ratatui::restore();
     result
+}
+
+// -- WP UTM --
+/// After a shell verb: wait for Enter, so its output can be read before the
+/// interface covers it.
+fn back_to_the_interface(code: u8) -> io::Result<()> {
+    use std::io::Write;
+    let mut out = io::stdout();
+    if code != 0 {
+        writeln!(out, "(exit code {code})")?;
+    }
+    write!(out, "\nPress Enter to go back to the interface ")?;
+    out.flush()?;
+    let mut line = String::new();
+    io::stdin().read_line(&mut line)?;
+    Ok(())
 }
 
 /// The connect animation: the curve draws left to right over `REVEAL`, the
@@ -4873,6 +5164,163 @@ mod tests {
         p.refresh(&l.ctx);
         let offered: Vec<&str> = p.candidates.iter().map(|c| c.value.as_str()).collect();
         assert!(offered.contains(&"import") && offered.contains(&"import-config"));
+    }
+
+    // -- WP UTM -- (UXP A13)
+    fn palette(l: &mut Live, s: &mut Session, query: &str) {
+        l.handle_key(s, KeyEvent::new(KeyCode::Char('p'), KeyModifiers::CONTROL));
+        assert!(l.prompt.as_ref().is_some_and(|p| p.palette));
+        for c in query.chars() {
+            l.handle_key(s, key(KeyCode::Char(c)));
+        }
+    }
+
+    /// "crossover" in the palette, Enter: an output's page on its XO tab.
+    #[test]
+    fn utm_the_palette_opens_the_crossover() {
+        let (mut l, mut s, _) = console();
+        palette(&mut l, &mut s, "crossover");
+        l.handle_key(&mut s, key(KeyCode::Enter));
+        assert!(l.prompt.is_none());
+        assert!(matches!(l.shell.model.selection, Selection::Output(_)));
+        assert_eq!(l.shell.focus, crate::shell::Focus::Screen);
+        let tabs = l.shell.detail.actions(&l.state);
+        assert!(
+            tabs.contains(&("XO".to_string(), false)),
+            "the XO tab is the one showing: {tabs:?}"
+        );
+    }
+
+    /// "mute" in the palette, Enter: the listening volume's mute.
+    #[test]
+    fn utm_the_palette_mutes() {
+        let (mut l, mut s, log) = live();
+        palette(&mut l, &mut s, "mute");
+        l.handle_key(&mut s, key(KeyCode::Enter));
+        assert!(
+            log.lock()
+                .unwrap()
+                .iter()
+                .any(|e| e.opcode == op::REQ_SET_USER_MUTE),
+            "a mute on the wire"
+        );
+    }
+
+    /// Nothing found: the palette says so and stays open on Enter.
+    #[test]
+    fn utm_the_palette_says_when_nothing_matches() {
+        let (mut l, mut s, _) = live();
+        palette(&mut l, &mut s, "zzzz");
+        let p = l.prompt.as_ref().unwrap();
+        assert_eq!(p.candidates.len(), 1);
+        assert!(p.candidates[0].detail.starts_with("No match for"), "{p:?}");
+        l.handle_key(&mut s, key(KeyCode::Enter));
+        assert!(l.prompt.is_some(), "Enter on nothing keeps the palette");
+    }
+
+    /// A whole command typed into the palette still runs.
+    #[test]
+    fn utm_a_command_typed_into_the_palette_still_runs() {
+        let (mut l, mut s, log) = live();
+        palette(&mut l, &mut s, "bypass on");
+        l.handle_key(&mut s, key(KeyCode::Enter));
+        assert!(
+            log.lock()
+                .unwrap()
+                .iter()
+                .any(|e| e.opcode == op::REQ_SET_BYPASS)
+        );
+    }
+
+    /// A parameter goes to the `:` line for its value.
+    #[test]
+    fn utm_a_parameter_found_goes_to_the_command_line() {
+        let (mut l, mut s, _) = live();
+        palette(&mut l, &mut s, "vol.mute");
+        l.handle_key(&mut s, key(KeyCode::Enter));
+        let p = l.prompt.as_ref().expect("the : line");
+        assert!(!p.palette);
+        assert_eq!(p.input, "vol.mute ");
+    }
+
+    /// UXP A14 with FIN015 R1: an unused output folds in the sidebar, unless
+    /// a test signal plays on it (an output that plays is never hidden).
+    #[test]
+    fn utm_the_sidebar_folds_an_unused_output_unless_it_plays() {
+        let (mut l, _, _) = live();
+        let ni = usize::from(l.state.caps.num_inputs);
+        let o = (0..l.shell.model.outputs.len())
+            .find(|o| screens::channel_unused(&l.state, ni + o))
+            .expect("the packet has an unused output");
+        assert!(l.shell.model.outputs[o].unused);
+        l.state.siggen_outputs = 1 << o;
+        l.sync_model();
+        assert!(!l.shell.model.outputs[o].unused, "it plays: not folded");
+    }
+
+    /// `:help` is `?`.
+    #[test]
+    fn utm_help_on_the_command_line_opens_the_keys() {
+        let (mut l, mut s, _) = live();
+        l.run_command(&mut s, "help");
+        assert!(l.shell.help);
+    }
+
+    /// UXP C10: the shell's verbs run on this device, through the embedder,
+    /// instead of "Try `uconsole params`".
+    #[test]
+    fn utm_the_shell_verbs_run_inside_the_interface() {
+        let (mut l, mut s, _) = live();
+        l.run_command(&mut s, "snapshot list");
+        assert!(l.shell_run.is_none());
+        assert_eq!(
+            l.shell.model.status.as_deref(),
+            Some("`snapshot` only works from the shell"),
+            "no embedder, no verb"
+        );
+        let ran = std::rc::Rc::new(std::cell::RefCell::new(Vec::<String>::new()));
+        let seen = std::rc::Rc::clone(&ran);
+        l.set_shell_verbs(std::rc::Rc::new(move |w: &[String], _: Option<&Target>| {
+            seen.borrow_mut().extend(w.iter().cloned());
+            0
+        }));
+        l.run_command(&mut s, "snapshot list");
+        let words = l.shell_run.take().expect("handed to the run loop");
+        assert_eq!(words, ["snapshot", "list"]);
+        assert_eq!(l.run_shell_verb(&words), 0);
+        assert_eq!(*ran.borrow(), ["snapshot", "list"]);
+        l.shell_verb_done(&mut s, &words, 0);
+        assert_eq!(l.shell.model.status.as_deref(), Some("Ran :snapshot list"));
+        // Measuring stays a one-shot; the documents run here.
+        l.run_command(&mut s, "measure run");
+        assert!(l.shell_run.is_none());
+        l.run_command(&mut s, "measure docs");
+        assert!(l.shell_run.is_some());
+    }
+
+    /// UXP C10: an unknown word points inside, not at the shell.
+    #[test]
+    fn utm_an_unknown_word_points_to_search_and_help() {
+        let (mut l, mut s, _) = live();
+        l.run_command(&mut s, "speakers");
+        let said = l.shell.model.status.clone().unwrap_or_default();
+        assert!(said.contains("Ctrl-P searches"), "{said}");
+        assert!(!said.contains("params"), "{said}");
+    }
+
+    /// UXP A13: `1k` on the `:` line.
+    #[test]
+    fn utm_the_command_line_takes_k() {
+        let (mut l, mut s, log) = live();
+        l.run_command(&mut s, "eq in.1 1 peak 1k 1.4 -3");
+        assert!(
+            log.lock()
+                .unwrap()
+                .iter()
+                .any(|e| e.opcode == op::REQ_SET_EQ_PARAM),
+            "{:?}",
+            l.shell.model.status
+        );
     }
 
     #[test]
