@@ -12,6 +12,11 @@
 //!   paired, named and undone as itself. With none, or one the app refuses
 //!   (401), the relay pairs: the app shows the agent's name and a code, the
 //!   relay prints the same code, the user allows, and the new token is kept.
+//!   -- WP UAG -- (UXP A9) The code also goes to the agent host as an MCP
+//!   log notice (`notifications/message`, the relay declaring `logging`), and
+//!   a tool call that starts the pairing is answered at once with a tool
+//!   result that names the code, so the agent's chat shows it; the next
+//!   message waits for the person's answer.
 //! - **Headers.** It sets what each era needs from the message itself:
 //!   `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` for 2026-07-28; the
 //!   session id and the agreed version after a legacy `initialize`. When the
@@ -40,6 +45,16 @@ pub const RELAY_ERROR: i64 = -32000;
 /// What the agent is told when the app does not answer.
 pub const NOT_RUNNING_TEXT: &str = "uConsole for DSPi is not running, or AI agents are turned off in it. \
 Start uConsole for DSPi and turn on Settings, AI agents, then try again.";
+
+// -- WP UAG -- (UXP A9)
+/// The tool result of a call that started the pairing: the code, where the
+/// person checks it, and what the agent does next (`{code}`).
+pub const PAIRING_TOOL_TEXT: &str = "uConsole for DSPi is asking the user to allow this agent and \
+shows the pairing code {code}. Tell the user: check that uConsole for DSPi shows the code {code}, \
+then click Allow there. Then call the tool again.";
+
+/// The logger name of the relay's log notices.
+const LOGGER: &str = "uconsole-for-dspi";
 
 /// How long the relay waits after a refused pairing before it asks again.
 pub const PAIR_RETRY_AFTER: Duration = Duration::from_secs(60);
@@ -336,6 +351,11 @@ struct Relay<'a> {
     cfg: RelayConfig,
     keeper: &'a mut dyn TokenKeeper,
     log: &'a mut dyn Write,
+    /// -- WP UAG -- the agent host: its replies, and the pairing's log notice
+    output: &'a mut dyn Write,
+    /// -- WP UAG -- a pairing a tool call started: its ticket, answered by the
+    /// person while the agent tells them the code
+    pending: Option<String>,
     /// -- WP FFIX -- the agent program, from its first message: its token's key
     who: Option<String>,
     token: Option<String>,
@@ -354,6 +374,8 @@ enum Sent {
     Reply(Option<Value>),
     /// The relay's own failure, in its words.
     Failed(String),
+    /// -- WP UAG -- a tool call started the pairing: the code, for its result
+    Pairing(String),
 }
 
 impl Relay<'_> {
@@ -404,16 +426,29 @@ impl Relay<'_> {
     /// Send `msg`, pairing first when there is no token, again when the app
     /// refuses it, and starting a new session when the app forgot this one.
     fn send(&mut self, msg: &Value) -> Sent {
+        // -- WP UAG -- the relay declares `logging` (its pairing notice): the level is its own
+        if msg.get("method").and_then(Value::as_str) == Some("logging/setLevel") {
+            let id = msg.get("id").cloned().unwrap_or(Value::Null);
+            return Sent::Reply(Some(json!({"jsonrpc": "2.0", "id": id, "result": {}})));
+        }
         // -- WP FFIX -- the program's own token, once it has said who it is
         if self.who.is_none() {
             let who = self.who_in(msg);
             self.token = self.keeper.load(&who);
             self.who = Some(who);
         }
-        if self.token.is_none()
-            && let Err(why) = self.pair(msg)
+        // -- WP UAG -- the person has had the code since the last call: their answer
+        if let Some(ticket) = self.pending.take()
+            && let Err(why) = self.await_pairing(&ticket)
         {
             return Sent::Failed(why);
+        }
+        if self.token.is_none() {
+            match self.pair(msg) {
+                Ok(None) => {}
+                Ok(Some(code)) => return Sent::Pairing(code), // -- WP UAG --
+                Err(why) => return Sent::Failed(why),
+            }
         }
         let mut reply = match self.send_once(msg) {
             Ok(r) => r,
@@ -424,8 +459,10 @@ impl Relay<'_> {
             let who = self.who.clone().unwrap_or_default();
             self.keeper.forget(&who);
             self.token = None;
-            if let Err(why) = self.pair(msg) {
-                return Sent::Failed(why);
+            match self.pair(msg) {
+                Ok(None) => {}
+                Ok(Some(code)) => return Sent::Pairing(code), // -- WP UAG --
+                Err(why) => return Sent::Failed(why),
             }
             reply = match self.send_once(msg) {
                 Ok(r) => r,
@@ -458,7 +495,16 @@ impl Relay<'_> {
             return Sent::Reply(None);
         }
         match serde_json::from_slice::<Value>(&reply.body) {
-            Ok(v) if v.get("jsonrpc").is_some() => Sent::Reply(Some(v)),
+            Ok(mut v) if v.get("jsonrpc").is_some() => {
+                // -- WP UAG -- the relay's log notice (the pairing code) is declared
+                if let Some(caps) = v
+                    .pointer_mut("/result/capabilities")
+                    .and_then(Value::as_object_mut)
+                {
+                    caps.entry("logging").or_insert_with(|| json!({}));
+                }
+                Sent::Reply(Some(v))
+            }
             _ => Sent::Failed(format!("uConsole for DSPi answered HTTP {}", reply.status)),
         }
     }
@@ -510,8 +556,10 @@ impl Relay<'_> {
         crate::untrusted::clean(name.trim(), crate::untrusted::CLIENT_MAX_BYTES)
     }
 
-    /// Ask the app for a token and wait for the user's answer.
-    fn pair(&mut self, msg: &Value) -> Result<(), String> {
+    /// Ask the app for a token and wait for the user's answer. -- WP UAG --
+    /// A tool call does not wait: `Some(code)` is the pairing code for its
+    /// result, and the next message waits for the answer ([`Relay::pending`]).
+    fn pair(&mut self, msg: &Value) -> Result<Option<String>, String> {
         if self.pair_after.is_some_and(|t| Instant::now() < t) {
             return Err(
                 "pairing with uConsole for DSPi was refused a moment ago; try again in a minute"
@@ -541,9 +589,23 @@ impl Relay<'_> {
         // -- WP MCP2c -- the agent's own name, cleaned for the terminal (review RB)
         let name = crate::untrusted::clean(&name, crate::untrusted::CLIENT_MAX_BYTES);
         let code = crate::untrusted::name(code);
-        self.say(&format!(
+        let asks = format!(
             "uConsole for DSPi asks you to allow \"{name}\". Check that it shows the code {code}, then click Allow."
-        ));
+        );
+        self.say(&asks);
+        // -- WP UAG -- (UXP A9) where the agent host shows it: its log, and the chat
+        let notice = json!({"jsonrpc": "2.0", "method": "notifications/message",
+                            "params": {"level": "notice", "logger": LOGGER, "data": asks}});
+        let _ = write_line(&mut *self.output, &notice);
+        if msg.get("method").and_then(Value::as_str) == Some("tools/call") {
+            self.pending = Some(ticket);
+            return Ok(Some(code));
+        }
+        self.await_pairing(&ticket).map(|()| None)
+    }
+
+    /// Wait for the person's answer to pairing `ticket`; the token is kept.
+    fn await_pairing(&mut self, ticket: &str) -> Result<(), String> {
         let wait = json!({"ticket": ticket}).to_string();
         loop {
             let r = post(&self.cfg, PAIR_WAIT_PATH, &[], wait.as_bytes())
@@ -595,6 +657,8 @@ pub fn run(
         cfg,
         keeper,
         log,
+        output, // -- WP UAG --
+        pending: None,
         who: None,
         token: None,
         session: None,
@@ -619,7 +683,7 @@ pub fn run(
                     &Value::Null,
                     &RpcError::new(protocol::PARSE_ERROR, "not JSON"),
                 );
-                write_line(output, &e)?;
+                write_line(&mut *relay.output, &e)?;
                 continue;
             }
         };
@@ -628,13 +692,22 @@ pub fn run(
             .filter(|_| msg.get("method").is_some())
             .cloned();
         match relay.send(&msg) {
-            Sent::Reply(Some(reply)) => write_line(output, &reply)?,
+            Sent::Reply(Some(reply)) => write_line(&mut *relay.output, &reply)?,
             Sent::Reply(None) => {}
             Sent::Failed(why) => {
                 // A notification gets no reply, even an error.
                 if let Some(id) = id {
                     let e = protocol::error_reply(&id, &RpcError::new(RELAY_ERROR, why));
-                    write_line(output, &e)?;
+                    write_line(&mut *relay.output, &e)?;
+                }
+            }
+            // -- WP UAG -- (UXP A9) the code in the agent's chat
+            Sent::Pairing(code) => {
+                if let Some(id) = id {
+                    let text = PAIRING_TOOL_TEXT.replace("{code}", &code);
+                    let r = json!({"jsonrpc": "2.0", "id": id, "result": {
+                        "content": [{"type": "text", "text": text}], "isError": true}});
+                    write_line(&mut *relay.output, &r)?;
                 }
             }
         }

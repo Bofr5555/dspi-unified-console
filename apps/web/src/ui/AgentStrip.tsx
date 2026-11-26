@@ -1,11 +1,12 @@
 // WP FEATUI (AIVIS's web part): the strip that says an AI agent works on this hub's devices, on
 // every screen, first in the strip as the desktop app's (AiWorkBanner): who, through which
 // console, on which device, doing what. It names; it changes nothing (the agent's console has
-// Pause and Stop). What the person here changes reaches the agent as "elsewhere" (AIVIS).
+// Pause and Stop: -- WP UAG -- it says so). What the person here changes reaches the agent as
+// "elsewhere" (AIVIS).
 
 import type { Session } from "./session";
 import { useSessionState } from "./components";
-import { DETECTING_HERE, cleanPresence, detectingSpeakers, presenceText, usePresence } from "./presence";
+import { DETECTING_HERE, cleanPresence, detectingSpeakers, nameFrom, presenceNames, presenceText, stopHint, usePresence } from "./presence";
 import { splitGrant } from "./follow"; // -- WP ODEC --
 
 export function AgentStrip(props: { session: Session }) {
@@ -13,8 +14,9 @@ export function AgentStrip(props: { session: Session }) {
   const st = useSessionState(props.session);
   if (!rows.length) return null;
   const mine = st.snapshot?.device.serial ?? "";
-  // Another device of the hub by its serial: the page knows only its own one's name
-  const name = (serial: string) => serial;
+  // -- WP UAG -- (UXP A7) another device of the hub by its inventory's name, as the hub pages say it
+  const name = nameFrom(presenceNames(props.session));
+  const by = rows.find((p) => p.by)?.by ?? "";
   return (
     <div class="banner banner-agent" role="status" aria-live="polite" aria-label="AI agent working">
       <span class="agent-mark" aria-hidden="true">
@@ -33,6 +35,7 @@ export function AgentStrip(props: { session: Session }) {
             </span>
           );
         })}
+        <span class="agent-stop">{stopHint(by)}</span>
       </span>
     </div>
   );

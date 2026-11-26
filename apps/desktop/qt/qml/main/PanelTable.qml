@@ -143,7 +143,8 @@ QtObject {
         // -- WP MCP4 -- Modern shows the same in Settings; LAY8's popover opens this
         {
             action: "device.aiAgents", panel: "AiAgentsPanel", windowId: "aiAgents",
-            section: "settings", tab: "aiAgents", title: qsTr("AI Agents"), icon: "bot",
+            // -- WP UAG -- (UXP A9, C4) what the agents did, not a second "AI Agents" beside the Settings page
+            section: "settings", tab: "aiAgents", title: qsTr("Agent Activity"), icon: "bot",
             width: 620, height: 560, minWidth: 440, minHeight: 320
         }
     ]

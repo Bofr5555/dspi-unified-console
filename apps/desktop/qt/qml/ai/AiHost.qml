@@ -13,7 +13,23 @@ Item {
 
     readonly property var pairing: AiController.pairing
     readonly property var front: AiController.confirmations.length ? AiController.confirmations[0] : null
-    readonly property int more: Math.max(0, AiController.confirmations.length - 1)
+    // -- WP UAG -- (UXP D2) the questions one agent raised together (within 1.5 s of the first) are one
+    // sheet, a row per device and change. One Allow answers exactly the questions shown: one added later
+    // changes the sheet's question, and the buttons arm again. "Answer One by One" splits them.
+    readonly property int togetherMs: 1500
+    property bool oneByOne: false
+    readonly property var group: {
+        if (!front) return []
+        if (oneByOne || front.detect || front.roleCells.length) return [front]
+        return AiController.confirmations.filter(c => c.client === front.client && !c.detect && !c.roleCells.length
+                                                      && Math.abs(c.askedMs - front.askedMs) <= togetherMs)
+    }
+    readonly property bool grouped: group.length > 1
+    Connections {
+        target: AiController
+        function onConfirmationsChanged() { if (!AiController.confirmations.length) host.oneByOne = false }
+    }
+    readonly property int more: Math.max(0, AiController.confirmations.length - Math.max(1, group.length))
     readonly property bool asking: AiController.state === "asking"
     onAskingChanged: {
         if (!asking) return
@@ -21,9 +37,43 @@ Item {
         else if (Window.window && !Window.window.active) Window.window.alert(0)
     }
     // "1:59"
-    function timeLeft(seconds) {
-        return qsTr("Time left: %1").arg(Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0"))
+    function clock(seconds) {
+        return Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0")
     }
+    // -- WP UAG -- (UXP A6) the rows of a question: the whole call (the asked ones marked), else the risks
+    function rowsOf(c) {
+        return c.batch && c.batch.length ? c.batch : c.riskLines.map(line => ({ said: line, risky: true }))
+    }
+    // -- WP UAG -- (UXP D2) a grouped sheet: each device once, then its questions' rows
+    readonly property var rows: !front ? []
+        : grouped ? group.reduce((all, c, i) => all.concat(i > 0 && group[i - 1].device === c.device ? []
+                                                           : [{ said: c.device, risky: false, head: true }], rowsOf(c)), [])
+        : rowsOf(front)
+    // What a question's Allow leaves to do afterwards (-- WP UAG --: one function for one or a group)
+    function afterOf(c) {
+        // -- WP FEATUI -- (FUNC1 section 4) sound cannot be undone: a test signal is not promised an undo
+        // -- WP FUNC2c -- (FSTORY S7) nor a preset load: it ends the undo history; the snapshot is the way back
+        return c.sound
+               ? qsTr("Nothing has played yet. Sound cannot be taken back once it plays; Stop Measuring in the agent strip ends it.")
+               : c.wholesale
+               ? qsTr("Nothing has been changed yet. This replaces the settings as a whole and ends the undo history; the settings as they are now are kept as a snapshot first, to go back to.")
+               // -- WP ROLES -- the roles are corrected where they live, not undone
+               : c.roleCells.length
+               ? qsTr("Nothing has been changed yet. You can confirm or correct the roles afterwards in Settings › Speakers.")
+               // -- WP UAG -- (UXP A6) a flash write has no Undo: the sheet says so instead of promising one
+               : c.flash
+               ? qsTr("Nothing has been changed yet. This is written to the device's memory; Undo cannot take it back.")
+               : qsTr("Nothing has been changed yet. You can undo it afterwards in the agents' activity.")
+    }
+    // Each sentence once
+    function once(texts) {
+        return texts.filter((t, i) => t.length && texts.indexOf(t) === i)
+    }
+    readonly property int rowsShown: 8
+    // -- WP UAG -- (UXP A6) the speaker detection's mechanism waits under Details
+    property bool detailsOpen: false
+    onFrontChanged: detailsOpen = false
+    readonly property bool detailsShown: !front || !front.detect || detailsOpen
 
     AiSheet {
         id: pairingSheet
@@ -38,7 +88,7 @@ Item {
         SheetText {
             objectName: "AiPairingSheet.name"
             //: %1 is the AI agent's own name, %2 the app's name
-            text: qsTr("“%1” wants to control your DSPi devices through %2.").arg(host.pairing.name || "").arg(AppIdentity.displayName)
+            text: qsTr("“%1” on this computer wants to control your DSPi devices through %2.").arg(host.pairing.name || "").arg(AppIdentity.displayName)   // -- WP UAG --
         }
         Text {
             objectName: "AiPairingSheet.code"
@@ -52,13 +102,17 @@ Item {
             Accessible.name: qsTr("Pairing code")
             Accessible.description: text
         }
+        // -- WP UAG -- (UXP A9) where the code shows: the relay puts it in the agent's chat and its log
         SheetText {
-            text: qsTr("Allow it only if you have just connected an agent on this computer. Its log shows the same code.")
+            objectName: "AiPairingSheet.where"
+            text: qsTr("Allow it only if you have just added an agent on this computer. The agent's chat or its log shows the same code.")
         }
         SheetText {
+            objectName: "AiPairingSheet.left"
             font: Theme.fontSmall
             color: Theme.textMuted
-            text: host.timeLeft(host.pairing.secondsLeft || 0)
+            //: %1 is the time left ("1:59")
+            text: qsTr("If you don't answer within %1, the agent is not added.").arg(host.clock(host.pairing.secondsLeft || 0))
         }
     }
 
@@ -68,46 +122,95 @@ Item {
         prefix: "AiConfirmSheet"
         parent: host.parent
         wanted: host.front !== null && !pairingSheet.wanted
-        question: host.front ? host.front.id : undefined
+        question: host.front ? host.group.map(c => c.id).join(",") : undefined   // -- WP UAG -- (UXP D2)
         // -- WP ADETQ -- the speaker detection's question (AUTODES 4.1) says what it is
         //: %1 a device's name
         heading: host.front && host.front.detect ? qsTr("Detect the speakers on %1?").arg(host.front.device)
                  // -- WP ROLES -- speaker roles from the person's words
                  //: %1 a device's name
                  : host.front && host.front.roleCells.length ? qsTr("Set the speaker roles on %1?").arg(host.front.device)
+                 // -- WP UAG -- (UXP D2) questions raised together
+                 //: %1 is the AI agent's name, %n how many changes it asks about at once
+                 : host.grouped ? qsTr("%1 wants to make %n changes", "", host.group.length).arg(host.front.agent)
+                 // -- WP UAG -- (UXP A6) the change in one line: "Claude Code wants to make Right tweeter louder (Fronts)"
+                 : host.front && host.front.heading ? host.front.heading
                  : qsTr("Allow this change?")
-        onAnswered: allow => { if (host.front) AiController.answer(host.front.id, allow) }
+        // -- WP UAG -- (UXP D2) exactly the questions shown
+        onAnswered: allow => { for (const c of host.group) AiController.answer(c.id, allow) }
 
+        // -- WP UAG -- (UXP A6, C11) who asks, where the heading does not say it: the detection's and the roles'
+        // questions (the agent's name without the "AI ·" the sheet already shows)
         SheetText {
             objectName: "AiConfirmSheet.who"
-            text: !host.front ? ""
-                : host.front.device.length
-                //: %1 is the AI agent's name, %2 what it asks to do ("Set a gain"), %3 the device's name
-                ? qsTr("%1 asks: %2, on %3.").arg(host.front.client).arg(host.front.title).arg(host.front.device)
-                //: %1 is the AI agent's name, %2 what it asks to do ("Set a gain")
-                : qsTr("%1 asks: %2.").arg(host.front.client).arg(host.front.title)
+            visible: text.length > 0
+            text: !host.front || (!host.front.detect && !host.front.roleCells.length) ? ""
+                //: %1 is the AI agent's name
+                : qsTr("Asked by %1.").arg(host.front.agent)
         }
+        // -- WP UAG -- (UXP A6) the speaker detection: what the person does, first; how it works under Details
+        SheetText {
+            objectName: "AiConfirmSheet.todo"
+            visible: host.front !== null && host.front.detect
+            leftPadding: Theme.spacing
+            text: ["• " + qsTr("Set up the microphone as for a measurement (usually at your seat)."),
+                   "• " + qsTr("Keep the volume where it is."),
+                   "• " + qsTr("Stay by Stop Measuring in the agent strip: it ends the sound at once."),
+                   "• " + qsTr("Afterwards check the result in Settings › Speakers and confirm or correct it.")].join("\n")
+        }
+        AppButton {
+            objectName: "AiConfirmSheet.details"
+            visible: host.front !== null && host.front.detect
+            text: host.detailsOpen ? qsTr("Hide Details") : qsTr("Details")
+            onClicked: host.detailsOpen = !host.detailsOpen
+        }
+        // -- WP UAG -- (UXP D2) a grouped sheet can be answered one question at a time instead
+        AppButton {
+            objectName: "AiConfirmSheet.oneByOne"
+            visible: host.grouped
+            text: qsTr("Answer One by One")
+            onClicked: host.oneByOne = true
+        }
+        // -- WP UAG -- (UXP A6) the whole call in the screen's words, the asked rows marked
         Column {
             width: parent.width
             spacing: 4
+            visible: host.detailsShown
             Repeater {
                 // -- WP ROLES -- (the speaker roles' question shows its table below instead)
-                model: host.front && !host.front.roleCells.length ? host.front.riskLines.slice(0, 8) : []   // -- WP LAY8 -- with its kind
-                delegate: SheetText {
-                    required property string modelData
+                model: host.front && !host.front.roleCells.length ? host.rows.slice(0, host.rowsShown) : []
+                delegate: Item {
+                    id: row
+                    required property var modelData
                     required property int index
-                    objectName: "AiConfirmSheet.risk." + index
-                    leftPadding: Theme.spacing
-                    // -- WP FIN015 -- (REVF D1) on the open device, "Out 1 (Centre woofer)" as its pages
-                    // name it; the agent's words stay the core's
-                    text: "• " + (host.front && host.front.deviceId === DeviceRegistry.activeId && DeviceModel.revision >= 0
-                                  ? DeviceModel.channels.withNames(modelData) : modelData)
+                    width: parent.width
+                    implicitHeight: rowText.implicitHeight
+                    height: implicitHeight
+                    Text {
+                        id: mark
+                        x: Theme.spacing
+                        width: Theme.spacingLarge
+                        textFormat: Text.PlainText
+                        font: Theme.fontBody
+                        color: Theme.warning
+                        text: row.modelData.risky ? "▲" : ""
+                        Accessible.ignored: true
+                    }
+                    SheetText {
+                        id: rowText
+                        objectName: "AiConfirmSheet.risk." + row.index
+                        x: row.modelData.head ? Theme.spacing : mark.x + mark.width   // -- WP UAG -- (UXP D2) a device
+                        width: row.width - x
+                        font: row.modelData.head ? Qt.font({ pixelSize: Theme.fontBody.pixelSize, weight: Font.DemiBold }) : Theme.fontBody
+                        text: row.modelData.said
+                        //: Read out before an AI agent's change that the question is about; %1 the change
+                        Accessible.name: row.modelData.risky ? qsTr("Asked: %1").arg(text) : text
+                    }
                 }
             }
             SheetText {
-                visible: host.front !== null && host.front.risks.length > 8
-                leftPadding: Theme.spacing
-                text: host.front ? qsTr("and %1 more").arg(Math.max(0, host.front.risks.length - 8)) : ""
+                visible: host.rows.length > host.rowsShown && !(host.front && host.front.roleCells.length)
+                leftPadding: Theme.spacing + Theme.spacingLarge
+                text: qsTr("and %1 more").arg(Math.max(0, host.rows.length - host.rowsShown))
             }
         }
         // -- WP ROLES -- the whole table of speaker roles from the person's words, then the rest
@@ -142,7 +245,7 @@ Item {
         // -- WP ADETQ -- the warning on the speaker detection's mechanism (the server's words)
         SheetText {
             objectName: "AiConfirmSheet.warning"
-            visible: text.length > 0
+            visible: text.length > 0 && host.detailsShown   // -- WP UAG --
             color: Theme.warning
             text: host.front && host.front.warning ? "⚠ " + host.front.warning : ""
         }
@@ -151,26 +254,20 @@ Item {
             objectName: "AiConfirmSheet.grant"
             visible: text.length > 0
             font: Qt.font({ pixelSize: Theme.fontBody.pixelSize, weight: Font.DemiBold })
-            text: host.front && host.front.grantText ? host.front.grantText : ""
+            text: host.once(host.group.map(c => c.grantText || "")).join(" ")   // -- WP UAG -- (UXP D2)
         }
         SheetText {
             objectName: "AiConfirmSheet.after"
-            // -- WP FEATUI -- (FUNC1 section 4) sound cannot be undone: a test signal is not promised an undo
-            // -- WP FUNC2c -- (FSTORY S7) nor a preset load: it ends the undo history; the snapshot is the way back
-            text: host.front && host.front.sound
-                  ? qsTr("Nothing has played yet. Sound cannot be taken back once it plays; Stop Measuring in the agent strip ends it.")
-                  : host.front && host.front.wholesale
-                  ? qsTr("Nothing has been changed yet. This replaces the settings as a whole and ends the undo history; the settings as they are now are kept as a snapshot first, to go back to.")
-                  // -- WP ROLES -- the roles are corrected where they live, not undone
-                  : host.front && host.front.roleCells.length
-                  ? qsTr("Nothing has been changed yet. You can confirm or correct the roles afterwards in Settings › Speakers.")
-                  : qsTr("Nothing has been changed yet. You can undo it afterwards in the agents' activity.")
+            text: host.once(host.group.map(c => host.afterOf(c))).join(" ")   // -- WP UAG -- (UXP D2) each once
         }
         SheetText {
             objectName: "AiConfirmSheet.left"
             font: Theme.fontSmall
             color: Theme.textMuted
-            text: [host.timeLeft(AiController.confirmationSecondsLeft),
+            // -- WP UAG -- (UXP A6) what happens at zero, not only the clock
+            //: %1 is the time left ("1:59")
+            text: [qsTr("If you don't answer within %1, nothing is changed and the agent is told so.")
+                       .arg(host.clock(AiController.confirmationSecondsLeft)),
                    host.more > 0 ? qsTr("%1 more waiting").arg(host.more) : ""].filter(s => s.length).join(" · ")
         }
     }

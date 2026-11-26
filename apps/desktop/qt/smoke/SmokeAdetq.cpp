@@ -439,9 +439,17 @@ void agentSection(SmokeDriver &d) {
         QObject *sheet = d.object(QStringLiteral("AiConfirmSheet"));
         return sheet && sheet->property("heading").toString().startsWith(QLatin1String("Detect the speakers on "));
     }));
+    // -- WP UAG -- (UXP A6) what to do comes first; the mechanism waits under Details
+    d.check(QStringLiteral("uag: the detection says what to do first, the warning under Details"), d.waitFor(2000, [&] {
+        auto *todo = qobject_cast<QQuickItem *>(d.object(QStringLiteral("AiConfirmSheet.todo")));
+        auto *w = qobject_cast<QQuickItem *>(d.object(QStringLiteral("AiConfirmSheet.warning")));
+        return todo && todo->isVisible() && textOf(todo).contains(QLatin1String("Keep the volume where it is")) && w && !w->isVisible();
+    }));
+    if (QQuickWindow *mw = d.mainWindow()) d.grab(mw, QStringLiteral("uag-detect-question.png"));
+    click(d.object(QStringLiteral("AiConfirmSheet.details")));
     d.check(QStringLiteral("adet-agent: the sheet shows the warning"), d.waitFor(2000, [&] {
-        QObject *w = d.object(QStringLiteral("AiConfirmSheet.warning"));
-        return w && textOf(w) == QStringLiteral("⚠ ") + AiController::detectWarning();
+        auto *w = qobject_cast<QQuickItem *>(d.object(QStringLiteral("AiConfirmSheet.warning")));
+        return w && w->isVisible() && textOf(w) == QStringLiteral("⚠ ") + AiController::detectWarning();
     }));
     if (QQuickWindow *mw = d.mainWindow()) d.grab(mw, QStringLiteral("adet-agent-question.png"));
     ai->answer(q.value(QStringLiteral("id")).toDouble(), true);
