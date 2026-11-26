@@ -706,6 +706,7 @@ fn read_image(conn: &mut Connection, s: &mut DspState) -> Result<Image> {
     };
     // Display only unless it is this build's own format (PLAN §1.5).
     next.bulk_valid = normalized.is_writable();
+    crate::solo::overlay(&conn.solo, &mut next); // -- WP GAP2 --
     *s = next;
     Ok(Image::Read(normalized.read))
 }

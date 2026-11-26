@@ -442,6 +442,8 @@ fn load_preset_unguarded(core: &DspiCore, slot: u8) -> Result<()> {
     let _lock = crate::limits::LockScope::allow(); // -- WP P1LK -- allowed while locked
     let began = Instant::now(); // -- WP ECHO1 --
     let lines = core.with_device_lock(LOAD_REASON, |inner| {
+        // -- WP GAP2 -- the solo ends first (an empty slot changes nothing)
+        let _ = crate::solo::lift(inner);
         let before = inner.state.clone(); // -- WP P0M --
         let confirmed = {
             let mut w = inner.writable_conn()?;
@@ -538,6 +540,7 @@ impl DspiCore {
         let ticket = self.confirm_gate(ConfirmOp::SavePreset, token)?;
         self.with_device_lock(SAVE_REASON, |inner| {
             ticket.still_on(inner)?;
+            crate::solo::lift(inner)?; // -- WP GAP2 -- a solo is never saved
             let confirmed = save_to_slot(inner, slot)?;
             refresh_directory(inner);
             if !confirmed {
@@ -558,6 +561,7 @@ impl DspiCore {
         let ticket = self.confirm_gate(ConfirmOp::CopyPreset, token)?;
         self.with_device_lock(COPY_REASON, |inner| {
             ticket.still_on(inner)?;
+            crate::solo::lift(inner)?; // -- WP GAP2 -- a solo is never saved
             source_is_active(inner, source)?; // -- WP REVEFIX --
             if !save_to_slot(inner, dest)? {
                 refresh_directory(inner);
@@ -611,6 +615,7 @@ impl DspiCore {
         let ticket = self.confirm_gate(ConfirmOp::SaveParams, token)?;
         self.with_device_lock(SAVE_PARAMS_REASON, |inner| {
             ticket.still_on(inner)?;
+            crate::solo::lift(inner)?; // -- WP GAP2 -- a solo is never saved
             status(inner.writable_conn()?.set_as_read(op::REQ_SAVE_PARAMS, 0)?)?;
             journal(inner, "dev.save", &[], Value::Trigger); // -- WP P0W --
             let active = inner.state.active_preset_slot;

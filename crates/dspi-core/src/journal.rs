@@ -631,6 +631,7 @@ fn record(inner: &mut Inner, change: Change) {
     if let Some(conn) = inner.conn.as_mut() {
         if dspi_session::history::RESETS_HISTORY.contains(&change.path) {
             end_undo_group(conn);
+            crate::solo::state_replaced(conn); // -- WP GAP2 --
         }
         if conn.undo_group.is_open() && change.source == ChangeSource::Local && change.coalesce {
             split_regroup(conn, &change);
