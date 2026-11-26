@@ -193,6 +193,7 @@ menu also has "Switch to the Classic Layout". The web console has the Modern lay
 AI agents (Claude Desktop, Claude Code, Cursor and other MCP clients) can work with the desktop app once you turn
 them on in Settings › AI Agents; they are off until then. How to connect one, and what they may and may not do:
 [`manual/ai-agents.md`](manual/ai-agents.md).
+To connect Claude Desktop or Claude Code: [Connect Claude in three steps](manual/ai-agents.md#connect-claude-in-three-steps). <!-- WP UAG -->
 
 ## Fork firmware
 

@@ -50,7 +50,7 @@ Panel {
                 id: stop
                 objectName: "AiAgents.stop"
                 visible: AiController.enabled
-                text: qsTr("Stop")
+                text: qsTr("Stop Agents")   // -- WP UAG -- (UXP A7, C4) one meaning per Stop
                 iconName: "square"
                 destructive: !panel.modern   // -- WP DL7 -- Modern: quiet, its text in dangerText
                 danger: panel.modern         // -- INTC (DL7 fold) -- AppButton's quiet danger kind
@@ -65,7 +65,7 @@ Panel {
         Text {
             Layout.fillWidth: true
             visible: AiController.running
-            text: qsTr("Stop turns AI agents off and puts their timed previews back. Changes already made stay, and you can undo them below.")
+            text: qsTr("Stop Agents turns AI agents off and puts their timed previews back. Changes already made stay, and you can undo them below.")
             font: Theme.fontSmall
             color: Theme.textMuted
             wrapMode: Text.Wrap

@@ -16,7 +16,8 @@ PopoverPanel {
     readonly property alias enableDialog: enableQuestion
     readonly property bool asking: ai.state === "asking"
     // The newest changes made; reads and questions are only in the whole activity
-    readonly property var changes: ai.activity.filter(r => r.write && r.outcome === "ok").slice(0, 4)
+    // -- WP UAG -- (UXP A7) and what the console refused them, with why
+    readonly property var changes: ai.activity.filter(r => r.write && (r.outcome === "ok" || r.refused)).slice(0, 4)
 
     // -- WP LAY7 -- The rows are made anew when the activity changes: the Undo that
     // had the keyboard gets it back on its own change's new row
@@ -181,10 +182,11 @@ PopoverPanel {
                     }
                     AppButton {
                         objectName: "AiPopover.agent." + agent.index + ".disconnect"
-                        text: qsTr("Disconnect")
+                        // -- WP UAG -- (UXP A7, C4) it revokes the token: the agent is forgotten, not paused
+                        text: qsTr("Forget Agent")
                         toolTip: qsTr("Its token stops: it has to be allowed again.")
                         //: %1 is an AI agent's name
-                        Accessible.name: qsTr("Disconnect %1").arg(agent.modelData.name)
+                        Accessible.name: qsTr("Forget %1").arg(agent.modelData.name)
                         onClicked: popover.ai.disconnectAgent(agent.modelData.id)
                     }
                 }
@@ -270,7 +272,7 @@ PopoverPanel {
                 AppButton {
                     objectName: "AiPopover.stop"
                     visible: popover.ai.running
-                    text: qsTr("Stop")
+                    text: qsTr("Stop Agents")   // -- WP UAG -- (UXP A7, C4) one meaning per Stop
                     iconName: "square"
                     toolTip: qsTr("Turn AI agents off: what they run stops, their timed previews are put back")
                     onClicked: popover.ai.setEnabled(false)

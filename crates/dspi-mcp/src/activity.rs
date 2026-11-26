@@ -76,6 +76,11 @@ pub struct ActivityEntry {
     /// the person knows them ("LFE → Left woofer off"): for the app's toast
     /// and log only. It may hold names the user or a device wrote, so it is
     /// never in [`ActivityEntry::to_json`], which agents read.
+    /// -- WP UAG -- (UXP A7) On a call that did not run ([`Outcome::Error`]
+    /// with no journal ids) it is why the console refused it, as the person
+    /// reads it ("Kept Right tweeter's high-pass at 1 kHz", "The installer
+    /// lock is on"); "" for any other error. The strip shows it for a few
+    /// seconds and the activity under "Not done".
     pub said: String,
 }
 

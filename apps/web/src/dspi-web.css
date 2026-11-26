@@ -1679,6 +1679,8 @@
 @media (max-width: 600px) {
   .dspi-web .banner-agent .agent-grant { display: block; white-space: normal; }
 }
+/* -- WP UAG -- (UXP A7) where Pause and Stop are, under what the agent does */
+.dspi-web .banner-agent .agent-stop { display: block; color: var(--muted); font-size: 0.85em; }
 .dspi-web .agent-mark,
 .dspi-web .device-tab-agent {
   flex: none;
