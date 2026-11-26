@@ -43,6 +43,34 @@ SettingsPage {
         }
     }
 
+    // -- WP UB13 -- (UXP B13, D11) both off on a mouse desktop: the outline
+    // for those who cannot tell a field from the page by its tone, and the
+    // touch screen's bigger controls (Modern; Classic keeps the Mac's sizes)
+    SettingsGroup {
+        title: qsTr("Accessibility")
+        iconName: "eye"
+        footer: LayoutController.touchScreen
+            ? qsTr("This computer has a touch screen: Automatic makes the controls Comfortable in Modern.")
+            : qsTr("Automatic makes the controls Comfortable in Modern on a computer with a touch screen.")
+        SettingsToggle {
+            objectName: "Appearance.outline"
+            title: qsTr("Outline controls")
+            caption: qsTr("A line round every field, menu and button, for when they are hard to tell from the page.")
+            checked: LayoutController.outlineControls
+            onToggled: on => LayoutController.outlineControls = on
+        }
+        SettingsPickerRow {
+            objectName: "Appearance.density"
+            enabled: LayoutController.modern
+            inline: true
+            label: qsTr("Control size")
+            values: ["automatic", "standard", "comfortable"]
+            texts: [qsTr("Automatic"), qsTr("Standard"), qsTr("Comfortable")]
+            value: LayoutController.density
+            onChosen: v => LayoutController.density = v
+        }
+    }
+
     SettingsGroup {
         title: qsTr("Modern Arrangement")
         iconName: "layout-grid"

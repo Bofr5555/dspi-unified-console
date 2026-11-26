@@ -60,8 +60,8 @@ Button {
         color: plain ? (button.down ? Theme.controlPressed : button.hovered && button.enabled ? Theme.controlHover : Theme.control)
              : button.down ? Qt.darker(button.fill, 1.15) : button.hovered && button.enabled ? Qt.lighter(button.fill, 1.08) : button.fill
         opacity: button.enabled ? 1 : 0.6
-        border.width: button.visualFocus ? Theme.focusRingWidth : (button.primary || button.destructive ? 0 : Theme.lineWidth)
-        border.color: button.visualFocus ? Theme.focusRing : Theme.border
+        border.width: button.visualFocus ? Theme.focusRingWidth : (button.primary || button.destructive ? 0 : Theme.controlLineWidth)
+        border.color: button.visualFocus ? Theme.focusRing : Theme.controlLine   // -- WP UB13 --
     }
 
     HelpTip {

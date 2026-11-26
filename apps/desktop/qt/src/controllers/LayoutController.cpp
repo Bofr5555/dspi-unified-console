@@ -7,7 +7,9 @@
 #include "SettingsController.h"
 #include "Shell.h"
 
+#include <QInputDevice>
 #include <QSettings>
+#include <algorithm>
 
 namespace {
 
@@ -21,7 +23,11 @@ const SettingsRegistry::Page appearancePage{
       QT_TRANSLATE_NOOP("SettingsPages", "Dark"), QT_TRANSLATE_NOOP("SettingsPages", "Light"),
       // -- WP LAY4 --
       QT_TRANSLATE_NOOP("SettingsPages", "Darker grey"), QT_TRANSLATE_NOOP("SettingsPages", "Inspector"),
-      QT_TRANSLATE_NOOP("SettingsPages", "Band bar") }
+      QT_TRANSLATE_NOOP("SettingsPages", "Band bar"),
+      // -- WP UB13 --
+      QT_TRANSLATE_NOOP("SettingsPages", "Accessibility"), QT_TRANSLATE_NOOP("SettingsPages", "Outline controls"),
+      QT_TRANSLATE_NOOP("SettingsPages", "Control size"), QT_TRANSLATE_NOOP("SettingsPages", "Comfortable"),
+      QT_TRANSLATE_NOOP("SettingsPages", "Touch screen") }
 };
 
 const char *const kSetupDoneKey = "onboarding/setupDone";   // OnboardingController's
@@ -32,6 +38,19 @@ bool known(const QString &layout) { return layout == QLatin1String("classic") ||
 Qt::ColorScheme schemeOf(const QString &theme) {
     return theme == QLatin1String("light") ? Qt::ColorScheme::Light
          : theme == QLatin1String("dark") ? Qt::ColorScheme::Dark : Qt::ColorScheme::Unknown;
+}
+
+// -- WP UB13 --
+bool knownDensity(const QString &d) {
+    return d == QLatin1String("automatic") || d == QLatin1String("standard") || d == QLatin1String("comfortable");
+}
+
+bool hasTouchScreen() {
+    const QByteArray said = qgetenv("DSPI_TOUCH_SCREEN");
+    if (!said.isEmpty()) return said == "1";
+    const auto devices = QInputDevice::devices();
+    return std::any_of(devices.begin(), devices.end(),
+                       [](const QInputDevice *d) { return d->type() == QInputDevice::DeviceType::TouchScreen; });
 }
 
 } // namespace
@@ -58,6 +77,10 @@ LayoutController::LayoutController(const AppContext &ctx, QObject *parent)
         m_theme = theme;
         if (qEnvironmentVariableIsEmpty("DSPI_COLOR_SCHEME")) m_ctx.shell->setColorSchemeOverride(schemeOf(m_theme));
     }
+    // -- WP UB13 --
+    m_outlineControls = settings.value(QLatin1String(kOutlineKey), false).toBool();
+    if (const QString d = settings.value(QLatin1String(kDensityKey)).toString(); knownDensity(d)) m_density = d;
+    m_touchScreen = hasTouchScreen();
     // -- WP RBFIX --
     connect(this, &LayoutController::layoutChanged, this, &LayoutController::switchBlockerChanged);
     connect(ctx.shell, &Shell::shownWindowsChanged, this, &LayoutController::switchBlockerChanged);
@@ -103,4 +126,19 @@ void LayoutController::setTheme(const QString &theme) {
     QSettings().setValue(QLatin1String(kThemeKey), m_theme);
     m_ctx.shell->setColorSchemeOverride(schemeOf(m_theme));
     emit themeChanged();
+}
+
+// -- WP UB13 --
+void LayoutController::setOutlineControls(bool on) {
+    if (on == m_outlineControls) return;
+    m_outlineControls = on;
+    QSettings().setValue(QLatin1String(kOutlineKey), on);
+    emit outlineControlsChanged();
+}
+
+void LayoutController::setDensity(const QString &density) {
+    if (!knownDensity(density) || density == m_density) return;
+    m_density = density;
+    QSettings().setValue(QLatin1String(kDensityKey), m_density);
+    emit densityChanged();
 }

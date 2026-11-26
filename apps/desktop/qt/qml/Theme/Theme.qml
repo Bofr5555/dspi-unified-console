@@ -28,26 +28,27 @@ QtObject {
             window: "#202020", panel: "#2a2a2a", sidebar: "#1c1c1c", control: "#343434", controlHover: "#3c3c3c",
             controlPressed: "#464646", selection: "#3b3b3b", menu: "#2c2c2c", separator: "#303030", border: "#484848",
             graphGrid: "#3a3a3a", text: "#e8e8e8", textMuted: "#a7a7a7", textDisabled: "#868686", meterTrack: "#141414",
-            pinFree: "#343434"
+            pinFree: "#343434", controlOutline: "#828282"
         },
         "grey light": {
             window: "#f3f3f3", panel: "#fbfbfb", sidebar: "#ebebeb", control: "#e8e8e8", controlHover: "#e2e2e2",
             controlPressed: "#d8d8d8", selection: "#e1e1e1", menu: "#fbfbfb", separator: "#e2e2e2", border: "#cdcdcd",
             graphGrid: "#d3d3d3", text: "#1b1b1b", textMuted: "#5e5e5e", textDisabled: "#7d7d7d", success: "#1a6b2e",
-            meterTrack: "#dadada", pinFree: "#e4e4e4"
+            meterTrack: "#dadada", pinFree: "#e4e4e4", controlOutline: "#828282"
         },
         "darker dark": {
             window: "#151515", panel: "#1e1e1e", sidebar: "#111111", control: "#2a2a2a", controlHover: "#323232",
             controlPressed: "#3b3b3b", selection: "#303030", menu: "#222222", separator: "#262626", border: "#404040",
             graphGrid: "#303030", text: "#e8e8e8", textMuted: "#a3a3a3", textDisabled: "#858585", meterTrack: "#0c0c0c",
-            pinFree: "#2a2a2a"
+            pinFree: "#2a2a2a", controlOutline: "#767676"
         },
         "darker light": {
             window: "#e2e2e2", panel: "#eeeeee", sidebar: "#d9d9d9", control: "#d9d9d9", controlHover: "#d2d2d2",
             controlPressed: "#c8c8c8", selection: "#cfcfcf", menu: "#eeeeee", separator: "#d2d2d2", border: "#b9b9b9",
             graphGrid: "#c6c6c6", text: "#1b1b1b", textMuted: "#545454", textDisabled: "#707070", accentText: "#174ba8",
             dangerText: "#98190f", warning: "#6e4300", success: "#14602a", meterTrack: "#cbcbcb", meterLevel: "#4c5e7e",
-            meterMid: "#8a5700", alarmRaised: "#98190f", alarmAcknowledged: "#6e4300", pinFree: "#d4d4d4"
+            meterMid: "#8a5700", alarmRaised: "#98190f", alarmAcknowledged: "#6e4300", pinFree: "#d4d4d4",
+            controlOutline: "#7a7a7a"
         }
     })
 
@@ -80,6 +81,18 @@ QtObject {
     readonly property color border: toned.border || (dark ? "#44454b" : "#c9c9cf")
     readonly property color focusRing: accent
     readonly property color graphGrid: toned.graphGrid || (dark ? "#3a3b40" : "#d0d0d5")
+    // -- WP UB13 -- (UXP B13) "Outline controls" (LayoutController.outlineControls,
+    // Settings > Appearance > Accessibility, off by default): the edge of a field,
+    // combo box, stepper, button, segment bar or chip, 3:1 or more on every
+    // surface and on the control tone (WCAG 1.4.11, tools/contrast.py). Off, the
+    // look is the owner's: no line in Modern, Classic's `border`. Controls draw
+    // controlLineWidth in controlLine; chips, which have no line in either
+    // layout, chipLineWidth.
+    readonly property bool outlined: LayoutController.outlineControls
+    readonly property color controlOutline: toned.controlOutline || (dark ? "#86878d" : "#86868b")
+    readonly property int controlLineWidth: outlined ? 1 : lineWidth
+    readonly property color controlLine: outlined ? controlOutline : border
+    readonly property int chipLineWidth: outlined ? 1 : 0
 
     // Text
     readonly property color text: toned.text || (dark ? "#e6e6e6" : "#1c1c1e")
@@ -128,7 +141,13 @@ QtObject {
     readonly property int spacing: 12
     readonly property int spacingLarge: 16
     readonly property int rowHeight: LayoutController.modern ? 28 : 26   // -- WP DL0 -- Modern's table rows
-    readonly property int controlHeight: 24
+    // -- WP UB13 -- (UXP B13) The Comfortable density (LayoutController.comfortable:
+    // chosen, or automatic on a touch screen), in Modern only: 32 px controls,
+    // 28 px chips, a 20 px reach round a PEQ band's dot. Standard keeps 24, 24, 10.
+    readonly property bool comfortable: LayoutController.modern && LayoutController.comfortable
+    readonly property int controlHeight: comfortable ? 32 : 24
+    readonly property int chipHeight: comfortable ? 28 : controlHeight
+    readonly property real peqHitRadius: comfortable ? 20 : 10
     readonly property int sidebarWidth: 240
     readonly property int popupMaxHeight: 320
     // -- WP QTPOP -- Room a dialog leaves inside the window it opens over, on

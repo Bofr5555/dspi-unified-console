@@ -19,6 +19,7 @@ pairs += [('accentText', 'selection')]  # -- WP DL0 -- a chosen chip or segment:
 pairs += [(t, 'meterTrack') for t in ('meterLevel', 'meterLow', 'meterMid', 'meterHigh', 'meterHold')]  # -- WP QP18 -- graphics, 3:1
 pairs += [(t, b) for t in ('alarmRaised', 'alarmAcknowledged') for b in ('window', 'panel', 'sidebar', 'control')]
 pairs += [('textOnAccent', 'accent'), ('textOnAccent', 'danger'), ('tooltipText', 'tooltip')]
+pairs += [('controlOutline', b) for b in ('window', 'panel', 'sidebar', 'control', 'menu')]  # -- WP UB13 -- a component's edge, 3:1
 bad = 0
 # -- WP LAY4 -- Modern's grey tones: each names the colours it changes ("grey dark": { window: "#202020", ... })
 tones = {'': {}}
@@ -28,7 +29,7 @@ for tone, scheme, body in re.findall(r'"(\w+) (dark|light)": \{(.*?)\}', src, re
 for tone, i, scheme in ((t, i, s) for t in tones for i, s in enumerate(('dark', 'light'))):
     at = {name: v[i] for name, v in tok.items()} | tones[tone].get(scheme, {})
     for t, b in pairs + [('text', 'textSelection')]:
-        r = ratio(at[t], at[b]); ok = r >= (3.0 if t == 'textDisabled' or b == 'meterTrack' else 4.5)
+        r = ratio(at[t], at[b]); ok = r >= (3.0 if t in ('textDisabled', 'controlOutline') or b == 'meterTrack' else 4.5)
         bad += not ok
         if not ok or '-v' in sys.argv: print(f'{tone:6} {scheme:5} {t:13} on {b:10} {r:5.2f} {"" if ok else "BELOW AA"}')
 # -- WP REVDFIX -- (REVD D1) Modern's controls have no outline: each control tone

@@ -88,8 +88,8 @@ ComboBox {
     background: Rectangle {
         radius: Theme.radiusControl   // -- WP DL0 -- Modern: no outline but the focus ring
         color: control.down ? Theme.controlPressed : control.hovered ? control.fillHover : control.fill
-        border.width: control.visualFocus ? Theme.focusRingWidth : Theme.lineWidth
-        border.color: control.visualFocus ? Theme.focusRing : Theme.border
+        border.width: control.visualFocus ? Theme.focusRingWidth : Theme.controlLineWidth
+        border.color: control.visualFocus ? Theme.focusRing : Theme.controlLine   // -- WP UB13 --
     }
     popup: Popup {
         y: control.height + 2

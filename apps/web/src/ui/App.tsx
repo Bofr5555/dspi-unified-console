@@ -30,6 +30,7 @@ import { DOCS_URL, helpEntries, noDeviceEntries, paletteEntries } from "./palett
 import { deviceName, NoticeLog } from "./drawer/notices";
 import { BellButton, Drawer, useNotices } from "./drawer/Drawer";
 import { deviceTabsInRail, inspectorShown, loadArrangement, saveArrangement, setInspectorShown, type Arrangement } from "./arrangement/arrangement";
+import { accessAttributes, useCoarsePointer } from "./arrangement/access"; // -- WP UB13 --
 import { AppearanceDialog, ArrangementContext, RailTopContext } from "./arrangement/Appearance";
 import { DeviceTabs } from "./shell/DeviceTabs";
 import { useFollowAgent } from "./follow-agent"; // -- WP ODEC --
@@ -101,6 +102,7 @@ export function App(props: { options: ConsoleOptions }) {
     setInspector(v);
   }, []);
   const [appearance, setAppearance] = useState(false);
+  const coarse = useCoarsePointer(); // -- WP UB13 -- for Automatic's Comfortable
   const board = useMemo(() => new ActionBoard(), []);
   const [palette, setPalette] = useState<{ entries: PaletteEntry[]; back: HTMLElement | null } | null>(null);
   const log = useMemo(() => new NoticeLog(), []);
@@ -446,6 +448,7 @@ export function App(props: { options: ConsoleOptions }) {
       data-nav={arrangement.navigation}
       data-theme={arrangement.theme === "system" ? undefined : arrangement.theme}
       data-device-tabs={tabsInRail ? "rail" : undefined}
+      {...accessAttributes(arrangement, coarse) /* -- WP UB13 -- data-outline, data-density */}
     >
       {/* -- WP REVEFIX -- several devices: their tabs over the top bar (Qt's device row) */}
       {deviceRow ? <div class="device-row">{deviceTabs}</div> : null}

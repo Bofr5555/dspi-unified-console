@@ -69,7 +69,11 @@ export function AppearanceSettings() {
           </fieldset>
         );
       })}
-      <p class="note">Kept in this browser only. The device tabs move to the rail only where the sections are in a rail.</p>
+      <p class="note">
+        Kept in this browser only. The device tabs move to the rail only where the sections are in a rail.
+        {/* -- WP UB13 -- */}
+        {" "}Outline controls draws a line round every field, menu and button. Automatic makes the controls Comfortable on a touch screen.
+      </p>
     </section>
   );
 }
