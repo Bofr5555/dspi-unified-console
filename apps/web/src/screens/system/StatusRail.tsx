@@ -19,6 +19,8 @@ import { alarmSummary } from "../hub/model";
 import type { ModeChoice } from "../../core/protocol";
 // -- WP SECWEB -- a hub link that is not encrypted: red, " (unsecured)", and the info button
 import { UnsecuredMark, isUnsecured } from "../../ui/LinkSecurity";
+import { tabState } from "../../ui/shell/DeviceTabs"; // -- WP UWN --
+import type { SessionState } from "../../ui/session";
 
 export function StatusRail(props: {
   feed: SystemFeed;
@@ -62,8 +64,9 @@ export function StatusRail(props: {
     <aside class="sys-rail" aria-label="Status">
       <div class="sys-rail-row">
         <span class={`sys-rail-item${kind === "hub" && isUnsecured(ss.security) ? " link-unsecured" : ""}`} aria-label="Connection">
-          <span class={`dot dot-${ss.status}`} aria-hidden="true" />
-          {ss.status === "open" && (!ss.link || ss.link.phase === "bound") ? "Connected" : "Not connected"} · {where}
+          {/* -- WP UWN -- (UXP A16) the dot from the same state as the words: a link that is away is not green */}
+          <span class={`dot dot-${tabState(ss)}`} aria-hidden="true" />
+          {connectionWord(ss)} · {where}
           {kind === "hub" ? <UnsecuredMark security={ss.security} ctx={props.session.linkContext} /> : null /* -- WP SECWEB -- */}
         </span>
         {hub ? (
@@ -89,9 +92,12 @@ export function StatusRail(props: {
             System mute: {muted === null ? "unknown" : muted ? "on" : "off"}
           </button>
         ) : null}
-        <span class={`sys-rail-item sys-alarm-sum${(hub ? on.length : hubRaised) ? " raised" : ""}`} aria-label="Alarms">
-          {railAlarmWord(!!hub, on.length, hubRaised) /* -- WP WEB7 -- (REVE D5) */}
-        </span>
+        {/* -- WP UWN -- (UXP C7) no hub line on a device that has no hub (USB, the demo, a file) */}
+        {kind === "hub" ? (
+          <span class={`sys-rail-item sys-alarm-sum${(hub ? on.length : hubRaised) ? " raised" : ""}`} aria-label="Alarms">
+            {railAlarmWord(!!hub, on.length, hubRaised) /* -- WP WEB7 -- (REVE D5) */}
+          </span>
+        ) : null}
       </div>
       {props.children /* -- WP WB6F -- device, preset, core load, health */}
       {st.mute?.error ? (
@@ -111,6 +117,13 @@ export function StatusRail(props: {
       ) : null}
     </aside>
   );
+}
+
+// -- WP UWN -- (UXP A16)
+/** The rail's connection word, from the same state as its dot (`tabState`): Connected, Reconnecting, Connecting, Not connected. */
+export function connectionWord(st: Pick<SessionState, "status" | "link">): string {
+  const t = tabState(st);
+  return t === "open" ? "Connected" : t === "away" ? "Reconnecting" : t === "opening" || t === "pairing" || t === "choosing" ? "Connecting" : "Not connected";
 }
 
 function AlarmRow(props: { a: Alarm; name: string; mayAck: boolean; onAck: () => void }) {

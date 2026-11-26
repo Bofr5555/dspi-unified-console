@@ -66,6 +66,16 @@ export const HubScreen: FunctionComponent<ScreenProps> = (props) => {
   );
 };
 
+// -- WP UWN -- (UXP A16)
+/** "Identify <who>: <title>. <reason>": the core's notice joined into one sentence that names the action and the device. */
+export function identifyFailure(who: string, said: Said): string {
+  const n = said.notice;
+  const title = n ? n.title : said.text;
+  const head = title ? title[0]!.toLowerCase() + title.slice(1) : "it did not work";
+  const reason = n?.reason ? ` ${n.reason}` : "";
+  return `Identify ${who}: ${head.replace(/[.]$/, "")}.${reason}`;
+}
+
 export const HUB_SCREEN: ScreenDef = { id: HUB_SCREEN_ID, label: "Hub", View: HubScreen };
 
 function HubDevices(p: { feed: HubFeed; view: HubView; props: ScreenProps }) {
@@ -104,6 +114,24 @@ function HubDevices(p: { feed: HubFeed; view: HubView; props: ScreenProps }) {
     if (editing?.serial === r.serial) setEditing(null);
     await run(() => feed.forget(r.serial, a === "with-data"));
   };
+  // -- WP UWN -- (UXP A16) Identify's failure in one sentence naming the action and the device, in the core's words
+  // ("Identify DSPi Demo (BENCH0000DSPI001): not available. The connected firmware does not have this feature."); that
+  // DSPi's Identify then off with the reason; any action's line goes after 10 s
+  const [cannotBlink, setCannotBlink] = useState<Record<string, string>>({});
+  const identify = (r: HubRow) =>
+    run(async () => {
+      const said = await feed.identify(r.serial);
+      if (!said.bad) return said;
+      const who = rows.some((o) => o.serial !== r.serial && o.name === r.name) ? `${r.name} (${r.serial})` : r.name;
+      const text = identifyFailure(who, said);
+      if (said.notice?.key === "unsupported") setCannotBlink((m) => ({ ...m, [r.serial]: text }));
+      return { text, bad: true, notice: said.notice ? { ...said.notice, reason: "" } : null };
+    });
+  useEffect(() => {
+    if (!said) return;
+    const t = setTimeout(() => setSaid(null), 10_000);
+    return () => clearTimeout(t);
+  }, [said]);
   const edited = editing ? rows.find((r) => r.serial === editing.serial) : undefined;
   return (
     <section class="card hub-devices" aria-label="Devices on the hub">
@@ -164,9 +192,9 @@ function HubDevices(p: { feed: HubFeed; view: HubView; props: ScreenProps }) {
                         {may.identify ? (
                           <button
                             type="button"
-                            disabled={busy || !!may.identifyOff}
-                            title={may.identifyOff || "Blink this DSPi's LED"}
-                            onClick={() => void run(() => feed.identify(r.serial))}
+                            disabled={busy || !!may.identifyOff || !!cannotBlink[r.serial]}
+                            title={may.identifyOff || cannotBlink[r.serial] || "Blink this DSPi's LED"}
+                            onClick={() => void identify(r)}
                           >
                             Identify
                           </button>

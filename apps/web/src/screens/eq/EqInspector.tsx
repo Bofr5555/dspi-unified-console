@@ -264,10 +264,11 @@ function InputParts(props: Parameters<typeof EqInspector>[0]) {
           Edit Routing…
         </button>
       </InspectorSection>
-      <InspectorSection title="Headphone profile" open={false}>
+      {/* -- WP UWN -- (UXP A17) AutoEQ, as the docs, the Library tab and the page tool name it */}
+      <InspectorSection title="AutoEQ" open={false}>
         <p class="note">Load a headphone's correction from the AutoEQ profiles into this input's bands.</p>
         <button type="button" onClick={props.headphones}>
-          Headphone Profile…
+          AutoEQ…
         </button>
       </InspectorSection>
     </>
