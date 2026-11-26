@@ -21,7 +21,7 @@ generation it runs and which of the fork's extensions it has (the extension chan
 private page `0xE0` on paged firmware), and simply do not offer what a device lacks.
 
 **On stock firmware (1.1.6, or upstream's paged 1.1.7 beta as of 2026-11-18; later 1.1.7 betas may need an update) everything else works:** every DSP control, presets, files and
-AutoEQ, the analyser and generator, undo, snapshots, A/B and safe apply, limits profiles and the installer lock, the
+AutoEQ, the analyser and generator, undo, snapshots, A/B and trials, limits profiles and the installer lock, the
 modes, the hub with its roles, TLS, history, alarms, schedules, MQTT, REST, groups and rollout, the device's health
 (load, temperature, the clip latch), firmware updates with their checks, and **measurement and auto-tune of one unit**
 (the generator of firmware 1.1.5 and later is the stimulus).
@@ -57,43 +57,62 @@ alink sender already speaks both ([`STATUS.md`](STATUS.md)). On our hub the fork
 | Demo device, no hardware | – | ✓ `--demo` | ✓ Demo mode | ✓ | ✓ `--demo` | ✓ |
 | EQ with the response graph, crossovers, delays, gains, routing, matrix mixer | stock | ✓ | ✓ | ✓ | ✓ the interface (TUI) and commands | ✓ |
 | Effects: loudness, crossfeed, leveller, bass, subharmonic, tube, upmixer, limiters | stock | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Crossfeed pair map | fork † | ✓ | ✓ | – | ◐ `uconsole ext xfeed-map` | ✓ |
+| Crossfeed pair map | fork † | ✓ | ✓ | ✓ the output-pair picker | ◐ `uconsole ext xfeed-map` | ✓ |
 | Presets, filter files, AutoEQ with a preview | stock | ✓ | ✓ | ✓ | ✓ `autoeq preview`, `autoeq apply` | ✓ |
 | Signal generator, analyser, statistics, interrupt monitor | stock | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Undo and redo | stock | ✓ Edit menu, History window | ✓ | ✓ | ✓ in the interface | ✓ |
 | Firmware update, with the update check (see below) | stock | ✓ | ✓ | ◐ checks an image; writes only through a hub's rollout | ✓ `uconsole flash` | ◐ writes; no update check yet |
 | Core voltage | fork † | ✓ with calibration | ✓ | ✓ Installer mode | ✓ | ◐ |
-| Device info: board, firmware generation, protocol | stock | ✓ Settings > About | ✓ Settings > About | ✓ Device screen | ✓ `uconsole info` | – |
+| Device info: board, firmware generation, protocol | stock | ✓ Settings › About (the protocol rows: Settings › Advanced) | ✓ Settings › About | ✓ Device screen | ✓ `uconsole info` | – |
 | Both firmware generations, 1.1.6 and upstream's paged 1.1.7 beta as of 2026-11-18 (later 1.1.7 betas may need an update) | stock | ✓ | ✓ | ✓ | ✓ | ◐ on the core paths |
 | Read-only for firmware it cannot write, with a notice | stock | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Device volume buttons set the DSPi's User Volume while the app is in front | stock | – | ✓ (Settings > Advanced, on by default) | – | – | – |
-| Diagnostics bundle | stock | ✓ Help > Save Diagnostics | – | ✓ Events screen (Advanced and up) | ✓ `uconsole diag` | – |
+| Device volume buttons set the DSPi's User Volume while the app is in front | stock | – | ✓ (Settings › Advanced, on by default) | – | – | – |
+| Diagnostics bundle | stock | ✓ Help › Save Diagnostics | – | ✓ Events screen (Advanced and up) | ✓ `uconsole diag` | – |
 
-## Layouts, several devices and the look (new in 0.15.0)
+## Everyday use (new in 0.16.0)
+
+How to use these is in the manual: [`manual/everyday.md`](manual/everyday.md).
+
+| Feature | Firmware | Qt desktop | Android | Web | Terminal | Apple (not in 0.16.0) |
+|---|---|---|---|---|---|---|
+| Crossovers and routes from your confirmed speakers (From Speaker Layout…), one Undo, the tweeter protected | stock | ✓ Equaliser › Crossover, Routing | – | – | – | – |
+| A/B in the top bar: the preset as saved on the device (A) against what you hear now (B) | stock | ✓ (Classic: the B key) | – | ✓ | ◐ `ab`: now against a snapshot | – |
+| A setup list on the Overview ("Set up this DSPi · 2 of 5 done") | stock | ✓ Modern | – | – | – | – |
+| Unsaved changes per device tab, Save to Device naming the slot, Save All… | stock | ✓ Modern | – | ◐ Save to Device | – | – |
+| Home: a remote with volume, Mute, source and presets, for Simple mode and a locked DSPi | stock | ✓ Modern | ✓ (Mute beside the volume) | ✓ | – | – |
+| All devices: volume, mute and preset recall on every open device | stock | ✓ Modern dock | – | – | – | – |
+| Solo an output until End Solo | stock | ✓ | – | ✓ | – | – |
+| Outputs named as your speakers ("Left woofer · 1"), unused ones folded | stock | ✓ Modern | ✓ | ✓ | ✓ | – |
+| The demo as a tuned two-way speaker, Reset Demo | – | ✓ | ✓ | ✓ | ✓ (the demo) | – |
+| Help › Keyboard Shortcuts, F6 between the parts of the window, palette synonyms and "Help: …" entries | – | ✓ Modern | – | ✓ Keyboard Shortcuts, the palette's synonyms and Help entries (no F6) | ✓ Ctrl-P search by words | – |
+| Plain mode for screen readers and scripts | – | – | – | – | ✓ `uconsole --plain` | – |
+| The EQ graph's phase curve, an output's polarity in the Routing inspector | stock | ✓ | – | ✓ | – | – |
+
+## Layouts, several devices and the look (new in 0.16.0)
 
 | Feature | Firmware | Qt desktop | Android | Web | Terminal | Apple (not in 0.16.0) |
 |---|---|---|---|---|---|---|
 | Modern layout: a rail of sections, tools on pages with tabs, a dock with volume and meters, Ctrl+K command palette | – | ✓ (new installs; Settings › Appearance) | – | ✓ (the web's only layout) | – | – |
-| Classic layout: menu bar and tool windows, as before | – | ✓ (installs from before 0.15.0) | – | – | – | – |
+| Classic layout: menu bar and tool windows, as before | – | ✓ (installs that ran an earlier version) | – | – | – | – |
 | Several devices open at once, one tab each, each with its own edits, history and measurement | – | ✓ Modern (Classic shows one and lists the others) | – | ✓ device tabs | – (one per command) | – |
 | Light, dark or the system's theme | – | ✓ | ✓ (the system's) | ✓ | – | – |
-| Outline controls (a 3:1 line round fields, menus and buttons) and a Comfortable control size, automatic on a touch screen (both off on a mouse desktop; 0.16, WP UB13) | – | ✓ Settings › Appearance › Accessibility (the size in Modern) | – | ✓ Settings › Appearance | – | – |
+| Outline controls (a 3:1 line round fields, menus and buttons) and a Comfortable control size, automatic on a touch screen (both off on a mouse desktop) | – | ✓ Settings › Appearance › Accessibility (the size in Modern) | – | ✓ Settings › Appearance | – | – |
 | The redrawn matrix mixer (tiles with gain and polarity, keyboard, Link L/R pairs, Direct 1:1, Clear, Dense) | stock | ✓ | – (its own matrix) | ✓ | – | – |
 | Presets in one popover (Recall, Save, Copy Here, the slot's menu) | stock | ✓ Modern | – | ✓ | – | – |
 | Outputs nothing is routed to left out of the views that only show (meters, Overview, Spectrum, Stats) and named "3 · None" where they must show | stock | ✓ | ✓ | ✓ | ✓ | – |
 
-## Speaker setup (new in 0.15.0)
+## Speaker setup (new in 0.16.0)
 
 Which output drives what (full range, sub, woofer, midrange, tweeter), kept per device. Measurement and AI agents
 take the roles from it, and a tweeter in it keeps its protective high-pass whenever an agent works.
 
 | Feature | Firmware | Qt desktop | Android | Web | Terminal | Apple (not in 0.16.0) |
 |---|---|---|---|---|---|---|
-| Settings › Speakers: suggested from the filters and routing, confirmed by you | stock | ✓ (also a Getting Started step) | – | ✓ (kept in the browser) | – | – |
+| Settings › Speakers: suggested from the filters and routing, confirmed by you; read-only under the installer's lock | stock | ✓ (also a Getting Started step) | ✓ (also a Getting Started step) | ✓ (kept in the browser) | – | – |
 | Detect…: quiet test sweeps with the measurement microphone find which output drives what | stock | ✓ | – | ✓ | – | – |
 | Roles an AI agent set from your words or detected, marked until you confirm them | stock | ✓ | – | ✓ (shown) | – | – |
 
-## AI agents (MCP, new in 0.15.0)
+## AI agents (MCP, new in 0.16.0)
 
 The user's page is [`manual/ai-agents.md`](manual/ai-agents.md); from another computer, through SSH:
 [`mcp-ssh-forwarding.md`](mcp-ssh-forwarding.md). Agents are off until you turn them on, and the console listens on
@@ -105,9 +124,11 @@ this computer only.
 | An agent measures, finds an output's low end, proposes, applies and verifies an auto-tune (in the app's Measure, with your microphone) | stock | ✓ | – | – | – | – |
 | An agent detects the speakers, or sets their roles from your words (one question each) | stock | ✓ | – | – | – | – |
 | An agent sets up a hub's installation (sources, zones, slots, scenes) and a room's or zone's volume | fork † for the audio link | ✓ | – | – | – | – |
+| Questions in the screen's words; one agent's questions raised together come as one sheet (agents over HTTP) | stock | ✓ | – | – | – | – |
+| Install in Claude Desktop… (an extension file; not yet tried in a real Claude Desktop) | – | ✓ Settings › AI Agents | – | – | – | – |
 | An agent's work on a hub's device is shown to the other consoles | stock | ✓ | – | ✓ a strip and a mark on the device's tab | – | – |
 
-## Installation setup on a hub (new in 0.15.0)
+## Installation setup on a hub (new in 0.16.0)
 
 | Feature | Firmware | Qt desktop | Android | Web | Terminal | Apple (not in 0.16.0) |
 |---|---|---|---|---|---|---|
@@ -121,11 +142,11 @@ All of these are the core's and work on stock firmware.
 
 | Feature | Firmware | Qt desktop | Android | Web | Terminal | Apple (not in 0.16.0) |
 |---|---|---|---|---|---|---|
-| Simple, Advanced and Installer modes ([`UI-MODES.md`](UI-MODES.md)) | stock | ◐ Settings > Installer; no mode switch shown yet | ✓ | ✓ | – (commands) | ✓ |
-| Installer lock and PIN, with a recovery code | stock | ✓ | ✓ | ◐ unlocks a hub's lock; no PIN of its own | ✓ `lock` | ✓ |
+| Simple, Advanced and Installer modes ([`UI-MODES.md`](UI-MODES.md)) | stock | ✓ Mode… (in Classic, Window › Mode…) | ✓ (phones open in Advanced) | ✓ | – (commands) | ✓ |
+| Installer lock and PIN, with a recovery code; the locked user keeps volume, mute, source and presets | stock | ✓ (Classic refuses after the click) | ✓ | ◐ unlocks a hub's lock; no PIN of its own | ✓ `lock` | ✓ |
 | Limits profiles (output gain, high-pass, delay, limiter ceiling, PEQ boost, volume) | stock | ✓ | ✓ | ✓ | ✓ `limits` | ✓ |
-| Snapshots, A/B compare | stock | ✓ | ✓ | ✓ | ✓ `snapshot`, `ab` | ✓ |
-| Safe apply: Keep, or it goes back by itself | stock | ✓ | ✓ | ✓ | ✓ `--guard` (on by default over DSPi Link) | ✓ |
+| Snapshots, A/B compare of any two | stock | ✓ | ✓ | ✓ (kept in this browser per DSPi) | ✓ `snapshot`, `ab` | ✓ |
+| Trial: a recall applied for a while; Keep, or it goes back by itself | stock | ✓ | ✓ | ✓ | ✓ `--guard` (on by default over DSPi Link) | ✓ |
 | A revert that did not fully succeed says so, and to check the settings or restore a snapshot | stock | ✓ | ✓ | ✓ | ✓ (and a non-zero exit) | – |
 | Offline documents and templates | – | ✓ | ✓ | ✓ | ◐ `open`; no templates | ✓ |
 | Document diff and partial import | stock | ✓ | ✓ | ✓ | ✓ `diff`, `import --only` | ✓ |
@@ -133,14 +154,14 @@ All of these are the core's and work on stock firmware.
 
 ## The hub and DSPi Link (PRO phases 2 and 3)
 
-The hub is `uconsole hub` (the Terminal), or the Qt app's sharing (Settings > Networking). It speaks DSPi Link over TLS
+The hub is `uconsole hub` (the Terminal), or the Qt app's sharing (Settings › Networking). It speaks DSPi Link over TLS
 1.3, with the hub's key pinned at pairing, and roles (Viewer, Control, Admin). It serves stock and fork devices alike.
 Its API: [`integrator/hub-api.md`](integrator/hub-api.md); security: [`integrator/security.md`](integrator/security.md).
 
 | Feature | Firmware | Qt desktop | Android | Web | Terminal | Apple (not in 0.16.0) |
 |---|---|---|---|---|---|---|
 | Open a DSPi through a hub (DSPi Link client, PIN pairing bound to the hub's key) | stock | ✓ | ✓ | ✓ | ✓ `--link` | ✓ |
-| Run a hub | stock | ✓ Settings > Networking | – | – (served by one) | ✓ `uconsole hub` | ✓ the Mac's hub |
+| Run a hub | stock | ✓ Settings › Networking | – | – (served by one) | ✓ `uconsole hub` | ✓ the Mac's hub |
 | Shared snapshots, the hub's history, the alarm banner | stock | ✓ | ✓ | ✓ | ◐ the hub runs them; read through `uconsole --hub api` | ✓ |
 | Identify: the device blinks its LED | fork † | ✓ | ✓ | ✓ | ◐ through `uconsole --hub api` | ✓ |
 | Inventory, alarms, schedules, notifications, MQTT and Home Assistant, REST | stock | – | – | ✓ Hub and Hub Settings screens | ✓ `uconsole hub` services | – |
@@ -155,7 +176,7 @@ Every row here needs the fork firmware †: the alink, its sender and its time b
 
 | Feature | Firmware | Qt desktop | Android | Web | Terminal | Apple (not in 0.16.0) |
 |---|---|---|---|---|---|---|
-| The System view: every unit, its role and lock state, audio link delay | fork † | ◐ System (Window > System… in Classic): a units table | ◐ the System screen: unit rows | ✓ rooms, zones, topology, slots | – | – |
+| The System view: every unit, its role and lock state, audio link delay | fork † | ◐ System (Window › System… in Classic): a units table | ◐ the System screen: unit rows | ✓ rooms, zones, topology, slots | – | – |
 | Clock and audio links: system delay, lip sync, alignment | fork † | ◐ no slot matrix, link stats or trim scan | ◐ as Qt | ✓ Installer mode, with the slot matrix and link stats | – | – |
 | Scenes at a frame, refusals in words | fork † | ✓ | ✓ | ✓ | – | – |
 | Compact status ("Audio link: 4 of 4 locked") | fork † | ◐ a status line | ◐ Home's chip | ✓ the status rail | – | – |
@@ -171,7 +192,7 @@ in a simulated room.
 
 | Feature | Firmware | Qt desktop | Android | Web | Terminal | Apple (not in 0.16.0) |
 |---|---|---|---|---|---|---|
-| Measure with a calibrated microphone (UMIK-1/2, REW, CSV, Dayton Audio files) | stock (1.1.5 and later) | ✓ Measure (Tools > Measure… in Classic) | *later* | ✓ Measure screen | ◐ imports and documents; no microphone | *later* |
+| Measure with a calibrated microphone (UMIK-1/2, REW, CSV, Dayton Audio files) | stock (1.1.5 and later) | ✓ Measure (Tools › Measure… in Classic) | *later* | ✓ Measure screen | ◐ imports and documents; no microphone | *later* |
 | Live response, microphone RTA, "cut this peak" / "fit this range" | stock | ✓ | *later* | ✓ | – | *later* |
 | Auto-tune: delay and polarity, crossover corner and levels, target EQ; summed check, guarded apply, verify, Keep or Revert | stock | ✓ | *later* | ✓ | ◐ `measure tune` from a saved measurement | *later* |
 | Passive RTA for a Viewer or a read-only connection | stock | ✓ | *later* | ✓ | – | *later* |
@@ -193,7 +214,7 @@ again at the moment of writing. The user's page is [`manual/notices.md`](manual/
 
 ## The desktop app on macOS
 
-<!-- WP QTMAC --> The macOS `.dmg` is the Qt desktop app, built from the same code as the Windows and Linux files,
+The macOS `.dmg` is the Qt desktop app, built from the same code as the Windows and Linux files,
 so every **Qt desktop** cell above holds on a Mac too, except:
 
 | | macOS | Windows, Linux |

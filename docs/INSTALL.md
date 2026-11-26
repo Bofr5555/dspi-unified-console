@@ -7,7 +7,8 @@ Android app is also on Google Play. The app is called **uConsole for DSPi**: eve
 Terminal's command stays `uconsole`).
 
 **No DSPi yet?** Every client has a demo device (`--demo` on the desktop and in the Terminal, Demo mode on
-Android and in the web console), so you can try every screen first.
+Android and in the web console; the desktop app's Welcome page opens it too), so you can try every screen first.
+The demo is a tuned two-way speaker, and **Reset Demo** starts it again.
 
 - [Windows](#windows) · [Linux](#linux) (Debian/Ubuntu, Fedora, AppImage and tar.gz, Arch) ·
   [USB access on Linux](#usb-access-on-linux) · [Android](#android) · [Terminal](#terminal-uconsole) ·
@@ -38,7 +39,7 @@ Run `uConsole-for-DSPi-<version>-windows-x86_64-setup.exe`. SmartScreen warns ab
 *More info* → *Run anyway*. No driver step is needed on a clean machine. The zip is the same app without an
 installer: unpack it and run `uconsole-for-dspi.exe`.
 
-The Windows files check this project's releases for updates when that is switched on (Settings > Updates).
+The Windows files check this project's releases for updates when that is switched on (Settings › Updates).
 
 ## Linux
 
@@ -74,7 +75,7 @@ also works over SSH.
 The tar.gz holds the same app with an installer: unpack it and run `./install.sh`. It installs for you, without
 root (the app into `~/.local/bin`, a menu entry and an icon); `./install.sh --udev` also installs the USB rule (it
 asks for the password), and `./install.sh --uninstall` removes it again. The AppImage and the tar.gz check this
-project's releases for updates when that is switched on (Settings > Updates).
+project's releases for updates when that is switched on (Settings › Updates).
 
 ### Arch Linux
 
@@ -150,7 +151,7 @@ VPN ([`integrator/security.md`](integrator/security.md)).
 
 ## macOS
 
-<!-- WP QTMAC --> The Mac app is the same Qt app as on Windows and Linux: `uConsole-for-DSPi-<version>-macos.dmg`,
+The Mac app is the same Qt app as on Windows and Linux: `uConsole-for-DSPi-<version>-macos.dmg`,
 one universal app for Intel and Apple silicon Macs, macOS 12 (Monterey) or newer. Open the `.dmg` and drag
 **uConsole for DSPi** onto **Applications**. USB needs no driver and no rule on a Mac.
 
@@ -161,7 +162,7 @@ Apple cannot check it for malicious software" or "is damaged"). Check the downlo
 
 - **Finder:** Control-click (right-click) the app in Applications, choose **Open**, and **Open** again in the
   dialog. On macOS 15 and newer that dialog has no Open button: try to open the app once, then go to **System
-  Settings > Privacy & Security**, scroll down to the message about uConsole for DSPi and click **Open Anyway**
+  Settings › Privacy & Security**, scroll down to the message about uConsole for DSPi and click **Open Anyway**
   (it asks for your password).
 - **Terminal:** remove the quarantine mark the browser put on the app, then open it normally:
 
@@ -174,7 +175,7 @@ microphone (measurement) and for the local network (DSPi Link: finding hubs, sha
 for those features.
 
 `"/Applications/uConsole for DSPi.app/Contents/MacOS/uConsole for DSPi" --version` (or `--help`) answers without
-opening a window. The app checks this project's releases for updates when that is switched on (Settings > Updates);
+opening a window. The app checks this project's releases for updates when that is switched on (Settings › Updates);
 an update is a new `.dmg` to drag over the old app. What differs from Windows and Linux is in
 [`FEATURES.md`](FEATURES.md#the-desktop-app-on-macos).
 
@@ -186,20 +187,23 @@ The Swift apps for macOS and iOS ([`apps/apple/`](../apps/apple/)) exist and run
 ## After installing: the layout and AI agents
 
 The desktop app (Windows, Linux, macOS) has two layouts. A **new install opens in Modern** (a rail of sections, the
-open devices as tabs); an install that finished its Getting Started before 0.15.0 keeps **Classic** (the menu bar and
+open devices as tabs); an install that finished its Getting Started with an earlier version (0.14.0 or older) keeps **Classic** (the menu bar and
 tool windows of earlier versions). Settings › Appearance switches between them at any time; in Modern, the uConsole
 menu also has "Switch to the Classic Layout". The web console has the Modern layout only.
 
 AI agents (Claude Desktop, Claude Code, Cursor and other MCP clients) can work with the desktop app once you turn
 them on in Settings › AI Agents; they are off until then. How to connect one, and what they may and may not do:
 [`manual/ai-agents.md`](manual/ai-agents.md).
-To connect Claude Desktop or Claude Code: [Connect Claude in three steps](manual/ai-agents.md#connect-claude-in-three-steps). <!-- WP UAG -->
+To connect Claude Desktop or Claude Code: [Connect Claude in three steps](manual/ai-agents.md#connect-claude-in-three-steps).
+Settings › AI Agents › **Install in Claude Desktop…** writes an extension file for Claude Desktop; it has not yet been
+tried in a real Claude Desktop and is not signed, so if Claude Desktop does not take it, copy the JSON shown under it
+(its **Copy** button) into `claude_desktop_config.json` by hand, as that page says.
 
 ## Fork firmware
 
 The apps work with stock Weeb Labs firmware. The features marked † in [`FEATURES.md`](FEATURES.md#firmware-stock-vs-fork)
 need the DSPi fork firmware, release [**v1.1.6-bofr1**](https://github.com/Bofr5555/DSPi/releases/tag/v1.1.6-bofr1), the
-firmware 0.16.0 was tested against (the same as for 0.14.0 and 0.15.0). Not an official Weeb Labs release. Pick the image for your board:
+firmware 0.16.0 was tested against (the same as for 0.14.0). Not an official Weeb Labs release. Pick the image for your board:
 
 | Board | Image |
 |---|---|

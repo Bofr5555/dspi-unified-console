@@ -20,9 +20,10 @@ on your computer (Claude, Cursor and other MCP clients) can work with you, under
 - **AI agents, safely.** Turn them on in Settings › AI Agents and an agent such as Claude Desktop, Claude Code or
   Cursor can read and change your DSPi, measure and tune it. Risky changes wait for your answer, every change can be
   undone, and a tweeter's protection holds whatever the agent is told ([manual](docs/manual/ai-agents.md)).
-  To start: [connect Claude in three steps](docs/manual/ai-agents.md#connect-claude-in-three-steps). <!-- WP UAG -->
-- **Your speaker setup.** Settings › Speakers says which output drives what (woofer, midrange, tweeter, sub); the
-  console can detect it with quiet test sweeps, and measurement and agents follow it.
+  To start: [connect Claude in three steps](docs/manual/ai-agents.md#connect-claude-in-three-steps).
+- **Your speaker setup.** Settings › Speakers says which output drives what (woofer, mid driver, tweeter, sub); the
+  console can detect it with quiet test sweeps, builds the crossovers and routes from it in one step, names the outputs
+  after your speakers, and measurement and agents follow it.
 - **Multi-unit systems over the alink** †. A sender, fan-outs and receivers, USB-direct units and S/PDIF followers on
   one time base: a System view with every unit's lock state and delay, rooms and zones, scenes recalled at an exact
   frame, and the alignment of the units' delays.
@@ -36,11 +37,12 @@ on your computer (Claude, Cursor and other MCP clients) can work with you, under
   browser on the local network. Inventory, health, alarms, schedules, MQTT and Home Assistant, a REST API, groups and a
   guarded firmware rollout. Its installation (rooms, zones, units, sources and scenes) is set up from the desktop app
   or the web console.
-- **Simple, Advanced and Installer modes.** A front page for listening; the full tools for tuning; and an Installer
+- **Simple, Advanced and Installer modes.** **Home**, a remote for listening; the full tools for tuning; and an Installer
   mode with limits profiles (gain, high-pass, delay, limiter ceiling, EQ boost, volume) and an installer PIN that
   leaves the user volume, mute, source and presets.
-- **Safe changes.** Snapshots and A/B compare, safe apply with a way back, document diffs and partial imports, undo
-  and redo, and confirmation for every dangerous write. A revert that cannot put everything back says so.
+- **Safe changes.** A/B of what is saved on the device against what you hear now, snapshots and trials with a way
+  back, unsaved changes shown per device, document diffs and partial imports, undo and redo, and confirmation for
+  every dangerous write. A revert that cannot put everything back says so.
 - **Firmware updates that check first.** The update check reads the board before anything is written and refuses an
   image built for the wrong kind of device (the fork's images carry kind and core-voltage stamps †); leaving the
   fork's firmware asks you to confirm. Both firmware generations, 1.1.6 and upstream's paged 1.1.7 beta as of 2026-11-18 (later 1.1.7 betas may need an update), are supported.
@@ -56,7 +58,7 @@ on your computer (Claude, Cursor and other MCP clients) can work with you, under
 | ![The web console's Equaliser page on the demo DSPi](docs/images/web-eq.png) | ![The web console's System view of a multi-unit installation](docs/images/web-system.png) |
 | **Equaliser** (web console): the same pages as the desktop's Modern layout | **System view** (web console on a hub): rooms, zones and alink lock states |
 | ![The desktop app's Overview page](docs/images/qt-overview.png) | ![The desktop app's measurement results](docs/images/qt-measure.png) |
-| **Overview** (desktop, Modern): one card per channel, its speaker's name and role, its response | **Measure › Results** (desktop, Modern): a measured response of each driver against its target |
+| **Overview** (desktop, Modern): the setup list, then one card per channel with its speaker's name, role and response | **Measure › Results** (desktop, Modern): a measured response of each driver against its target |
 
 ![The uconsole terminal interface](docs/images/terminal.png)
 
@@ -106,7 +108,7 @@ Every file is listed in a `SHA256SUMS` signed with minisign ([check a download](
 |---|---|
 | [Install](docs/INSTALL.md) | Each system step by step, the Linux USB rule, checking a download |
 | [Features](docs/FEATURES.md) | What works where (Qt, Android, web, Terminal, the Apple apps), and on which firmware |
-| [Manual](docs/manual/) | [Measurement and auto-tune](docs/manual/measurement.md), [AI agents](docs/manual/ai-agents.md) (and [from another computer](docs/mcp-ssh-forwarding.md)), [firmware versions, hubs and updates](docs/manual/notices.md) |
+| [Manual](docs/manual/) | [Everyday use](docs/manual/everyday.md), [measurement and auto-tune](docs/manual/measurement.md), [AI agents](docs/manual/ai-agents.md) (and [from another computer](docs/mcp-ssh-forwarding.md)), [firmware versions, hubs and updates](docs/manual/notices.md) |
 | [Integrator guide](docs/integrator/README.md) | The hub and its API, security, documents, the alink, measurement, protocols |
 | [Status](docs/STATUS.md) | Each client's state, what each phase built, what is still owed |
 | [Building](docs/BUILDING.md) | Layout, building and testing in containers, the core |
