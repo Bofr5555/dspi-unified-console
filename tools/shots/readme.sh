@@ -12,7 +12,8 @@
 #     with the tuned home theatre of stories/show-gallery.toml (three simulated DSPi units and a
 #     simulated microphone), gallery.py's pages and shots2.py's measurement by the user, in the
 #     light theme; its output is <build cache>/work/<branch>/runs/readme/
-#   - web: tools/shots/web.sh <work dir>/web (the tour on the core's demo and the demo hub)
+#   - web: tools/shots/web.sh <work dir>/web with apps/web/test/shots/readme_web.spec.ts (-- INT016 --
+#     the README's two pictures in the Modern web console: the core's demo and the demo hub)
 #   - Terminal: tools/shots/terminal.sh <work dir>/terminal (uses what web.sh built)
 set -euo pipefail
 work=${1:?usage: readme.sh <work dir>}
@@ -34,9 +35,9 @@ if [ "${SKIP_RENDER:-}" != 1 ]; then
     python3 "$ft/gallery.py" readme light only=overview,eq-peq || true
     python3 "$ft/shots2.py" readme light || true
     python3 "$ft/functest.py" down --name readme || true
-    # the tour's first pictures of each test are the ones taken here; its later steps predate the
-    # Modern web console and fail (FIN015), so a failed tour does not stop the crops
-    PW_ARGS=test/shots/tour.spec.ts "$root/tools/shots/web.sh" "$work/web" || true
+    # -- INT016 -- the README's own web spec (the old tour predated the Modern web console and is
+    # gone): it is expected to pass, so a failure stops here rather than crop a stale picture
+    PW_ARGS="test/shots/readme_web.spec.ts --project desktop" "$root/tools/shots/web.sh" "$work/web"
     "$root/tools/shots/terminal.sh" "$work/terminal"
 fi
 
