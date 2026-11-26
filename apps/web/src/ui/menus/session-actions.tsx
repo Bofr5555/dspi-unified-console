@@ -49,7 +49,7 @@ const PAGE_ROWS: Record<string, { screen: string; at?: Record<string, unknown> }
 export async function factoryReset(session: Session, ask: Ask): Promise<void> {
   const a = await ask({
     title: "Factory Reset",
-    body: <p>Do you wish to clear all active parameters? This will not overwrite your saved parameters unless you run 'Commit Parameters'.</p>,
+    body: <p>Do you wish to clear all active parameters? This will not overwrite your saved parameters unless you use Save to Device.</p>, // -- WP UWN -- (UXP D1) one word for Save
     buttons: [
       { label: "Reset", value: "yes", danger: true },
       { label: "Cancel", value: "cancel" },
@@ -105,7 +105,7 @@ export function actionTitle(id: string, session: Session | null): string {
 export const ALIASES: Record<string, string[]> = {
   "device.commit": ["Save to Device"],
   "device.devices": ["Open a DSPi…", "Switch Device"],
-  "autoeq.browse": ["Headphone Profile…", "AutoEQ"],
+  "autoeq.browse": ["AutoEQ…", "Headphone Profile"], // -- WP UWN -- (UXP A17) the page tool says AutoEQ…
   "tools.spectrum": ["Spectrum Analyzer"],
 };
 

@@ -33,11 +33,24 @@ import {
   roundFreq,
   round2,
   round3,
+  orderTitle,
+  shapeOf,
   typeName,
   usesGain,
   usesQ,
   type Limits,
 } from "./model";
+
+// -- WP UWN -- (UXP A17, A10's list) one filter vocabulary on the page: the table says the shape as the
+// inspector's shape grid does (Bell, Low Shelf, High Shelf, Low Cut, High Cut, Notch, All Pass) and the
+// slope as its Slope list does; off, the Linkwitz Transform and an unknown type keep the core's names.
+/** A band's type in the table's list: "Bell", "Low Cut 12 dB/oct", "All Pass 2nd Order". */
+export function bandTypeName(t: number): string {
+  const s = shapeOf(t);
+  if (!s) return typeName(t);
+  const two = (s.shape.types as Partial<Record<1 | 2, number>>)[1] !== undefined;
+  return two ? `${s.shape.title} ${orderTitle(s.shape, s.order)}` : s.shape.title;
+}
 
 export const BandList = memo(function BandList(props: {
   channelName: string;
@@ -105,7 +118,7 @@ export const BandList = memo(function BandList(props: {
               {compact ? "dB" : "Gain"}
             </th>
             <th scope="col" class="c-q">
-              {compact ? "Q" : "Width"}
+              Q{/* -- WP UWN -- (UXP A17) "Q", as the inspector and the field's own name (was Width) */}
             </th>
           </tr>
         </thead>
@@ -159,7 +172,7 @@ export const BandList = memo(function BandList(props: {
                   >
                     {types.map((t) => (
                       <option key={t} value={t}>
-                        {typeName(t)}
+                        {bandTypeName(t) /* -- WP UWN -- */}
                       </option>
                     ))}
                   </select>
