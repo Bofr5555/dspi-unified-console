@@ -185,6 +185,7 @@ private:
     StatePtr state() const;
     bool shown(const StatePtr &st) const { return st == state(); }
     void onSnapshot();
+    void updateEditable();   // -- FIX016 -- (R4)
     void setStored(const StatePtr &st, const QJsonObject &layout, const QString &origin);
     void rebuild(const StatePtr &st);
     void say(const StatePtr &st, const QString &text, bool error, bool measure = false);

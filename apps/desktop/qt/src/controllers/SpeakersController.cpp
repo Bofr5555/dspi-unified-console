@@ -10,6 +10,7 @@
 #include "DeviceModel.h"
 #include "DeviceSession.h"       // -- WP ADETQ --
 #include "FilesController.h"
+#include "LimitsController.h"   // -- FIX016 --
 #include "MeasureController.h"   // -- WP ADETQ --
 #include "NoticeCenter.h"        // -- WP ADETQ --
 #include "SessionState.h"
@@ -189,6 +190,9 @@ SpeakersController::SpeakersController(const AppContext &ctx, QObject *parent) :
                 connect(files, &FilesController::importingChanged, this, [this, files] {
                     if (!files->importing()) reload();
                 });
+            // -- FIX016 -- (R4) the installer's lock makes the layout read-only
+            if (auto *limits = Registrar::instance<LimitsController>())
+                connect(limits, &LimitsController::lockChanged, this, &SpeakersController::updateEditable);
             // -- WP ADETQ -- whether a detection may start follows what runs
             if (auto *measure = Registrar::instance<MeasureController>()) {
                 connect(measure, &MeasureController::runningChanged, this, [this] {
@@ -228,13 +232,22 @@ SpeakersController::StatePtr SpeakersController::state() const {
     return sessionState<State>(m_ctx.activeSession(), QStringLiteral("SpeakersController"));
 }
 
+// -- FIX016 -- (R4) Under the installer's lock the roles are not the locked user's
+// to change: the core refuses the layout's write (speaker_layout_set's lock
+// check), and the page, its Suggest and Detect…, and the first run's Speakers
+// step are read-only
+void SpeakersController::updateEditable() {
+    const auto *limits = Registrar::instance<LimitsController>();
+    const bool editable = m_ctx.device->connected() && !m_ctx.device->readOnly() && !(limits && limits->locked());
+    if (editable == m_editable) return;
+    m_editable = editable;
+    emit editableChanged();
+    emit detectChanged();
+}
+
 void SpeakersController::onSnapshot() {
     const StatePtr st = state();
-    const bool editable = m_ctx.device->connected() && !m_ctx.device->readOnly();
-    if (editable != m_editable) {
-        m_editable = editable;
-        emit editableChanged();
-    }
+    updateEditable();   // -- FIX016 --
     // -- WP MDQT2c -- another device is active: its layout and its draft, as it
     // was left; what others stored for it meanwhile is read
     const bool switched = st != m_announced;
@@ -895,6 +908,9 @@ bool SpeakersController::detecting() const {
 
 QString SpeakersController::detectBlocker() const {
     if (state()->serial.isEmpty()) return tr("No device connected.");
+    // -- FIX016 -- (R4)
+    if (const auto *limits = Registrar::instance<LimitsController>(); limits && limits->locked())
+        return tr("Locked by the installer: the speakers are not detected.");
     if (!m_editable) return tr("This connection may not change the DSPi.");
     // (AUTODES owner question 7: not over a confirmed layout in v1)
     if (status() == QLatin1String("confirmed"))

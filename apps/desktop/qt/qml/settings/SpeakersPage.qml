@@ -64,7 +64,9 @@ SettingsPage {
             objectName: "SpeakersPage.readOnly"
             visible: DeviceModel.connected && !page.sc.editable
             Layout.fillWidth: true
-            text: qsTr("This connection may not change the DSPi: the speaker layout is shown, not changed.")
+            // -- FIX016 -- (R4) the installer's lock, or a connection that may not write
+            text: LimitsController.locked ? qsTr("Locked by the installer: the speaker layout is shown, not changed.")
+                                          : qsTr("This connection may not change the DSPi: the speaker layout is shown, not changed.")
             font: Theme.fontBody
             color: Theme.textMuted
             wrapMode: Text.Wrap

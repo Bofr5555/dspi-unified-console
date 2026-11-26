@@ -285,6 +285,90 @@ void groupedQuestions(SmokeDriver &d) {
     d.waitIdle();
 }
 
+// ==== R4-QT ====
+// ---- R4-QT: Settings › Speakers is read-only under the installer's lock
+const QString kPin = QStringLiteral("2468");
+
+bool settled(SmokeDriver &d, LimitsController *lc) {
+    d.waitIdle();
+    const bool ok = d.waitFor(8000, [&] { return !lc->busy(); });
+    d.waitIdle();
+    d.spin(60);
+    return ok;
+}
+
+// The installer's lock on for a while (as ub2-home sets it), off and the PIN gone after
+struct InstallerLock {
+    SmokeDriver &d;
+    LimitsController *lc;
+    InstallerLock(SmokeDriver &driver, LimitsController *limits) : d(driver), lc(limits) {
+        lc->setPin(kPin, kPin);
+        settled(d, lc);
+        lc->dismissRecovery();
+        lc->setCovers(true);
+        settled(d, lc);
+        lc->lockNow();
+        settled(d, lc);
+    }
+    void open() {
+        if (!lc->locked()) return;
+        lc->unlock(kPin);
+        settled(d, lc);
+    }
+    ~InstallerLock() {
+        open();
+        lc->clearPin();
+        settled(d, lc);
+        lc->clearLimits();
+        settled(d, lc);
+    }
+};
+
+QQuickItem *within(SmokeDriver &d, QQuickWindow *w, const char *name) { return w ? d.item(QString::fromLatin1(name), w->contentItem()) : nullptr; }
+
+void speakersUnderTheLock(SmokeDriver &d) {
+    auto *lc = Registrar::instance<LimitsController>();
+    auto *sc = Registrar::instance<SpeakersController>();
+    auto *ls = Registrar::instance<LayoutSetupController>();
+    auto *settings = Registrar::instance<SettingsController>();
+    Shell *shell = d.app().shell;
+    if (!lc || !sc || !ls || !settings) {
+        d.check("fix016 R4-QT: the controllers", false);
+        return;
+    }
+    const bool shownWas = shell->shownWindows().contains(QStringLiteral("edit.settings"));
+    auto *w = qobject_cast<QQuickWindow *>(shell->openWindow(QStringLiteral("edit.settings")));
+    settings->open(QStringLiteral("speakers"));
+    sc->reload();
+    d.waitFor(3000, [&] { return within(d, w, "SpeakersPage.suggestion") != nullptr && sc->loaded(); });
+    d.spin(200);
+    const auto on = [&](const char *name) {
+        QQuickItem *i = within(d, w, name);
+        return i && i->isVisible() && i->isEnabled();
+    };
+    d.check("fix016 R4-QT: unlocked: the speaker layout can be changed, Suggest is on",
+            sc->editable() && on("SpeakersPage.suggestion"));
+    {
+        InstallerLock lock(d, lc);
+        d.check("fix016 R4-QT: locked", lc->locked());
+        d.spin(200);
+        QQuickItem *said = within(d, w, "SpeakersPage.readOnly");
+        d.check("fix016 R4-QT: locked: the speaker layout is read-only (the table, Suggest, Confirm, Detect…)",
+                !sc->editable() && !on("SpeakersPage.suggestion") && !on("SpeakersPage.confirm") && !on("SpeakersPage.detect"));
+        d.check("fix016 R4-QT: locked: the page says why", said && said->isVisible()
+                && said->property("text").toString().startsWith(QLatin1String("Locked by the installer")));
+        d.check("fix016 R4-QT: locked: no Crossovers and Routing… (LayoutSetupController.writable)",
+                !ls->writable() && !on("SpeakersPage.fromLayout"));
+        d.check("fix016 R4-QT: locked: Detect says why", sc->detectBlocker().startsWith(QLatin1String("Locked by the installer")));
+        d.grab(w, QStringLiteral("fix016-r4-speakers-locked.png"));
+        lock.open();
+        d.spin(200);
+        d.check("fix016 R4-QT: unlocked again: the layout can be changed again", sc->editable() && on("SpeakersPage.suggestion"));
+    }
+    if (!shownWas) shell->closeWindow(QStringLiteral("edit.settings"));
+    d.waitIdle();
+}
+// ==== end R4-QT ====
 
 
 
@@ -294,6 +378,7 @@ void fix016Section(SmokeDriver &d) {
     d.allowSectionTime(240);
     micWithTheDemo(d);
     groupedQuestions(d);
+    speakersUnderTheLock(d);   // R4-QT
 }
 
 const SmokeDriver::Section fix016("fix016-qt", 1000, &fix016Section);
