@@ -219,7 +219,7 @@ pub(crate) fn judge(
         block(
             "measure.guard_pending",
             None,
-            "a safe apply is waiting for Keep or Revert".into(),
+            "a trial is waiting for Keep or Revert".into(), // -- WP UFW -- (UXP D10)
         );
     }
     if facts.ab_running {
