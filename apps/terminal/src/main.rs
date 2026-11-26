@@ -1066,7 +1066,13 @@ fn cmd_screenshot(target: &Target, args: &[&str], flags: &[&str]) -> u8 {
         };
         (session, state, None)
     } else {
-        match target.connect(&prompt_pin) {
+        // -- WP UB12 -- the demo as the interface opens it: the core's tuned example
+        let connected = if *target == Target::Demo {
+            core_route::open_connected(target, &prompt_pin)
+        } else {
+            target.connect(&prompt_pin)
+        };
+        match connected {
             Ok(c) => (c.session, c.state, Some(c.ext)),
             Err(e) => return fail_open(e),
         }
