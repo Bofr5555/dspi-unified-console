@@ -46,6 +46,15 @@ const ENDED_KEPT: usize = 64;
 pub const GROUP_MS: u64 = 1_500;
 /// A group seals once no question has joined it for this long.
 pub const GROUP_QUIET_MS: u64 = 400;
+// -- FIX016 -- (REVG R2, owner: "one Allow answers exactly the rows shown")
+/// The most rows one grouped sheet takes: every row of its questions, the
+/// asked ones (folded as the sheet folds them) and the unasked rest, plus
+/// the devices' headings, as [`Confirmations::sheet`] lists them. A question
+/// that would take its agent's open group past it starts the next group, and
+/// so the next sheet; a question that alone has more rows is a sheet of its
+/// own (its own unasked rest may then fold under "and N more"). It is the
+/// rows a sheet shows: AiHost.qml's `rowsShown` must match it.
+pub const GROUP_SHEET_ROWS: usize = 12;
 
 /// Where a confirmation stands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -194,10 +203,10 @@ impl Confirmation {
 const FOLD_NAMES: usize = 3;
 
 impl Confirmation {
-    /// The whole call for the app's sheet, the asked rows first: `{said,
-    /// kind, risky}` each. Asked rows of one kind that differ only in their
-    /// channel fold into one ("Left woofer, Right woofer: limiter off").
-    fn batch(&self) -> Vec<Value> {
+    /// The asked rows of the call for the app's sheet: `{said, kind, risky:
+    /// true}` each. Rows of one kind that differ only in their channel fold
+    /// into one ("Left woofer, Right woofer: limiter off").
+    fn asked_batch(&self) -> Vec<Value> {
         // (kind, channels, the words after them, or the whole row)
         let mut rows: Vec<(&'static str, Vec<&str>, &str)> = Vec::new();
         for r in &self.risks {
@@ -219,8 +228,7 @@ impl Confirmation {
                 None => rows.push((kind, Vec::new(), r.said.as_str())),
             }
         }
-        let mut out: Vec<Value> = rows
-            .into_iter()
+        rows.into_iter()
             .map(|(kind, chs, words)| {
                 let said = match chs.len() {
                     0 => words.to_owned(),
@@ -229,14 +237,64 @@ impl Confirmation {
                 };
                 json!({"said": said, "kind": kind, "risky": true})
             })
-            .collect();
-        out.extend(
-            self.rest
-                .iter()
-                .map(|said| json!({"said": said, "kind": null, "risky": false})),
-        );
+            .collect()
+    }
+
+    /// The call's other changes, unasked: `{said, kind: null, risky: false}`
+    /// each.
+    fn rest_batch(&self) -> Vec<Value> {
+        self.rest
+            .iter()
+            .map(|said| json!({"said": said, "kind": null, "risky": false}))
+            .collect()
+    }
+
+    /// The whole call for the app's sheet, the asked rows first: `{said,
+    /// kind, risky}` each. Asked rows of one kind that differ only in their
+    /// channel fold into one ("Left woofer, Right woofer: limiter off").
+    fn batch(&self) -> Vec<Value> {
+        let mut out = self.asked_batch();
+        out.extend(self.rest_batch());
         out
     }
+}
+
+// -- FIX016 -- (REVG R2)
+/// The sheet of `members` (one group's questions, oldest first), in the order
+/// [`Confirmations::sheet`] gives.
+fn sheet_of(members: &[&Confirmation]) -> Vec<Value> {
+    let mut devices: Vec<&Option<String>> = Vec::new();
+    for c in members {
+        if !devices.contains(&&c.device) {
+            devices.push(&c.device);
+        }
+    }
+    let tagged = |c: &Confirmation, mut row: Value| {
+        if let Some(o) = row.as_object_mut() {
+            o.insert("confirmation_id".into(), json!(c.id));
+        }
+        row
+    };
+    let head = |d: &Option<String>| json!({"head": true, "device": d, "risky": false});
+    let mut out = Vec::new();
+    for d in &devices {
+        out.push(head(d));
+        for c in members.iter().filter(|c| &&c.device == d) {
+            out.extend(c.asked_batch().into_iter().map(|r| tagged(c, r)));
+        }
+    }
+    for d in &devices {
+        let rest: Vec<Value> = members
+            .iter()
+            .filter(|c| &&c.device == d)
+            .flat_map(|c| c.rest_batch().into_iter().map(|r| tagged(c, r)))
+            .collect();
+        if devices.len() > 1 && !rest.is_empty() {
+            out.push(head(d));
+        }
+        out.extend(rest);
+    }
+    out
 }
 
 // -- WP UB5 -- (UXP D2)
@@ -274,6 +332,10 @@ pub enum AnswerError {
     Unknown,
     /// It has already ended (answered, lapsed or the agent gone).
     Ended(ConfirmState),
+    // -- FIX016 -- (REVG R2, B10)
+    /// Its group may still take questions: the app has not shown it yet
+    /// (`sealed` is false), so nobody can have seen what an Allow approves.
+    Unsealed,
 }
 
 /// The table.
@@ -285,7 +347,10 @@ pub struct Confirmations {
 }
 
 impl Confirmations {
-    /// Open one, waiting from `now_ms`; its id.
+    /// Open one, waiting from `now_ms`; its id. -- FIX016 -- (REVG R2) The
+    /// tests' form: the server opens with the call's rest
+    /// ([`Confirmations::open_with_rest`]).
+    #[cfg(test)]
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn open(
         &mut self,
@@ -294,6 +359,33 @@ impl Confirmations {
         tool: &'static str,
         device: Option<String>,
         risks: Vec<Risk>,
+        args: Map<String, Value>,
+        now_ms: u64,
+    ) -> u64 {
+        self.open_with_rest(
+            client,
+            client_label,
+            tool,
+            device,
+            risks,
+            Vec::new(),
+            args,
+            now_ms,
+        )
+    }
+
+    /// [`Confirmations::open`] with `rest`, the call's other changes in the
+    /// app's words (-- WP UAG --): -- FIX016 -- (REVG R2) its rows count
+    /// towards the sheet's ([`GROUP_SHEET_ROWS`]) when it joins a group.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn open_with_rest(
+        &mut self,
+        client: ClientId,
+        client_label: &str,
+        tool: &'static str,
+        device: Option<String>,
+        risks: Vec<Risk>,
+        rest: Vec<String>,
         mut args: Map<String, Value>,
         now_ms: u64,
     ) -> u64 {
@@ -309,23 +401,7 @@ impl Confirmations {
         // -- WP UB5 -- (UXP D2) its agent's open group, else a new one; a
         // speaker detection's or the roles' question is a sheet of its own
         let alone = !groupable(tool, &risks);
-        let group = if alone {
-            None
-        } else {
-            self.list
-                .iter()
-                .rev()
-                .find(|c| {
-                    c.client == client
-                        && c.state == ConfirmState::Waiting
-                        && !c.sealed
-                        && groupable(c.tool, &c.risks)
-                        && now_ms < self.seals_at(c.group)
-                })
-                .map(|c| c.group)
-        }
-        .unwrap_or(id);
-        self.list.push_back(Confirmation {
+        let mut c = Confirmation {
             id,
             client,
             client_label: client_label.to_owned(),
@@ -338,22 +414,58 @@ impl Confirmations {
             args,
             result: None,
             request: None,
-            grouped,          // -- WP ODEC --
-            rest: Vec::new(), // -- WP UAG --
-            group,            // -- WP UB5 --
+            grouped,   // -- WP ODEC --
+            rest,      // -- WP UAG --
+            group: id, // -- WP UB5 --
             sealed: alone,
-        });
+        };
+        if !alone {
+            let open = self
+                .list
+                .iter()
+                .rev()
+                .find(|o| {
+                    o.client == client
+                        && o.state == ConfirmState::Waiting
+                        && !o.sealed
+                        && groupable(o.tool, &o.risks)
+                        && now_ms < self.seals_at(o.group)
+                })
+                .map(|o| o.group);
+            // -- FIX016 -- (REVG R2) only while the whole sheet still fits:
+            // else it starts the next group, and the next sheet
+            if let Some(g) = open.filter(|g| {
+                let members: Vec<&Confirmation> = self.members(*g).chain([&c]).collect();
+                sheet_of(&members).len() <= GROUP_SHEET_ROWS
+            }) {
+                c.group = g;
+            }
+        }
+        self.list.push_back(c);
         self.events.push(ConfirmEvent::Asked(id));
         self.prune();
         id
     }
 
-    // -- WP UAG --
-    /// Keep `rest`, the call's other changes in the app's words, with `id`.
-    pub(crate) fn set_rest(&mut self, id: u64, rest: Vec<String>) {
-        if let Some(c) = self.get_mut(id) {
-            c.rest = rest;
-        }
+    // -- FIX016 -- (REVG R2)
+    /// The waiting questions of `group`, oldest first.
+    fn members(&self, group: u64) -> impl Iterator<Item = &Confirmation> {
+        self.list
+            .iter()
+            .filter(move |c| c.group == group && c.state == ConfirmState::Waiting)
+    }
+
+    /// `group`'s sheet in the order to show it: every asked row of the whole
+    /// group first, under its device's heading (the devices in the order
+    /// they first asked), then the unasked rest, so a row the app folds away
+    /// is never one an Allow approves. Each row is `{said, kind, risky,
+    /// confirmation_id}`; a heading is `{head: true, device, risky: false}`
+    /// (the app names the device). The rest's headings repeat only when the
+    /// group spans several devices. A group holds at most
+    /// [`GROUP_SHEET_ROWS`] rows, unless one question alone has more.
+    pub fn sheet(&self, group: u64) -> Vec<Value> {
+        let members: Vec<&Confirmation> = self.members(group).collect();
+        sheet_of(&members)
     }
 
     // -- WP UB5 -- (UXP D2)

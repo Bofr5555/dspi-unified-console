@@ -6,6 +6,7 @@
 
 use serde_json::json;
 
+use crate::confirm::GROUP_QUIET_MS; // -- FIX016 -- (R2) an answer waits for the sheet
 use crate::policy::ConfirmMode;
 use crate::tests_wp_ffix::{call, demo, err, ok, server_of};
 
@@ -33,7 +34,7 @@ fn wp_showfix_a_preset_saves_lists_and_loads_as_the_screen_numbers_it() {
         what.starts_with("Save the settings to preset 1 as \u{201c}Movie night\u{201d}"),
         "{what}"
     );
-    s.answer_confirmation(id, true, 0).unwrap();
+    s.answer_confirmation(id, true, GROUP_QUIET_MS).unwrap();
     let r = ok(
         &mut s,
         c,
@@ -65,7 +66,7 @@ fn wp_showfix_a_preset_saves_lists_and_loads_as_the_screen_numbers_it() {
         .unwrap();
     let what = s.confirmation(id).unwrap().risks[0].what.clone();
     assert!(what.starts_with("Load preset 1"), "{what}");
-    s.answer_confirmation(id, true, 0).unwrap();
+    s.answer_confirmation(id, true, GROUP_QUIET_MS).unwrap();
     let r = ok(
         &mut s,
         c,

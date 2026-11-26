@@ -13,6 +13,7 @@ use dspi_core::{
 };
 use serde_json::{Map, Value, json};
 
+use crate::confirm::GROUP_QUIET_MS; // -- FIX016 -- (R2) an answer waits for the sheet
 use crate::confirm::{AnswerError, CONFIRM_HOLD_MS, ConfirmEvent, ConfirmState};
 use crate::policy::{self, AgentPolicy, ConfirmMode, RiskKind};
 use crate::rate::RateLimit;
@@ -325,8 +326,8 @@ fn wp_mcp2a_a_held_request_is_answered_when_the_user_answers_or_after_120_s() {
         panic!("not held")
     };
     assert_eq!(s.resume(id, 10), None);
-    s.answer_confirmation(id, true, 20).unwrap();
-    let reply: Value = serde_json::from_str(&s.resume(id, 30).unwrap()).unwrap();
+    s.answer_confirmation(id, true, GROUP_QUIET_MS).unwrap(); // -- FIX016 -- once sealed
+    let reply: Value = serde_json::from_str(&s.resume(id, GROUP_QUIET_MS + 10).unwrap()).unwrap();
     assert_eq!(reply["id"], json!(7));
     assert_eq!(reply["result"]["isError"], json!(false));
     assert_eq!(reply["result"]["resultType"], json!("complete"));
@@ -412,7 +413,7 @@ fn wp_mcp2a_the_three_settings_ask_everything_risky_or_nothing() {
     );
     assert_eq!(s.confirmation(id).unwrap().risks[0].kind, RiskKind::Change);
     assert_eq!(gain(&core, 0), 0.0);
-    s.answer_confirmation(id, true, 0).unwrap();
+    s.answer_confirmation(id, true, GROUP_QUIET_MS).unwrap();
     assert_eq!(gain(&core, 0), -3.0);
 
     // Never ask: louder, unmute, boosts and test signals all pass.
@@ -487,7 +488,7 @@ fn wp_mcp2a_test_signals_are_asked_by_default_and_never_under_never_ask() {
         s.confirmation(id).unwrap().risks[0].kind,
         RiskKind::TestSignal
     );
-    s.answer_confirmation(id, true, 0).unwrap();
+    s.answer_confirmation(id, true, GROUP_QUIET_MS).unwrap();
     let w = s.confirmation(id).unwrap();
     assert_eq!(w.state, ConfirmState::Allowed);
     policy.set_mode(ConfirmMode::NeverAsk);
@@ -551,7 +552,7 @@ fn wp_mcp2a_an_hp_removed_on_an_output_with_hp_above_1khz_is_asked_then_applied(
         assert_eq!(w.risks[0].kind, RiskKind::TweeterCrossing);
         assert_eq!(w.risks[0].output, Some(1));
         assert_eq!(xover(&core, 1, 0).freq, 2_500.0);
-        s.answer_confirmation(id, false, 0).unwrap();
+        s.answer_confirmation(id, false, GROUP_QUIET_MS).unwrap();
     }
     // So is a PEQ high-pass slot that the output's protection rests on, and a
     // bypass of the crossover band.
@@ -561,7 +562,7 @@ fn wp_mcp2a_an_hp_removed_on_an_output_with_hp_above_1khz_is_asked_then_applied(
         "dspi_apply_changes",
         json!({"changes": [{"op": "set_crossover", "output": 2, "high_pass": null}]}),
     );
-    s.answer_confirmation(id, false, 0).unwrap();
+    s.answer_confirmation(id, false, GROUP_QUIET_MS).unwrap();
 
     // Allowed, it goes: exactly what the user saw.
     let id = held(
@@ -570,7 +571,7 @@ fn wp_mcp2a_an_hp_removed_on_an_output_with_hp_above_1khz_is_asked_then_applied(
         "dspi_set_crossover",
         json!({"output": 2, "high_pass": null}),
     );
-    s.answer_confirmation(id, true, 0).unwrap();
+    s.answer_confirmation(id, true, GROUP_QUIET_MS).unwrap();
     assert_eq!(xover(&core, 1, 0).filter_type, 0);
     assert_eq!(xover(&core, 1, 1).filter_type, 42);
 }
@@ -681,7 +682,7 @@ fn wp_mcp2a_boosts_delay_steps_and_routes_are_judged() {
     let id = held(&mut s, c, "dspi_set_peq_band", with(8.0));
     assert_eq!(s.confirmation(id).unwrap().risks[0].kind, RiskKind::Boost);
     assert_eq!(core.get_state().filters[0][3].gain, -12.0);
-    s.answer_confirmation(id, false, 0).unwrap();
+    s.answer_confirmation(id, false, GROUP_QUIET_MS).unwrap();
     // "free" takes the first flat slot.
     let r = ok(
         &mut s,
@@ -708,7 +709,7 @@ fn wp_mcp2a_boosts_delay_steps_and_routes_are_judged() {
         s.confirmation(id).unwrap().risks[0].kind,
         RiskKind::DelayStep
     );
-    s.answer_confirmation(id, false, 0).unwrap();
+    s.answer_confirmation(id, false, GROUP_QUIET_MS).unwrap();
 
     // Routing: a new route is asked, cutting one passes.
     let st = core.get_state();
@@ -732,7 +733,7 @@ fn wp_mcp2a_boosts_delay_steps_and_routes_are_judged() {
         s.confirmation(id).unwrap().risks[0].kind,
         RiskKind::NewRoute
     );
-    s.answer_confirmation(id, false, 0).unwrap();
+    s.answer_confirmation(id, false, GROUP_QUIET_MS).unwrap();
     // Volume: down passes, up asks; an enable asks.
     ok(
         &mut s,
@@ -759,7 +760,7 @@ fn wp_mcp2a_boosts_delay_steps_and_routes_are_judged() {
         json!({"output": 1, "enabled": true}),
     );
     assert_eq!(s.confirmation(id).unwrap().risks[0].kind, RiskKind::Enable);
-    s.answer_confirmation(id, false, 0).unwrap();
+    s.answer_confirmation(id, false, GROUP_QUIET_MS).unwrap();
     // The ninth waiting one of one agent is not opened (-- WP UB5 -- 8 wait
     // at most, was 3: one sheet shows those raised together).
     for db in -9..=-3 {
@@ -814,7 +815,7 @@ fn wp_mcp2a_a_batch_is_one_undo_step_all_or_none_and_may_be_guarded() {
                            {"op": "set_gain", "output": 2, "gain_db": 3}]}),
     );
     assert_eq!(gain(&core, 0), -4.0);
-    s.answer_confirmation(id, true, 0).unwrap();
+    s.answer_confirmation(id, true, GROUP_QUIET_MS).unwrap();
     assert_eq!((gain(&core, 0), gain(&core, 1)), (-8.0, 3.0));
 
     // A refusal halfway puts back what came before (never ask, so the gain
@@ -943,7 +944,7 @@ fn wp_mcp2a_undo_touches_only_its_own_entries() {
     let id = held(&mut s, b, "dspi_undo", json!({}));
     assert_eq!(s.confirmation(id).unwrap().risks[0].kind, RiskKind::Louder);
     assert_eq!(gain(&core, 3), -10.0);
-    s.answer_confirmation(id, true, 0).unwrap();
+    s.answer_confirmation(id, true, GROUP_QUIET_MS).unwrap();
     assert_eq!(gain(&core, 3), 0.0);
 }
 
@@ -1129,7 +1130,7 @@ fn wp_mcp2a_writes_are_rate_limited_on_the_test_clock_and_allows_are_not() {
         crate::activity::Outcome::RateLimited
     );
     // The user's Allow is not the agent's call: never rate-limited.
-    s.answer_confirmation(id, true, 0).unwrap();
+    s.answer_confirmation(id, true, GROUP_QUIET_MS).unwrap();
     assert_eq!(s.confirmation(id).unwrap().state, ConfirmState::Allowed);
     ok_at(&mut s, c, 1_000, "dspi_set_gain", quiet);
 }
@@ -1231,7 +1232,7 @@ fn wp_mcp2a_two_devices_each_judged_on_its_own() {
         s.confirmation(id).unwrap().device.as_deref(),
         Some(ids[1].as_str())
     );
-    s.answer_confirmation(id, true, 0).unwrap();
+    s.answer_confirmation(id, true, GROUP_QUIET_MS).unwrap();
     assert_eq!(xover(&b, 1, 0).filter_type, 0);
     let _ = a;
 }
@@ -1299,12 +1300,12 @@ fn wp_mcp2a_the_hook_judges_writes_no_plan_named() {
     let id = held(&mut s, c, "test_raw_louder", json!({}));
     assert_eq!(gain(&core, 0), 0.0);
     assert_eq!(s.confirmation(id).unwrap().risks[0].kind, RiskKind::Louder);
-    s.answer_confirmation(id, true, 0).unwrap();
+    s.answer_confirmation(id, true, GROUP_QUIET_MS).unwrap();
     assert_eq!(gain(&core, 0), 5.0);
     // The crossing through the hook: asked, then refused under never ask, and
     // refused for the user's tweeter.
     let id = held(&mut s, c, "test_raw_no_hp", json!({}));
-    s.answer_confirmation(id, false, 0).unwrap();
+    s.answer_confirmation(id, false, GROUP_QUIET_MS).unwrap();
     policy.set_mode(ConfirmMode::NeverAsk);
     let e = err(&mut s, c, "test_raw_no_hp", json!({}));
     assert!(e.contains("never ask"), "{e}");

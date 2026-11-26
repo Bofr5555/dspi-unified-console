@@ -13,6 +13,7 @@ use dspi_core::{
 use dspi_transport::FakeDevice;
 use serde_json::{Value, json};
 
+use crate::confirm::GROUP_QUIET_MS; // -- FIX016 -- (R2) an answer waits for the sheet
 use crate::policy::{AgentPolicy, ConfirmMode};
 use crate::rate::RateLimit;
 use crate::tools::devices::{OPEN_TAKEN_TTL_MS, OPEN_TTL_MS};
@@ -82,7 +83,7 @@ fn held(s: &mut Server, c: ClientId, tool: &str, args: Value) -> (u64, Vec<Strin
 
 /// Allow `id`; the re-run's tool result.
 fn allow(s: &mut Server, c: ClientId, id: u64) -> Value {
-    s.answer_confirmation(id, true, 0).unwrap();
+    s.answer_confirmation(id, true, GROUP_QUIET_MS).unwrap();
     let r = ok(
         s,
         c,
@@ -862,11 +863,12 @@ fn wp_feat2_opening_follows_the_setting_and_lapses() {
         json!("waiting_for_app"),
         "{r}"
     );
-    // Nobody takes it, then nobody reports.
-    s.tick(1);
-    s.tick(OPEN_TTL_MS);
+    // Nobody takes it, then nobody reports (-- FIX016 -- from the Allow,
+    // once its sheet sealed).
+    s.tick(GROUP_QUIET_MS + 1);
+    s.tick(GROUP_QUIET_MS + OPEN_TTL_MS - 1);
     assert_eq!(s.device_requests().len(), 1);
-    s.tick(OPEN_TTL_MS + 1);
+    s.tick(GROUP_QUIET_MS + OPEN_TTL_MS);
     assert!(s.device_requests().is_empty());
     let mut s = server_of(&set, ConfirmMode::AskRisky, true);
     let c = s.connect();
@@ -1185,7 +1187,7 @@ mod on_a_hub {
             ]
         );
         assert_eq!(levels(&a), all(-36.0, -36.0, -30.0));
-        s.answer_confirmation(id, false, 0).unwrap();
+        s.answer_confirmation(id, false, GROUP_QUIET_MS).unwrap();
         assert_eq!(levels(&a), all(-36.0, -36.0, -30.0));
         // Allowed: every unit there, D refused, said so.
         let (id, _) = held(&mut s, c, "dspi_system_set_volume", zone.clone());

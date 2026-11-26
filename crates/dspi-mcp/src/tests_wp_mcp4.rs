@@ -142,17 +142,17 @@ fn until(what: &str, mut f: impl FnMut() -> bool) {
     }
 }
 
-/// Wait for `n` confirmations; their ids.
+/// Wait for `n` confirmations, sealed as the app shows them (-- FIX016 --:
+/// an answer before that is refused); their ids.
 fn waiting(r: &Rig, n: usize) -> Vec<u64> {
     let mut ids = Vec::new();
     until(&format!("{n} confirmations"), || {
-        ids = r
-            .http
-            .confirmations()
+        let rows = r.http.confirmations();
+        ids = rows
             .iter()
             .map(|c| c["confirmation_id"].as_u64().unwrap())
             .collect();
-        ids.len() == n
+        ids.len() == n && rows.iter().all(|c| c["sealed"] == json!(true))
     });
     ids
 }
@@ -479,6 +479,9 @@ fn wp_mcp4_a_listener_may_answer_and_stop_from_an_event() {
             if let (Event::ConfirmationsChanged, Some(http)) = (e, http) {
                 for c in http.confirmations() {
                     let id = c["confirmation_id"].as_u64().unwrap();
+                    // -- FIX016 -- (R2) once its sheet may show: sealed
+                    let seals = c["seals_in_ms"].as_u64().unwrap_or(0);
+                    std::thread::sleep(Duration::from_millis(seals + 20));
                     let _ = http.answer_confirmation(id, true);
                 }
                 if seen.fetch_add(1, Ordering::SeqCst) >= 1 {

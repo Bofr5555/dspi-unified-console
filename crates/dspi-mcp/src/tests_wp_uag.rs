@@ -8,6 +8,7 @@ use serde_json::{Map, Value, json};
 
 use crate::ClientId;
 use crate::confirm::Confirmations;
+use crate::confirm::GROUP_QUIET_MS; // -- FIX016 -- (R2) an answer waits for the sheet
 
 use crate::policy::{ConfirmMode, RiskKind, ScreenWords, said_of};
 use crate::tests_wp_ffix::{call, demo, ok, server_of};
@@ -135,7 +136,7 @@ fn wp_uag_said_never_reaches_an_agent() {
             r["risks"][0]["what"].as_str().unwrap().contains("Out 2"),
             "{r}"
         );
-        let _ = s.answer_confirmation(id, true, 0);
+        let _ = s.answer_confirmation(id, true, GROUP_QUIET_MS);
     }
     let act = ok(&mut s, c, "dspi_get_activity", json!({}));
     assert!(!act.to_string().contains("Right woofer"), "{act}");
@@ -177,16 +178,17 @@ fn wp_uag_identical_rows_of_several_channels_fold() {
     };
     let mut t = Confirmations::default();
     let batch = |t: &mut Confirmations, risks| {
-        let id = t.open(
+        // -- FIX016 -- (R2) the rest comes with the question
+        let id = t.open_with_rest(
             ClientId(1),
             "AI · test",
             "dspi_set_limiter",
             None,
             risks,
+            vec!["Sub: gain 0 \u{2192} \u{2212}6 dB".into()],
             Map::new(),
             0,
         );
-        t.set_rest(id, vec!["Sub: gain 0 \u{2192} \u{2212}6 dB".into()]);
         t.get(id).unwrap().to_json()["batch"].clone()
     };
     let b = batch(

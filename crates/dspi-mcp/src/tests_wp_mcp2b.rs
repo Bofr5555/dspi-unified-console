@@ -16,6 +16,7 @@ use dspi_core::{
 use serde_json::{Value, json};
 
 use crate::confirm::ConfirmState;
+use crate::confirm::GROUP_QUIET_MS; // -- FIX016 -- (R2) an answer waits for the sheet
 use crate::policy::{AgentPolicy, ConfirmMode};
 use crate::rate::RateLimit;
 use crate::{ClientId, Server, ServerConfig};
@@ -90,7 +91,7 @@ fn held(s: &mut Server, c: ClientId, tool: &str, args: Value) -> u64 {
 fn held_denied(s: &mut Server, c: ClientId, tool: &str, args: Value) -> Vec<String> {
     let id = held(s, c, tool, args);
     let r = risks(s, id);
-    s.answer_confirmation(id, false, 0).unwrap();
+    s.answer_confirmation(id, false, GROUP_QUIET_MS).unwrap();
     r
 }
 
