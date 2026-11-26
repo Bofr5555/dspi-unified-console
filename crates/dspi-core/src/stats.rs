@@ -157,8 +157,8 @@ impl SiggenOutputs {
     /// A start or stop event (`state`). A start this connection did not make
     /// (another console's, a multi-unit run's) plays on every output as far
     /// as the labels know, so nothing that may be loud is hidden: the device's
-    /// config is not read here, as a read in the notification path stalled a
-    /// hub's multi-unit run until its lease was aborted.
+    /// config is not read, as reads beside a hub's multi-unit run stalled it
+    /// until its lease was aborted.
     pub(crate) fn event(&mut self, state: u8) {
         if state == SIGGEN_STATE_IDLE {
             self.playing = 0;
@@ -166,15 +166,6 @@ impl SiggenOutputs {
             self.playing = u16::MAX;
         }
     }
-}
-
-/// The channel mask of the config the device holds, `None` when unreadable.
-fn device_mask(conn: &mut crate::Connection) -> Option<u16> {
-    let b = conn
-        .get(op::REQ_SIGGEN_GET_CONFIG, 0, len16(WireSiggenConfig::SIZE))
-        .ok()?;
-    let c = WireSiggenConfig::decode(&b).ok()?;
-    (c.version == SIGGEN_VERSION).then_some(c.channel_mask)
 }
 
 fn config_from_wire(c: WireSiggenConfig) -> SiggenConfig {
@@ -443,8 +434,9 @@ impl DspiCore {
         if let Ok(conn) = guard.conn() {
             match action {
                 crate::consts::SIGGEN_CTL_START => {
-                    let mask = conn.siggen.staged.or_else(|| device_mask(conn));
-                    conn.siggen.playing = mask.unwrap_or(u16::MAX);
+                    // a config staged elsewhere is not read back: a read here
+                    // delays every start of a hub's multi-unit run
+                    conn.siggen.playing = conn.siggen.staged.unwrap_or(u16::MAX);
                 }
                 crate::consts::SIGGEN_CTL_STOP_NOW => conn.siggen.playing = 0,
                 _ => {}
