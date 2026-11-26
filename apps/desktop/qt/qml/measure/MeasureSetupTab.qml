@@ -8,6 +8,8 @@ import UConsole
 // with their roles, speakers and alignment groups, the sweep; the preflight in
 // words; then the run with its progress, the ramp's level and the timing
 // verdict. The core decides everything; Stop is in the window's bar.
+// -- WP UA2 -- (A2) the bar (MeasureActionBar) has the run's step, progress,
+// Stop and Next Position; a refused Measure's problems are rows above the tabs.
 ScrollView {
     id: tab
     signal showResults()
@@ -369,13 +371,7 @@ ScrollView {
                 enabled: tab.editable && mc.setupProblem.length === 0
                 onClicked: mc.start()
             }
-            AppButton {
-                objectName: "MeasureSetup.next"
-                visible: mc.waitingPosition
-                text: qsTr("Next Position")
-                primary: true
-                onClicked: mc.nextPosition()
-            }
+            // -- WP UA2 -- (A2) Next Position is the action bar's, with the run's progress
             Text {
                 visible: !tab.modern
                 Layout.fillWidth: true
@@ -425,14 +421,6 @@ ScrollView {
                 color: Theme.text
                 wrapMode: Text.WordWrap
                 Accessible.role: Accessible.StaticText
-            }
-            ProgressBar {
-                objectName: "MeasureSetup.progress"
-                visible: mc.measuring
-                Layout.fillWidth: true
-                from: 0
-                to: 100
-                value: mc.progress
             }
             Text {
                 objectName: "MeasureSetup.issue"
