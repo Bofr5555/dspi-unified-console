@@ -153,8 +153,9 @@ and its separate button.
   Position), and a refused start shows one row per reason with its fix ("Lower to −12 dB", "Open the Crossover").
 - One speaker table, edited in one place (Settings › Speakers and the first run); Measure and Auto-tune show it in
   one line with **Edit in Speakers…**.
-- The first run cannot dead-end: you can pass the board step without a board, the Speakers step offers **Later**,
-  and the Welcome page opens the demo.
+- The first run cannot dead-end: the Speakers step offers **Later**, and on Windows and Linux the Welcome page opens
+  the demo (**Open the Demo**) and the board step can be passed without a board ("…or I will connect it later"). On a
+  Mac, those two are not shown: **Skip Setup** leaves the first run.
 - **Settings › Appearance › Accessibility**: **Outline controls** (a line round every field and button) and
   **Control size** (Comfortable on a touch screen). Off and Automatic by default: with a mouse nothing changes.
 
@@ -163,8 +164,10 @@ and its separate button.
 - **Simple mode** opens on **Overview › Home**: the device, one big volume with Mute, the source, the presets as a
   Recall list, and one health line. Simple's dock has no master volume and no Bypass EQ.
 - A DSPi **locked by its installer** opens on Home too. In Modern, on the web and on Android nothing the lock refuses
-  is offered: the other pages are read-only with a notice and Go to Home, and Save, Undo, the shortcuts and palette
-  rows that would write are off. The locked user may change the **volume, mute, source and presets**.
+  is offered. In Modern the other pages are read-only with a notice and **Go to Home**, and Save, Undo, the shortcuts
+  and palette rows that would write are off. The web console shows Home alone, with the lock's banner and
+  **Unlock**. On Android a tap the lock refuses says why, with **Unlock…**, and Settings › Speakers is hidden. The
+  locked user may change the **volume, mute, source and presets**.
 - Under the lock the **speaker layout is the installer's**: the roles the tweeter guards trust cannot be changed
   until the installer unlocks, on every client.
 - The Classic layout is unchanged under the lock: it stays live, and what the lock covers is refused after the click.
@@ -345,7 +348,7 @@ Changes since 0.14.0:
 - **Mute** beside the volume on Home; the notification's steps are 1 dB.
 - A tap the installer's lock refuses says why, with **Unlock…**.
 - **Settings › Speakers** and a Speakers step in Getting Started: the role and side of each output, the tweeter's
-  floor, Confirm. Under the lock it is read-only.
+  floor, Confirm. Under the installer's lock both are hidden.
 - A touch **band editor** (a sheet with − and + per value), the crossover in two rows above the bands with **Same for
   the right side**, legend pills that choose the channel.
 - Notices when the USB DSPi goes away and comes back; Exit demo and Allow USB access are buttons on the bar.
@@ -396,6 +399,9 @@ Measurement, AI agents and the Modern layout are not on Android.
   through a field could write its rounded text back (a 4.1234 ms delay became 4.1108 ms).
 - **Preset copy**: the web console offered "Copy to…" on every stored preset and overwrote that preset with the
   live settings. Copy now works from the active preset only, in every client, and the core refuses anything else.
+- The Terminal's Preset › Copy to… could overwrite preset 1 when the device did not say which preset was active.
+  Copy to…, Save, Rename, Set as Default and Clear now wait until the active preset is known, and Copy to… asks the
+  device again right before it writes.
 - Tool windows no longer show a scroll bar for content that fits (Headphone Crossfeed, for one); each opens at the
   size its content needs.
 - Quitting asks first while a firmware update or core-voltage calibration runs on any open device.
@@ -440,7 +446,8 @@ speaker setup first, and keep the default questions.
 ## Known limits
 
 - **Install in Claude Desktop…** writes an extension that has never been tried in a real Claude Desktop, and it is
-  not signed. If Claude Desktop does not take it, use Copy JSON in Settings › AI Agents and the manual's steps.
+  not signed. If Claude Desktop does not take it, use the **Copy** button of the Configuration field in Settings › AI
+  Agents ("Or add this to claude_desktop_config.json by hand…") and the manual's steps.
   After an AppImage moves, make the extension again.
 - An agent that starts the app with `--mcp` (Claude Desktop, Claude Code) handles one request at a time: while a
   question waits for you, its other requests wait too, and its questions never come together as one sheet (an agent

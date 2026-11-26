@@ -34,8 +34,9 @@ where (nothing new on a real DSPi), and the known limits.
   device, slot and preset; **Save All…** with two or more devices; Factory Reset moved from Save ▾ to the tab menu and
   Devices › This Computer; a Keep says "not saved on the device yet" with Save to Device. Ctrl+S with no device does
   nothing.
-- The Overview's setup list ("Set up this DSPi · n of m done"). The first run: a board step you can pass, Speakers
-  with Later, Done in the layout's words, Open the Demo on Welcome.
+- The Overview's setup list ("Set up this DSPi · n of m done"). The first run: Speakers with Later, Done in the
+  layout's words; on Windows and Linux only (the `windows_or_linux` condition), a board step you can pass ("…or I will
+  connect it later") and Open the Demo on Welcome; on macOS, Skip Setup is the way out.
 - One name per output in Modern ("Left woofer · 1") in the Crossover and Delay & Gain tables, the matrix heads, the
   Routing inspector and the Installer; the palette finds outputs by their words. Outputs nothing plays to fold under
   "N unused"; an output with a role in the confirmed layout, a crossover or PEQ band, or a test signal never folds.
@@ -53,9 +54,11 @@ where (nothing new on a real DSPi), and the known limits.
 ### Home and the installer's lock (desktop, web, Android)
 - Simple mode and the locked user open on **Home**: the device, the User volume and Mute, the source, the presets as
   a Recall list, a health line (web: rooms on an installation). Simple's dock has no Master and no Bypass EQ.
-- Locked, in Modern, on the web and on Android nothing the lock refuses is offered (read-only pages with Go to Home;
-  Save, undo, the writing shortcuts and palette rows, Open in Window and A|B off). Classic stays live under the lock,
-  as before (the core refuses after the click).
+- Locked, in Modern, on the web and on Android nothing the lock refuses is offered. Modern: read-only pages with Go to
+  Home; Save, undo, the writing shortcuts and palette rows, Open in Window and A|B off. Web: Home alone
+  (`lockedScreens()`, the locked user's `screens: ["front"]`), with the lock's banner and Unlock. Android: a refused
+  tap gives the lock's line with Unlock…; Settings › Speakers and the Speakers step are hidden. Classic stays live
+  under the lock, as before (the core refuses after the click).
 - The core lets the locked user change the input source (with volume, mute and preset), and refuses
   `speaker_layout_set` under the lock on every client.
 
@@ -92,7 +95,7 @@ where (nothing new on a real DSPi), and the known limits.
 
 ### Android
 - Mute on Home; 1 dB notification steps; the lock's line with Unlock… on a refused tap; Settings › Speakers and the
-  Speakers step (read-only under the lock); the touch band editor, the two crossover rows with Same for the right
+  Speakers step (hidden under the lock); the touch band editor, the two crossover rows with Same for the right
   side, legend pills; USB loss and reconnect notices; strip buttons on the bar. Phones (and the iOS code's iPhone and
   iPad) open in Advanced (`assets/modes/modes.json`).
 
