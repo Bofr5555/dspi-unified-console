@@ -267,6 +267,7 @@ public:
 
     QString error() const { return m_error; }
     QString said() const { return m_said; }
+    QVariantList refusals() const { return m_refusals; }   // -- WP UA2 --
     bool busy() const { return m_busy > 0; }
 
     // ---- The microphone ----
@@ -393,6 +394,7 @@ public:
     QString changedWords(const QStringList &who) const;
     QString outputName(int output) const;
     void fail(const QString &text);
+    void takeRefusals(const QJsonObject &preflight);   // -- WP UA2 --
     void say(const QString &text);
     void setResultDocument(const QByteArray &text, const QString &from);
 
@@ -573,6 +575,7 @@ private:
 
     QString m_error;
     QString m_said;
+    QVariantList m_refusals;   // -- WP UA2 -- a refused start's problems, one each
     int m_busy = 0;
 
     friend class TuneSession;
