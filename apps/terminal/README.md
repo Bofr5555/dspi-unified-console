@@ -101,7 +101,7 @@ Everywhere:
 | `;` | Page commands: a small grammar scoped to the current page, with live hints (`1 2 > 3` routes on the matrix, `3 peak 1k -2` sets a band, `gain -3` trims an output) |
 | `Ctrl-P` | Search: words find places, tools, actions, verbs and parameters ("crossover", "mute", "low pass", "snapshot"); `Enter` goes there, `Tab` puts a command on the `:` line |
 | `:` | Command line, the shell's grammar (numbers take `k`: `1k`); `:help` is `?`. `snapshot`, `ab`, `diff`, `lock`, `limits`, `status` and `measure docs`, `show`, `export` run here on this device, with the terminal handed back while they run; `:snapshot recall NAME` and `:ab NAME` run in the interface and open the Snapshots panel (`:snapshot` and `:ab` alone open it) |
-| `Ctrl-S` | Commit Parameters to the active preset |
+| `Ctrl-S` | Save to Device: the active preset |
 | `Ctrl-Z` `Ctrl-Y` | Undo, redo |
 | `= g p . + - h l` | Graph height, pop-out, phase, linked partner, zoom, cursor |
 | `f t` | The live spectrum on the graph; take the analyser back from another console |

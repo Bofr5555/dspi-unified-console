@@ -278,7 +278,7 @@ pub const APP_VERBS: &[(&str, &str)] = &[
     ("autoeq", "AutoEQ: browse profiles, or `autoeq update`"),
     ("save-master", "Save Master Volume"),
     ("save-output-config", "Save Output Configuration"),
-    ("commit", "Commit Parameters..."),
+    ("commit", "Save to Device..."), // -- INT016 -- (owner D1) the name every menu uses
     ("revert", "Revert to Saved..."),
     ("factory-reset", "Factory Reset..."),
     ("bootloader", "Reboot into Bootloader..."),
@@ -6910,6 +6910,10 @@ mod tests {
             q
         };
         let delay = Duration::from_millis(200);
+        // -- INT016 -- (FIN015's load flake) the clock starts before the pusher
+        // does: the event comes at least `delay` after `start`, however late
+        // this thread gets to the reset
+        let start = Instant::now();
         let pusher = std::thread::spawn(move || {
             std::thread::sleep(delay);
             queue
@@ -6918,7 +6922,6 @@ mod tests {
                 .push_back(event(BULK_INVALIDATED, 1, FROM_FACTORY));
         });
         dirty(&mut l);
-        let start = Instant::now();
         l.factory_reset(&mut s);
         assert!(start.elapsed() >= delay, "returned before the reset ended");
         pusher.join().unwrap();

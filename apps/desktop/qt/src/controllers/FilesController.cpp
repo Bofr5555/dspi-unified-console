@@ -192,14 +192,11 @@ FilesController::FilesController(const AppContext &ctx, QObject *parent) : QObje
     });
     shell->addHandler(QStringLiteral("device.factoryReset"), this, [this] {
         m_askedOf = m_ctx.activeSession();   // -- WP MDQT2b --
-        // -- WP REVDFIX -- (REVD D9) the command by its name in the layout shown
-        const LayoutController *layout = Registrar::instance<LayoutController>();
+        // -- WP REVDFIX -- (REVD D9) the command by its name; -- INT016 -- (UFW's
+        // leftover, owner D1) "Save to Device" in both layouts, as their menus say
         emit deviceQuestion(QStringLiteral("factoryReset"), tr("Factory Reset"),
-                            layout && layout->modern()
-                                ? tr("Do you wish to clear all active parameters?\n\nThis will not overwrite your saved "
-                                     "parameters unless you run 'Save to Device'.")
-                                : tr("Do you wish to clear all active parameters?\n\nThis will not overwrite your saved "
-                                     "parameters unless you run 'Commit Parameters'."),
+                            tr("Do you wish to clear all active parameters?\n\nThis will not overwrite your saved "
+                               "parameters unless you run 'Save to Device'."),
                             tr("Reset"), true);
     });
 
