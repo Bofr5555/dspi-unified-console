@@ -103,6 +103,8 @@ export interface SessionState {
 // -- WP WB6a --
 /** The calls `Session.change` makes. */
 export type ChangeMethod = "presetCopy" | "presetRevert" | "factoryReset"
+  // -- WP GAP1 -- the crossfeed's output pair map
+  | "setCrossfeedPairMap"
   // -- WP WB6c --
   | "crossoverType"
   | "crosspoint"

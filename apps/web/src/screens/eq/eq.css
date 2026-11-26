@@ -75,6 +75,10 @@
 .dspi-web .delays .arrival { background: var(--control); }
 .dspi-web .eq-limit { min-height: 24px; min-width: 4.5rem; padding: 0 0.6rem; border: 0; background: var(--control); color: var(--muted); font-size: 12px; }
 .dspi-web .eq-limit[aria-pressed="true"] { background: var(--selection); color: var(--accent-text); }
+/* -- WP GAP1 -- Delay & Gain's polarity: a value that is a button, inverted or mixed in the warning's ink (Qt's) */
+.dspi-web .eq-polarity { min-height: 24px; min-width: 4.5rem; padding: 0 0.6rem; border: 0; background: var(--control); color: var(--muted); font-size: 12px; }
+.dspi-web .eq-polarity:hover:not(:disabled) { background: var(--control-hover); color: var(--text); }
+.dspi-web .eq-polarity[aria-pressed="true"], .dspi-web .eq-polarity[aria-pressed="true"]:hover:not(:disabled) { color: var(--warn); font-weight: 600; }
 
 /* An icon that toggles (mute, ø): the control tone; muted in the danger text, inverted in the warning's */
 .dspi-web .eq-icon-toggle {

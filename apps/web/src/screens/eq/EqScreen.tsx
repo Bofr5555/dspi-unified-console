@@ -82,6 +82,7 @@ import { EmptyState } from "../../ui/design"; // -- WP WEB --
 import { PageTools } from "../../ui/shell/Parts"; // -- WP WEB3 --
 import { Pill } from "../../ui/Pill"; // -- WP WEB3 --
 import "./eq.css"; // -- WP WEB3 --
+import { prefsStore, usePrefs } from "../settings/model"; // -- WP GAP1 -- the Phase chip
 
 interface EqChannel extends ChannelRow {
   output: boolean;
@@ -295,12 +296,15 @@ const EqView = memo(
     // The curves: the chosen channel's (as shown, a drag included) first, then the others shown.
     const flat = s.bypass;
     const othersShown = channels.filter((c) => c.wire !== cw && !hidden.has(c.wire));
+    // -- WP GAP1 -- the edited channel's phase while the Phase chip (Settings › Graphing's switch) is on
+    const look = usePrefs().graph;
     const req = useMemo<CurveRequest>(
       () => ({
         chains: flat ? [[], ...othersShown.map(() => [])] : [chosen ? chain(s, chosen, edits.shown) : edits.shown, ...othersShown.map((c) => chain(s, c, peq(s, c.wire)))],
         bands: edits.shown,
+        ...(look.showPhase ? { phase: true, unwrap: look.phaseUnwrapped } : {}),
       }),
-      [JSON.stringify([edits.shown, flat, othersShown.map((c) => [c.wire, peq(s, c.wire), c.output ? s.xover?.[c.wire] : null]), chosen?.output ? s.xover?.[cw] : null])],
+      [JSON.stringify([edits.shown, flat, othersShown.map((c) => [c.wire, peq(s, c.wire), c.output ? s.xover?.[c.wire] : null]), chosen?.output ? s.xover?.[cw] : null]), look.showPhase, look.phaseUnwrapped],
     );
     const key = JSON.stringify(req);
     const curves = useCurves(session, key, req);
@@ -622,6 +626,16 @@ const EqView = memo(
               onClick={() => analyser.setChoice({ graph: !analyser.choice.graph })}
             >
               RTA
+            </button>
+            {/* -- WP GAP1 -- Qt's Phase chip, between RTA and All Curves as there */}
+            <button
+              type="button"
+              class="graph-chip"
+              aria-pressed={look.showPhase}
+              title="Show the phase"
+              onClick={() => prefsStore().set({ graph: { showPhase: !look.showPhase } })}
+            >
+              Phase
             </button>
             <button
               type="button"

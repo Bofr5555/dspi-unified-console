@@ -535,6 +535,15 @@ function GraphingPage() {
     <>
       <Group title="Graph Appearance" icon="chart-line">
         <SwitchRow label="Graph Line Glow" caption="Add a neon glow effect to frequency response curves" on={g.showGlow} onChange={(v) => set({ showGlow: v })} />
+        {/* -- WP GAP1 -- Qt's phase switches (the Equaliser graph's Phase chip is the first) */}
+        <SwitchRow label="Show Phase Response" caption="Overlay the selected channel's phase (degrees) as a dotted line" on={g.showPhase} onChange={(v) => set({ showPhase: v })} />
+        <SwitchRow
+          label="Unwrap Phase"
+          caption="Show continuous phase instead of wrapping at ±180°"
+          on={g.phaseUnwrapped}
+          disabled={!g.showPhase}
+          onChange={(v) => set({ phaseUnwrapped: v })}
+        />
       </Group>
       <Group title="Response Curve" icon={<Icon name="activity" />}>
         <SliderRow label="Line Width" value={g.lineWidth} text={`${g.lineWidth.toFixed(1)} pt`} min={1} max={4} step={0.5} onChange={(v) => set({ lineWidth: v })} />

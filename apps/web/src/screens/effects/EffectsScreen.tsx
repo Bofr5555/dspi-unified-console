@@ -84,6 +84,8 @@ import { TUBE_GROUPS, TubePicture, pushPull, shortTubeName } from "./tube";
 import { ActionMenuButton } from "../../ui/menus/ActionMenu";
 import { ownRow } from "../../ui/menus/actions";
 import "./effects.css";
+import { PairMapBlock, pairChipText, usePairMap } from "./pairmap"; // -- WP GAP1 --
+import type { CrossfeedPairMapView } from "../../core/protocol"; // -- WP GAP1 --
 
 export type EffectsScreenProps = ScreenProps & {
   /** Open at this effect. */
@@ -209,7 +211,8 @@ const EffectPanel = memo(function EffectPanel(props: {
   const cols = columnsOf(def.id, def.split === true && advanced);
   const placed = placedPaths(cols);
   const unplaced = rest.filter((p) => !placed.has(p.path));
-  const ctx: BlockContext = { session, def, s, words, ro, on, params: rest, value, has, outputName };
+  const pairMap = usePairMap(session, s, def.id === "crossfeed"); // -- WP GAP1 --
+  const ctx: BlockContext = { session, def, s, words, ro, on, params: rest, value, has, outputName, pairMap };
   const column = (blocks: Block[]) => blocks.map((b, i) => <BlockView key={`${b.kind}${i}`} ctx={ctx} block={b} />).filter(Boolean);
   const left = cols.left.filter((b) => blockShown(ctx, b));
   const right = cols.right.filter((b) => blockShown(ctx, b));
@@ -276,6 +279,8 @@ interface BlockContext {
   /** Whether a parameter is shown. */
   has: (path: string) => boolean;
   outputName: (o: number) => string;
+  /** -- WP GAP1 -- The crossfeed's output pair map (Crossfeed only; null elsewhere or while unknown). */
+  pairMap: CrossfeedPairMapView | null;
 }
 
 /** The parameters of a section, in the section's order; depth and hold only while a selectivity mode is chosen. */
@@ -719,7 +724,9 @@ function ParamRow(props: { ctx: BlockContext; p: ParamDef; info: ParamInfo; word
   if (p.mask) {
     const kind = p.mask;
     const mask = asNumber(value);
-    const bits = maskBits(kind, s, ctx.outputName);
+    // -- WP GAP1 -- the crossfeed's pairs as its pair map makes them
+    const mapped = kind === "pairs" && ctx.pairMap?.supported ? ctx.pairMap.pairs : undefined;
+    const bits = maskBits(kind, s, ctx.outputName, mapped);
     const label = maskLabel(kind);
     const named = kind === "detector" || kind === "apply";
     return (
@@ -730,6 +737,17 @@ function ParamRow(props: { ctx: BlockContext; p: ParamDef; info: ParamInfo; word
           </span>
         ) : null}
         {caption && !named ? <p class="fx-help">{caption}</p> : null}
+        {/* -- WP GAP1 -- Qt's pair map between the caption and the pair chips */}
+        {kind === "pairs" && ctx.pairMap?.supported ? (
+          <PairMapBlock
+            session={session}
+            view={ctx.pairMap}
+            ro={ro}
+            mask={mask}
+            writeMask={disabled ? null : (m) => void session.write(p.path, { mask: maskValue(kind, session.state.snapshot?.state ?? s, m) })}
+            outputName={ctx.outputName}
+          />
+        ) : null}
         {/* Qt's ChipGroup: the channel's number on the chip, its name in the tooltip */}
         <div class="fx-chips" role="group" aria-label={`${def.label} ${label}`}>
           {bits.map((b) => {
@@ -745,7 +763,7 @@ function ParamRow(props: { ctx: BlockContext; p: ParamDef; info: ParamInfo; word
                 disabled={disabled}
                 onClick={() => void session.write(p.path, { mask: maskValue(kind, session.state.snapshot?.state ?? s, toggled(mask, b.bit)) })}
               >
-                {chipText(kind, b.bit)}
+                {mapped?.[b.bit] ? pairChipText(b.bit, mapped[b.bit]!) : chipText(kind, b.bit)}
               </button>
             );
           })}
