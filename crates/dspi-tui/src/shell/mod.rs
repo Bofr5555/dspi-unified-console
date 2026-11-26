@@ -216,6 +216,11 @@ pub struct Shell {
     pub graph_popout: bool,
     /// The regions of the last frame, for hit testing and tests.
     pub regions: Option<Regions>,
+    // -- WP UTM -- (UXP A14)
+    /// The unused outputs are shown under their fold row.
+    pub unused_open: bool,
+    /// The footer row Tab comes back to.
+    footer_row: FooterRow,
 }
 
 // -- WP TM8 --
@@ -240,7 +245,10 @@ fn link_lost_line() -> String {
 }
 
 const GLOBAL_KEYS: &[KeyHelp] = &[
-    KeyHelp::new("Tab", "Next region"),
+    KeyHelp::new("Tab", "Next region: channels, page, footer"), // -- WP UTM --
+    // -- WP UTM -- (UXP A14) the listening volume from any page
+    KeyHelp::new("[ ] { }", "Volume down, up: 1 dB, or 3 dB with Shift"),
+    KeyHelp::new("m", "Mute, unmute"),
     KeyHelp::new("Ctrl-P", "Search everything"),
     KeyHelp::new(":", "Command line"),
     KeyHelp::new("M L X P S D U V G A T I B", "Open a tool"),
@@ -267,7 +275,9 @@ fn bars_room(rows: u16) -> u16 {
 
 const SIDEBAR_KEYS: &[KeyHelp] = &[
     KeyHelp::new("↑ ↓", "Select a channel"),
-    KeyHelp::new("Enter", "Back to the overview"),
+    // -- WP UTM -- (UXP A14) into the channel's page; Esc back out
+    KeyHelp::new("Enter →", "Open its page"),
+    KeyHelp::new("Esc", "Back to the overview"),
     KeyHelp::new("r", "Rename"),
     KeyHelp::new("y Y", "Copy, paste parameters"),
     KeyHelp::new("i", "Identify (outputs)"),
@@ -303,7 +313,33 @@ impl Shell {
             help: false,
             graph_popout: false,
             regions: None,
+            unused_open: false, // -- WP UTM --
+            footer_row: FooterRow::Strip,
         }
+    }
+
+    // -- WP UTM --
+    /// Whether the unused outputs show: opened, or one of them selected or
+    /// under the cursor, which the fold never hides.
+    pub fn unused_shown(&self) -> bool {
+        let unused = |o: usize| self.model.outputs.get(o).is_some_and(|it| it.unused);
+        let ni = self.model.inputs.len();
+        self.unused_open
+            || matches!(self.model.selection, Selection::Output(o) if unused(o))
+            || (self.sidebar_cursor != sidebar::FOLD
+                && self.sidebar_cursor >= ni
+                && unused(self.sidebar_cursor - ni))
+    }
+
+    // -- WP UTM --
+    /// The listening volume moved by `db` from any page, within its range.
+    fn volume_by(&self, db: f64) -> ShellEvent {
+        let floor = if self.model.volume_mode == VolumeMode::Master {
+            -128.0
+        } else {
+            -60.0
+        };
+        ShellEvent::VolumeChanged((self.model.volume_db + db).clamp(floor, 0.0))
     }
 
     pub fn open_tool(&mut self, tool: Tool, screen: Box<dyn Screen>) {
@@ -475,11 +511,40 @@ impl Shell {
 
         match key.code {
             KeyCode::Tab => {
+                // -- WP UTM -- the footer is one stop; Tab comes back to its row
+                if let Focus::Footer(r) = self.focus {
+                    self.footer_row = r;
+                }
                 self.focus = self.next_focus();
                 return out;
             }
             KeyCode::BackTab => {
+                if let Focus::Footer(r) = self.focus {
+                    self.footer_row = r;
+                }
                 self.focus = self.prev_focus();
+                return out;
+            }
+            // -- WP UTM -- (UXP A14) the listening volume and its mute from any
+            // page; a page that wants these keys has had them first
+            KeyCode::Char('[') => {
+                out.push(self.volume_by(-1.0));
+                return out;
+            }
+            KeyCode::Char(']') => {
+                out.push(self.volume_by(1.0));
+                return out;
+            }
+            KeyCode::Char('{') => {
+                out.push(self.volume_by(-3.0));
+                return out;
+            }
+            KeyCode::Char('}') => {
+                out.push(self.volume_by(3.0));
+                return out;
+            }
+            KeyCode::Char('m') => {
+                out.push(ShellEvent::VolumeMute);
                 return out;
             }
             KeyCode::Esc => {
@@ -730,35 +795,21 @@ impl Shell {
         self.popup_owner = Owner::Detail;
     }
 
+    // -- WP UTM -- (UXP A14) channels, then the page, then the footer as one
+    // stop (↑ ↓ move inside it); the footer used to be four stops before the page
     fn next_focus(&self) -> Focus {
-        let has_source = self.model.source.is_some();
         match self.focus {
-            Focus::Sidebar => Focus::Footer(FooterRow::Strip),
-            Focus::Footer(r) => {
-                let n = r.next(has_source);
-                if n == r {
-                    Focus::Screen
-                } else {
-                    Focus::Footer(n)
-                }
-            }
-            Focus::Screen => Focus::Sidebar,
+            Focus::Sidebar => Focus::Screen,
+            Focus::Screen => Focus::Footer(self.footer_row),
+            Focus::Footer(_) => Focus::Sidebar,
         }
     }
 
     fn prev_focus(&self) -> Focus {
-        let has_source = self.model.source.is_some();
         match self.focus {
-            Focus::Sidebar => Focus::Screen,
-            Focus::Footer(r) => {
-                let p = r.prev(has_source);
-                if p == r {
-                    Focus::Sidebar
-                } else {
-                    Focus::Footer(p)
-                }
-            }
-            Focus::Screen => Focus::Footer(FooterRow::Volume),
+            Focus::Sidebar => Focus::Footer(self.footer_row),
+            Focus::Footer(_) => Focus::Screen,
+            Focus::Screen => Focus::Sidebar,
         }
     }
 
@@ -782,19 +833,33 @@ impl Shell {
         if n == 0 {
             return;
         }
+        // -- WP UTM -- (UXP A14) the rows in their order, the fold row among them
+        let stops = sidebar::stops(&self.model, self.unused_shown());
+        let at = stops
+            .iter()
+            .position(|r| *r == self.sidebar_cursor)
+            .unwrap_or(0);
+        let go = |shell: &mut Self, to: usize, out: &mut Vec<ShellEvent>| {
+            shell.sidebar_cursor = stops[to];
+            if stops[to] != sidebar::FOLD {
+                out.push(ShellEvent::Select(shell.model.selection_of_row(stops[to])));
+            }
+        };
+        if self.sidebar_cursor == sidebar::FOLD {
+            match key.code {
+                KeyCode::Enter | KeyCode::Right | KeyCode::Char(' ') => {
+                    self.unused_open = !self.unused_open;
+                }
+                KeyCode::Left => self.unused_open = false,
+                KeyCode::Up | KeyCode::Char('k') => go(self, at.saturating_sub(1), out),
+                KeyCode::Down | KeyCode::Char('j') => go(self, (at + 1).min(stops.len() - 1), out),
+                _ => {}
+            }
+            return;
+        }
         match key.code {
-            KeyCode::Up | KeyCode::Char('k') => {
-                self.sidebar_cursor = self.sidebar_cursor.saturating_sub(1);
-                out.push(ShellEvent::Select(
-                    self.model.selection_of_row(self.sidebar_cursor),
-                ));
-            }
-            KeyCode::Down | KeyCode::Char('j') => {
-                self.sidebar_cursor = (self.sidebar_cursor + 1).min(n - 1);
-                out.push(ShellEvent::Select(
-                    self.model.selection_of_row(self.sidebar_cursor),
-                ));
-            }
+            KeyCode::Up | KeyCode::Char('k') => go(self, at.saturating_sub(1), out),
+            KeyCode::Down | KeyCode::Char('j') => go(self, (at + 1).min(stops.len() - 1), out),
             KeyCode::Char(d @ '1'..='8') => {
                 let i = d as usize - '1' as usize;
                 if i < self.model.inputs.len() {
@@ -802,13 +867,14 @@ impl Shell {
                     out.push(ShellEvent::Select(Selection::Input(i)));
                 }
             }
+            // -- WP UTM -- (UXP A14) Enter goes into the channel's page, as →
+            // does; Esc is the way back to the overview
             KeyCode::Enter => {
                 let here = self.model.selection_of_row(self.sidebar_cursor);
-                if self.model.selection == here {
-                    out.push(ShellEvent::Select(Selection::Overview));
-                } else {
+                if self.model.selection != here {
                     out.push(ShellEvent::Select(here));
                 }
+                self.focus = Focus::Screen;
             }
             KeyCode::Char('r') => out.push(ShellEvent::Rename(self.sidebar_cursor)),
             KeyCode::Char('y') => out.push(ShellEvent::CopyParams(self.sidebar_cursor)),
@@ -859,13 +925,9 @@ impl Shell {
                 };
                 return;
             }
+            // -- WP UTM -- the footer is one region: the last row is its end
             KeyCode::Down | KeyCode::Char('j') => {
-                let n = row.next(has_source);
-                self.focus = if n != row {
-                    Focus::Footer(n)
-                } else {
-                    self.next_focus()
-                };
+                self.focus = Focus::Footer(row.next(has_source));
                 return;
             }
             _ => {}
@@ -1146,6 +1208,7 @@ impl Shell {
         self.block("", focused, t).render(r.sidebar, buf);
         self.sidebar_scroll = sidebar::scroll_for(
             &self.model,
+            self.unused_shown(), // -- WP UTM --
             self.sidebar_cursor,
             r.sidebar_list.height,
             self.sidebar_scroll,
@@ -1156,6 +1219,7 @@ impl Shell {
             &self.model,
             t,
             self.focus == Focus::Sidebar,
+            self.unused_shown(), // -- WP UTM --
             self.sidebar_cursor,
             self.sidebar_scroll,
         );
@@ -1415,12 +1479,39 @@ impl Shell {
 
     fn draw_keys(&mut self, area: Rect, buf: &mut Buffer, t: &Theme) {
         let keys = self.key_line();
+        // -- WP UTM -- (UXP A14) the volume keys hold the right end of the
+        // line on every page, whatever the page's own keys take
+        const VOLUME_HINT: [(&str, &str); 2] = [("[ ]", "volume"), ("m", "mute")];
+        let tail_w = VOLUME_HINT
+            .iter()
+            .map(|(k, d)| k.chars().count() + d.chars().count() + 1)
+            .sum::<usize>() as u16
+            + 3;
+        let end = if area.width >= tail_w + 24 {
+            let mut x = area.x + area.width - tail_w;
+            for (i, (k, d)) in VOLUME_HINT.iter().enumerate() {
+                if i > 0 {
+                    buf.set_string(x - 2, area.y, "·", t.chrome_style());
+                }
+                buf.set_string(x, area.y, *k, t.focused());
+                buf.set_string(x + k.chars().count() as u16 + 1, area.y, *d, t.label());
+                x += (k.chars().count() + d.chars().count()) as u16 + 4;
+            }
+            area.x + area.width - tail_w - 2
+        } else {
+            area.x + area.width
+        };
         let mut x = area.x + 1;
-        for k in keys {
+        for (i, k) in keys.iter().enumerate() {
             let text = format!("{} {}", k.key, k.does);
             let w = text.chars().count() as u16 + 3;
-            if x + w > area.x + area.width {
+            if x + w - 3 > end {
                 break;
+            }
+            // -- WP UTM -- the dot goes between two keys, never after the last
+            // one that fits
+            if i > 0 {
+                buf.set_string(x - 2, area.y, "·", t.chrome_style());
             }
             buf.set_string(x, area.y, k.key, t.focused());
             buf.set_string(
@@ -1430,9 +1521,6 @@ impl Shell {
                 t.label(),
             );
             x += w;
-            if x < area.x + area.width {
-                buf.set_string(x - 2, area.y, "·", t.chrome_style());
-            }
         }
         let _ = fit_left;
     }
@@ -1629,16 +1717,20 @@ mod tests {
         assert_eq!(s.regions.as_ref().unwrap().density, Density::Wide);
     }
 
+    // -- WP UTM -- (UXP A14) Enter goes into the page; Esc is the way back
     #[test]
-    fn arrows_in_the_sidebar_select_and_enter_returns_to_the_overview() {
+    fn arrows_in_the_sidebar_select_and_enter_goes_into_the_page() {
         let (mut s, _) = shell(120, 40);
         assert_eq!(
             s.handle(key(KeyCode::Down), &fixture::state()),
             vec![ShellEvent::Select(Selection::Input(1))]
         );
         s.model.selection = Selection::Input(1);
+        assert_eq!(s.handle(key(KeyCode::Enter), &fixture::state()), vec![]);
+        assert_eq!(s.focus, Focus::Screen, "into its page");
+        s.focus = Focus::Sidebar;
         assert_eq!(
-            s.handle(key(KeyCode::Enter), &fixture::state()),
+            s.handle(key(KeyCode::Esc), &fixture::state()),
             vec![ShellEvent::Select(Selection::Overview)]
         );
         assert_eq!(
@@ -1655,20 +1747,38 @@ mod tests {
         );
     }
 
+    // -- WP UTM -- (UXP A14) changed on purpose: channels, the page, then the
+    // footer as one stop; it walked four footer rows before the page
     #[test]
     fn tab_walks_the_regions_and_escape_walks_back() {
         let (mut s, _) = shell(120, 40);
         s.handle(key(KeyCode::Tab), &fixture::state());
+        assert_eq!(s.focus, Focus::Screen, "the page comes second");
+        s.handle(key(KeyCode::Tab), &fixture::state());
         assert_eq!(s.focus, Focus::Footer(FooterRow::Strip));
+        // Inside the footer the arrows move; Tab leaves it in one step and
+        // comes back to the row it left.
+        s.handle(key(KeyCode::Down), &fixture::state());
+        s.handle(key(KeyCode::Down), &fixture::state());
+        s.handle(key(KeyCode::Down), &fixture::state());
+        s.handle(key(KeyCode::Down), &fixture::state());
+        s.handle(key(KeyCode::Down), &fixture::state());
+        let row = s.focus;
+        assert!(
+            matches!(row, Focus::Footer(_)),
+            "still in the footer: {row:?}"
+        );
+        for _ in 0..8 {
+            s.handle(key(KeyCode::Down), &fixture::state());
+        }
+        assert_eq!(s.focus, Focus::Footer(FooterRow::Volume), "the end of it");
         s.handle(key(KeyCode::Tab), &fixture::state());
-        assert_eq!(s.focus, Focus::Footer(FooterRow::Preset));
-        s.handle(key(KeyCode::Tab), &fixture::state());
-        assert_eq!(s.focus, Focus::Footer(FooterRow::Source));
-        s.handle(key(KeyCode::Tab), &fixture::state());
-        assert_eq!(s.focus, Focus::Footer(FooterRow::Volume));
-        s.handle(key(KeyCode::Tab), &fixture::state());
+        assert_eq!(s.focus, Focus::Sidebar);
+        s.handle(key(KeyCode::BackTab), &fixture::state());
+        assert_eq!(s.focus, Focus::Footer(FooterRow::Volume), "where it was");
+        s.handle(key(KeyCode::BackTab), &fixture::state());
         assert_eq!(s.focus, Focus::Screen);
-        s.handle(key(KeyCode::Tab), &fixture::state());
+        s.handle(key(KeyCode::BackTab), &fixture::state());
         assert_eq!(s.focus, Focus::Sidebar);
         s.focus = Focus::Screen;
         assert_eq!(s.handle(key(KeyCode::Esc), &fixture::state()), vec![]);
@@ -1949,6 +2059,97 @@ mod tests {
         assert_eq!(s.focus, Focus::Sidebar, "off the top");
     }
 
+    // -- WP UTM -- (UXP A14) the volume in one key from any page
+    #[test]
+    fn utm_the_volume_and_mute_keys_work_on_every_page() {
+        for focus in [
+            Focus::Sidebar,
+            Focus::Screen,
+            Focus::Footer(FooterRow::Strip),
+            Focus::Footer(FooterRow::Preset),
+        ] {
+            let (mut s, _) = shell(120, 40);
+            s.focus = focus;
+            s.model.volume_db = -20.0;
+            let st = fixture::state();
+            assert_eq!(
+                s.handle(key(KeyCode::Char('[')), &st),
+                vec![ShellEvent::VolumeChanged(-21.0)],
+                "{focus:?}"
+            );
+            assert_eq!(
+                s.handle(key(KeyCode::Char(']')), &st),
+                vec![ShellEvent::VolumeChanged(-19.0)]
+            );
+            assert_eq!(
+                s.handle(key(KeyCode::Char('{')), &st),
+                vec![ShellEvent::VolumeChanged(-23.0)]
+            );
+            assert_eq!(
+                s.handle(key(KeyCode::Char('}')), &st),
+                vec![ShellEvent::VolumeChanged(-17.0)]
+            );
+            assert_eq!(
+                s.handle(key(KeyCode::Char('m')), &st),
+                vec![ShellEvent::VolumeMute]
+            );
+        }
+        // Within the range: 0 dB at the top.
+        let (mut s, _) = shell(120, 40);
+        s.model.volume_db = -0.5;
+        assert_eq!(
+            s.handle(key(KeyCode::Char(']')), &fixture::state()),
+            vec![ShellEvent::VolumeChanged(0.0)]
+        );
+    }
+
+    // -- WP UTM -- (UXP A14)
+    #[test]
+    fn utm_the_key_line_shows_the_volume_keys_and_ends_without_a_dot() {
+        let (mut s, mut term) = shell(200, 40);
+        let f = frame(&mut s, &mut term);
+        let last = f.lines().last().unwrap();
+        assert!(last.contains("[ ] volume"), "{last}");
+        assert!(last.contains("m mute"), "{last}");
+        let (mut s, mut term) = shell(80, 24);
+        let f = frame(&mut s, &mut term);
+        let last = f.lines().last().unwrap().trim_end();
+        assert!(!last.ends_with('·'), "a cut line ends on a key: {last:?}");
+    }
+
+    // -- WP UTM -- (UXP A14, owner 2026-11-24) unused outputs folded
+    #[test]
+    fn utm_unused_outputs_fold_under_one_row() {
+        let (mut s, mut term) = shell(120, 40);
+        for o in 2..9 {
+            s.model.outputs[o].unused = true;
+            s.model.outputs[o].name = format!("{} · None", o + 1);
+        }
+        let f = frame(&mut s, &mut term);
+        assert!(f.contains("7 unused ▸"), "{f}");
+        assert!(!f.contains("· None"), "folded: {f}");
+        // The cursor walks the used outputs, then the fold row.
+        let ni = s.model.inputs.len();
+        s.sidebar_cursor = ni + 1;
+        s.model.selection = Selection::Output(1);
+        assert_eq!(s.handle(key(KeyCode::Down), &fixture::state()), vec![]);
+        assert_eq!(s.sidebar_cursor, sidebar::FOLD);
+        s.handle(key(KeyCode::Enter), &fixture::state());
+        let f = frame(&mut s, &mut term);
+        assert!(f.contains("7 unused ▾"), "{f}");
+        assert!(f.contains("3 · None"), "open: {f}");
+        assert_eq!(
+            s.handle(key(KeyCode::Down), &fixture::state()),
+            vec![ShellEvent::Select(Selection::Output(2))]
+        );
+        // An unused output that is selected is never hidden.
+        s.unused_open = false;
+        s.sidebar_cursor = 0;
+        s.model.selection = Selection::Output(4);
+        let f = frame(&mut s, &mut term);
+        assert!(f.contains("5 · None"), "{f}");
+    }
+
     /// A key that is advertised must do something: produce an event, move
     /// focus, or open an overlay. This is the test the old interface lacked,
     /// where the Surfaces panel advertised four keys it did not bind.
@@ -1964,6 +2165,11 @@ mod tests {
                 for k in keys_for(help.key) {
                     let (mut s, _) = shell(120, 40);
                     s.focus = focus;
+                    // -- WP UTM -- the footer is one region now: ↓ on its last
+                    // row is its end, so the arrows start a row above it
+                    if focus == Focus::Footer(FooterRow::Volume) && k.code == KeyCode::Down {
+                        s.focus = Focus::Footer(FooterRow::Preset);
+                    }
                     // Start every cursor mid-range so a boundary no-op is not
                     // mistaken for a missing binding.
                     s.sidebar_cursor = 10;

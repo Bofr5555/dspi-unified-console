@@ -831,6 +831,40 @@ mod tests {
         assert!(!normal.contains(&t.chrome_faint), "{normal:?}");
     }
 
+    // -- WP UTM -- (UXP A14) the examiner's NO_COLOR picture showed tinted
+    // decade lines; its text twin had no colour, and neither does the graph:
+    // NO_COLOR is ColorDepth::Mono, where every colour is the terminal's own
+    #[test]
+    fn utm_no_colour_leaves_the_grid_in_the_terminals_colour() {
+        let env = crate::theme::TermEnv {
+            no_color: true,
+            ..Default::default()
+        };
+        let depth = ColorDepth::from_env(&env);
+        assert_eq!(depth, ColorDepth::Mono);
+        let t = Theme::new(crate::theme::Palette::Calm, depth, Glyphs::Braille);
+        let curves: Vec<GraphCurve> = Vec::new();
+        for grid in [GridStrength::Dim, GridStrength::Normal] {
+            let s = GraphSettings {
+                grid,
+                ..Default::default()
+            };
+            let buf = render_buf(Graph::new(&curves, &s, &t), 120, 40);
+            for y in 0..40 {
+                for x in 0..120 {
+                    let c = &buf[(x, y)];
+                    assert!(
+                        c.fg == ratatui::style::Color::Reset
+                            && c.bg == ratatui::style::Color::Reset,
+                        "({x}, {y}) {:?} in {:?}",
+                        c.symbol(),
+                        c.fg
+                    );
+                }
+            }
+        }
+    }
+
     /// A spectrum at `db` dBFS across the graph.
     fn overlay(t: &Theme, db: f64) -> SpectrumOverlay {
         SpectrumOverlay {

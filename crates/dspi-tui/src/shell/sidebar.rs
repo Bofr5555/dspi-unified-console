@@ -134,9 +134,40 @@ enum Row<'a> {
         item: &'a ChannelItem,
         selected: bool,
     },
+    // -- WP UTM -- (UXP A14)
+    /// "7 unused ▸": the outputs nothing is routed to, folded.
+    Fold {
+        count: usize,
+        open: bool,
+    },
 }
 
-fn rows(model: &ShellModel) -> Vec<Row<'_>> {
+// -- WP UTM --
+/// The sidebar cursor on the fold row rather than on a channel.
+pub const FOLD: usize = usize::MAX;
+
+// -- WP UTM -- (UXP A14, owner 2026-11-24: unused outputs hidden in views that
+// are not for editing)
+/// How many outputs are unused, folded under one row at the end.
+pub fn unused_count(model: &ShellModel) -> usize {
+    model.outputs.iter().filter(|o| o.unused).count()
+}
+
+// -- WP UTM --
+/// The rows the cursor stops on, in order: channel rows, and [`FOLD`]. The
+/// unused outputs come after the fold row, and only while it is `open`.
+pub fn stops(model: &ShellModel, open: bool) -> Vec<usize> {
+    rows(model, open)
+        .iter()
+        .filter_map(|r| match r {
+            Row::Channel { row, .. } => Some(*row),
+            Row::Fold { .. } => Some(FOLD),
+            _ => None,
+        })
+        .collect()
+}
+
+fn rows<'a>(model: &'a ShellModel, open: bool) -> Vec<Row<'a>> {
     // No channels means no device, and the Console then hides both sections,
     // headers too (`ContentView.swift:438-446`).
     if model.channel_count() == 0 {
@@ -157,24 +188,52 @@ fn rows(model: &ShellModel) -> Vec<Row<'_>> {
     }
     out.push(Row::Blank);
     out.push(Row::Header("OUTPUTS"));
-    for (o, it) in model.outputs.iter().enumerate() {
-        out.push(Row::Channel {
-            row: model.inputs.len() + o,
-            item: it,
-            selected: model.selection == Selection::Output(o),
-        });
+    let output = |(o, it): (usize, &'a ChannelItem)| Row::Channel {
+        row: model.inputs.len() + o,
+        item: it,
+        selected: model.selection == Selection::Output(o),
+    };
+    // -- WP UTM -- the unused ones last, behind the fold row
+    out.extend(
+        model
+            .outputs
+            .iter()
+            .enumerate()
+            .filter(|(_, it)| !it.unused)
+            .map(output),
+    );
+    let count = unused_count(model);
+    if count > 0 {
+        out.push(Row::Fold { count, open });
+        if open {
+            out.extend(
+                model
+                    .outputs
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, it)| it.unused)
+                    .map(output),
+            );
+        }
     }
     out
 }
 
 /// The scroll offset (in flattened rows) that keeps the channel at `cursor`
 /// visible in `height` rows, given the current offset.
-pub fn scroll_for(model: &ShellModel, cursor: usize, height: u16, current: usize) -> usize {
-    let rows = rows(model);
-    let Some(pos) = rows
-        .iter()
-        .position(|r| matches!(r, Row::Channel { row, .. } if *row == cursor))
-    else {
+pub fn scroll_for(
+    model: &ShellModel,
+    open: bool, // -- WP UTM --
+    cursor: usize,
+    height: u16,
+    current: usize,
+) -> usize {
+    let rows = rows(model, open);
+    let Some(pos) = rows.iter().position(|r| match r {
+        Row::Channel { row, .. } => *row == cursor,
+        Row::Fold { .. } => cursor == FOLD,
+        _ => false,
+    }) else {
         return 0;
     };
     let h = height as usize;
@@ -196,12 +255,14 @@ pub fn scroll_for(model: &ShellModel, cursor: usize, height: u16, current: usize
 
 /// Draw the INPUTS / OUTPUTS list. `cursor` is the focused channel row when
 /// the list has focus; `scroll` is the first flattened row shown.
+#[allow(clippy::too_many_arguments)]
 pub fn draw_list(
     area: Rect,
     buf: &mut Buffer,
     model: &ShellModel,
     theme: &Theme,
     focused: bool,
+    open: bool, // -- WP UTM --
     cursor: usize,
     scroll: usize,
 ) {
@@ -209,7 +270,7 @@ pub fn draw_list(
         return;
     }
     let t = theme;
-    let all = rows(model);
+    let all = rows(model, open);
     for (y, r) in (area.y..).zip(all.iter().skip(scroll)) {
         if y >= area.y + area.height {
             break;
@@ -217,6 +278,28 @@ pub fn draw_list(
         match r {
             Row::Header(h) => buf.set_string(area.x + 1, y, h, t.section()),
             Row::Blank => {}
+            // -- WP UTM --
+            Row::Fold { count, open } => {
+                let mark = match (open, t.glyphs == Glyphs::Ascii) {
+                    (true, true) => "v",
+                    (false, true) => ">",
+                    (true, false) => "▾",
+                    (false, false) => "▸",
+                };
+                let here = focused && cursor == FOLD;
+                let bar = match (here, t.glyphs == Glyphs::Ascii) {
+                    (false, _) => " ",
+                    (true, true) => ">",
+                    (true, false) => "▍",
+                };
+                buf.set_string(area.x, y, bar, Style::default().fg(t.accent));
+                buf.set_string(
+                    area.x + 2,
+                    y,
+                    fit_left(&format!("{count} unused {mark}"), area.width as usize - 2),
+                    if here { t.focused() } else { t.label() },
+                );
+            }
             Row::Channel {
                 row,
                 item,
