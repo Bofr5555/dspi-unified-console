@@ -12955,6 +12955,10 @@ Macros are stored on the device alongside the controls and share their Save and 
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Reset Demo</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Snapshots…</source>
         <translation type="unfinished"></translation>
     </message>
