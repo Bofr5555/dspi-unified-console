@@ -132,9 +132,7 @@ void onboardingSection(SmokeDriver &d) {
     d.check(QStringLiteral("qp17: the notes are newest first"),
             ob->releases().value(0).toMap().value(QStringLiteral("app")).toBool()
                 && ob->releases().value(0).toMap().value(QStringLiteral("version")).toString() == "0.16"   // -- FIX016 --
-                && ob->releases().value(1).toMap().value(QStringLiteral("app")).toBool()
-                && ob->releases().value(1).toMap().value(QStringLiteral("version")).toString() == "0.15"
-                && ob->releases().value(2).toMap().value(QStringLiteral("version")).toString() == "1.1.6");
+                && ob->releases().value(1).toMap().value(QStringLiteral("version")).toString() == "1.1.6");
     d.check(QStringLiteral("qp17: the bundled firmware is read from the images"), ob->bundledFirmware() == "1.1.6");
     d.check(QStringLiteral("qp17: firmware versions compare as the Mac's"),
             ob->firmwareMatch(QStringLiteral("1.1.6")) == "match" && ob->firmwareMatch(QStringLiteral("1.1.5")) == "older"
@@ -225,13 +223,16 @@ void onboardingSection(SmokeDriver &d) {
                     && qp17Resolved(shown));
         d.check(QStringLiteral("qp17: What's New has the Mac's size"), notes->width() == 460 && notes->height() == 420);
         // -- WP UFW -- (UXP A8) the app's notes first, with buttons to their places; the firmware's under their heading
-        // -- FIX016 -- 0.16's notes come first, with their button to Settings › Speakers
+        // -- FIX016 -- 0.16's notes come first, with buttons to Appearance, AI Agents and Speakers
+        QObject *appearance = qp17Item(notes->contentItem(), QStringLiteral("WhatsNew.action.appearance"));
         QObject *speakers = qp17Item(notes->contentItem(), QStringLiteral("WhatsNew.action.speakers"));
-        d.check(QStringLiteral("ufw: the app's notes come first, with a button to Speakers"),
-                ob->releases().value(0).toMap().value(QStringLiteral("app")).toBool() && speakers
+        d.check(QStringLiteral("ufw: the app's notes come first, with buttons to Appearance, AI Agents and Speakers"),
+                ob->releases().value(0).toMap().value(QStringLiteral("app")).toBool() && appearance
+                    && appearance->property("text").toString() == QStringLiteral("Appearance…")
+                    && qp17Item(notes->contentItem(), QStringLiteral("WhatsNew.action.ai")) && speakers
                     && speakers->property("text").toString() == QStringLiteral("Speakers…"));
-        // -- FIX016 -- two app releases (0.16, 0.15): the part heading is the first
-        // release's, and the firmware's first release is scrolled into view first
+        // -- FIX016 -- the part heading is the first release's, and the firmware's
+        // first release is scrolled into view first (0.16's notes are long)
         auto *appPart = qobject_cast<QQuickItem *>(
             qp17Item(qp17Item(notes->contentItem(), QStringLiteral("WhatsNew.release.0")), QStringLiteral("WhatsNew.part.app")));
         int firstFirmware = 0;

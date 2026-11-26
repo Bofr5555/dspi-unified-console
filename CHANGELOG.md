@@ -1,14 +1,16 @@
 # Changelog
 
-Release notes of each version: `CHANGELOG-0.16.0.md`, `CHANGELOG-0.15.0.md`, `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
+Release notes of each version: `CHANGELOG-0.16.0.md`, `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md` (`CHANGELOG-0.15.0.md`: not
+released, folded into 0.16.0).
 
 ## 0.16.0 (2026-11-26)
 
 One version for every client but the Swift app: the Qt desktop app (Windows, Linux and macOS), Android (versionCode
 16), the Terminal (`uconsole`), the web console and the hub. The Swift app for macOS, iPhone and iPad is still
-deferred. The firmware is unchanged: the fork's v1.1.6-bofr1. Everything below was merged after the 0.15.0 release
-(`main` at `201118b9`, 2026-11-26) on the same day. The release notes are `CHANGELOG-0.16.0.md`; they also say what
-was tested where (nothing new on a real DSPi), and the known limits.
+deferred. The firmware is unchanged: the fork's v1.1.6-bofr1. **0.16.0 is the first release after 0.14.0**: 0.15.0
+was prepared (`main` at `201118b9`, 2026-11-26) but not published, so what 0.16.0 brings since 0.14.0 is this section
+and the 0.15.0 section below. The release notes, `CHANGELOG-0.16.0.md`, cover both; they also say what was tested
+where (nothing new on a real DSPi), and the known limits.
 
 ### Speakers to crossovers and routes (desktop)
 - Equaliser › Crossover and Routing have **From Speaker Layout…**: from the confirmed speaker layout, one sheet of
@@ -130,9 +132,10 @@ was tested where (nothing new on a real DSPi), and the known limits.
 - The hub's installer lock lets `REQ_SET_INPUT_SOURCE` through as the core's does; its refusal says "volume, mute,
   source and presets only".
 
-## 0.15.0 (2026-11-26)
+## 0.15.0 (not released, folded into 0.16.0)
 
-One version for every client but the Swift app: the Qt desktop app (Windows, Linux and macOS), Android (versionCode
+Prepared as a release but not published (owner, 2026-11-26): its content ships in 0.16.0. As it was written: one
+version for every client but the Swift app: the Qt desktop app (Windows, Linux and macOS), Android (versionCode
 15), the Terminal (`uconsole`), the web console and the hub. The Swift app for macOS, iPhone and iPad is still
 deferred. The firmware is unchanged: the fork's v1.1.6-bofr1, as for 0.14.0. Everything below was merged after the
 0.14.0 release (tag `v0.14.0`, `7d681a73`, 2026-11-20) up to 2026-11-26. The release notes are

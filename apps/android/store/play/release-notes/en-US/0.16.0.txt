@@ -1,6 +1,8 @@
-• Mute beside the volume on Home.
+• Mute beside the volume on Home; the volume buttons set your DSPi's volume.
 • Settings › Speakers: say which output drives a woofer or a tweeter.
-• Edit EQ bands by touch, and set a crossover in two rows.
+• Edit EQ bands by touch; a crossover in two rows.
 • A tap the installer's lock refuses says why, with Unlock.
-• The demo is a tuned two-way speaker; Reset demo starts it again.
-• The app opens in Advanced, and tells you when the USB DSPi goes away.
+• DSPi Link from the main page; reconnects to the last hub, faster.
+• A tuned two-way demo, with Reset demo.
+• Unused outputs are left out of Home, Spectrum and Stats.
+• The app's own colours; opens in Advanced.
