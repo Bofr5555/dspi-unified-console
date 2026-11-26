@@ -847,6 +847,7 @@ impl Server {
                     args.clone(),
                     now_ms,
                 );
+                self.confirms.set_rest(id, out.judging.rest); // -- WP UAG --
                 self.held = Some(id);
                 entry.outcome = Outcome::Held;
                 entry.detail = format!("waiting for the user's confirmation {id}");
@@ -859,13 +860,15 @@ impl Server {
                 // app alone (they may hold names the user or a device wrote)
                 if entry.write {
                     entry.detail = crate::activity::words(&data);
-                    entry.said = said;
+                    entry.said = out.judging.said.clone().unwrap_or(said); // -- WP UAG -- (UXP A7)
                 }
                 tool_ok(data)
             }
             Err(e) => {
                 entry.outcome = Outcome::Error;
                 entry.detail = e.0.clone();
+                // -- WP UAG -- (UXP A7) why the console refused it, for the person
+                entry.said = out.judging.refusal.clone().unwrap_or_default();
                 tool_error(&e.0)
             }
         };

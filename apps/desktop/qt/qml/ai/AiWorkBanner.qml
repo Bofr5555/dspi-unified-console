@@ -27,16 +27,24 @@ Rectangle {
           : grant.detect ? qsTr("Test signals and speaker detection allowed, %1 left").arg(grant.left)   // -- WP ADETQ --
           //: The strip: an AI agent may play test signals without asking for %1 ("9:41") more
           : qsTr("Test signals allowed, %1 left").arg(grant.left)
+    // -- WP UAG -- (UXP A7) the console's refusal of an agent's call, for a few seconds
+    readonly property var refusal: AiController.refusal
+    readonly property string refusalText: refusal.text === undefined ? ""
+          //: The strip: the console refused an AI agent's change; %1 why ("kept Right tweeter's high-pass at 1 kHz")
+          : refusal.device.length ? qsTr("Refused: %1 · %2").arg(refusal.text).arg(refusal.device)
+          : qsTr("Refused: %1").arg(refusal.text)
     // -- WP DL5 -- the line it shows: never empty while the strip is
-    readonly property string text: workText.length ? workText
+    readonly property string text: refusalText.length ? refusalText
+                                 : workText.length ? workText
                                  : grant ? grantText
                                  : AiController.paused ? qsTr("AI agents are paused. Nothing is changed until Resume.")
                                  : AiController.agents.length ? qsTr("Connected. Nothing runs now.")
                                  : AiController.statusLine
-    readonly property string agent: work.agent !== undefined && work.agent.length ? work.agent
+    readonly property string agent: refusal.agent !== undefined ? refusal.agent   // -- WP UAG --
+                                  : work.agent !== undefined && work.agent.length ? work.agent
                                   : grant && grant.agent !== undefined ? grant.agent
                                   : !AiController.paused && AiController.agents.length ? AiController.agents[0].name : ""
-    visible: work.shown === true || grant !== null
+    visible: work.shown === true || grant !== null || refusalText.length > 0   // -- WP UAG --
     implicitHeight: row.implicitHeight + 8
     color: Theme.bannerFill("info")   // -- WP DL5 -- (Modern: the panel tone, INTC)
     // In the accent's colour, so that it is none of the other strips
@@ -135,7 +143,7 @@ Rectangle {
         AppButton {
             objectName: "AiWorkBanner.stop"
             implicitHeight: 24
-            text: qsTr("Stop")
+            text: qsTr("Stop Agents")   // -- WP UAG -- (UXP A7, C4) not the measurement's Stop
             iconName: "square"
             toolTip: qsTr("Turn AI agents off: what they run stops, their timed previews are put back")
             onClicked: AiController.stop()
