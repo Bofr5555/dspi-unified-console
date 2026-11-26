@@ -100,6 +100,7 @@ class AppModeController(
     val bridge: StateFlow<DspiBridge> = _bridge.asStateFlow()
 
     private var demo: DemoSession? = null
+    private var demoIsDocument = false // -- WP UB12 -- the demo stack runs a file (openDocument)
     private var uiVisible = true
 
     private val present: StateFlow<Boolean> =
@@ -297,6 +298,7 @@ class AppModeController(
         if (remote != null) return false
         val d = demoFactory()
         demo = d
+        demoIsDocument = false // -- WP UB12 --
         d.bridge.setUiVisible(uiVisible)
         _bridge.value = d.bridge
         _mode.value = AppMode.DEMO
@@ -317,10 +319,25 @@ class AppModeController(
             exitDemo()
             val d = documentFactory(text, fileName)
             demo = d
+            demoIsDocument = true // -- WP UB12 --
             d.bridge.setUiVisible(uiVisible)
             _bridge.value = d.bridge
             _mode.value = AppMode.DEMO
         }
+    }
+
+    // -- WP UB12 --
+    /**
+     * "Reset demo" (UXP B12): a new demo stack in place of this one, so the demo opens on its tuned
+     * example again with its roles. No Unsaved Changes question: it is the demo. No-op outside demo
+     * mode and on a file.
+     */
+    fun resetDemo() {
+        val d = demo ?: return
+        if (demoIsDocument) return
+        demo = null
+        d.close()
+        enterDemo()
     }
 
     /** Leave demo mode and tear the demo stack down. No-op in device mode. */
