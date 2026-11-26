@@ -180,7 +180,8 @@ test.describe("snapshots and files on the core's demo", () => {
       const pop = session.getByRole("dialog", { name: "Capture Snapshot" });
       await pop.getByLabel("Name").fill(name);
       await pop.getByLabel("Note").fill(note);
-      await Promise.all([page.waitForEvent("download"), pop.getByRole("button", { name: "Capture", exact: true }).click()]);
+      await pop.getByRole("button", { name: "Capture", exact: true }).click(); // -- WP UB14 -- kept, no download
+      await expect(session.getByRole("list", { name: "Held snapshots" }).getByRole("listitem", { name })).toBeVisible();
     };
     await capture("Evening", "Warm, -3 dB on the tops");
     await setOutputGain(session, -4); // -- WP INTD -- on Delay & gain

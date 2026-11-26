@@ -51,7 +51,8 @@ test("P1DCFIX Simple: Snapshots with Recall and A/B only; B toggles, not in a te
   await screen.getByRole("button", { name: "Capture…" }).click(); // -- WP INTD -- Capture is a popover (-- WP WEB7 -- in the empty state)
   const capture = session.getByRole("dialog", { name: "Capture Snapshot" });
   await capture.getByLabel("Name").fill("Loud");
-  await Promise.all([page.waitForEvent("download"), capture.getByRole("button", { name: "Capture", exact: true }).click()]);
+  await capture.getByRole("button", { name: "Capture", exact: true }).click(); // -- WP UB14 -- no download
+  await expect(screen.getByRole("list", { name: "Held snapshots" }).getByRole("listitem")).toHaveCount(1);
   await call(page, "write", { path: "out.gain", indices: [0], value: { float: 0 } });
 
   // A plain B in a text field is the field's.

@@ -1,8 +1,9 @@
-// WP P1WB1: the Snapshots screen. Capture downloads the device as a snapshot document and
-// holds it for this visit; Open Snapshot… adds one from a file (OD-P1b: on the web the
-// browser's downloads are the store). Each held snapshot can be recalled (with rollback when
-// the user asks, always over DSPi Link to a hub with the guard), compared with the device or
-// with another (A/B), downloaded again or let go. Read only: capture and download only.
+// WP P1WB1: the Snapshots screen. Capture holds the device as a snapshot document; Open Snapshot…
+// adds one from a file. -- WP UB14 -- (B14, D14) They are kept in this browser per DSPi (the
+// desk's store), so a reload finds them; Capture no longer downloads, Export… in the row's menu
+// does; a line under the heading says where they are kept. Each held snapshot can be recalled
+// (with rollback when the user asks, always over DSPi Link to a hub with the guard), compared
+// with the device or with another (A/B), exported or deleted. Read only: capture and export only.
 //
 // -- WP P1DCFIX -- Simple: the list with Recall and the A/B compare only; no capture, open,
 // download, remove, rollback choice or rollback time (those are Advanced's and Installer's).
@@ -74,8 +75,7 @@ function SnapshotsView(props: { desk: SnapshotDesk; ask: ScreenProps["ask"]; sim
   const capture = async (name: string, note: string) => {
     const preset = session.state.snapshot?.state.presetNames[session.state.snapshot.state.activePresetSlot] ?? "";
     const label = name.trim() || preset.trim() || "Snapshot";
-    const doc = await desk.capture(label, note.trim());
-    if (doc) download(doc.text, fileNameFor(doc.name));
+    await desk.capture(label, note.trim()); // -- WP UB14 -- kept here; Export… downloads
   };
 
   const open = async (input: HTMLInputElement) => {
@@ -177,6 +177,8 @@ function SnapshotsView(props: { desk: SnapshotDesk; ask: ScreenProps["ask"]; sim
         <div class="ds-section-head">
           <h4 class="section-label">Snapshots</h4>
         </div>
+        {/* -- WP UB14 -- where they are kept (Simple has no Export…) */}
+        {!simple || st.docs.length ? <p class="snap-caption">{keptWords(st.kept, simple)}</p> : null}
         {st.guardDefault ? <p class="snap-caption">Every recall here can be taken back: it is kept only when you press Keep within {st.timeoutS} s.</p> : null}
         {/* -- WP WEB -- DL3a's empty state (-- WP WEB7 -- with Capture… as Qt's, the page's one accent) */}
         {st.docs.length === 0 ? (
@@ -350,6 +352,12 @@ function Compare(props: { desk: SnapshotDesk; st: ReturnType<typeof useDesk> }) 
       )}
     </div>
   );
+}
+
+/** -- WP UB14 -- where the held snapshots are, in a line under the heading. */
+export function keptWords(kept: "browser" | "page", simple: boolean): string {
+  const where = kept === "browser" ? "Kept in this browser for this DSPi." : "Kept until you close this page: this browser keeps no site data here.";
+  return simple ? where : `${where} Export… saves one as a file.`;
 }
 
 /** -- WP WEB7 -- a compare's side as Qt names it: "B: Evening", or just "A" when that is its name. */

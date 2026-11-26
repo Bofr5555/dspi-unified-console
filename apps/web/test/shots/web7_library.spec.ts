@@ -57,7 +57,8 @@ test("WEB7 Library's states", async ({ page }) => {
     const pop = session.getByRole("dialog", { name: "Capture Snapshot" });
     await pop.getByLabel("Name").fill(name);
     if (note) await pop.getByLabel("Note").fill(note);
-    await Promise.all([page.waitForEvent("download"), pop.getByRole("button", { name: "Capture", exact: true }).click()]);
+    await pop.getByRole("button", { name: "Capture", exact: true }).click(); // -- WP UB14 -- kept, no download
+    await expect(session.getByRole("list", { name: "Held snapshots" }).getByRole("listitem", { name })).toBeVisible();
   }
   await snaps.getByRole("list", { name: "Held snapshots" }).getByRole("listitem", { name: "Bright" }).hover();
   await shot(page, "library-snapshots-list");
