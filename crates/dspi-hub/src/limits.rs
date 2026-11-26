@@ -20,7 +20,7 @@
 //!   as an import is (below).
 //! - **The lock** (P1LK's, S4): a device is locked when a PIN is set for it here
 //!   and its profile names what the lock covers (`lockedPages`). A Control client
-//!   of a locked device gets the lock's scope only (volume, mute, preset:
+//!   of a locked device gets the lock's scope only (volume, mute, source, preset:
 //!   [`crate::policy::in_lock_scope`]) until it unlocks with the PIN, which lasts
 //!   for its session. An Admin is never locked out: it unlocks without the PIN
 //!   (OD-P1i: a venue phone is Control within the limits and the lock's scope, or
@@ -822,7 +822,7 @@ impl Refusal {
             }),
             Refusal::Locked => json!({
                 "refused": "installer_lock",
-                "msg": "this device is locked by its installer: volume, mute and presets only",
+                "msg": "this device is locked by its installer: volume, mute, source and presets only",
             }),
             Refusal::Image => json!({
                 "refused": "image_refused",

@@ -308,9 +308,10 @@ pub fn limits_allows(role: Role, message: &str) -> bool {
 
 // -- WP P1HL --
 /// Whether a command is within a locked device's scope for a Control client
-/// (`docs/UI-MODES.md` section 3: volume, mute and preset; OD-P1i): the master and
-/// the user volume, the user and an output's mute, a preset load. Reads are never
-/// judged by the lock; any other change is outside it.
+/// (`docs/UI-MODES.md` section 3: volume, mute, source and preset; OD-P1i): the
+/// master and the user volume, the user and an output's mute, the input source
+/// (-- FIX016 -- LOCKSRC, owner D4: the core's `LOCKED_USER_WRITES` has `in.source`),
+/// a preset load. Reads are never judged by the lock; any other change is outside it.
 ///
 /// The analyser too (WP P1DKFIX, F7, decided): starting, stopping and
 /// configuring it (`RTA_CONTROL`, `RTA_SET_CONFIG`) changes no audio, and the
@@ -323,6 +324,7 @@ pub fn in_lock_scope(code: u8, dir: Dir) -> bool {
                 | op::REQ_SET_USER_VOLUME
                 | op::REQ_SET_USER_MUTE
                 | op::REQ_SET_OUTPUT_MUTE
+                | op::REQ_SET_INPUT_SOURCE
                 | op::REQ_RTA_SET_CONFIG,
             Dir::Set
         ) | (op::REQ_PRESET_LOAD | op::REQ_RTA_CONTROL, Dir::Get)
@@ -725,8 +727,8 @@ mod tests_wp_p1hl {
         }
     }
 
-    /// Volume, mute and preset, every one a command a Control client may send at
-    /// all; nothing else that changes the device.
+    /// Volume, mute, the source (-- FIX016 -- LOCKSRC) and preset, every one a
+    /// command a Control client may send at all; nothing else that changes the device.
     #[test]
     fn wp_p1hl_the_lock_scope_is_volume_mute_and_preset() {
         let p = Policy::embedded();
@@ -735,6 +737,7 @@ mod tests_wp_p1hl {
             (op::REQ_SET_USER_VOLUME, Dir::Set),
             (op::REQ_SET_USER_MUTE, Dir::Set),
             (op::REQ_SET_OUTPUT_MUTE, Dir::Set),
+            (op::REQ_SET_INPUT_SOURCE, Dir::Set), // -- FIX016 -- LOCKSRC
             (op::REQ_PRESET_LOAD, Dir::Get),
         ];
         for (code, dir) in inside {
@@ -747,6 +750,7 @@ mod tests_wp_p1hl {
             (op::REQ_SET_ALL_PARAMS, Dir::Set),
             (op::REQ_PRESET_SAVE, Dir::Get),
             (op::REQ_SET_MASTER_VOLUME, Dir::Get),
+            (op::REQ_SET_INPUT_SOURCE_NAME, Dir::Set), // -- FIX016 -- naming it is not choosing it
         ] {
             assert!(!in_lock_scope(code, dir), "{code:#04x}");
         }
