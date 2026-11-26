@@ -203,7 +203,7 @@ private fun SettingsSidebar(
                                 (cat == SettingsCategory.GLOBAL_PARAMS && coordinator.globalRowsDirty()) ||
                                 // -- WP AN6 --
                                 (cat == SettingsCategory.SPDIF_INPUT && coordinator.sourceNamesDirty())
-                        if (dot) Text("●", color = MacColors.orange)
+                        if (dot) Text("●", color = MacColors.warningText)
                     }
                 }
             }

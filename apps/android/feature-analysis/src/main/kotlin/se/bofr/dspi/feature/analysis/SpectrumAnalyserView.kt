@@ -682,7 +682,7 @@ private fun RtaStatusBar(state: SpectrumUiState, snapshot: StateFlow<RtaSnapshot
             if (s.bassBusyUsPerS > 0) Text(rtaBassLoadDescription(s.bassBusyUsPerS), style = style)
         }
         when {
-            s?.configRejected == true -> Text("Device refused this configuration", style = style.copy(color = MacColors.orange))
+            s?.configRejected == true -> Text("Device refused this configuration", style = style.copy(color = MacColors.warningText))
             // -- AN17 -- Swift RtaStatusBar: the hub does not name other sessions yet, so neither does this
             state.following -> {
                 Text(RTA_FOLLOWING_TEXT, style = style)
@@ -698,7 +698,7 @@ private fun RtaStatusBar(state: SpectrumUiState, snapshot: StateFlow<RtaSnapshot
             lowest != null ->
                 Text(
                     "shaded bands below ${rtaShortHz(lowest)} Hz need a larger transform size in Settings",
-                    style = style.copy(color = MacColors.orange)
+                    style = style.copy(color = MacColors.warningText)
                 )
             caps != null && caps.dynamicRangeDb > 0 -> Text("${caps.dynamicRangeDb}/${caps.bassDynamicRangeDb} dB range", style = style)
         }

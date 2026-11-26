@@ -258,7 +258,7 @@ private fun CrossfeedPairEditor(model: CrossfeedPairsModel, actions: CrossfeedPa
                         OutputPicker(model, draft[p].second, enabled) { draft[p] = draft[p].first to it }
                     }
                 }
-                if (!valid) Caption("Each pair needs two different outputs, and no output can be in two pairs.", color = MacColors.orange)
+                if (!valid) Caption("Each pair needs two different outputs, and no output can be in two pairs.", color = MacColors.warningText)
             }
         },
         confirmButton = {

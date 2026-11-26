@@ -49,6 +49,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
@@ -429,7 +431,7 @@ private fun OutputChip(state: TestSignalsUiState, o: Int, modifier: Modifier, on
         )
         if (os == SiggenOutputState.INVERTED) {
             Spacer(Modifier.width(4.dp))
-            Text("ø", fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace, color = MacColors.orange)
+            Text("ø", fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace, color = MacColors.warningText)
         }
     }
 }
@@ -665,7 +667,10 @@ private fun TransportBar(state: TestSignalsUiState, actions: TestSignalsActions)
         }
         if (state.running) {
             // Stop immediately, no fade
-            OutlinedButton(onClick = { actions.stop(immediate = true) }) { Text("■") }
+            // -- WP UAN -- (UXP A12) named: TalkBack read "black square"
+            OutlinedButton(onClick = { actions.stop(immediate = true) }, Modifier.semantics { contentDescription = "Stop at once" }) {
+                Text("■", Modifier.clearAndSetSemantics {})
+            }
             Button(
                 onClick = { actions.stop(immediate = false) },
                 colors = ButtonDefaults.buttonColors(containerColor = MacColors.red, contentColor = Color.White)

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -41,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -392,11 +394,12 @@ private fun PresetSection(
             Modifier
                 .fillMaxWidth()
                 .background(if (isActive) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface)
-                .clickable(enabled = enabled) { onSelect(slot) }
+                // -- WP UAN -- (UXP A12) one radio row: the radio is no stop of its own (it was an unnamed 24dp one)
+                .selectable(selected = isActive, enabled = enabled, role = Role.RadioButton) { onSelect(slot) }
                 .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            RadioButton(selected = isActive, onClick = { onSelect(slot) }, enabled = enabled)
+            RadioButton(selected = isActive, onClick = null, enabled = enabled)
             Text(
                 "${slot + 1}: " + presetPickerTitle(slot, occupied(slot), name(slot), isActive, dirty),
                 color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),

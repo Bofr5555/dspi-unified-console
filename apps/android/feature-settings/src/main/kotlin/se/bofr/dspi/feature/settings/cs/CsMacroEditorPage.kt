@@ -23,6 +23,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import se.bofr.dspi.feature.settings.CsModel
 import se.bofr.dspi.feature.settings.FormCaption
@@ -97,18 +100,25 @@ internal fun CsMacroEditorPage(
                             TextButton(
                                 onClick = { editor.moveStep(i, -1) },
                                 enabled = can && i > 0,
-                                modifier = Modifier.testTag("${stepTag(i)}.up")
-                            ) { Text("↑") }
+                                // -- WP UAN -- (UXP A12) named: TalkBack read the arrows
+                                modifier = Modifier.testTag("${stepTag(i)}.up").semantics { contentDescription = "Move step ${i + 1} up" }
+                            ) { Text("↑", Modifier.clearAndSetSemantics {}) }
                             TextButton(
                                 onClick = { editor.moveStep(i, 1) },
                                 enabled = can && i < steps.size - 1,
-                                modifier = Modifier.testTag("${stepTag(i)}.down")
-                            ) { Text("↓") }
+                                modifier = Modifier.testTag("${stepTag(i)}.down").semantics { contentDescription = "Move step ${i + 1} down" }
+                            ) { Text("↓", Modifier.clearAndSetSemantics {}) }
                             TextButton(
                                 onClick = { editor.removeStep(i) },
                                 enabled = can,
-                                modifier = Modifier.testTag("${stepTag(i)}.remove")
-                            ) { Text("−", color = if (can) CS_DESTRUCTIVE else androidx.compose.ui.graphics.Color.Unspecified) }
+                                modifier = Modifier.testTag("${stepTag(i)}.remove").semantics { contentDescription = "Remove step ${i + 1}" }
+                            ) {
+                                Text(
+                                    "−",
+                                    Modifier.clearAndSetSemantics {},
+                                    color = if (can) CS_DESTRUCTIVE else androidx.compose.ui.graphics.Color.Unspecified
+                                )
+                            }
                         }
                     }
                 }

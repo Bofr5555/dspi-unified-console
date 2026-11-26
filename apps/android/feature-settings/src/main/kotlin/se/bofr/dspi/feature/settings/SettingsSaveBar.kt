@@ -75,7 +75,7 @@ internal fun SettingsSaveBar(coordinator: SettingsSaveCoordinator) {
                 Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(horizontal = 16.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("●", color = MacColors.orange)
+                Text("●", color = MacColors.warningText)
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
                     Text("Unsaved changes" + if (lines.size > 1) " (${lines.size})" else "", style = MaterialTheme.typography.bodyMedium)
