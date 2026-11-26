@@ -443,6 +443,8 @@ pub extern "C" fn dspi_core_free(core: *mut FfiCore) {
         c.set_notify_listener(None);
         c.rta_set_listener(None);
         c.set_hotplug_callback(None);
+        // -- WP GAP2 -- a solo's mutes go back while the device is reachable
+        let _ = c.solo_end();
         #[cfg(feature = "link")]
         {
             c.set_link_listener(None);

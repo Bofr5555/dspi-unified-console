@@ -220,6 +220,7 @@ QtObject {
         { id: "channel.paste", of: "edit.paste", text: qsTr("Paste Parameters"), modern: ["channel.copy"] },
         { id: "channel.identify", text: qsTr("Identify"), modern: ["channel.act"] },
         { id: "channel.mute", text: qsTr("Mute"), on: qsTr("Unmute"), modern: ["channel.act"] },
+        { id: "channel.solo", text: qsTr("Solo"), on: qsTr("End Solo"), modern: ["channel.act"] },   // -- WP GAP2 --
         { id: "channel.routing", of: "tools.matrix", text: qsTr("Edit Routing…"), modern: ["channel.act"] },
         { id: "channel.headphone", of: "autoeq.browse", text: qsTr("Load Headphone Profile…"), modern: ["channel.act"] },
         { id: "channel.clear", text: qsTr("Clear PEQ…"), modern: ["channel.clear"] },
