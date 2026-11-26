@@ -223,14 +223,10 @@ void onboardingSection(SmokeDriver &d) {
                     && appearance->property("text").toString() == QStringLiteral("Appearance…")
                     && qp17Item(notes->contentItem(), QStringLiteral("WhatsNew.action.ai")));
         auto *appPart = qobject_cast<QQuickItem *>(qp17Item(notes->contentItem(), QStringLiteral("WhatsNew.part.app")));
-        const bool appHeading = appPart && appPart->isVisible() && !appPart->property("text").toString().isEmpty();
-        if (list) QMetaObject::invokeMethod(list, "positionViewAtIndex", Q_ARG(int, 1), Q_ARG(int, 1 /* ListView.Beginning */));
-        d.spin(100);
-        QStringList below;
-        qp17Texts(notes->contentItem(), &below);
-        d.check(QStringLiteral("ufw: the firmware's notes under their own heading"), appHeading && below.contains(QStringLiteral("DSPi firmware")));
-        if (list) QMetaObject::invokeMethod(list, "positionViewAtBeginning");
-        d.spin(100);
+        QObject *firmwarePart = qp17Item(notes->contentItem(), QStringLiteral("WhatsNew.part.firmware"));
+        d.check(QStringLiteral("ufw: the firmware's notes under their own heading"),
+                appPart && appPart->isVisible() && !appPart->property("text").toString().isEmpty() && firmwarePart
+                    && firmwarePart->property("text").toString() == QStringLiteral("DSPi firmware") && firmwarePart->property("visible").toBool());
         d.grab(notes, QStringLiteral("window-whatsNew.png"));
         if (QObject *done = qp17Item(notes->contentItem(), QStringLiteral("WhatsNew.done"))) QMetaObject::invokeMethod(done, "click");
         d.spin(200);
