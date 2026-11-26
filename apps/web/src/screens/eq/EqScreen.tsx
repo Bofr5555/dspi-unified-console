@@ -243,6 +243,11 @@ const EqView = memo(
     const [wire, setWire] = useState<number>(() => {
       if (channels.some((c) => c.wire === props.target?.wire)) return props.target!.wire!;
       const kept = chosenWire.get(session);
+      // -- WP UWN -- (UXP A17) the Crossover tab opens on an output: the kept one, else the first that is on
+      if (mode === "crossover" && !channels.some((c) => c.wire === kept && c.output)) {
+        const out = channels.find((c) => c.output); // the channel list holds the outputs that are on
+        if (out) return out.wire;
+      }
       return kept !== undefined && channels.some((c) => c.wire === kept) ? kept : (channels[0]?.wire ?? 0);
     });
     const chosen = channels.find((c) => c.wire === wire) ?? channels[0];
@@ -537,7 +542,7 @@ const EqView = memo(
         <div class="eq-tools">
           {!chosen.output && mode === "peq" ? (
             <button type="button" aria-expanded={autoeq} onClick={() => setAutoeq((v) => !v)}>
-              Headphone Profile…
+              AutoEQ…{/* -- WP UWN -- (UXP A17) the docs' and the Library tab's word (was Headphone Profile…) */}
             </button>
           ) : null}
           <ActionMenuButton label="Files" items={filesItems} />
