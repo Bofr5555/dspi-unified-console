@@ -500,9 +500,8 @@ QString SpeakersController::summary() const {
     for (const QJsonValue &v : base.value(QLatin1String("outputs")).toArray()) {
         const QJsonObject o = v.toObject();
         const int n = o.value(QLatin1String("output")).toInt();
-        QString label = tr("Out %1").arg(n + 1);
-        for (const QVariant &x : std::as_const(st->outputs))
-            if (x.toMap().value(QStringLiteral("output")).toInt() == n) label = x.toMap().value(QStringLiteral("label")).toString();
+        // The output's number only: the device's label carries the side too ("Out 1 · L")
+        const QString label = tr("Out %1").arg(n + 1);
         const QString speaker = str(o, "speaker").trimmed();
         // An unnamed output stands alone
         const QString key = speaker.isEmpty() ? QStringLiteral("\x01") + QString::number(n) : speaker.toCaseFolded();

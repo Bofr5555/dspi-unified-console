@@ -100,6 +100,13 @@ QVariantMap ub7Row(SpeakersController *sc, int output) {
     return {};
 }
 
+// A check box clicked: it toggles and says so (press() only clicks)
+void ub7Toggle(QObject *box) {
+    if (!box) return;
+    QMetaObject::invokeMethod(box, "toggle");
+    QMetaObject::invokeMethod(box, "toggled");
+}
+
 int ub7Group(SpeakersController *sc, int output) { return ub7Row(sc, output).value(QStringLiteral("group")).toInt(); }
 
 void ub7Section(SmokeDriver &d) {
@@ -205,7 +212,7 @@ void ub7Section(SmokeDriver &d) {
     // The override, and off again
     QQuickItem *byHand = shown(QStringLiteral("Speakers.byHand"));
     check("the override is offered, off", byHand && !byHand->property("checked").toBool());
-    SmokeDriver::press(byHand);
+    ub7Toggle(byHand);
     settle();
     QQuickItem *pickB = shown(QStringLiteral("Speakers.group.%1").arg(b));
     check("on, each row picks what it is measured with", byHand && byHand->property("checked").toBool() && pickB
@@ -224,7 +231,7 @@ void ub7Section(SmokeDriver &d) {
     }
     d.grab(settings, QStringLiteral("ub7-speakers-byhand.png"));
     byHand = shown(QStringLiteral("Speakers.byHand"));
-    SmokeDriver::press(byHand);
+    ub7Toggle(byHand);
     settle();
     check("off again, the groups follow the names", byHand && !byHand->property("checked").toBool() && sc->groupsFollowNames()
                                                          && ub7Group(sc, b) != ub7Group(sc, a) && shown(QStringLiteral("Speakers.together.%1").arg(b)));
@@ -236,14 +243,16 @@ void ub7Section(SmokeDriver &d) {
     settle();
 
     // ---- Measure: the summary and this run's tick boxes -------------------------------------------
-    d.goTo(QStringLiteral("measure/measure"), 400);
+    const bool atMeasure = d.goTo(QStringLiteral("measure/measure"), 400);
     QQuickItem *root = d.mainWindow()->contentItem();
+    std::printf("smoke: ub7: at measure %d, summary item %p shown %p, layout %s\n", atMeasure, (void *)d.item(QStringLiteral("MeasureSetup.speakers"), root),
+                (void *)ub7Shown(root, QStringLiteral("MeasureSetup.speakers")), QJsonDocument(ub7Stored(d)).toJson(QJsonDocument::Compact).constData());
     QQuickItem *setup = ub7Shown(root, QStringLiteral("MeasureSetup.speakers"));
     QQuickItem *summaryText = ub7Shown(setup, QStringLiteral("SpeakersSummary.text"));
     const QString summary = sc->summary();
-    std::printf("smoke: ub7: summary \"%s\"\n", qPrintable(summary));
+    std::printf("smoke: ub7: summary \"%s\", shown \"%s\"\n", qPrintable(summary), summaryText ? qPrintable(summaryText->property("text").toString()) : "-");
     check("Measure shows the layout in one line",
-          summaryText && summaryText->property("text").toString() == summary && summary.endsWith(QLatin1String(" · confirmed"))
+          summaryText && summaryText->property("text").toString() == summary && summary.endsWith(QStringLiteral(" · confirmed"))
               && summary.contains(QLatin1String("Out ")));
     QQuickItem *measurePage = ub7Shown(root, QStringLiteral("MeasureSetup.outputs"));
     check("the outputs as tick boxes", measurePage && ub7Shown(measurePage, QStringLiteral("MeasureSetup.output.%1").arg(a)));
@@ -254,7 +263,7 @@ void ub7Section(SmokeDriver &d) {
     bool onA = false;
     for (const QVariant &v : mc->setupOutputs())
         if (v.toMap().value(QStringLiteral("output")).toInt() == a) onA = v.toMap().value(QStringLiteral("on")).toBool();
-    SmokeDriver::press(ub7Shown(measurePage, QStringLiteral("MeasureSetup.output.%1").arg(a)));
+    ub7Toggle(ub7Shown(measurePage, QStringLiteral("MeasureSetup.output.%1").arg(a)));
     settle();
     bool nowA = onA;
     for (const QVariant &v : mc->setupOutputs())
@@ -262,20 +271,25 @@ void ub7Section(SmokeDriver &d) {
     check("a tick is this run's: the layout keeps", nowA != onA && ub7Stored(d).value(QLatin1String("outputs")) == before.value(QLatin1String("outputs")));
     mc->setOutputOn(a, onA);
     d.grab(d.mainWindow(), QStringLiteral("ub7-measure.png"));
-    settingsCtl->showPage(QStringLiteral("about"));
+    settingsCtl->open(QStringLiteral("about"));
+    settle();
     SmokeDriver::press(ub7Shown(setup, QStringLiteral("SpeakersSummary.edit")));
     settle();
-    settings = qobject_cast<QQuickWindow *>(d.app().shell->openWindow(QStringLiteral("edit.settings")));
-    check("Edit in Speakers… opens Settings › Speakers", settingsCtl->currentPage() == QLatin1String("speakers") && settings && settings->isVisible());
+    // Modern shows Settings as a page of the main window
+    const bool speakersShown = ub7Shown(root, QStringLiteral("SpeakersPage")) || (settings && ub7Shown(settings->contentItem(), QStringLiteral("SpeakersPage")));
+    std::printf("smoke: ub7: after Edit: page %s, shown %d\n", qPrintable(settingsCtl->currentPage()), speakersShown);
+    check("Edit in Speakers… opens Settings › Speakers", settingsCtl->currentPage() == QLatin1String("speakers") && speakersShown);
     if (settings) settings->close();
-    settle();
+    d.goTo(QStringLiteral("measure/measure"), 300);
 
     // An unconfirmed layout says so in the line
     QJsonObject kept = ub7Stored(d);
     ub7Keep(d, kept, false);
     sc->reload();
+    d.waitFor(5000, [&] { return sc->status() != QLatin1String("confirmed"); });
+    std::printf("smoke: ub7: unconfirmed: %s \"%s\"\n", qPrintable(sc->status()), qPrintable(sc->summary()));
     check("an unconfirmed layout: the line says so",
-          d.waitFor(5000, [&] { return sc->status() != QLatin1String("confirmed"); }) && sc->summary().endsWith(QLatin1String(" · not confirmed")));
+          d.waitFor(5000, [&] { return sc->status() != QLatin1String("confirmed"); }) && sc->summary().endsWith(QStringLiteral(" · not confirmed")));
     ub7Keep(d, kept, true);
     sc->reload();
     d.waitFor(5000, [&] { return sc->status() == QLatin1String("confirmed"); });
