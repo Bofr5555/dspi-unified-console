@@ -554,6 +554,7 @@ impl DspiCore {
         let demo = crate::demo_example::device();
         let serial = demo.descriptor().serial.clone();
         self.attach_probed(Box::new(demo), serial, 0)?;
+        self.demo_baseline();
         // The device is open whatever becomes of its roles' file
         if let Err(e) = self.keep_demo_layout() {
             log::warn!("the demo's speaker layout could not be kept: {e}");

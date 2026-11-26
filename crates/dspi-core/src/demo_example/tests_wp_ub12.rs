@@ -295,6 +295,22 @@ fn wp_ub12_an_agent_may_open_the_demo_and_gets_its_roles() {
 }
 
 #[test]
+fn wp_ub12_a_demo_opened_after_another_has_nothing_unsaved() {
+    // The same serial and slot: the blank demo's baseline must not stand for
+    // the example's image (nor the example's for the blank one)
+    let core = DspiCore::new();
+    core.open_demo_blank().unwrap();
+    core.fetch_all().unwrap();
+    assert!(!core.preset_dirty());
+    core.open_demo().unwrap();
+    core.fetch_all().unwrap();
+    assert!(!core.preset_dirty(), "the example after the blank demo");
+    core.open_demo_blank().unwrap();
+    core.fetch_all().unwrap();
+    assert!(!core.preset_dirty(), "the blank demo after the example");
+}
+
+#[test]
 fn wp_ub12_reopening_replaces_an_older_layout() {
     // A layout kept for the demo's serial from before the example (the
     // blank demo's "Full" roles) does not contradict the new outputs

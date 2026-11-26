@@ -67,7 +67,11 @@ QJsonObject speakerLayout(SmokeDriver &d) {
         buf.truncate(int(n) - 1);
         return buf;
     });
-    return QJsonDocument::fromJson(text).object().value(QLatin1String("value")).toObject();
+    // The layout's fields beside "ok"; `{ok, value: null}` with none
+    QJsonObject reply = QJsonDocument::fromJson(text).object();
+    if (!reply.contains(QLatin1String("outputs"))) return {};
+    reply.remove(QLatin1String("ok"));
+    return reply;
 }
 
 void demoSection(SmokeDriver &d) {
@@ -138,7 +142,7 @@ void demoSection(SmokeDriver &d) {
         d.check(QStringLiteral("ub12: output %1 is unused").arg(o + 1), rowValue(device, cc->outputChannel(o), "unused").toBool());
     const QJsonObject layout = speakerLayout(d);
     d.check("ub12: its roles are confirmed", layout.value(QLatin1String("confirmedByUser")).toBool());
-    d.check("ub12: nothing unsaved", !dirty());
+    d.check("ub12: nothing unsaved, after the blank demo", !dirty());
     shoot("after");
 
     // The strip's Reset Demo puts a changed level and name back
@@ -159,6 +163,8 @@ void demoSection(SmokeDriver &d) {
                 && rowValue(device, cc->outputChannel(0), "displayName").toString() == QLatin1String("Left woofer");
         }) && d.waitIdle());
         d.check(QStringLiteral("ub12: %1 leaves nothing unsaved").arg(how), !dirty());
+        d.check(QStringLiteral("ub12: %1 keeps the roles confirmed").arg(how),
+                speakerLayout(d).value(QLatin1String("confirmedByUser")).toBool());
         d.check(QStringLiteral("ub12: %1 keeps the demo open").arg(how), device->connected() && device->demo());
     };
     changeThenReset(QStringLiteral("the strip's button"), [&] {

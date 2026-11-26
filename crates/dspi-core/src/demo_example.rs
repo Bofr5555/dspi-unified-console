@@ -174,8 +174,16 @@ impl DspiCore {
         let demo = FakeDevice::demo();
         let serial = demo.descriptor().serial.clone();
         self.attach_probed(Box::new(demo), serial.clone(), 0)?;
+        self.demo_baseline();
         self.speaker_layouts.forget(&serial);
         Ok(())
+    }
+
+    /// A demo just opened holds nothing unsaved: its image is its saved
+    /// preset's. The baseline of the demo open before it (the same serial and
+    /// slot, so a re-read would keep it) does not stand for it.
+    pub(crate) fn demo_baseline(&self) {
+        crate::presets::capture_baseline_locked(&mut self.lock());
     }
 }
 
