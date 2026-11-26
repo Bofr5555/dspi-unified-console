@@ -364,9 +364,51 @@ SettingsPage {
                 current: agentTabs.currentIndex
                 onChosen: index => agentTabs.currentIndex = index
             }
+            // -- WP UB15 -- (UXP B15) Claude Desktop: this app as an extension in one
+            // click; the file by hand below it, for a Claude Desktop without extensions
+            RowLayout {
+                visible: agentTabs.currentIndex === 0
+                Layout.fillWidth: true
+                spacing: Theme.spacing
+                Text {
+                    Layout.fillWidth: true
+                    text: qsTr("Add this app to Claude Desktop as an extension: Claude Desktop opens and asks you to install it.")
+                    font: Theme.fontBody
+                    color: Theme.text
+                    wrapMode: Text.Wrap
+                }
+                AppButton {
+                    objectName: "AiAgents.installDesktop"
+                    primary: true
+                    text: qsTr("Install in Claude Desktop…")
+                    iconName: "download"
+                    onClicked: ClaudeDesktop.install()
+                }
+            }
+            Text {
+                objectName: "AiAgents.installOpened"
+                visible: agentTabs.currentIndex === 0 && ClaudeDesktop.state === "opened"
+                Layout.fillWidth: true
+                text: qsTr("In Claude Desktop, click Install. When Claude first uses it, you are asked here to allow it.")
+                font: Theme.fontBody
+                color: Theme.textMuted
+                wrapMode: Text.Wrap
+            }
+            NoticeRow {
+                objectName: "AiAgents.installNotOpened"
+                visible: agentTabs.currentIndex === 0 && (ClaudeDesktop.state === "notOpened" || ClaudeDesktop.state === "failed")
+                Layout.fillWidth: true
+                kind: ClaudeDesktop.state === "failed" ? "error" : "warning"
+                text: ClaudeDesktop.state === "failed"
+                      ? qsTr("The extension was not saved: %1").arg(ClaudeDesktop.error)
+                      //: %1 is a file's path
+                      : qsTr("Nothing opened the extension. Is Claude Desktop installed? The extension is saved as %1.").arg(ClaudeDesktop.extensionFile)
+                actionText: ClaudeDesktop.state === "failed" ? "" : qsTr("Show File")
+                onAction: ClaudeDesktop.showExtensionFile()
+            }
             Text {
                 Layout.fillWidth: true
-                text: agentTabs.currentIndex === 0 ? qsTr("Add this to claude_desktop_config.json, then start Claude Desktop again:")
+                text: agentTabs.currentIndex === 0 ? qsTr("Or add this to claude_desktop_config.json by hand, then start Claude Desktop again. Use one of the two, not both:")
                     : agentTabs.currentIndex === 1 ? qsTr("Run this in a terminal:")
                     : qsTr("An agent that starts a program: this command. One that connects over HTTP: the address, with the header “Authorization: Bearer” and a client's token.")
                 font: Theme.fontBody
@@ -379,6 +421,27 @@ SettingsPage {
                 text: agentTabs.currentIndex === 0 ? AiController.desktopConfig
                     : agentTabs.currentIndex === 1 ? AiController.codeCommand
                     : AiController.relayCommand
+            }
+            // -- WP UB15 -- (UXP B15, A9) where that file is
+            RowLayout {
+                visible: agentTabs.currentIndex === 0
+                Layout.fillWidth: true
+                spacing: Theme.spacing
+                Text {
+                    objectName: "AiAgents.configFile"
+                    Layout.fillWidth: true
+                    //: %1 is the path of Claude Desktop's configuration file
+                    text: qsTr("Claude Desktop keeps it in %1").arg(ClaudeDesktop.configFile)
+                    font: Theme.fontBody
+                    color: Theme.textMuted
+                    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                }
+                AppButton {
+                    objectName: "AiAgents.openConfigFolder"
+                    text: qsTr("Open Config Folder")
+                    iconName: "folder-open"
+                    onClicked: ClaudeDesktop.openConfigFolder()
+                }
             }
             AiCopyField {
                 objectName: "AiAgents.url"
