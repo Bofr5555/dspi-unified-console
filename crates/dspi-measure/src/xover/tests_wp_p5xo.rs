@@ -993,3 +993,10 @@ fn wp_p5trust2_the_hold_is_a_quarter_period_and_at_least_0_25_ms() {
         assert_eq!(timing_hold_ms(f), TIMING_HOLD_MIN_MS);
     }
 }
+
+// -- WP UFW -- (UXP A10) a note names the outputs as a person counts them, from 1
+#[test]
+fn wp_ufw_the_pair_notes_count_outputs_from_1() {
+    assert!(quadrature_note(0, 1).starts_with("outputs 1 and 2: "));
+    assert!(crate::align::held_unclear_note(2, 3, 2000.0, 0.2).starts_with("outputs 3 and 4: "));
+}

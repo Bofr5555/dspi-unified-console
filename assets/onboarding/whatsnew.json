@@ -1,5 +1,20 @@
 [
   {
+    "when": "windows_or_linux",
+    "version": "0.15",
+    "app": true,
+    "headline": "A new layout, AI agents, and several DSPis at once",
+    "items": [
+      "The Modern layout: the sections in a rail on the left, their pages as tabs, what you chose in an inspector beside the page, and volume, source and preset in the dock at the bottom. Press Ctrl+K to find any command, page, setting or channel by typing. If you used the app before, it keeps the Classic layout until you switch in Settings > Appearance.",
+      "AI agents: connect Claude Desktop, Claude Code or another MCP agent to the running app, and it can read and tune your DSPi while you watch. The pages follow what it does, it asks before risky changes, and each change can be undone. Turn it on in Settings > AI Agents.",
+      "Several DSPis at once: in the Modern layout every DSPi you open gets its own tab at the top, and the pages and the dock follow the tab you choose."
+    ],
+    "actions": [
+      { "page": "appearance", "text": "Appearance…" },
+      { "page": "ai", "text": "AI Agents…" }
+    ]
+  },
+  {
     "version": "1.1.6",
     "headline": "Choose your latency, and name your board and its inputs",
     "items": [

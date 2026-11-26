@@ -146,7 +146,7 @@ stops you, the console says which one and what to do.
 | **Every run ends by itself** | Sweeps repeat a set number of times, pink noise runs at most 60 s, and a run lasts at most 120 s. If the console crashes, the DSPi stops on its own |
 | **Silence first** | A run starts only when no input is playing. Stop your music first |
 | **Bounded changes** | A proposal never boosts the EQ by more than +3 dB (speakers) or +6 dB (headphones), never cuts more than 15 dB, and never raises an output's level. A level change is always a cut. An EQ boost is balanced by an equal cut of the output's gain, so you keep your headroom |
-| **Guarded and reversible** | A tune is applied only after the checks run again, a "Before auto-tune" snapshot is saved, and the safe apply has started its countdown (section 7) |
+| **Guarded and reversible** | A tune is applied only after the checks run again, a "Before auto-tune" snapshot is saved, and the trial has started its countdown (section 7) |
 | **Locks and roles** | You need a connection that may write, read-only mode off, and the Control or Admin role on a hub. Measuring must not be locked by an installer. A measurement holds the device lock, so other consoles cannot change the DSPi meanwhile |
 | **Privacy** | Microphone audio stays in memory for the run only. It is never logged, uploaded, or put in a document |
 | **No hidden processing** | A run is refused while crossfeed, psychoacoustic bass, the tube preamp, the subharmonic synthesizer, loudness, or a limiter that would act is on for a measured output: the measurement cannot model them. Switch them off for the run. The console names what to switch off and changes nothing itself |
@@ -236,7 +236,7 @@ It will not:
 ### 7.2 Apply, verify and Keep
 
 1. **Apply.** The checks run again. A "Before auto-tune" snapshot is saved (on the hub when you use one, otherwise in
-   the console). The changes are then written as one undo step inside a **safe apply** with a countdown. The countdown
+   the console). The changes are then written as one undo step, applied on **trial** with a countdown. The countdown
    is long enough for the verify plus a margin, at most 590 s. If a verify would take longer, the proposal warns you.
 2. **Verify.** The tuned speaker is measured again: a walked run and a summed run for each crossover. It passes when
    everything is within 1.5 dB of the prediction.
@@ -262,7 +262,7 @@ It will not:
 
 - **Revert** during the countdown puts every setting back as it was in the "Before" snapshot.
 - **The countdown running out** does the same. Leaving it alone is always safe.
-- **A lost connection:** through a hub that runs the safe apply, the hub puts the settings back. Over USB nothing can
+- **A lost connection:** through a hub that runs the trial, the hub puts the settings back. Over USB nothing can
   be written while the DSPi is gone; Revert stays offered and puts the settings back once the same DSPi is open again.
   Until then the console says that the DSPi may still hold the tune.
 - **A/B** after Keep: switch between the tuned settings (A) and the "Before" snapshot (B) to listen, then keep the one
