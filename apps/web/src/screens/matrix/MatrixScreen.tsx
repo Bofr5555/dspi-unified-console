@@ -39,6 +39,7 @@ import { Menu } from "../main/Menu";
 // -- WP WB6J --
 import { identifyOutput } from "../analysis/siggen";
 import { inputRows, liveInputs, outputLabel, type ChannelRow } from "../main/model";
+import { useSolo } from "../../ui/solo"; // -- WP GAP2 --
 import { CROSSPOINT_RANGE } from "../outputs/OutputCard";
 import { clamp, compactGain, delayText, enableConflict, eqWorkerRange, levelText, limiterSupported, outputSlotName, parseLevel, pdmOutput, stepGrid } from "../outputs/model";
 // -- WP WB6G -- the inputs' trims
@@ -882,6 +883,7 @@ function MatrixInspector(props: {
   openEq: (wire: number) => void;
 }) {
   const { session, s, ro, inputs, outs, sel } = props;
+  const solo = useSolo(session); // -- WP GAP2 --
   const nIn = inputs.length;
   const nOut = outs.length;
   const outLine = (o: Out) =>
@@ -987,6 +989,8 @@ function MatrixInspector(props: {
             />
           </Row>
           <Switch label="Mute" on={out.muted} disabled={ro} toggle={() => props.mute(o)} />
+          {/* -- WP GAP2 -- only this output plays, until it is switched off (not saved) */}
+          <Switch label="Solo" on={solo.output === o} disabled={!!solo.reason || !out.enabled} toggle={() => void solo.toggle(o)} />
         </InspectorSection>
         <InspectorSection title="Fed by" summary={from.length === 1 ? "1 input" : `${from.length} inputs`}>
           <ChipGroup

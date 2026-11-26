@@ -24,6 +24,7 @@ import { CONNECT, sectionsFor, type Page, type SectionId } from "./shell/section
 import type { ActionBoard } from "./menus/board"; // -- WP WEBM4 --
 import { EmptyState, Glyph } from "./design"; // -- WP WEB --
 import { NoDeviceEmpty, NoDeviceFrame, NoDeviceStrip } from "./shell/NoDevice"; // -- WP REVEFIX --
+import { SoloStrip } from "./SoloStrip"; // -- WP GAP2 --
 
 export function useSessionState(s: Session) {
   const [, bump] = useState(0);
@@ -303,6 +304,7 @@ export function SessionView(props: { session: Session; onClose: () => void; shel
           <span>This is the demo DSPi, a simulated device: nothing you change here reaches a real DSPi.</span>
         </div>
       ) : null}
+      {snap ? <SoloStrip session={s} /> : null /* -- WP GAP2 -- */}
       {st.link && st.link.phase !== "bound" ? <LostLinkBanner phase={st.link} session={s} otherHub={!!st.otherHub && st.link.phase === "reconnecting"} onClose={props.onClose} /> : null}
       {ro ? <p class="note read-only-reason">{ro}</p> : null}
       {st.error && !connectFailed ? (

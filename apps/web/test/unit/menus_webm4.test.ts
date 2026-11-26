@@ -28,7 +28,7 @@ const run = () => undefined;
 
 test("WEBM4 actions.json: the desktop's rows and menus, every menu row a row", () => {
   assert.equal(ACTIONS.length, 70); // -- WP UFW -- Help › User Manual, Keyboard Shortcuts
-  assert.equal(ITEM_ACTIONS.length, 33);
+  assert.equal(ITEM_ACTIONS.length, 34); // -- WP GAP2 -- the channel menu's Solo
   for (const [menu, groups] of Object.entries(MENUS)) for (const id of groups.flat()) assert.ok(isAction(id), `${menu}: ${id}`);
   // -- INTC -- "files": the desktop Equaliser's Files ▾ (MenuTable's place, DL8 fold)
   assert.deepEqual(Object.keys(MENUS).sort(), ["appMenu", "autoeq", "band", "channel", "device", "files", "graph", "history", "save", "slot"]);

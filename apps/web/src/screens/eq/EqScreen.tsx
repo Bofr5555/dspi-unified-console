@@ -51,6 +51,7 @@ import { TAP_INPUT, TAP_OUTPUT } from "../analysis/analyser";
 import { identifyOutput } from "../analysis/siggen";
 // -- WP WBCLIP -- the channel clipboard (M45): the chosen channel's menu, and the keys act on it
 import { useClipboard } from "../clipboard/model";
+import { useSolo } from "../../ui/solo"; // -- WP GAP2 --
 // -- WP WEBM4 -- the channel's menu (the Channel button, a right click on a channel) is actions.json's
 import { menuItems, type Handler } from "../../ui/menus/actions";
 import { ActionMenuButton, isMenuKey, useContextMenu } from "../../ui/menus/ActionMenu";
@@ -265,6 +266,7 @@ const EqView = memo(
     // -- WP WBCLIP -- the channel Ctrl/Cmd+C and +V act on, while this screen is shown
     // (a layout effect: set as the chosen channel shows, before a key can arrive)
     const board = useClipboard(session);
+    const solo = useSolo(session); // -- WP GAP2 --
     useLayoutEffect(() => {
       board.selected = cw;
       return () => {
@@ -455,6 +457,8 @@ const EqView = memo(
       };
       if (c.output) {
         h["channel.identify"] = { run: () => void identifyOutput(session, c.index), enabled: !ro, reason: "Play counted blips on this output alone" };
+        // -- WP GAP2 -- only this output plays, until End Solo (not saved)
+        h["channel.solo"] = { run: () => void solo.toggle(c.index), on: solo.output === c.index, enabled: !solo.reason && (s.outputEnabled[c.index] ?? false), reason: solo.reason || undefined };
         if (props.open) h["channel.routing"] = { run: () => props.open!({ screen: "matrix" }) };
       }
       // The band list's Clear All, on the channel on show

@@ -747,6 +747,12 @@ export interface SnapshotRecallRecord {
 }
 
 /** An A/B compare (`dspi_core::AbCompare`). */
+// -- WP GAP2 --
+/** `soloState`'s answer: the soloed output (from 0), null with none. */
+export interface SoloRecord {
+  output: number | null;
+}
+
 export interface AbCompareRecord {
   active: boolean;
   /** The side on the device; after `abKeep`, the one kept; null with no compare. */
@@ -861,6 +867,13 @@ export interface DocumentMethods {
   abDiff: { params: undefined; result: ConfigDiff };
   abKeep: { params: { side: "a" | "b" }; result: AbCompareRecord };
   abState: { params: undefined; result: AbCompareRecord };
+  // -- WP GAP2 -- solo one output: the others muted on the device only, never saved, not an undo step
+  /** Only `output` (from 0) plays until `soloEnd`; another output moves the solo. The state keeps the user's mutes. */
+  soloOutput: { params: { output: number }; result: SoloRecord };
+  /** Every output plays as the user left it. */
+  soloEnd: { params: undefined; result: SoloRecord };
+  /** The soloed output, null with none (no device I/O). */
+  soloState: { params: undefined; result: SoloRecord };
   /** Import with a way back: waits for `applyConfirm`; a timeout (0: 30 s), Revert or a lost connection reverts. */
   applyGuardedImport: { params: { text: string; options?: number; eqChannels?: number; timeoutS?: number }; result: GuardedApplyRecord };
   /** Recall a snapshot document with a way back. */
