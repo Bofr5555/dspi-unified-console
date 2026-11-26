@@ -73,7 +73,14 @@ ColumnLayout {
         Item { Layout.preferredWidth: 104 }
         Heading { Layout.preferredWidth: 72; text: qsTr("SPEAKER") }
         //: The speaker table's column of groups: the outputs measured in one run and aligned to each other
-        Heading { Layout.preferredWidth: 160; text: qsTr("MEASURED TOGETHER") }   // -- WP UB7 -- (GROUP)
+        // -- WP UB7 -- (GROUP) the rest of the row; two lines where it is narrow
+        Heading {
+            Layout.fillWidth: true
+            Layout.minimumWidth: 72
+            text: qsTr("MEASURED TOGETHER")
+            wrapMode: Text.WordWrap
+            elide: Text.ElideNone
+        }
     }
     Rectangle {
         Layout.fillWidth: true
@@ -176,7 +183,8 @@ ColumnLayout {
             Text {
                 objectName: "Speakers.together." + row.modelData.output
                 visible: !table.byHand
-                Layout.preferredWidth: 160
+                Layout.fillWidth: true
+                Layout.minimumWidth: 72
                 textFormat: Text.PlainText
                 text: row.modelData.included ? row.modelData.groupName : ""
                 font: Theme.fontBody
@@ -191,7 +199,9 @@ ColumnLayout {
                 visible: table.byHand
                 //: %1 an output ("Out 1")
                 label: qsTr("%1 is measured with").arg(row.modelData.label)
-                Layout.preferredWidth: 160
+                Layout.fillWidth: true
+                Layout.minimumWidth: 72
+                Layout.maximumWidth: 200
                 enabled: table.editable && row.modelData.included
                 model: table.groupChoices
                 textRole: "text"
