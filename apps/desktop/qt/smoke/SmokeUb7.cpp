@@ -21,6 +21,7 @@
 #include "SpeakersController.h"
 #include "TuneController.h"
 
+#include <QDir>
 #include <QJSValue>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -111,6 +112,7 @@ void ub7Toggle(QObject *box) {
 // The window in the dark and the light scheme, as <out>/ub7/<name>-<scheme>.png (the report's pictures)
 void ub7Pictures(SmokeDriver &d, QQuickWindow *w, const QString &name) {
     if (!w) return;
+    QDir().mkpath(d.outDir() + QStringLiteral("/ub7"));
     Shell *shell = d.app().shell;
     const Qt::ColorScheme was = shell->colorSchemeOverride();
     for (const auto &[scheme, word] : { std::pair{ Qt::ColorScheme::Dark, "dark" }, std::pair{ Qt::ColorScheme::Light, "light" } }) {
