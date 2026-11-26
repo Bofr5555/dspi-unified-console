@@ -10,7 +10,7 @@ type Clients = { dspiClients: { call(m: string, p: unknown): Promise<unknown> }[
 async function call<T>(page: Page, method: string, params: unknown = null): Promise<T> {
   return (await page.evaluate(([m, p]) => (globalThis as unknown as Clients).dspiClients[0]!.call(m as string, p), [method, params] as const)) as T;
 }
-const gain0 = async (page: Page) => (await call<{ state: { outputGainDb: number[] } }>(page, "state")).state.outputGainDb[0];
+const gain0 = async (page: Page) => (await call<{ state: { outputGainDb: number[] } }>(page, "state")).state.outputGainDb[0]!;
 
 async function openDemo(page: Page): Promise<Locator> {
   await page.goto("/test/embed.html?one");
@@ -40,6 +40,8 @@ test("UB34: A | B in the top bar is as saved against now from the first edit", a
 
   const saved = await gain0(page);
   await call(page, "write", { path: "out.gain", indices: [0], value: { float: saved - 5 } });
+  await page.waitForTimeout(500);
+  await shots(page, "edited"); // before UB34: no A | B here
   await expect(ab).toBeVisible();
   await expect(ab.getByRole("button", { name: "B, now" })).toHaveAttribute("aria-pressed", "true");
   await expect(ab).toHaveAttribute("title", /A is the preset as saved on the device, B is now/);

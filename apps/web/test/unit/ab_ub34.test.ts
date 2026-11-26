@@ -73,7 +73,7 @@ async function deskOn() {
   return { session, desk: d };
 }
 
-const gain0 = (s: Session) => s.state.snapshot!.state.outputGainDb[0];
+const gain0 = (s: Session) => s.state.snapshot!.state.outputGainDb[0]!;
 const volume = (s: Session) => s.state.snapshot!.state.userVolumeDb;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function until(what: string, f: () => boolean, ms = 8000) {

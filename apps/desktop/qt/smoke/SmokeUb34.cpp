@@ -142,6 +142,7 @@ void abSection(SmokeDriver &d) {
     const float editGain = t.gain();
     t.check("is unsaved", d.waitFor(5000, [&] { return sidebar->unsaved() && snaps->canStartSaved(); }));
     t.settle();
+    t.shots("edited");   // before UB34: no A | B here
     QQuickItem *ab = t.shown(QStringLiteral("TopBar.ab"));
     t.check("A/B shows from the first edit", ab != nullptr);
     if (!ab) return;
