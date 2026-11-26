@@ -11,6 +11,7 @@ import { saveName } from "../../src/ui/shell/SessionBar";
 import { chooserRows, detailAdds } from "../../src/ui/components";
 import { identifyFailure } from "../../src/screens/hub/HubScreen";
 import { isOtherHub } from "../../src/ui/session";
+import type { HubDeviceRecord } from "../../src/core/protocol";
 
 test("UWN A17: the band table says the inspector's shapes and slopes, not the core's Peaking / Low Cut (12dB)", () => {
   setTypeNames([
@@ -71,8 +72,8 @@ test("UWN A15: the hub chooser's rows: the location from the inventory, the seri
     { handle: 1, serial: "DEMO-ALINK-A", name: "DSPi Demo", firmware: "1.1.6", platform: "rp2350", state: "online" },
     { handle: 2, serial: "DEMO-ALINK-B", name: "DSPi Demo", firmware: "1.1.6", platform: "rp2350", state: "online" },
   ];
-  const inv = (serial: string, location: string, online: boolean) =>
-    ({ serial, handle: null, online, name: serial === "DEMO-OFFLINE-0042" ? "Bar" : "DSPi Demo", platform: "", fw: "", fwBeta: null, outputs: 9, board: "", hwRev: "", chip: "", chipRev: null, location, note: "", tags: [], firstSeen: "", lastSeen: online ? "" : "not a time", lastReset: null }) as const;
+  const inv = (serial: string, location: string, online: boolean): HubDeviceRecord =>
+    ({ serial, handle: null, online, name: serial === "DEMO-OFFLINE-0042" ? "Bar" : "DSPi Demo", platform: "", fw: "", fwBeta: null, outputs: 9, board: "", hwRev: "", chip: "", chipRev: null, location, note: "", tags: [], firstSeen: "", lastSeen: online ? "" : "not a time", lastReset: null });
   const rows = chooserRows(link, [inv("DEMO-ALINK-A", "Main room", true), inv("DEMO-OFFLINE-0042", "Bar", false)]);
   assert.deepEqual(
     rows.map((r) => [r.name, r.meta, r.online, r.spoken]),
