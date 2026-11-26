@@ -84,9 +84,16 @@ struct Probe {
     QQuickWindow *w = nullptr;
 
     QQuickItem *item(const char *name) const { return d.item(QString::fromLatin1(name), w->contentItem()); }
+    // The rectangle that draws a control's edge: its background; ToolSegments'
+    // bar; NumericField's rectangle under its input
     QObject *edge(const char *name) const {
         QQuickItem *i = item(name);
-        return QString::fromLatin1(name) == QLatin1String("Ub13.segments") ? segmentBar(i) : background(i);
+        const QString n = QString::fromLatin1(name);
+        if (n == QLatin1String("Ub13.segments")) return segmentBar(i);
+        if (n == QLatin1String("Ub13.number") && i)
+            for (QQuickItem *c : i->childItems())
+                if (c->inherits("QQuickRectangle") && c->z() < 0) return c;
+        return background(i);
     }
     // Every control's edge `width` wide, in `color` when it has one
     bool edges(int width, const QColor &color) const {
