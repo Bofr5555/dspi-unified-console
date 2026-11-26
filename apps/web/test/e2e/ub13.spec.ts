@@ -66,6 +66,7 @@ test("UB13: a mouse desktop has neither; Outline controls draws the 3:1 line, Co
   const sourceHeight = await height(source);
   const disc = list.getByRole("checkbox", { name: "Band 1 plays" });
   expect((await disc.boundingBox())?.width).toBeLessThan(20);
+  await disc.scrollIntoViewIfNeeded();
   await shot(page, "peq-off");
 
   await openPage(session, "Settings");
@@ -87,6 +88,7 @@ test("UB13: a mouse desktop has neither; Outline controls draws the 3:1 line, Co
   expect(box?.width).toBeGreaterThanOrEqual(43.5);
   expect(box?.height).toBeGreaterThanOrEqual(43.5);
   await noSidewaysScroll(page);
+  await list.getByRole("checkbox", { name: "Band 1 plays" }).scrollIntoViewIfNeeded();
   await shot(page, "peq-both");
 
   // Kept in this browser
@@ -119,12 +121,18 @@ test.describe("UB13 on a touch screen", () => {
     const box = await list.getByRole("checkbox", { name: "Band 1 plays" }).boundingBox();
     expect(box?.width).toBeGreaterThanOrEqual(43.5);
     await noSidewaysScroll(page);
+    await list.getByRole("checkbox", { name: "Band 1 plays" }).scrollIntoViewIfNeeded();
     await shot(page, "touch-peq");
     await openPage(session, "Settings");
     await openSetting(session, "Appearance");
     const card = session.getByRole("region", { name: "Appearance" });
     await card.getByRole("group", { name: "Control size" }).getByRole("radio", { name: "Standard", exact: true }).check();
     await expect(root).not.toHaveAttribute("data-density", /./);
+    await openPage(session, "EQ");
+    const disc = list.getByRole("checkbox", { name: "Band 1 plays" });
+    expect((await disc.boundingBox())?.width).toBeLessThan(20);
+    await disc.scrollIntoViewIfNeeded();
+    await shot(page, "touch-peq-standard"); // as before this package
     expect(errors).toEqual([]);
   });
 });
