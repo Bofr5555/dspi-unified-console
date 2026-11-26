@@ -7,7 +7,9 @@
 #include "SmokeDriver.h"
 
 #include "ChannelController.h"
+#include "Core.h"
 #include "DeviceModel.h"
+#include "GraphController.h"
 #include "LayoutController.h"
 #include "PeqEditorController.h"
 #include "Registrar.h"
