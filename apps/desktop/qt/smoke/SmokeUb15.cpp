@@ -12,6 +12,7 @@
 
 #include "AiController.h"
 #include "ClaudeDesktopController.h"
+#include "LayoutController.h"   // -- FIX016 --
 #include "Registrar.h"
 #include "SettingsController.h"
 #include "Shell.h"
@@ -62,6 +63,7 @@ void picturesSection(SmokeDriver &d) {
     }
     QDir(QDir(d.outDir()).filePath(QStringLiteral("ub15"))).removeRecursively();
     QDir().mkpath(QDir(d.outDir()).filePath(QStringLiteral("ub15")));
+    const bool modernWas = Registrar::instance<LayoutController>()->modern();   // -- FIX016 -- (R1-QT)
     d.switchLayout("modern");
     ai->setStoreDir(QDir(d.outDir()).filePath(QStringLiteral("store-ub15")));
     ai->setPort(freePort());
@@ -80,6 +82,7 @@ void picturesSection(SmokeDriver &d) {
     ai->setEnabled(false);
     d.waitFor(10000, [&] { return !ai->running() && !ai->busy(); });
     ai->setPort(AiController::kDefaultPort);
+    if (!modernWas) d.switchLayout("classic");   // -- FIX016 -- (R1-QT) the layout as it found it
     d.waitIdle();
 }
 
@@ -160,6 +163,7 @@ void desktopSection(SmokeDriver &d) {
         opened.append(url);
         return opens;
     });
+    const bool modernWas = Registrar::instance<LayoutController>()->modern();   // -- FIX016 -- (R1-QT)
     d.switchLayout("modern");
     ai->setStoreDir(QDir(d.outDir()).filePath(QStringLiteral("store-ub15")));
     ai->setPort(freePort());
@@ -250,6 +254,7 @@ void desktopSection(SmokeDriver &d) {
     ai->setEnabled(false);
     d.waitFor(10000, [&] { return !ai->running() && !ai->busy(); });
     ai->setPort(AiController::kDefaultPort);
+    if (!modernWas) d.switchLayout("classic");   // -- FIX016 -- (R1-QT) the layout as it found it
     d.waitIdle();
 }
 
