@@ -18,7 +18,7 @@
 //!   app has forgotten the session (it restarted), the relay repeats the
 //!   agent's `initialize` once and sends the request again.
 //! - **The app not running.** A request is answered with an error that says
-//!   to start DSPi Console and turn AI agents on, and the relay keeps going:
+//!   to start uConsole for DSPi and turn AI agents on, and the relay keeps going:
 //!   the next request may find the app.
 //! - It ends when standard input closes.
 
@@ -38,8 +38,8 @@ use crate::protocol::{self, META_CLIENT_INFO, META_VERSION, RpcError};
 pub const RELAY_ERROR: i64 = -32000;
 
 /// What the agent is told when the app does not answer.
-pub const NOT_RUNNING_TEXT: &str = "DSPi Console is not running, or AI agents are turned off in it. \
-Start DSPi Console and turn on Settings, AI agents, then try again.";
+pub const NOT_RUNNING_TEXT: &str = "uConsole for DSPi is not running, or AI agents are turned off in it. \
+Start uConsole for DSPi and turn on Settings, AI agents, then try again.";
 
 /// How long the relay waits after a refused pairing before it asks again.
 pub const PAIR_RETRY_AFTER: Duration = Duration::from_secs(60);
@@ -420,7 +420,7 @@ impl Relay<'_> {
             Err(_) => return Sent::Failed(NOT_RUNNING_TEXT.into()),
         };
         if reply.status == 401 {
-            self.say("DSPi Console no longer knows this agent's token; pairing again");
+            self.say("uConsole for DSPi no longer knows this agent's token; pairing again");
             let who = self.who.clone().unwrap_or_default();
             self.keeper.forget(&who);
             self.token = None;
@@ -459,7 +459,7 @@ impl Relay<'_> {
         }
         match serde_json::from_slice::<Value>(&reply.body) {
             Ok(v) if v.get("jsonrpc").is_some() => Sent::Reply(Some(v)),
-            _ => Sent::Failed(format!("DSPi Console answered HTTP {}", reply.status)),
+            _ => Sent::Failed(format!("uConsole for DSPi answered HTTP {}", reply.status)),
         }
     }
 
@@ -514,7 +514,8 @@ impl Relay<'_> {
     fn pair(&mut self, msg: &Value) -> Result<(), String> {
         if self.pair_after.is_some_and(|t| Instant::now() < t) {
             return Err(
-                "pairing with DSPi Console was refused a moment ago; try again in a minute".into(),
+                "pairing with uConsole for DSPi was refused a moment ago; try again in a minute"
+                    .into(),
             );
         }
         let name = self.name_in(msg);
@@ -529,7 +530,7 @@ impl Relay<'_> {
                 .unwrap_or("pairing was refused")
                 .to_owned();
             self.say(&crate::untrusted::note(&why)); // -- WP MCP2c --
-            return Err(format!("DSPi Console: {why}"));
+            return Err(format!("uConsole for DSPi: {why}"));
         }
         let ticket = v
             .get("ticket")
@@ -541,7 +542,7 @@ impl Relay<'_> {
         let name = crate::untrusted::clean(&name, crate::untrusted::CLIENT_MAX_BYTES);
         let code = crate::untrusted::name(code);
         self.say(&format!(
-            "DSPi Console asks you to allow \"{name}\". Check that it shows the code {code}, then click Allow."
+            "uConsole for DSPi asks you to allow \"{name}\". Check that it shows the code {code}, then click Allow."
         ));
         let wait = json!({"ticket": ticket}).to_string();
         loop {
@@ -557,23 +558,23 @@ impl Relay<'_> {
                         .unwrap_or("")
                         .to_owned();
                     if token.is_empty() {
-                        return Err("DSPi Console allowed the agent but sent no token".into());
+                        return Err("uConsole for DSPi allowed the agent but sent no token".into());
                     }
                     let who = self.who.clone().unwrap_or_default();
                     self.keeper.save(&who, &token);
                     self.token = Some(token);
-                    self.say("paired with DSPi Console");
+                    self.say("paired with uConsole for DSPi");
                     return Ok(());
                 }
                 Some("denied") => {
                     self.pair_after = Instant::now().checked_add(PAIR_RETRY_AFTER);
-                    self.say("the request was denied in DSPi Console");
-                    return Err("the user denied this agent in DSPi Console".into());
+                    self.say("the request was denied in uConsole for DSPi");
+                    return Err("the user denied this agent in uConsole for DSPi".into());
                 }
                 _ => {
                     self.pair_after = Instant::now().checked_add(PAIR_RETRY_AFTER);
-                    self.say("nobody answered the request in DSPi Console in time");
-                    return Err("nobody allowed this agent in DSPi Console in time".into());
+                    self.say("nobody answered the request in uConsole for DSPi in time");
+                    return Err("nobody allowed this agent in uConsole for DSPi in time".into());
                 }
             }
         }

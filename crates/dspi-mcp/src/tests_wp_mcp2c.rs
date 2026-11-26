@@ -491,18 +491,18 @@ fn wp_mcp2c_an_effect_newly_on_an_output_is_louder_and_the_upmixer_is_an_enable(
         &mut s,
         c,
         "dspi_set_psybass",
-        json!({"enabled": true, "outputs": [0, 1]}),
+        json!({"enabled": true, "outputs": [1, 2]}),
     );
     assert_eq!(answer(&mut s, c, id, true)["status"], json!("allowed"));
     assert!(core.get_state().psybass_enabled);
-    let id = held(&mut s, c, "dspi_set_psybass", json!({"outputs": [0, 1, 3]}));
+    let id = held(&mut s, c, "dspi_set_psybass", json!({"outputs": [1, 2, 4]}));
     assert_eq!(
         risks(&s, id),
         ["louder: Psychoacoustic bass now also on Out 4 (it adds level)"]
     );
     answer(&mut s, c, id, false);
     assert_eq!(core.get_state().psybass_output_mask, 0b011);
-    ok(&mut s, c, "dspi_set_psybass", json!({"outputs": [0]}));
+    ok(&mut s, c, "dspi_set_psybass", json!({"outputs": [1]}));
     assert_eq!(core.get_state().psybass_output_mask, 0b001);
 }
 

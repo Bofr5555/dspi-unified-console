@@ -32,9 +32,9 @@ type State = {
 type Client = { call(m: string, p: unknown): Promise<unknown> };
 type G = { dspiClients: Client[]; dspiLog: [string, unknown][] };
 
-// -- BUG1 -- An output's name on the page is its label ("Out 3 · R · Full"), which follows the
+// -- BUG1 -- An output's name on the page is its label ("Out 3 · R"), which follows the
 // routing and the filters while the device keeps the slot's default name: matched by its number.
-const OUT = (o: number) => `Out ${o + 1} · [^·]+ · \\w+`;
+const OUT = (o: number) => `(?:Out ${o + 1}(?: · [^·]+){0,2}|${o + 1} · None)`; // -- WP REVEFIX -- an unused output is "3 · None"
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const re = (s: string) => new RegExp(`^${s}$`);
 
@@ -290,7 +290,7 @@ test("WB6c limiter: toggle, threshold, release, link group and Copy to all outpu
 test("WB6c crossover: family, type, slope and frequency, bypass with the Console's warning, Clear All, read back", async ({ page }) => {
   const { session } = await openOut1(page);
   const w = (await core(page)).numInputChannels;
-  await session.getByRole("tab", { name: "XO" }).click();
+  await openPage(session, "Crossover"); // -- WP WEB6 -- an output's XO bands are on the Crossover tab (Qt's), OUT1 still chosen
   const list = session.getByRole("region", { name: /^Crossover of OUT1/ });
   await expect(list).toBeVisible();
   const x0 = async () => (await core(page)).xover[w]![0]!;
@@ -329,8 +329,8 @@ test("WB6c crossover: family, type, slope and frequency, bypass with the Console
   await list.getByRole("button", { name: "Clear All" }).click();
   await page.getByRole("dialog", { name: "Clear All Bands?" }).getByRole("button", { name: "Clear All" }).click();
   await expect.poll(async () => (await core(page)).xover[w]!.map((b) => [b.filterType, b.freq, b.bypass])).toEqual(Array(4).fill([0, 1000, false]));
-  // The PEQ tab again: the band list.
-  await session.getByRole("tablist", { name: "Bands" }).getByRole("tab", { name: "PEQ" }).click(); // -- WP WEBM2 -- the page's own tab is PEQ too
+  // The PEQ tab again: OUT1's band list (-- WP WEB6 -- the Equaliser's PEQ tab; OUT1 kept chosen).
+  await openPage(session, "EQ");
   await expect(session.getByRole("region", { name: /^Bands of OUT1/ })).toBeVisible();
 });
 
@@ -382,9 +382,9 @@ test("WB6c WB6b-4 and WB6b-2: the shape card asks a shape's slope; a host's data
   await expect(card.getByRole("menuitem", { name: "6 dB" })).toBeFocused();
   await card.getByRole("menuitem", { name: "6 dB" }).click();
   await expect.poll(async () => (await core(page)).filters[w]!.filter((t, i) => t.filterType === 9 && before[i] === 0).length).toBe(1);
-  // A shape with one slope adds at once.
+  // A shape with one slope adds at once (-- WP WEB6 -- below the graph's toggle chips in its top right corner).
   await page.keyboard.down("Control");
-  await page.mouse.click(box.x + box.width * 0.6, box.y + box.height * 0.08);
+  await page.mouse.click(box.x + box.width * 0.6, box.y + box.height * 0.2);
   await page.keyboard.up("Control");
   await graph.getByRole("menu", { name: "Add Band" }).getByRole("menuitem", { name: "Bell" }).click();
   await expect.poll(async () => (await core(page)).filters[w]!.filter((t, i) => t.filterType === 1 && before[i] === 0).length).toBe(1);
@@ -405,35 +405,43 @@ test("WB6c matrix: crosspoints connect, level and invert; outputs enable, gain, 
   const s0 = await core(page);
   const inName = s0.channelNames[1]!;
   const where = `${esc(inName)} to ${OUT(2)}`;
-  const point = matrix.getByRole("button", { name: re(`Route ${where}`) });
+  // -- WP MXW -- a crosspoint is a grid cell: a click on an empty one connects it, a second
+  // click on the chosen one disconnects it; its gain is typed in its tile, I inverts it
+  const point = matrix.getByRole("gridcell", { name: re(`${where}, .*`) });
   const was = s0.matrixRouting[1]![2]!;
   await point.click();
-  await expect.poll(async () => (await core(page)).matrixRouting[1]![2]).toBe(!was);
-  if (was) await point.click();
+  if (was) {
+    await point.click();
+    await expect.poll(async () => (await core(page)).matrixRouting[1]![2]).toBe(false);
+    await point.click();
+  }
   await expect.poll(async () => (await core(page)).matrixRouting[1]![2]).toBe(true);
-  await expect(point).toHaveAttribute("aria-pressed", "true");
-  await type(matrix.getByRole("textbox", { name: re(`${where} level`) }), "+3.5");
+  await expect(point).toHaveAttribute("data-connected", "true");
+  await point.dblclick();
+  await type(matrix.getByRole("textbox", { name: re(`${where} level`) }), "+3,5");
   await expect.poll(async () => (await core(page)).matrixGain[1]![2]).toBe(3.5);
-  await expect(matrix.getByRole("textbox", { name: re(`${where} level`) })).toHaveValue("+3.5 dB");
-  await matrix.getByRole("button", { name: re(`${where} inverted`) }).click();
+  await expect(point).toContainText("+3.5");
+  await expect(point).toHaveAttribute("aria-label", /connected, \+3\.5 dB$/);
+  await point.press("i");
   await expect.poll(async () => (await core(page)).matrixInvert[1]![2]).toBe(true);
+  await expect(point).toHaveAttribute("aria-label", /phase inverted$/);
 
   // Output rows.
   const o = 1;
   const oName = OUT(o);
-  await type(matrix.getByRole("textbox", { name: re(`${oName} gain`) }), "-2.5");
+  await type(matrix.getByRole("textbox", { name: re(`${oName} gain`) }), "−2,5");
   await expect.poll(async () => (await core(page)).outputGainDb[o]).toBe(-2.5);
-  await expect(matrix.getByRole("textbox", { name: re(`${oName} gain`) })).toHaveValue("-2.5 dB");
+  await expect(matrix.getByRole("textbox", { name: re(`${oName} gain`) })).toHaveValue("-2.5");
   const delay = matrix.getByRole("textbox", { name: re(`${oName} delay`) });
-  await type(delay, "4.125");
+  await type(delay, "4.125 ms");
   await expect.poll(async () => (await core(page)).outputDelayMs[o]).toBe(4.125);
-  await expect(delay).toHaveValue("4.125 ms");
+  await expect(delay).toHaveValue("4.125");
   await delay.hover();
   await page.mouse.wheel(0, -100);
   await expect.poll(async () => (await core(page)).outputDelayMs[o]).toBe(5);
   await page.mouse.wheel(0, 100);
   await expect.poll(async () => (await core(page)).outputDelayMs[o]).toBe(4);
-  await expect(delay).toHaveValue("4.0 ms");
+  await expect(delay).toHaveValue(/^4(\.0)?$/); // -- WP WEB3 -- WEB2 shows a whole delay bare ("4", REVD W11)
   const mute = matrix.getByRole("button", { name: re(`Mute ${oName}`) });
   await mute.click();
   await expect.poll(async () => (await core(page)).outputMuted[o]).toBe(true);
@@ -456,8 +464,8 @@ test("WB6c matrix: crosspoints connect, level and invert; outputs enable, gain, 
     expect((await core(page)).outputEnabled[pdm]).toBe(false);
   }
 
-  // Rename from the column's menu.
-  await matrix.getByRole("button", { name: re(oName) }).click();
+  // Rename from the column's menu (-- WP MXW -- its OUTn pill).
+  await matrix.getByRole("button", { name: `OUT${o + 1}`, exact: true }).click();
   await matrix.getByRole("menuitem", { name: "Rename…" }).click();
   const dlg = page.getByRole("dialog", { name: re(`Rename ${oName}`) });
   await dlg.getByRole("textbox").fill("Sub left");
@@ -511,14 +519,24 @@ test("WB6c read only: a view-only session shows the output page and the matrix w
   await expect(card.getByRole("textbox", { name: "Delay" })).toBeDisabled();
   await expect(card.getByRole("slider", { name: "Delay" })).toBeDisabled();
   await expect(card.getByRole("button", { name: "Mute" })).toBeDisabled();
-  await session.getByRole("tab", { name: "XO" }).click();
+  await openPage(session, "Crossover"); // -- WP WEB6 -- an output's XO bands are on the Crossover tab (Qt's), OUT1 still chosen
   await expect(session.getByRole("combobox", { name: "Crossover 1 family" })).toBeDisabled();
   await openPage(session, "Matrix");
   const matrix = session.getByRole("region", { name: "Matrix Mixer" });
-  const buttons = matrix.getByRole("button");
+  // -- WP MXW -- every control but the names that choose a row or column for the inspector
+  const buttons = matrix.locator("button:not(.mx-pick)");
   const n = await buttons.count();
   expect(n).toBeGreaterThan(0);
   for (let i = 0; i < n; i++) await expect(buttons.nth(i)).toBeDisabled();
+  for (const tool of ["Direct 1:1", "Clear"]) await expect(session.getByRole("toolbar", { name: "Routing tools" }).getByRole("button", { name: tool })).toBeDisabled();
+  // Nothing in the grid changes: a click on an empty cell only chooses it, keys do nothing
+  const s0 = await core(page);
+  const empty = matrix.locator('[role="gridcell"][data-connected="false"]').first();
+  await empty.click();
+  await empty.press("Space");
+  await empty.press("Enter");
+  await expect(matrix.getByRole("textbox", { name: / level$/ })).toHaveCount(0);
+  expect((await core(page)).matrixRouting).toEqual(s0.matrixRouting);
 });
 
 test.describe("375 px, in every browser", () => {
@@ -551,16 +569,21 @@ test.describe("375 px, in every browser", () => {
     await openPage(session, "Matrix");
     const scroll = session.getByRole("region", { name: "Matrix", exact: true });
     await expect(scroll).toBeVisible();
-    expect(await overflow(page, ".matrix-scroll")).toEqual([]);
+    expect(await overflow(page, ".mx-scroll")).toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
     expect(await scroll.evaluate((e) => e.scrollWidth > e.clientWidth)).toBe(true);
     const ms = (await session.locator(".matrix-screen").boundingBox())!.height;
     const inName = s0.channelNames[0]!;
-    const point = scroll.getByRole("button", { name: re(`Route ${esc(inName)} to ${OUT(1)}`) });
+    // -- WP MXW -- a tap on an empty cell connects it; on a connected one it chooses it, and a second tap disconnects it
+    const point = scroll.getByRole("gridcell", { name: re(`${esc(inName)} to ${OUT(1)}, .*`) });
     const was = (await core(page)).matrixRouting[0]![1]!;
     await point.tap();
+    if (was) {
+      await page.waitForTimeout(500);
+      await point.tap();
+    }
     await expect.poll(async () => (await core(page)).matrixRouting[0]![1]).toBe(!was);
-    // A cell's level and polarity appear in room it keeps: the matrix does not grow.
+    // A cell's level and polarity are inside its tile: the matrix does not grow.
     // -- WP P5WMS -- within a thousandth of a pixel: Firefox rounds a box at a fractional top (the
     // tab row's wrap moved with the Measure tab) differently from one layout to the next
     expect((await session.locator(".matrix-screen").boundingBox())!.height).toBeCloseTo(ms, 3);

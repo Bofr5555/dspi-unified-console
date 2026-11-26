@@ -316,6 +316,11 @@ QJsonObject MeasureSession::object(const QByteArray &text) { return QJsonDocumen
 
 QString MeasureSession::failureText(const QJsonObject &reply) {
     if (reply.isEmpty()) return tr("The core did not answer.");
+    // -- WP SHOWFIX -- (finding 1) the core words its refusals for the person
+    // in one place (DspiError::user_text): "Lower the volume to −12 dB or below
+    // to measure; it is 0.0 dB.", not the error chain. The rest is for an
+    // older core's replies without it.
+    if (const QString text = str(reply, "text"); !text.isEmpty()) return text;
     const QString key = str(reply, "noticeKey");
     QString error = str(reply, "error");
     auto *notices = Registrar::instance<NoticeCenter>();
@@ -342,18 +347,57 @@ QString MeasureSession::failureText(const QJsonObject &reply) {
     return error.isEmpty() ? tr("The call was refused.") : error;
 }
 
+// -- INTC (DL2 fold) -- (from issueWords, WP DL2's SHOW 4)
+QString MeasureSession::changedWho(const QJsonObject &i) const {
+    const QJsonValue out = i.value(QLatin1String("output"));
+    if (str(i, "key") != QLatin1String("measure.tune.chains_changed") || !out.isDouble()) return {};
+    const QString msg = str(i, "message");
+    const qsizetype cut = msg.indexOf(QLatin1String("'s settings"));
+    return msg.startsWith(QLatin1String("Out ")) && cut > 0 ? msg.left(cut) : outputName(out.toInt());
+}
+
+QString MeasureSession::changedWords(const QStringList &who) const {
+    if (who.isEmpty()) return {};
+    //: An auto-tune warning: %1 the output ("Out 1 (Centre low)")
+    if (who.size() == 1) return tr("%1 was changed after it was measured; the prediction starts from its settings now.").arg(who.first());
+    //: Outputs in a list: %1 all but the last, joined by ", "; %2 the last
+    const QString all = tr("%1 and %2").arg(who.mid(0, who.size() - 1).join(QStringLiteral(", ")), who.last());
+    //: An auto-tune warning for several outputs: %1 them ("Out 1 (Centre low) and Out 2 (Centre high)")
+    return tr("%1 were changed after they were measured; the prediction starts from their settings now.").arg(all);
+}
+
 QString MeasureSession::issueWords(const QJsonObject &i) const {
     if (i.isEmpty()) return {};
     const QString key = str(i, "key");
     QString msg = str(i, "message");
     if (!msg.isEmpty()) msg[0] = msg[0].toUpper();
     const QJsonValue out = i.value(QLatin1String("output"));
-    const QString where = out.isDouble() ? outputName(out.toInt()) + QStringLiteral(": ") : QString();
+    // -- WP DL2 -- (SHOW 4) the core's words often name the output already
+    // ("Out 1 (Centre low)'s settings ...", "... does not hear Out 1 ..."):
+    // not "Out 1: Out 1 (Centre low)'s"
+    const QRegularExpression named(QStringLiteral("\\bOut %1\\b").arg(out.toInt() + 1));
+    const bool saysWhich = out.isDouble() && named.match(msg).hasMatch();
+    const QString where = out.isDouble() && !saysWhich ? outputName(out.toInt()) + QStringLiteral(": ") : QString();
+    // -- WP DL2 -- (SHOW 4) the tune's "settings changed" warning in plain
+    // words, once: who, and what the prediction does about it
+    if (const QString who = changedWho(i); !who.isEmpty()) return changedWords({ who });   // -- INTC --
     QString title;
     if (auto *notices = Registrar::instance<NoticeCenter>()) title = notices->row(key).value(QStringLiteral("title")).toString();
+    // -- WP DL2 -- the title once when the core's words begin with it
+    // ("No microphone calibration. No microphone calibration: levels ...")
+    if (!title.isEmpty() && msg.startsWith(title, Qt::CaseInsensitive)) return where + msg;
     //: A measurement's issue: %1 its title, %2 the output it is about, %3 the core's words
     if (!title.isEmpty()) return tr("%1. %2%3").arg(title, where, msg);
     return where + (msg.isEmpty() ? key : msg);
+}
+
+// -- WP INTE -- (owner 2026-11-24) the Live tab only shows: the outputs
+// something is routed to (the Setup tab, an edit view, lists them all)
+QVariantList MeasureSession::liveOutputs() const {
+    QVariantList out;
+    for (const QVariant &v : m_outputs)
+        if (!v.toMap().value(QStringLiteral("unused")).toBool()) out.append(v);
+    return out;
 }
 
 QString MeasureSession::outputName(int output) const {
@@ -736,8 +780,13 @@ void MeasureSession::onSnapshot() {
     ch->update(model()->snapshot(), model()->platformName());
     for (int r = 0; r < ch->rowCount(); ++r) {
         if (ch->get(r, QStringLiteral("kind")).toString() != QLatin1String("output")) continue;
+        // -- WP INTE -- (SHOWFIX leftover) named by the core's channel words, as
+        // the Tune tab's rows are ("Centre woofer", else "Out 3"); `unused`:
+        // nothing is routed to it (owner 2026-11-24), left out of the Live tab
+        const QString word = ch->get(r, QStringLiteral("shortName")).toString();
         outs.append(QVariantMap{ { QStringLiteral("output"), ch->get(r, QStringLiteral("number")) },
-                                 { QStringLiteral("label"), ch->get(r, QStringLiteral("label")) } });
+                                 { QStringLiteral("label"), word.isEmpty() ? ch->get(r, QStringLiteral("label")) : QVariant(word) },
+                                 { QStringLiteral("unused"), ch->get(r, QStringLiteral("unused")) } });
     }
     const QString serial = connected() ? model()->serial() : QString();
     const bool changedDevice = serial != m_serial;
@@ -763,7 +812,9 @@ void MeasureSession::onSnapshot() {
                              { QStringLiteral("label"), o.toMap().value(QStringLiteral("label")) },
                              { QStringLiteral("on"), false },
                              { QStringLiteral("role"), QStringLiteral("full") },
-                             { QStringLiteral("speaker"), QStringLiteral("L") },
+                             // -- INTC (DL7 fold) -- no speaker until one is named: the
+                             // field shows "Not set", as Settings › Speakers does (was "L")
+                             { QStringLiteral("speaker"), QString() },
                              { QStringLiteral("group"), 0 } };
             for (const QVariant &old : std::as_const(m_setupOutputs))
                 if (old.toMap().value(QStringLiteral("output")).toInt() == n) {
@@ -1011,7 +1062,72 @@ void MeasureSession::setRunName(const QString &n) {
     emit setupChanged();
 }
 
+// -- WP DL2 -- (SHOW 3) the agent's run on the form. Its setup is the
+// ticket's (MeasureSetup): outputs with their roles, the placement, the sweep
+// and passes (0: the core's defaults). No outputs: the speaker layout's, as
+// the core takes them; the rows are then the person's. With rolesFromLayout
+// the ways, speakers and groups are the layout's, as the rows show them.
+QVariantList MeasureSession::setupOutputs() const {
+    const QJsonArray outs = m_agentSetup.value(QLatin1String("outputs")).toArray();
+    if (outs.isEmpty()) return m_setupOutputs;
+    // The core takes the ways from the speaker layout then (as the rows have them)
+    const bool ownRoles = !m_agentSetup.value(QLatin1String("rolesFromLayout")).toBool();
+    QVariantList rows;
+    for (const QVariant &v : m_setupOutputs) {
+        QVariantMap row = v.toMap();
+        const int n = row.value(QStringLiteral("output")).toInt();
+        row.insert(QStringLiteral("on"), false);
+        for (const QJsonValue &o : outs) {
+            const QJsonObject a = o.toObject();
+            if (a.value(QLatin1String("output")).toInt(-1) != n) continue;
+            row.insert(QStringLiteral("on"), true);
+            if (!ownRoles) continue;
+            if (!str(a, "role").isEmpty()) row.insert(QStringLiteral("role"), str(a, "role"));
+            if (!str(a, "speaker").isEmpty()) row.insert(QStringLiteral("speaker"), str(a, "speaker"));
+            if (a.contains(QLatin1String("group"))) row.insert(QStringLiteral("group"), a.value(QLatin1String("group")).toInt());
+        }
+        rows.append(row);
+    }
+    return rows;
+}
+
+QString MeasureSession::placement() const {
+    const QString p = str(m_agentSetup, "placement");
+    return p.isEmpty() ? m_placement : p;
+}
+
+int MeasureSession::count() const {
+    const int n = m_agentSetup.value(QLatin1String("count")).toInt();
+    return n > 0 ? n : m_count;
+}
+
+int MeasureSession::sweepMs() const {
+    if (m_agentSetup.isEmpty()) return m_sweepMs;
+    const int ms = m_agentSetup.value(QLatin1String("sweepMs")).toInt();
+    return ms > 0 ? ms : 5500;   // the core's SWEEP_DEFAULT_MS
+}
+
+int MeasureSession::passes() const {
+    if (m_agentSetup.isEmpty()) return m_passes;
+    const int n = m_agentSetup.value(QLatin1String("passes")).toInt();
+    return n > 0 ? n : 3;   // the core's PASSES_DEFAULT
+}
+
+// "Out 1 and Out 3 (5 s sweeps)": what the agent's measurement plays
+QString MeasureSession::agentRunWords() const {
+    if (m_agentSetup.isEmpty()) return {};
+    QStringList names;
+    for (const QJsonValue &o : m_agentSetup.value(QLatin1String("outputs")).toArray())
+        names << outputName(o.toObject().value(QLatin1String("output")).toInt());
+    const QString outs = names.isEmpty() ? tr("the speaker layout's outputs") : QLocale().createSeparatedList(names);
+    //: An AI agent's measurement: %1 the outputs ("Out 1 and Out 3"), %2 the sweep's length in seconds
+    return tr("%1 (%2 s sweeps)").arg(outs, QLocale().toString(sweepMs() / 1000.0, 'g', 3));
+}
+
 QString MeasureSession::setupProblem() const {
+    // -- WP SHOWFIX -- (finding 7) the form shows an agent's run: its setup is
+    // the agent's, checked by the core, not the person's to finish
+    if (!m_agentSetup.isEmpty()) return {};
     int on = 0;
     for (const QVariant &v : m_setupOutputs)
         if (v.toMap().value(QStringLiteral("on")).toBool()) ++on;
@@ -1267,6 +1383,9 @@ void MeasureSession::takeResult() {
                const QJsonObject o = object(r);
                if (o.contains(QLatin1String("ok")) && !isOk(o)) return;
                setResultDocument(r, QStringLiteral("run"));
+               // -- WP SHOWFIX -- (finding 6) only with a result to see: never
+               // "complete" beside the tune's "No measurement"
+               if (m_result.isEmpty()) return;
                say(tr("The measurement is complete: see Results."));
                if (!isActive()) m_owner->report(this, m_said, false);   // -- WP MDQT2c --
            });
@@ -1338,14 +1457,25 @@ bool MeasureSession::running() const {
            (m_capture && m_capture->isRunning());
 }
 
+// -- WP REVDFIX -- (REVD D3) the AI strip shows this as it is: cutting the
+// "Requested by …" off runningText at the first "." cut "(5.5 s sweeps)"
+QString MeasureSession::agentDoing() const {
+    if (m_agentLabel.isEmpty()) return {};
+    QString what;
+    if (m_detectRunning) what = detectText();   // -- WP ADETQ --
+    else if (m_rolloffRunning) what = tr("Finding an output's low end with the DSPi's generator.");
+    else if (m_tuneRunning) what = tr("The auto-tune's runs are playing the DSPi's generator.");
+    else if (m_state.value(QLatin1String("active")).toBool())
+        //: -- WP DL2 -- %1 the outputs and the sweep ("Out 1 and Out 3 (5 s sweeps)")
+        what = m_agentSetup.isEmpty() ? tr("Measuring with the DSPi's generator.")
+                                      : tr("Measuring %1 with the DSPi's generator; the form shows this run.").arg(agentRunWords());
+    return what;
+}
+
 QString MeasureSession::runningText() const {
     // -- WP MCP5 -- what an AI agent asked for says so
     if (!m_agentLabel.isEmpty()) {
-        QString what;
-        if (m_detectRunning) what = detectText();   // -- WP ADETQ --
-        else if (m_rolloffRunning) what = tr("Finding an output's low end with the DSPi's generator.");
-        else if (m_tuneRunning) what = tr("The auto-tune's runs are playing the DSPi's generator.");
-        else if (m_state.value(QLatin1String("active")).toBool()) what = tr("Measuring with the DSPi's generator.");
+        const QString what = agentDoing();   // -- WP REVDFIX --
         //: %1 is "AI · " and the agent's name, %2 what plays
         if (!what.isEmpty()) return tr("Requested by %1: %2").arg(m_agentLabel, what);
     }
@@ -1370,6 +1500,11 @@ void MeasureSession::setSystemRun(bool running, const QString &text, std::functi
 void MeasureSession::setRunning() {
     const bool now = running();
     if (!now && !m_starting) m_agentLabel.clear();   // -- WP MCP5 -- an agent's request is over
+    // -- WP DL2 -- the form shows the person's choices again
+    if (m_agentLabel.isEmpty() && !m_agentSetup.isEmpty()) {
+        m_agentSetup = {};
+        emit setupChanged();
+    }
     // -- WP MDQT2c -- the device's tab says it is busy
     if (m_session) m_session->setJob(QStringLiteral("MeasureController"), now ? runningText() : QString());
     if (now == m_wasRunning) {
@@ -2232,14 +2367,29 @@ void MeasureSession::startForAgent(const QJsonObject &ticket, std::function<void
         }
     }
     const QByteArray text = QJsonDocument(withMic).toJson(QJsonDocument::Compact);
+    // -- WP DL2 -- the run's setup, for the form while it runs
+    const QJsonObject agentSetup = (withMic.contains(QLatin1String("ticket")) ? withMic.value(QLatin1String("ticket")).toObject() : withMic)
+                                       .value(QLatin1String("setup")).toObject();
     const auto begin = [text](int rateHz) {
         return std::function<QByteArray(FfiCore *)>([text, rateHz](FfiCore *c) {
             return once([&](char *b, uint32_t l) { return dspi_mcp_measure_begin(c, text.constData(), uint32_t(rateHz), b, l); });
         });
     };
+    // -- WP SHOWFIX -- (finding 7) every agent's run shows on the form, its
+    // detection's and its tune's too: the agent's placement (the core's
+    // default, the listening position, when it names none) and outputs, never
+    // the person's unfinished form with its "Choose the placement first"
+    const auto showAgentForm = [this, agentSetup] {
+        QJsonObject shown = agentSetup;
+        shown.insert(QStringLiteral("agent"), true);
+        if (str(shown, "placement").isEmpty()) shown.insert(QStringLiteral("placement"), QStringLiteral("listeningPosition"));
+        m_agentSetup = shown;
+        emit setupChanged();
+    };
     if (loopWord == QLatin1String("tune")) {
         // The tune's runs are the tune's (TuneSession), as its own Check and Verify
         m_agentLabel = label;
+        showAgentForm();
         m_tune->agentRuns(begin(0), [this, done](bool ok, const QString &why) {
             if (!ok) m_agentLabel.clear();
             setRunning();
@@ -2256,7 +2406,7 @@ void MeasureSession::startForAgent(const QJsonObject &ticket, std::function<void
     const quint64 epoch = m_stopEpoch;
     m_starting = true;
     m_agentLabel = label;
-    openMic([this, epoch, begin, loopWord, done](bool ok, int rateHz) {
+    openMic([this, epoch, begin, loopWord, done, agentSetup, showAgentForm](bool ok, int rateHz) {
         if (!ok || epoch != m_stopEpoch) {
             m_starting = false;
             m_agentLabel.clear();
@@ -2265,7 +2415,7 @@ void MeasureSession::startForAgent(const QJsonObject &ticket, std::function<void
                            : (m_error.isEmpty() ? tr("The microphone could not be opened.") : m_error));
             return;
         }
-        onLoop(this, begin(rateHz), [this, epoch, loopWord, done](const QByteArray &r) {
+        onLoop(this, begin(rateHz), [this, epoch, loopWord, done, agentSetup, showAgentForm](const QByteArray &r) {
             m_starting = false;
             const QJsonObject o = object(r);
             if (!isOk(o)) {
@@ -2285,15 +2435,21 @@ void MeasureSession::startForAgent(const QJsonObject &ticket, std::function<void
                 m_detect = o;
                 m_state = o.value(QLatin1String("session")).toObject();
                 m_loop->detect.store(true);
+                showAgentForm();   // -- WP SHOWFIX --
             } else {
                 m_result.clear();
                 m_resultView.clear();
                 m_resultGraph.clear();
                 emit resultChanged();
+                // -- WP SHOWFIX -- (finding 6) the last run's "complete" goes with its result
+                m_said.clear();
+                emit errorChanged();
                 m_tuneSession = false;
                 m_state = o;
                 m_wasActive = true;
                 m_loop->session.store(true);
+                // -- WP DL2 -- (SHOW 3) the form shows the agent's run
+                showAgentForm();   // -- WP SHOWFIX --
             }
             emit stateChanged();
             setRunning();
@@ -2444,6 +2600,11 @@ void MeasureSession::onDetectState(const QByteArray &json) {
 }
 
 void MeasureSession::detectEnded(const QJsonObject &o) {
+    // -- WP ROLES -- the top-fall check of roles set from the person's words
+    if (o.value(QLatin1String("check")).toBool()) {
+        checkEnded(o);
+        return;
+    }
     const QJsonObject detection = o.value(QLatin1String("detection")).toObject();
     QString summary = detection.value(QLatin1String("summary")).toString().trimmed();
     if (!summary.isEmpty() && !summary.endsWith(QLatin1Char('.'))) summary += QLatin1Char('.');
@@ -2475,9 +2636,46 @@ void MeasureSession::detectEnded(const QJsonObject &o) {
     if (auto *sc = Registrar::instance<SpeakersController>()) sc->reload();
 }
 
+// -- WP ROLES -- (owner 2026-11-23) Before an agent plays below 1 kHz on an output
+// the person's words made a midrange, woofer or sub, its top end is checked:
+// one that holds like a tweeter's gets nothing lower, and the person hears of it
+void MeasureSession::checkEnded(const QJsonObject &o) {
+    QStringList tweeters;
+    for (const QJsonValue &v : o.value(QLatin1String("checks")).toArray())
+        if (str(v.toObject(), "verdict") == QLatin1String("topHolds")) tweeters << outputName(v.toObject().value(QLatin1String("output")).toInt());
+    const bool done = str(o, "stage") == QLatin1String("done");
+    QString text;
+    if (!done)
+        text = tr("The check of the speaker roles set from your words stopped: nothing below 1 kHz played on those outputs.");
+    else if (tweeters.isEmpty())
+        text = tr("Checked the speaker roles set from your words: no tweeter where you named a midrange, woofer or sub.");
+    else
+        //: %1 the outputs' names ("Out 5 · R · Mid")
+        text = tr("Looks like a tweeter, not the role set from your words: %1. Nothing below 1 kHz plays there, and it is "
+                  "guarded as a tweeter. Check the wiring and the role in Settings › Speakers.")
+                   .arg(tweeters.join(QStringLiteral(", ")));
+    if (done && tweeters.isEmpty()) say(text);
+    else fail(text);
+    if (!tweeters.isEmpty() || !done)
+        if (auto *notices = Registrar::instance<NoticeCenter>()) {
+            const QString line = isActive() ? text : tr("%1: %2").arg(m_session ? m_session->title() : QString(), text);
+            notices->postTagged(QStringLiteral("detect"), line, tr("Settings › Speakers…"), [] {
+                if (auto *sc = Registrar::instance<SpeakersController>()) sc->openSettings();
+            });
+        }
+    if (auto *sc = Registrar::instance<SpeakersController>()) sc->reload();
+}
+
 QString MeasureSession::detectText() const {
     if (!m_detectRunning) return {};
     const QJsonObject &d = m_detect;
+    // -- WP ROLES -- the top-fall check of roles set from the person's words
+    if (d.value(QLatin1String("check")).toBool()) {
+        const QJsonValue outV = d.value(QLatin1String("output"));
+        if (!outV.isDouble()) return tr("Checking the speaker roles set from your words.");
+        //: %1 an output's name
+        return tr("Checking that %1 is not a tweeter, above 1 kHz only.").arg(outputName(outV.toInt()));
+    }
     const QJsonValue outV = d.value(QLatin1String("output"));
     const QString out = outV.isDouble() ? outputName(outV.toInt()) : QString();
     const QString stage = str(d, "stage");
@@ -2500,6 +2698,11 @@ QString MeasureSession::detectStripText() const {
     const QJsonValue outV = m_detect.value(QLatin1String("output"));
     const int total = m_detect.value(QLatin1String("outputsTotal")).toInt();
     const int done = m_detect.value(QLatin1String("outputsDone")).toInt();
+    // -- WP ROLES --
+    const bool check = m_detect.value(QLatin1String("check")).toBool();
+    if (check && (!outV.isDouble() || total <= 0)) return tr("Checking the stated speaker roles");
+    //: The agent strip: %1 the output checked now, %2 its turn, %3 how many are checked
+    if (check) return tr("Checking the stated speaker roles: %1 (%2 of %3)").arg(outputName(outV.toInt())).arg(qMin(done + 1, total)).arg(total);
     if (!outV.isDouble() || total <= 0) return tr("Detecting speakers");
     //: The agent strip: %1 the output probed now, %2 its turn, %3 how many are probed
     return tr("Detecting speakers: %1 (%2 of %3)").arg(outputName(outV.toInt())).arg(qMin(done + 1, total)).arg(total);

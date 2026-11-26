@@ -7,18 +7,22 @@
 // downloads it as it now stands.
 
 import { useEffect, useRef, useState } from "preact/hooks";
-import { IMPORT_ALL_BLOCKS, IMPORT_EQ, type ConfigDiff } from "../../core/protocol";
+import { IMPORT_ALL_BLOCKS, IMPORT_EQ, type ConfigDiff, type TemplateRecord } from "../../core/protocol";
 import type { ScreenProps } from "../../ui/screens";
 import { OutcomeLine, useDesk } from "../snapshots/Bars";
 import { BLOCKS, DiffTable } from "../snapshots/DiffTable";
 import { docMeta, download, fileNameFor, type SnapshotDesk } from "../snapshots/model";
 // -- WP WB6K -- filter files, the saves to the device, the AutoEQ database
-import { AutoEqDatabaseCard, DeviceSaveCard, FilterPicker, FiltersCard, type PendingFilters } from "./FilesCards";
+import { FilterPicker, FiltersCard, type PendingFilters } from "./FilesCards";
+import { Dialog } from "../main/Dialog"; // -- WP WEB7 --
+import { CONNECT } from "../../ui/shell/sections"; // -- WP WEB7 --
+import "../snapshots/rows.css"; // -- WP WEB7 --
+import "./files.css"; // -- WP WEB4 --
 
 export function FilesScreen(props: ScreenProps) {
   const desk = props.desk;
   if (!desk) return null;
-  return <FilesView desk={desk} />;
+  return <FilesView desk={desk} go={props.go} />;
 }
 
 interface Pending {
@@ -29,7 +33,40 @@ interface Pending {
   all: ConfigDiff;
 }
 
-function FilesView(props: { desk: SnapshotDesk }) {
+/** -- WP WEB7 -- A name asked for before a download (Export Device Configuration…, Save as Template…). */
+function NameDialog(props: { title: string; label: string; initial: string; ok: string; onOk: (name: string) => void; onCancel: () => void }) {
+  const [name, setName] = useState(props.initial);
+  const ok = () => name.trim() && props.onOk(name.trim());
+  return (
+    <Dialog
+      title={props.title}
+      onCancel={props.onCancel}
+      buttons={[
+        { label: props.ok, onClick: ok },
+        { label: "Cancel", onClick: props.onCancel },
+      ]}
+    >
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          ok();
+        }}
+      >
+        <label class="dialog-field">
+          {props.label}
+          <input name="name" value={name} autoFocus autoComplete="off" onInput={(e) => setName((e.target as HTMLInputElement).value)} />
+        </label>
+      </form>
+    </Dialog>
+  );
+}
+
+// -- WP WEB7 -- Qt's Library › Files (LibraryFiles.qml): Filters, Device configuration, Files without a
+// device, Templates; each its caps label, one muted sentence and its buttons in actions.json's words.
+// The saves of the master volume and the output configuration are Save ▾'s rows (as Qt's), the AutoEQ
+// database is Library › AutoEQ's ▾. A file or a template opens as its own session, which the page's
+// Devices › Open a DSPi does: Open File… and a template's Open go there.
+function FilesView(props: { desk: SnapshotDesk; go?: ScreenProps["go"] }) {
   const { desk } = props;
   const st = useDesk(desk);
   const session = desk.session;
@@ -38,14 +75,25 @@ function FilesView(props: { desk: SnapshotDesk }) {
   const ro = desk.readOnly;
   const busy = !!st.busy;
   const activeName = snap ? (snap.state.presetNames[snap.state.activePresetSlot] ?? "").trim() : "";
-  const [name, setName] = useState("");
-  const [template, setTemplate] = useState("");
+  const [asking, setAsking] = useState<"export" | "template" | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
   const [readError, setReadError] = useState("");
   const [filters, setFilters] = useState<PendingFilters | null>(null); // -- WP WB6K --
+  const [templates, setTemplates] = useState<TemplateRecord[] | null>(null);
   const file = useRef<HTMLInputElement>(null);
 
-  const exportName = name.trim() || doc?.name || activeName || "Configuration";
+  const exportName = doc?.name || activeName || "Configuration";
+
+  useEffect(() => {
+    let alive = true;
+    session.core.call("templateList", undefined).then(
+      (l) => alive && setTemplates(l),
+      () => alive && setTemplates([]),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [session]);
 
   const choose = async (input: HTMLInputElement) => {
     const f = input.files?.[0];
@@ -62,6 +110,7 @@ function FilesView(props: { desk: SnapshotDesk }) {
       setReadError(`${f.name}: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
+  const toDevices = props.go ? () => props.go!(CONNECT) : undefined;
 
   return (
     <section class="files" aria-label="Files">
@@ -77,27 +126,13 @@ function FilesView(props: { desk: SnapshotDesk }) {
         <FilterPicker desk={desk} pending={filters} onDone={() => setFilters(null)} />
       ) : (
         <>
-          <div class="card">
-            <h3>Configuration file</h3>
-            <p class="note">The whole configuration as a .dspipreset file, the format every DSPi console reads and writes.</p>
+          <FiltersCard desk={desk} onChosen={setFilters} />
+          <div class="card" role="region" aria-label="Device configuration">
+            <h3>Device configuration</h3>
+            <p class="note">Every setting of the device. An import shows what it changes first.</p>
             <div class="files-row">
-              <label>
-                Name
-                <input name="export-name" value={name} placeholder={exportName} onInput={(e) => setName((e.target as HTMLInputElement).value)} />
-              </label>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() =>
-                  void desk.exportDoc(exportName).then((t) => {
-                    if (t) download(t, fileNameFor(exportName, "configuration"));
-                  })
-                }
-              >
-                Export Configuration
-              </button>
               <button type="button" disabled={busy || !!ro} onClick={() => file.current?.click()}>
-                Import Configuration…
+                Import Device Configuration…
               </button>
               <input
                 ref={file}
@@ -107,54 +142,95 @@ function FilesView(props: { desk: SnapshotDesk }) {
                 aria-label="Configuration file to import"
                 onChange={(e) => void choose(e.target as HTMLInputElement)}
               />
+              <button type="button" disabled={busy} onClick={() => setAsking("export")}>
+                Export Device Configuration…
+              </button>
             </div>
           </div>
-          {doc ? (
-            <div class="card">
-              <h3>File</h3>
-              <p class="note">
-                Editing {doc.fileName || doc.name} with no device. Save File downloads it as it now stands.
-              </p>
+          <div class="card" role="region" aria-label="Files without a device">
+            <h3>Files without a device</h3>
+            <p class="note">
+              {doc
+                ? `Open now: ${doc.fileName || doc.name || "not saved yet"}`
+                : "Edit a configuration on every page with no device, then save it or import it to a DSPi."}
+            </p>
+            <div class="files-row">
+              <button type="button" disabled={!toDevices} title="Open a file on the Devices page: it opens as its own tab" onClick={toDevices}>
+                Open File…
+              </button>
               <button
                 type="button"
-                disabled={busy}
+                disabled={busy || !doc}
                 onClick={() =>
                   void desk.saveDocument().then((t) => {
-                    if (t) download(t, doc.fileName || fileNameFor(doc.name, "configuration"));
+                    if (t && doc) download(t, doc.fileName || fileNameFor(doc.name, "configuration"));
                   })
                 }
               >
                 Save File
               </button>
-            </div>
-          ) : null}
-          <div class="card">
-            <h3>Template</h3>
-            <p class="note">A template is a starting point for a new system: open it later with New from Template.</p>
-            <div class="files-row">
-              <label>
-                Template name
-                <input name="template-name" value={template} onInput={(e) => setTemplate((e.target as HTMLInputElement).value)} />
-              </label>
-              <button
-                type="button"
-                disabled={busy || !template.trim()}
-                onClick={() =>
-                  void desk.saveTemplate(template.trim()).then((t) => {
-                    if (t) download(t, fileNameFor(template.trim(), "template"));
-                  })
-                }
-              >
-                Save as Template
+              <button type="button" disabled={busy} onClick={() => setAsking("template")}>
+                Save as Template…
               </button>
             </div>
           </div>
-          {/* -- WP WB6K -- */}
-          <FiltersCard desk={desk} onChosen={setFilters} />
-          <DeviceSaveCard desk={desk} />
-          <AutoEqDatabaseCard desk={desk} />
+          <div class="card" role="region" aria-label="Templates">
+            <h3>Templates</h3>
+            <p class="note">A template opens as a new file with no device.</p>
+            {templates === null ? null : templates.length ? (
+              <ul class="lib-rows files-templates" aria-label="Templates">
+                {templates.map((tpl) => (
+                  <li key={tpl.id} class="lib-row" aria-label={tpl.name}>
+                    <span class="lib-text">
+                      <span class="lib-title">{tpl.name}</span>
+                      <span class="lib-sub">
+                        {tpl.platform}, {tpl.inputs} in, {tpl.outputs} out · {tpl.builtin ? "shipped with the app" : "saved here"}
+                      </span>
+                      {tpl.status ? <span class="lib-sub">{tpl.status}</span> : null}
+                    </span>
+                    <span class="lib-actions">
+                      <button type="button" aria-label={`Open template ${tpl.name}`} disabled={!toDevices} title="New from Template… on the Devices page" onClick={toDevices}>
+                        Open
+                      </button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p class="note">No templates</p>
+            )}
+          </div>
         </>
       )}
+      {asking === "export" ? (
+        <NameDialog
+          title="Export Device Configuration"
+          label="Name"
+          initial={exportName}
+          ok="Export"
+          onCancel={() => setAsking(null)}
+          onOk={(name) => {
+            setAsking(null);
+            void desk.exportDoc(name).then((t) => {
+              if (t) download(t, fileNameFor(name, "configuration"));
+            });
+          }}
+        />
+      ) : asking === "template" ? (
+        <NameDialog
+          title="Save as Template"
+          label="Template name"
+          initial=""
+          ok="Save"
+          onCancel={() => setAsking(null)}
+          onOk={(name) => {
+            setAsking(null);
+            void desk.saveTemplate(name).then((t) => {
+              if (t) download(t, fileNameFor(name, "template"));
+            });
+          }}
+        />
+      ) : null}
     </section>
   );
 }

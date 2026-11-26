@@ -94,7 +94,7 @@ final class ExtensionChannelUITests: XCTestCase {
 }
 
 // -- BUG1 -- An output in the pair editor's menu by its number: the name after the dash is the
-// output's label ("1 — Out 1 · L · Full"), which follows the routing.
+// output's label ("1 — Out 1 · L"), which follows the routing.
 private extension XCTestCase {
     func pickOutput(_ app: XCUIApplication, _ n: Int) -> XCUIElement {
         app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "\(n) — ")).firstMatch

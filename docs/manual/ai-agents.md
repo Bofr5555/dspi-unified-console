@@ -1,21 +1,14 @@
 # AI agents
 
-*User manual, WP MCP6, 2026-11-22; 2026-11-23 with the installation's sources, slots and scenes (FEAT1), opening
-devices, room and zone volume, schedules and measurement options (FEAT2), where the sound comes from (FEAT3), and what
-the screen shows of an agent's work and what it is told when you step in (AIVIS, section 5.1); with the fixes of the
-first function test with a real agent (FFIX: the tweeter rule on the result of every change, one agent program one
-token, arrivals and alignment across speakers, the long poll, one microphone); with the owner's answers of
-2026-11-23 (ODEC: one question for test signals, keeping a tune, presets with the master volume, Stop, the
-screen following the agent). For the owner and for
-users of the Qt console. It describes the console as it is with the Modern programme's waves 4 and 5: MCP1 to MCP4, the
-MCP conformance work (MCP6), and measuring through an agent (MCP5, with ROLL1's rules for tweeters; section 6).*
+*User manual of uConsole for DSPi 0.15.0: AI agents in the desktop app (both layouts). How the owner checks it
+on real agent hosts before a release: [`docs/testing/ai-agents-checklist.md`](../testing/ai-agents-checklist.md).*
 
 An AI agent on your computer, such as Claude Desktop, Claude Code, Cursor or VS Code, can read the settings of the DSPi
-devices that DSPi Console has open and change them for you: "make the left woofer 2 dB quieter", "why does output 3 sound
-thin?", "set up a crossover at 2.5 kHz". The agent talks to the console over MCP (the Model Context Protocol). You see
-every change live in the console, as if you had made it, and you can undo each one.
+devices that uConsole for DSPi has open and change them for you: "make the left woofer 2 dB quieter", "why does output 3 sound
+thin?", "set up a crossover at 2.5 kHz". The agent talks to the app over MCP (the Model Context Protocol). You see
+every change live in the app, as if you had made it, and you can undo each one.
 
-AI agents are **off** until you turn them on. Nothing on your network can reach them: the console listens on this computer
+AI agents are **off** until you turn them on. Nothing on your network can reach them: the app listens on this computer
 only. The web console and the Android app run no agents; the web console shows when an agent works on a hub's devices
 through another console (section 5).
 
@@ -30,7 +23,7 @@ through another console (section 5).
 ## 1. Turning agents on
 
 1. Open **Settings › AI Agents** and switch on **Allow AI agents to control …**.
-2. The console tells you what that allows, and offers **Set Up Limits…** if the device has no limits profile. A limits
+2. The app tells you what that allows, and offers **Set Up Limits…** if the device has no limits profile. A limits
    profile sets the most gain and volume anyone may set, agents included. It is optional, but it is the best protection
    for your speakers. An agent can never change or remove it.
 3. The page shows **Listening on** with the addresses (`127.0.0.1` and `[::1]`, port 47860). Change the **Port** only if
@@ -43,12 +36,12 @@ Turning the switch off (or pressing **Stop**) disconnects every agent at once.
 There are two ways in. The **Connect an Agent** section of the page shows the exact command or configuration for your
 computer, with a **Copy** button. Use that text rather than typing it from here: it has the right program path.
 
-- **Agents that start a program** (Claude Desktop, and most IDE agents) start the console with `--mcp`. That copy of the
-  console does not open a window: it relays the agent's messages to the console you have open. The first time, the
-  console asks **Allow this AI agent?** with a four-digit code. The agent's log (or the terminal) shows the same code.
+- **Agents that start a program** (Claude Desktop, and most IDE agents) start the app with `--mcp`. That copy of the
+  app does not open a window: it relays the agent's messages to the app you have open. The first time, the
+  app asks **Allow this AI agent?** with a four-digit code. The agent's log (or the terminal) shows the same code.
   Click **Allow** only if you have just connected an agent and the codes match. The relay keeps a token for each agent
   program (by the name the program gives itself), so this is asked once per program: a second program on the same
-  computer, say Cursor beside Claude Desktop, is asked about and named on its own. (A console from before this kept one
+  computer, say Cursor beside Claude Desktop, is asked about and named on its own. (A version from before this kept one
   token for all; each program is then asked once more.)
 - **Agents that connect over HTTP** (Claude Code, Cursor, VS Code) use the address `http://127.0.0.1:47860/mcp` with the
   header `Authorization: Bearer <token>`. Make a token with **Add Client…** in the **Clients** section. The token is shown
@@ -57,7 +50,7 @@ computer, with a **Copy** button. Use that text rather than typing it from here:
 Each client has its own token and its own name in the History and the activity. **Remove this client** stops its token
 at once. What it changed stays, and you can still undo it.
 
-The console must be running, with agents on, while the agent works. Otherwise the agent gets "DSPi Console is not
+The app must be running, with agents on, while the agent works. Otherwise the agent gets "uConsole for DSPi is not
 running, or AI agents are turned off in it."
 
 ### 2.1 Claude Desktop
@@ -68,7 +61,7 @@ Desktop again:
 ```json
 {
   "mcpServers": {
-    "dspi": { "command": "<the console's program>", "args": ["--mcp"] }
+    "dspi": { "command": "<the app's program>", "args": ["--mcp"] }
   }
 }
 ```
@@ -86,10 +79,10 @@ If you have the DSPi Terminal installed, `"command": "uconsole", "args": ["mcp"]
 
 ### 2.2 Claude Code
 
-Over stdio, as Claude Desktop does (the console asks you to allow it the first time):
+Over stdio, as Claude Desktop does (the app asks you to allow it the first time):
 
 ```
-claude mcp add dspi -- <the console's program> --mcp
+claude mcp add dspi -- <the app's program> --mcp
 ```
 
 Or over HTTP with a client's token. The page's **Command** line puts the token on the command line, which your shell
@@ -133,7 +126,7 @@ is not saved when `HISTCONTROL` includes `ignorespace`, which many systems set.)
 ```json
 {
   "inputs": [
-    { "type": "promptString", "id": "dspi-token", "description": "DSPi Console client token", "password": true }
+    { "type": "promptString", "id": "dspi-token", "description": "uConsole for DSPi client token", "password": true }
   ],
   "servers": {
     "dspi": {
@@ -147,29 +140,29 @@ is not saved when `HISTCONTROL` includes `ignorespace`, which many systems set.)
 
 ### 2.5 Other agents
 
-Any MCP client that can start a program (`<the console's program> --mcp`, or `uconsole mcp`) or speak Streamable HTTP
-with a header works. The console speaks both versions of the protocol in use today: 2025-11-25 and older (with
+Any MCP client that can start a program (`<the app's program> --mcp`, or `uconsole mcp`) or speak Streamable HTTP
+with a header works. The app speaks both versions of the protocol in use today: 2025-11-25 and older (with
 `initialize`) and 2026-07-28 (stateless). Each build checks this against the official MCP conformance suite and the
 official TypeScript SDK's client (`ci/check.sh --step mcp-conformance`).
 
 ### 2.6 From another computer
 
-The console never listens on your network, and has no setting for it. To use an agent on another computer, carry the
-connection over SSH: [Using DSPi Console's AI agents from another computer](../mcp-ssh-forwarding.md) (the page's **Use
+The app never listens on your network, and has no setting for it. To use an agent on another computer, carry the
+connection over SSH: [Using uConsole for DSPi's AI agents from another computer](../mcp-ssh-forwarding.md) (the page's **Use
 from Another Computer…** link).
 
 ## 3. What agents may do
 
-An agent you allow may read every device the console has open and change most of what you can change: the equaliser,
+An agent you allow may read every device the app has open and change most of what you can change: the equaliser,
 crossovers, gain, delay, polarity, mute, routing, effects, volume and source, presets (load, save, rename, copy),
 snapshots, A/B, config and filter files (as text), AutoEQ, channel and device names, the audio link's delays and scenes,
-Installation setup and a room's or zone's volume. It may ask the console to open a device it knows, and to measure your
+Installation setup and a room's or zone's volume. It may ask the app to open a device it knows, and to measure your
 speakers or headphones and tune them (section 6).
 
 - **Several devices.** Every tool takes a `device` (from `dspi_list_devices`). Without it, the agent works on the device
-  the console shows.
-- **Opening devices.** An agent can ask the console to open a device it **knows**: a DSPi on USB, a unit that the hub of an
-  open device lists, or a device you have opened before (`dspi_list_known_devices`, `dspi_open_device`). The console opens it
+  the app shows.
+- **Opening devices.** An agent can ask the app to open a device it **knows**: a DSPi on USB, a unit that the hub of an
+  open device lists, or a device you have opened before (`dspi_list_known_devices`, `dspi_open_device`). The app opens it
   in a tab of its own, beside what you have open, and does not switch to it. It never pairs and never connects to an
   address or a hub it has no connection to; that stays yours. An agent can close only a tab it opened
   (`dspi_close_device`), and not while the device has unsaved changes, measures, has a timed preview waiting, or you hold
@@ -179,18 +172,21 @@ speakers or headphones and tune them (section 6).
   ADAT or the audio link). To choose or start music it needs that program's own integration, if you have one; these
   tools only reach the DSPi.
 - **This computer's sound settings, read only** (`dspi_get_host_audio`). The agent can see, on the computer the
-  console runs on, whether each open DSPi is one of its sound outputs, whether it is the default output, its channel
+  app runs on, whether each open DSPi is one of its sound outputs, whether it is the default output, its channel
   count and sample rate, which apps play to it (Linux and Windows; macOS from 14.2), and the system volume, with whether
   that volume moves the DSPi's user volume. It reads PipeWire on Linux (falling back to the ALSA sound cards), the
   Windows audio service, and Core Audio on macOS. It never changes the default output, moves an app or sets the system
   volume: it tells you where to do that (the desktop's sound settings or `wpctl` on Linux; Settings › System › Sound on
   Windows; System Settings › Sound on macOS, which has no per-app output without third-party software). If the system
   cannot be read (no PipeWire, a sandbox, no permission), the agent is told "unknown" and why, and carries on.
-- **Speaker roles are yours.** An agent reads which outputs are woofers and tweeters from your speaker setup, and can
-  never change it. <!-- WP ADET1 --> If you have not confirmed a speaker setup, an agent may ask to **detect** it: the
-  console plays quiet sweeps on each output and works out which outputs reach a driver and which drive a tweeter
-  (section 6, *Detecting the speakers*). The detected roles guard your speakers until you confirm or correct them in
-  Settings › Speakers; the agent can never set them.
+- **Speaker roles come from you.** An agent reads which outputs are woofers and tweeters from your speaker setup.
+  <!-- WP ROLES --> When you tell it which output drives what ("L and R front speakers, three way, tweeter, mid,
+  woofer, left then right, outputs 1–6"), it may set those roles **from your words**: it shows you the whole table in one
+  question and quotes your words (section 6, *Speaker roles from your words*). It never sets roles you did not state.
+  <!-- WP ADET1 --> If you have not set up the speakers and did not say, an agent may ask to **detect** them: the
+  app plays quiet sweeps on each output and works out which outputs reach a driver and which drive a tweeter
+  (section 6, *Detecting the speakers*). Roles set from your words or detected guard your speakers until you confirm or
+  correct them in Settings › Speakers.
 - **Installation setup** works on a draft that belongs to the agent. Nothing reaches the hub until the agent saves it. If
   someone else saved the installation meanwhile, the save is refused, and the agent's edits are kept aside to apply again.
 - **Sources, zones, slots and scenes** <!-- WP FEAT1 --> are edits of that draft too
@@ -209,7 +205,7 @@ speakers or headphones and tune them (section 6).
   reads, beside the input in use, which of them plays into it and on which of its inputs.
 - **A room's or zone's volume.** On a hub with an installation, `dspi_system_set_volume` sets the volume of every unit of a
   room or a zone: one level for all, or a step up or down from each unit's own. Each unit's limits still hold: a unit whose
-  limits profile refuses, that is offline, that the console has read-only, or whose control you are holding, is left as it
+  limits profile refuses, that is offline, that the app has read-only, or whose control you are holding, is left as it
   is, and the agent is told which. It is not in the History, because it goes through the hub: the agent gets each unit's
   level before, and can set it back.
 - **Schedules** (`dspi_list_schedules`) an agent can read, not change.
@@ -220,7 +216,8 @@ speakers or headphones and tune them (section 6).
 change the limits profile, the installer PIN or lock; change hardware, pin or core-voltage settings; play the signal
 generator or Identify (a measurement's test sweeps are the one exception: section 6); pair hubs or change DSPi Link
 security and hub administration (its schedules among them); delete presets, snapshots or measurements; update the
-AutoEQ database; set up speakers (the speaker layout); change the computer's sound settings or play music; send raw
+AutoEQ database; set speaker roles you did not state, or replace a speaker setup you confirmed unless your words say what
+changed; change the computer's sound settings or play music; send raw
 device commands; read or write files by path.
 
 **What an agent reads, it may pass on to its own service.** An agent that runs on a cloud model sends what it reads to
@@ -241,6 +238,8 @@ that service, as with anything else you show it.
     asked **once per device for the agent's task**: **Allow** lets that agent play test signals on that device for
     the next 10 minutes (see **Test signals for 10 minutes** below);
   - detect the speakers: a test signal with a warning, one question (section 6, *Detecting the speakers*);
+  - set speaker roles from your words: one question showing the whole table (section 6, *Speaker roles from your
+    words*);
   - replace many settings at once: load a preset, recall a snapshot, import a config or filter file;
   - write the device's flash: save, rename or copy a preset, save to the device, rename a channel or the device;
   - change every unit of an installation: align the audio link (also with a measurement across units), apply a scene,
@@ -254,13 +253,14 @@ that service, as with anything else you show it.
   starts a measurement. Your limits profile and the protection of outputs you set up as tweeters still apply, and so do
   the rule below and the rules of section 6. A speaker detection is not asked under **Never** either: it is refused
   unless you switch on Settings › AI Agents › **Agents may detect speakers** (off by default; switching it on shows its
-  warning once).
+  warning once). <!-- WP ROLES --> Nor are speaker roles from your words: they are refused unless you switch on
+  Settings › AI Agents › **Agents may set speaker roles from my words** (off by default; switching it on asks once).
 
 **A tweeter's protection.** An output whose high-pass sits at 1 kHz or above drives a tweeter, whatever it is called.
 Removing that high-pass, moving it below 1 kHz or making it shallower than 12 dB/octave is asked about under the default
 setting and refused under **Never** (you can still make the change yourself).
 
-An output your confirmed speaker setup calls a tweeter (or, until you confirm it, a detected one) is protected under every setting, **Never** included: whenever it
+An output your confirmed speaker setup calls a tweeter (or, until you confirm it, a detected one, or one set from your words; <!-- WP ROLES --> with roles from your words, an output your words did not name too) is protected under every setting, **Never** included: whenever it
 can play (an input is routed to it, it is on and not muted), it must have a high-pass at 1 kHz or above (or the higher
 corner your limits profile sets for it), 12 dB/octave or steeper. Every change an agent makes is judged on the result: a
 route, an unmute or switching the output on, a crossover or EQ change, an input's EQ, a preset load or import, keeping a
@@ -272,8 +272,8 @@ quietest first: the agent can protect the tweeter and route it in one go. If you
 high-pass yourself, an agent may still turn it down or mute it, but not feed it more: no higher gain, trim or volume, no
 new route, no effect that adds level and no EQ boost on it (or on an input that feeds it), also not through a preset.
 
-**The question.** The console shows what the agent wants to change, on which device, with **Allow** and **Deny**. If the
-console is in the tray, the question brings its window back. The agent waits up to 45 s for your answer; after that it is
+**The question.** The app shows what the agent wants to change, on which device, with **Allow** and **Deny**. If the
+app is in the tray, the question brings its window back. The agent waits up to 45 s for your answer; after that it is
 told the question is still open and can ask again with `dspi_get_confirmation`. A question nobody answers lapses after
 2 minutes, and nothing is changed. Several questions queue up ("2 more waiting").
 
@@ -313,7 +313,7 @@ of a hub is still asked each time. Under **Never** nothing is asked, so nothing 
   The web console does the same for an agent of another console on the hub's devices.
 - While you drag a control, an agent's change to that device is refused and the agent is told to try again: you are not
   overruled mid-drag.
-- **On a hub's device** (DSPi Link), the console also says on the hub what its agent does, so the **web console** and other
+- **On a hub's device** (DSPi Link), the app also says on the hub what its agent does, so the **web console** and other
   consoles of that hub show it too: a strip on every screen ("Claude, through Studio Mac, is working on this device:
   Changing the gain: Out 1") and an **AI** mark on the device's tab, for as long as the agent works (at most 20 s after its
   last call). What a person changes there reaches the agent as a change made elsewhere.
@@ -327,7 +327,7 @@ changes made elsewhere: a control on the device, another console.
 
 - **A control you take back is yours.** When you change (or undo) something an agent set within the last 10 minutes, the
   agent's next change to it is refused with "the user changed this": it has to ask you. A change that asks you in the
-  console anyway is asked there. A preset you load counts for everything the agent set. Its timed preview or auto-tune is
+  app anyway is asked there. A preset you load counts for everything the agent set. Its timed preview or auto-tune is
   not kept without asking either; putting it back is always possible.
 - **A setting you change while an agent's measurement runs stops it.** Its result would not be valid: it is not filed, a
   notice says so, and the agent is told why. Names and saved presets do not count.
@@ -348,50 +348,57 @@ changes made elsewhere: a control on the device, another console.
 
 ## 6. Measuring with an agent
 
-An agent can ask the console to measure, find an output's low end, and propose, apply and verify an auto-tune. The console
+An agent can ask the app to measure, find an output's low end, and propose, apply and verify an auto-tune. The app
 does the measuring, with its own microphone and in its own **Measure** view, exactly as when you start it there. The agent
 never plays or records anything itself.
 
-**One microphone.** The console measures with one microphone, so an agent's measurement waits while any open device
+**One microphone.** The app measures with one microphone, so an agent's measurement waits while any open device
 measures (yours too): the agent is told which.
 
 **What it needs**
 
 - **A person at the microphone.** The agent says where to put it; somebody has to put it there, and move it when the
   measurement asks for the next position.
-- **A confirmed speaker setup** (Settings › Speakers, **Confirm**), or one the speaker detection found. The roles
-  (woofer, midrange, tweeter…) always come from it: no tool takes a role or changes the setup. Without either, the agent
-  is refused and told to detect the speakers or ask you to confirm the setup.
-- **The device open in the console**, and nothing else measuring on it. A measurement across units needs each unit open in
+- **A confirmed speaker setup** (Settings › Speakers, **Confirm**), one the speaker detection found, or <!-- WP ROLES -->
+  one an agent set from your words. The roles (woofer, midrange, tweeter…) always come from it: no measuring tool takes a
+  role. Without one, the agent is refused and told to set the roles from what you said, detect the speakers, or ask you
+  to set them up.
+- **The device open in the app**, and nothing else measuring on it. A measurement across units needs each unit open in
   a tab, each with its own confirmed speaker setup.
 
 **What happens.** The agent's start is a request. Under **About risky changes** and **About every change** you are asked
 first (the question says **Test signal**, which outputs play, and the **AI** button shows there is something to answer),
-once per device for 10 minutes (section 4); under **Never** it starts at once. The console then opens **Measure**, opens the microphone and runs it. The Stop bar says
+once per device for 10 minutes (section 4); under **Never** it starts at once. The app then opens **Measure**, opens the microphone and runs it. The Stop bar says
 **Requested by AI · name** until it ends, with **Stop** on every tab of Measure; on a device that is not the one shown, its
-row there has **Show** and **Stop**. A request the console cannot take up within 30 s lapses, and the agent is told. The
+row there has **Show** and **Stop**. A request the app cannot take up within 30 s lapses, and the agent is told. The
 result is filed with your measurements. An agent can stop only what it asked for itself.
 
 **How loud.** Settings › AI Agents › **Loudest measurement** (85 dB SPL by default, 60 to 95) caps what an agent's
 measurement may play, under every question setting, **Never** too: an agent may only ask for less. It needs a
-microphone calibrated in dB SPL: the console's own calibration is used when the agent names none. Without one, an agent's
+microphone calibrated in dB SPL: the app's own calibration is used when the agent names none. Without one, an agent's
 measurement is refused, and the agent is told to ask you to calibrate the microphone in **Measure** or to turn the cap
 off. With **Limit agents' measurements in dB SPL** off, only the level ceiling (-12 dBFS at a speaker, -30 dBFS on
 headphones) holds.
 
-**Opening devices.** An agent may ask to open a device the console knows: one on USB, one listed by an open hub, or one
-you opened before on USB. The console remembers the USB devices you open across restarts (Settings › AI Agents › **Devices agents
+**Opening devices.** An agent may ask to open a device the app knows: one on USB, one listed by an open hub, or one
+you opened before on USB. The app remembers the USB devices you open across restarts (Settings › AI Agents › **Devices agents
 may open**, with **Forget Devices**). A device an agent opens or closes is a notice.
 
-**Detecting the speakers.** <!-- WP ADET1 --> When nobody has set up the speakers, an agent can ask the console to find
-out what is wired to each output (`dspi_detect_speakers`). The console plays quiet test sweeps on each output in turn,
+**Detecting the speakers.** <!-- WP ADET1 --> When nobody has set up the speakers, an agent can ask the app to find
+out what is wired to each output (`dspi_detect_speakers`). The app plays quiet test sweeps on each output in turn,
 from the microphone at the listening position (or close to each driver, moved when you are asked). Each output is first
 played only above 1 kHz (or a higher floor: your limits profile's for that output, or one the agent names), at most −24
-dBFS (−36 dBFS on headphones). Only an output whose response says it is not a tweeter is played lower, and then at most
-−50 dBFS (−60 dBFS on headphones); whatever cannot be told apart is treated as a tweeter. Outputs that are off or muted
-are not probed. The question says so, with a warning: nothing is known about these outputs yet, and a tweeter wired where
-the probe expects a woofer could receive a few seconds of sweep below 1 kHz at −50 dBFS, less than a hundredth of what a
-1 kHz crossover lets through from music, but not nothing. Keep the volume where it is and stay by **Stop**. **Allow** also
+dBFS (−36 dBFS on headphones). Only an output whose response says it is not a tweeter (or that is not heard above its
+floor) is played lower, and then at most −50 dBFS (−60 dBFS on headphones), no lower than 157 Hz. One that is still flat
+at 177 Hz there, as no tweeter is, is then played down to 20 Hz (never below your limits profile's high-pass minimum for
+that output) at the level its top end was heard at, never above −24 dBFS (−36 dBFS on headphones), or at −50 dBFS (−60
+dBFS) if its top end was not heard. A higher floor never lets that last step start sooner: the quiet sweep still has to
+find the driver flat at 177 Hz first. Whatever cannot be told apart is treated as a tweeter. Outputs that are off or
+muted are not probed. The question says so, with a warning: nothing is known about these outputs yet, and a tweeter
+wired where the probe expects a woofer could receive a few seconds of sweep below its floor at −50 dBFS (more with a
+raised floor): below 1 kHz less than a hundredth of what a 1 kHz crossover lets through from music, but not nothing.
+Only a driver still playing flat at 177 Hz under that quiet sweep, as no tweeter does, is then swept down to 20 Hz at up
+to −24 dBFS. Keep the volume where it is and stay by **Stop**. **Allow** also
 lets that agent play test signals and detect again on that device for 10 minutes (section 4); **Revoke** stops a running
 detection at once. <!-- WP INTK --> A higher floor in the limits profile belongs on tweeter outputs only: an output's
 high-pass minimum also holds its music's high-pass there, so on a woofer's output it would take away the bass (on the
@@ -404,6 +411,28 @@ nothing heard on Out 4". Until you confirm or correct it, the detected roles gua
 would, and an agent may measure and tune with them. An output where nothing was heard is left out: an agent may not route
 to it, switch it on or unmute it (you can). An agent may not detect over a setup you have confirmed: correct it in
 Settings › Speakers.
+
+**Speaker roles from your words.** <!-- WP ROLES --> (Owner decision, 2026-11-23.) When you tell an agent which output
+drives what, it may set the roles from what you said (`dspi_set_speaker_roles`): one row per output you named, with the
+side or speaker you gave it, and your words quoted. You are asked once, with the whole table ("Set the speaker roles on
+main front?": Out 1 · L · Tweeter, Out 2 · L · Midrange, …), the outputs you did not name, your words, and that the roles
+are not checked. Under **Never** it needs Settings › AI Agents › **Agents may set speaker roles from my words**. The
+roles then guard your speakers at once, as a confirmed setup's do: a tweeter keeps its high-pass at 1 kHz or above, a
+midrange at 80 Hz. An output your words did not name is unknown and treated as a tweeter. Settings › Speakers and the
+main screen say **Set by AI from your words, not checked**, each such row is marked **from your words**, and you confirm
+or correct them there. Over a setup you have confirmed, an agent sets roles only when your words say what changed ("I
+rewired output 5"); you are still asked.
+
+**Trust but check.** The roles are your words, not a measurement, and a wire can be in the wrong place. Before an
+agent's test signal plays below 1 kHz on an output your words made a midrange, woofer, sub or full range, the app
+checks that output's top end first (<!-- WP ROLESFIX --> the check is for the app's own test signals; routing music,
+unmuting and filters follow the roles as you stated them): a quiet sweep above 1 kHz only, at most −24 dBFS (an output silent there is probed lower at most
+−50 dBFS, as the detection does). If the top end falls as a woofer's or a midrange's does, its stated role holds from then on. If
+it holds up to 16 kHz as a tweeter's does, nothing below 1 kHz plays on that output, the safety rules keep it a tweeter, and the agent tells you ("Out 2 looks like a tweeter");
+the row shows **tweeter-like**. A check stands for the role it checked; stating the same role again does not run it
+again. The check judges the driver, not the output's own filters: an output whose low-pass already hides its top end is
+not checked and stays held at 1 kHz, and the agent is told to measure it before setting its low-pass, or to ask you to
+confirm the role. Your own measurements, and confirmed setups, are not checked.
 
 **A tweeter's low end.** These rules hold under every question setting; nothing lifts them, and they hold for your own
 measurements too:
@@ -420,25 +449,25 @@ measurements too:
 
 **Arrivals and aligning speakers.** A measurement gives each output's arrival time at the microphone. Arrivals compare
 only within one run: normally one speaker's outputs, as each speaker is measured on its own. Asked with `one_run`, the
-console measures every listed output in one run, and then proposes the delays that bring the device's speakers (left and
+app measures every listed output in one run, and then proposes the delays that bring the device's speakers (left and
 right, for example) to the same arrival, each speaker by its lowest way; the agent applies them as its other changes. A
 subwoofer is left out: it is aligned at its crossover. Across devices, arrivals need the audio link's time base (a
 measurement across units).
 
 **What a response includes.** A measured response is the driver through the output's filters as they were: a tweeter's
-measured low end is its high-pass's. The agent is told so (the high-pass is named); the console does not divide it out.
+measured low end is its high-pass's. The agent is told so (the high-pass is named); the app does not divide it out.
 
 **Summed runs** play the chosen outputs together, each with the polarity its routes give the programme, as the music
 plays them. The result is one response, filed under the first output.
 
 **Tuning.** Applying a proposal is a timed preview: each change is judged as the agent's other changes are (section 4), and
 the preview puts everything back at its end unless it is kept. An agent may keep it only **after a verify that passed**;
-without one (none run yet, or one that did not pass) **only you can keep it**, in the console. The same holds across units.
+without one (none run yet, or one that did not pass) **only you can keep it**, in the app. The same holds across units.
 
 **What an agent may choose.** `dspi_get_measure_options` lists it. The **microphone calibration** is one of those you have
 added in Measure, and the **target curve** is a built-in one or one of yours: the agent names it by its id, never a file.
 Without a choice the measurement is uncalibrated (relative levels), with the usual target. The **level ceiling** and the
-**SPL limit** an agent may only lower below the console's own (−12 dBFS and 95 dB SPL for speakers, −30 dBFS and 90 dB SPL
+**SPL limit** an agent may only lower below the app's own (−12 dBFS and 95 dB SPL for speakers, −30 dBFS and 90 dB SPL
 for headphones), under every setting. The SPL limit works only with a calibration that reads dB SPL. With the microphone on
 a headphone **coupler**, the headphones' lower limits apply, in the low-end search too.
 
@@ -449,6 +478,7 @@ a headphone **coupler**, the headphones' lower limits apply, in the low-end sear
 | `dspi_get_measure_options` | Your calibrations and target curves, the couplers, and the level limits |
 | `dspi_measure_preflight` | What stands between a measurement and the device now, and the roles it would use. Plays nothing |
 | `dspi_detect_speakers` | Asks to detect what is wired to each output, when the speakers are not set up. *Test signal* with a warning |
+| `dspi_set_speaker_roles` | Sets the speaker roles from what you told the agent, your words quoted. One question with the whole table <!-- WP ROLES --> |
 | `dspi_measure_start` | Asks for a measurement: one output at a time or summed. *Test signal* |
 | `dspi_measure_rolloff_start` | Asks for the low-end search on one output. *Test signal* |
 | `dspi_measure_status` | Where the request and the device's measuring jobs stand; with `wait_s` (up to 25 s) it answers when something changes, so the agent asks rarely. A finished measurement's arrivals, and with `one_run` the delays that align the speakers |
@@ -470,71 +500,35 @@ a headphone **coupler**, the headphones' lower limits apply, in the low-end sear
 
 ## 7. Good to know
 
-- **Loading a preset.** A preset load is done by the device itself, so the console cannot look at the preset first. When
-  an agent loads one on a device with a confirmed tweeter (or midrange), the console turns the master volume all the way
+- **Loading a preset.** A preset load is done by the device itself, so the app cannot look at the preset first. When
+  an agent loads one on a device with a confirmed tweeter (or midrange), the app turns the master volume all the way
   down first, loads, checks the result, puts the device back if the preset would leave the tweeter unprotected, and only
   then brings the volume back. That works when the master volume is independent of presets (the default). If your
   device saves the master volume with each preset (its master volume mode), the preset sets the volume itself and the
-  console could not keep the device quiet while it checks: **an agent may not load a preset (or revert to the saved
-  one) on such a device**, under every setting. Load it yourself in the console. Your own load is guarded the same way where the master
+  app could not keep the device quiet while it checks: **an agent may not load a preset (or revert to the saved
+  one) on such a device**, under every setting. Load it yourself in the app. Your own load is guarded the same way where the master
   volume is independent of presets: silent while it loads, and a tweeter or midrange the preset leaves without its high-pass
   is muted, with a notice; give it its high-pass, then unmute it. A refused agent load leaves the device on the preset
   it was on. A hub scene an agent recalls that loads presets is judged the same way, on each unit this app has open.
 - **A full-range driver or a small dome midrange is detected as a tweeter.** <!-- WP ADET1 --> The detection does not
   look below 1 kHz on a driver that plays flat to 20 kHz. Correct it in Settings › Speakers.
-- **Output numbers.** Agents count outputs and inputs from 0, as the tools do; the console's labels count from 1. In what
-  an agent is told, "output 1" is the tools' number and "Out 2" the console's label of the same output.
+- **Roles from your words are not a measurement.** <!-- WP ROLES --> The top-fall check catches a tweeter wired where
+  you said midrange, woofer or sub before anything low plays on it; it does not catch a midrange or woofer where you said
+  tweeter (that one is only over-protected: it is measured from 1 kHz up). Confirm the roles in Settings › Speakers once
+  the measurements look right.
+- **Numbers count from 1, as the app shows them.** <!-- WP SHOWFIX --> An agent reads and gives every number as
+  the app counts it: output 1 is Out 1, input 1 is In 1, preset 1 is the app's preset 1, PEQ bands 1 to 10 and
+  crossover slot 1 are the app's, and "change 1" in a refused batch is its first change. So "output 3" and "Out 3"
+  are the same output, and "saved to preset 1" is the preset 1 of the app's list. Codes are not counts and stay as they
+  are: an input source (0 is USB), the audio link's channels and slots (0 to 63), ids and masks.
 - **What Undo can undo.** The activity offers **Undo** only for changes Undo can reverse: a preset save, a flash write or a
   preset load have none.
-- **The relay handles one message at a time.** An agent that starts the console with `--mcp` waits for each answer: while a
+- **The relay handles one message at a time.** An agent that starts the app with `--mcp` waits for each answer: while a
   question waits for you (up to 45 s), that agent's other requests wait too. HTTP agents do not have this limit.
 - **A computer shared with other people.** Anyone signed in to this computer can reach the agents' port, as with any
-  program that listens on it, but nobody gets in without a token. If the console is not running, another person's program
+  program that listens on it, but nobody gets in without a token. If the app is not running, another person's program
   could take the port and receive the token of an agent that connects to it. On a shared computer, pick another **Port**
   than 47860, and if you suspect this happened, remove the client in **Clients** (its token stops at once) and pair it
   again.
 - **The port is taken.** If another program has the port, the page says so and **Try Again** retries. Pick another port,
   and change it in the agents' configuration too (`--port <n>` for `uconsole mcp`).
-
-## 8. Owner smoke test checklist (wave 6)
-
-For the owner, on real agent hosts, before the release. Use the demo device or a device with its limits profile set and
-the volume at 80 % or less. These steps change your own agent configuration; undo them afterwards if you want.
-
-**Linux, Claude Code over HTTP**
-1. Settings › AI Agents: turn agents on. **Listening on** shows `127.0.0.1` and `[::1]` with port 47860.
-2. **Add Client…** "Claude Code". Add it with the `.mcp.json` of section 2.2 and `DSPI_MCP_TOKEN` set.
-3. In Claude Code, `/mcp` lists `dspi` as connected with its tools. Ask "list my DSPi devices" (`dspi_list_devices`).
-4. Ask for a quiet change ("lower output 1 by 1 dB"): it happens at once; the activity and the History show it with the
-   **AI** tag. **Undo** in the activity puts it back.
-5. Ask for a louder change ("raise output 1 by 3 dB"): the question appears; **Deny**: nothing changes, the agent says so.
-   Ask again; **Allow**: the change happens.
-6. **Pause**: a change is not made, the agent says it is paused; **Resume**. **Remove this client**: the next request gets 401.
-
-**Linux or macOS, Claude Desktop over stdio**
-7. Add the config of section 2.1 and start Claude Desktop again. The console asks **Allow this AI agent?** with the code
-   Claude Desktop's MCP log shows. **Allow**. The tools appear in Claude Desktop.
-8. Quit and start Claude Desktop again: it connects without asking.
-9. Close the console: Claude Desktop's next tool call says the console is not running. Start it again: calls work again.
-
-**Windows, Claude Desktop over stdio** (the GUI program as a stdio server; not proven on a real Windows yet)
-10. Add `"command": "C:\\Users\\<you>\\AppData\\Local\\Programs\\uConsole for DSPi\\uconsole-for-dspi.exe", "args":
-    ["--mcp"]`. Check that no console window flashes, the pairing question appears in the running console, and the tools
-    appear in Claude Desktop. Repeat step 4.
-
-**Questions and settings**
-11. **Ask me: Never**: a louder change happens without a question. Removing a tweeter output's high-pass is refused.
-11a. **Ask me: About risky changes** (WP ODEC): ask for two measurements on one device. The first question says Allow also
-    allows test signals there for 10 minutes; **Allow**: the second is not asked. The AI page shows the permission with the
-    time left; **Revoke**: the next measurement is asked again. A louder change is still asked.
-12. **Ask me: About every change**: a quiet change is asked about too.
-13. **Stop** turns agents off; the agents' next call fails; turning them on again works, and the agent says you stopped
-    it (its next result tells it).
-
-**This computer's sound settings** (WP FEAT3)
-14. With a DSPi on USB that is not the default output and music playing to the laptop's speakers, ask "is my DSPi
-    getting the sound?". The agent says the DSPi is not the default output, names where the music plays, and tells
-    you how to switch; it does not switch anything. Make the DSPi the default and ask again: it says so, and names the
-    app playing to it. Repeat on Windows and on macOS (macOS before 14.2: no app list, only whether something plays).
-
-Write down the agent host versions and anything that differed.

@@ -150,6 +150,6 @@ fn wp_mcp3_uconsole_mcp_relays_an_agent_to_the_app() {
         replies[1]["error"]["message"]
             .as_str()
             .unwrap()
-            .contains("Start DSPi Console")
+            .contains("Start uConsole for DSPi")
     );
 }

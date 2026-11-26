@@ -35,15 +35,14 @@ async function openDemo(page: Page): Promise<Locator> {
   const one = page.locator("#one");
   await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article").first();
-  await expect(session.getByRole("region", { name: "Presets" })).toBeVisible();
+  await expect(session.getByRole("button", { name: /^Presets: / })).toBeVisible(); // -- WP INTD -- the session bar's presets (DL5)
   return session;
 }
 
 
-/** -- WP P1DCFIX -- (F6) the page's own unsaved indicator (Main's Presets card) shows; then back to `back`. */
+/** -- WP P1DCFIX -- (F6) the page's own unsaved indicator (-- WP INTD -- the session bar's presets, on every page) shows. */
 async function unsavedShown(session: Locator, back = "Snapshots") {
-  await openPage(session, "Main");
-  await expect(session.getByText("Unsaved changes", { exact: true })).toBeVisible();
+  await expect(session.getByRole("button", { name: /^Presets: .*, unsaved changes$/ })).toBeVisible();
   await openPage(session, back);
 }
 
@@ -51,14 +50,16 @@ async function noSidewaysScroll(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
 }
 
-test("P1WB1 snapshots: capture downloads, recall puts every value back, Open Snapshot… brings one back", async ({ page }) => {
+test("P1WB1 snapshots: capture downloads, recall puts every value back, Import… brings one back", async ({ page }) => {
   const errors = errorsOf(page);
   const session = await openDemo(page);
   await openPage(session, "Snapshots");
   const screen = session.getByRole("region", { name: "Snapshots" });
-  await screen.getByLabel("Name").fill("Kväll ✓");
-  await screen.getByLabel("Note").fill("before the gig");
-  const [dl] = await Promise.all([page.waitForEvent("download"), screen.getByRole("button", { name: "Capture" }).click()]);
+  await screen.getByRole("button", { name: "Capture…" }).click(); // -- WP INTD -- Capture is a popover (-- WP WEB7 -- the empty state's)
+  const capture = session.getByRole("dialog", { name: "Capture Snapshot" });
+  await capture.getByLabel("Name").fill("Kväll ✓");
+  await capture.getByLabel("Note").fill("before the gig");
+  const [dl] = await Promise.all([page.waitForEvent("download"), capture.getByRole("button", { name: "Capture", exact: true }).click()]);
   expect(dl.suggestedFilename()).toBe("Kväll ✓.dspipreset");
   const text = readFileSync(await dl.path(), "utf8");
   expect(JSON.parse(text).meta.kind).toBe("snapshot");
@@ -79,12 +80,18 @@ test("P1WB1 snapshots: capture downloads, recall puts every value back, Open Sna
   await expect.poll(async () => (await coreState(page)).outputGainDb[0]).toBe(0);
 
   // The downloaded file opened again, and a file that is not one refused in the core's words.
-  await screen.getByLabel("Snapshot file").setInputFiles({ name: "again.dspipreset", mimeType: "application/json", buffer: Buffer.from(text) });
+  // -- WP WEB7 -- Import… is a page tool (Qt's tab row)
+  await session.getByLabel("Snapshot file").setInputFiles({ name: "again.dspipreset", mimeType: "application/json", buffer: Buffer.from(text) });
   await expect(list.getByRole("listitem")).toHaveCount(2);
-  await screen.getByLabel("Snapshot file").setInputFiles({ name: "broken.dspipreset", mimeType: "application/json", buffer: Buffer.from("{") });
-  await expect(screen.getByRole("alert", { name: "Result" })).toContainText("Open Snapshot: not done");
+  await session.getByLabel("Snapshot file").setInputFiles({ name: "broken.dspipreset", mimeType: "application/json", buffer: Buffer.from("{") });
+  await expect(screen.getByRole("alert", { name: "Result" })).toContainText("Import: not done");
   await expect(list.getByRole("listitem")).toHaveCount(2);
-  await list.getByRole("button", { name: "Remove Kväll ✓ from the list" }).first().click();
+  // -- WP WEB7 -- Delete… in the row's menu, asked first (Qt's question)
+  await list.getByRole("button", { name: "More, Kväll ✓" }).first().click();
+  await session.getByRole("menu", { name: "More, Kväll ✓" }).getByRole("menuitem", { name: "Delete…" }).click();
+  const del = page.getByRole("dialog", { name: "Delete Snapshot" });
+  await expect(del).toContainText("It cannot be brought back.");
+  await del.getByRole("button", { name: "Delete" }).click();
   await expect(list.getByRole("listitem")).toHaveCount(1);
   if (test.info().project.name === "narrow") await noSidewaysScroll(page);
   expect(errors).toEqual([]);
@@ -96,13 +103,15 @@ test("P1WB1 A/B and safe apply: the toggle in the scene bar and its key, off dur
   await openPage(session, "Snapshots");
   const screen = session.getByRole("region", { name: "Snapshots" });
   await call(page, "write", { path: "out.gain", indices: [0], value: { float: -4 } });
-  await screen.getByLabel("Name").fill("Bright");
-  await Promise.all([page.waitForEvent("download"), screen.getByRole("button", { name: "Capture" }).click()]);
+  await screen.getByRole("button", { name: "Capture…" }).click(); // -- WP INTD -- Capture is a popover
+  await session.getByRole("dialog", { name: "Capture Snapshot" }).getByLabel("Name").fill("Bright");
+  await Promise.all([page.waitForEvent("download"), session.getByRole("dialog", { name: "Capture Snapshot" }).getByRole("button", { name: "Capture", exact: true }).click()]);
   await call(page, "write", { path: "out.gain", indices: [0], value: { float: 0 } });
   const row = screen.getByRole("list", { name: "Held snapshots" }).getByRole("listitem", { name: "Bright" });
 
   // Compare: the device now is A, Bright is B; the bar shows above the screens.
-  await row.getByRole("button", { name: "Compare" }).click();
+  // -- WP WEB7 -- Qt's row: A (Current settings) ▾, B ▾, Start
+  await screen.getByRole("region", { name: "A/B compare" }).getByRole("button", { name: "Start" }).click();
   const bar = session.getByRole("group", { name: "A/B compare" });
   await expect(bar).toContainText("Now A");
   await bar.getByRole("button", { name: /Now A · switch/ }).click();
@@ -118,7 +127,10 @@ test("P1WB1 A/B and safe apply: the toggle in the scene bar and its key, off dur
   await expect(compare.getByRole("table", { name: "From A to B" })).toContainText("-4");
 
   // A recall with rollback: the countdown bar; the toggle is off while it waits; Revert puts back and ends the compare.
-  await row.getByRole("button", { name: "Recall with Rollback" }).click();
+  // -- WP WEB7 -- Qt's switch "Recall with rollback", then Recall
+  await screen.getByRole("switch", { name: "Recall with rollback" }).click();
+  await expect(screen.getByRole("switch", { name: "Recall with rollback" })).toHaveAttribute("aria-checked", "true");
+  await row.getByRole("button", { name: "Recall", exact: true }).click();
   const guard = session.getByRole("alert", { name: "Safe apply" });
   await expect(guard).toContainText("Keep these settings? They go back in"); // -- WP P1DCFIX -- the core's words
   await expect.poll(async () => (await coreState(page)).outputGainDb[0]).toBe(-4);
@@ -132,7 +144,7 @@ test("P1WB1 A/B and safe apply: the toggle in the scene bar and its key, off dur
   await expect(screen.getByRole("status", { name: "Result" })).toBeVisible();
 
   // Keep keeps.
-  await row.getByRole("button", { name: "Recall with Rollback" }).click();
+  await row.getByRole("button", { name: "Recall", exact: true }).click();
   await guard.getByRole("button", { name: "Keep" }).click();
   await expect(guard).toHaveCount(0);
   await expect.poll(async () => (await coreState(page)).outputGainDb[0]).toBe(-4);
@@ -168,8 +180,11 @@ test("P1WB1 import: the preview's rows per block before anything is written; onl
   expect((await call<{ count: number }>(page, "configPreview", { text: MAC, options: (1 << 16) | 1 })).count).toBe(0);
 
   // Export downloads the device as a .dspipreset.
-  await files.getByLabel("Name", { exact: true }).fill("Hall");
-  const [dl] = await Promise.all([page.waitForEvent("download"), files.getByRole("button", { name: "Export Configuration" }).click()]);
+  // -- WP WEB7 -- Qt's Export Device Configuration…: the name asked in a dialog
+  await files.getByRole("button", { name: "Export Device Configuration…" }).click();
+  const named = page.getByRole("dialog", { name: "Export Device Configuration" });
+  await named.getByLabel("Name", { exact: true }).fill("Hall");
+  const [dl] = await Promise.all([page.waitForEvent("download"), named.getByRole("button", { name: "Export" }).click()]);
   expect(dl.suggestedFilename()).toBe("Hall.dspipreset");
   expect(JSON.parse(readFileSync(await dl.path(), "utf8")).meta.name).toBe("Hall");
   expect(errors).toEqual([]);
@@ -182,8 +197,8 @@ test("P1WB1 offline: Open File… and New from Template… open sessions with no
   const filesSide = one.getByRole("region", { name: "Files" }).first();
   await filesSide.getByLabel("File to open").setInputFiles(MAC_PATH.pathname);
   const doc = one.getByRole("article").first();
-  await expect(doc.locator(".device-meta")).toContainText("File: mac-swift-v32.dspipreset");
-  await expect(doc.getByRole("region", { name: "Presets" })).toBeVisible();
+  await expect(doc).toHaveAttribute("data-file", "mac-swift-v32.dspipreset");
+  await expect(doc.getByRole("button", { name: /^Presets: / })).toBeVisible(); // -- WP INTD -- the session bar's presets (DL5)
   await doc.getByRole("complementary", { name: "Status" }).getByText("a file").waitFor();
 
   await openDevices(one); // -- WP WEBM1 --
@@ -191,7 +206,7 @@ test("P1WB1 offline: Open File… and New from Template… open sessions with no
   await filesSide.getByRole("list", { name: "Templates" }).getByRole("button", { name: /Open template/ }).first().click();
   await expect(one.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab")).toHaveCount(2);
   const tpl = one.getByRole("article").first();
-  await expect(tpl.locator(".device-meta")).toContainText(/File: .*\.dspipreset/);
+  await expect(tpl).toHaveAttribute("data-file", /.*\.dspipreset/);
   // An edit, then Save File: the document as it stands.
   await openPage(tpl, "Files");
   const [dl] = await Promise.all([page.waitForEvent("download"), tpl.getByRole("button", { name: "Save File" }).click()]);
@@ -211,7 +226,8 @@ test("P1WB1 keys: Qt's table, never while a text field has focus", async ({ page
   await expect.poll(async () => (await coreState(page)).bypass).toBe(true);
   // A text field keeps its keys.
   await openPage(session, "Snapshots");
-  await session.getByRole("region", { name: "Snapshots" }).getByLabel("Name").focus();
+  await session.getByRole("region", { name: "Snapshots" }).getByRole("button", { name: "Capture…" }).click(); // -- WP INTD -- Capture is a popover
+  await session.getByRole("dialog", { name: "Capture Snapshot" }).getByLabel("Name").focus();
   await page.keyboard.press("Control+m");
   await page.waitForTimeout(300);
   expect((await coreState(page)).userMute).toBe(true);
@@ -277,14 +293,17 @@ test.describe("over DSPi Link", () => {
     await row.getByRole("button", { name: "Connect" }).click();
     const session = page.getByRole("article").last();
     await session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").first().getByRole("button", { name: "Open" }).click();
-    await expect(session.locator(".device-meta")).toContainText("DEMO");
+    await expect(session).toHaveAttribute("data-serial", /DEMO/);
     await openPage(session, "Snapshots");
     const screen = session.getByRole("region", { name: "Snapshots" });
     await expect(screen).toContainText("Every recall here can be taken back");
-    await screen.getByLabel("Name").fill("Site");
-    await Promise.all([page.waitForEvent("download"), screen.getByRole("button", { name: "Capture" }).click()]);
+    await screen.getByRole("button", { name: "Capture…" }).click(); // -- WP INTD -- Capture is a popover
+    await session.getByRole("dialog", { name: "Capture Snapshot" }).getByLabel("Name").fill("Site");
+    await Promise.all([page.waitForEvent("download"), session.getByRole("dialog", { name: "Capture Snapshot" }).getByRole("button", { name: "Capture", exact: true }).click()]);
     const item = screen.getByRole("list", { name: "Held snapshots" }).getByRole("listitem", { name: "Site" });
-    await expect(item.getByRole("button", { name: "Recall with Rollback" })).toHaveCount(0);
+    // -- WP WEB7 -- over DSPi Link the switch is on and cannot be turned off (Qt's)
+    await expect(screen.getByRole("switch", { name: "Recall with rollback" })).toHaveAttribute("aria-checked", "true");
+    await expect(screen.getByRole("switch", { name: "Recall with rollback" })).toBeDisabled();
     await item.getByRole("button", { name: "Recall", exact: true }).click();
     const guard = session.getByRole("alert", { name: "Safe apply" });
     // -- WP P1WB2 -- the core's row guard.hub_backstop

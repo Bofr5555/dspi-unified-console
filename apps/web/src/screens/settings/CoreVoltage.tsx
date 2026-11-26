@@ -11,6 +11,23 @@ import { CoreCallError, type CoreMethods, type VregCalView, type VregChoice } fr
 import type { Session } from "../../ui/session";
 import { Dialog } from "../main/Dialog";
 import { durationText, soakMinutes, voltsText } from "./model";
+import type { ComponentChildren } from "preact";
+import { Icon } from "../../ui/icons"; // -- WP WEB7 --
+
+/** -- WP WEB7 -- A group as Qt's SettingsGroup (group.css), named as a `group` for assistive technology. */
+function VGroup(props: { title: string; icon: string; children: ComponentChildren }) {
+  return (
+    <div class="group" role="group" aria-label={props.title}>
+      <div class="group-head">
+        <span class="group-icon">
+          <Icon name={props.icon} />
+        </span>
+        <h4 class="group-title">{props.title}</h4>
+      </div>
+      <div class="group-panel">{props.children}</div>
+    </div>
+  );
+}
 
 const POLL_MS = 1000;
 
@@ -78,8 +95,7 @@ export function CoreVoltage(props: { session: Session }) {
 
   if (!view) {
     return (
-      <section class="card settings-vreg" aria-label="Core Voltage">
-        <h3>Core Voltage</h3>
+      <section class="settings-vreg" aria-label="Core Voltage">
         <p class="note">Reading…</p>
         {error ? <p class="error" role="alert">{error}</p> : null}
       </section>
@@ -110,14 +126,12 @@ export function CoreVoltage(props: { session: Session }) {
   };
 
   return (
-    <section class="card settings-vreg" aria-label="Core Voltage">
-      <h3>Core Voltage</h3>
+    <section class="settings-vreg" aria-label="Core Voltage">
       {!view.available && view.phase === "idle" ? (
         <p class="note">This DSPi offers no core-voltage control to this console.</p>
       ) : null}
 
-      <div class="settings-group" role="group" aria-label="On the Device">
-        <h4>On the Device</h4>
+      <VGroup title="On the Device" icon="cpu">
         {st ? (
           <dl class="settings-facts">
             <dt>Running at</dt>
@@ -146,10 +160,9 @@ export function CoreVoltage(props: { session: Session }) {
         ) : (
           <p class="note">Reading…</p>
         )}
-      </div>
+      </VGroup>
 
-      <div class="settings-group" role="group" aria-label="Calibrate">
-        <h4>Calibrate</h4>
+      <VGroup title="Calibrate" icon="gauge">
         <p class="vreg-state" role="status" aria-label="Calibration state">
           {view.message}
         </p>
@@ -264,10 +277,9 @@ export function CoreVoltage(props: { session: Session }) {
             </button>
           ) : null}
         </div>
-      </div>
+      </VGroup>
 
-      <div class="settings-group" role="group" aria-label="Manual">
-        <h4>Manual</h4>
+      <VGroup title="Manual" icon="sliders-horizontal">
         {running ? <p class="note">Not available while a calibration runs.</p> : null}
         <div class="settings-row">
           <label>
@@ -363,7 +375,7 @@ export function CoreVoltage(props: { session: Session }) {
             Clear…
           </button>
         </div>
-      </div>
+      </VGroup>
 
       {error || view.lastError ? (
         <p class="error" role="alert">

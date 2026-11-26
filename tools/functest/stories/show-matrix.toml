@@ -1,0 +1,44 @@
+# WP SHOW2: the matrix mixer changed by an agent. Tonight there is no centre speaker: on the Fronts the centre
+# channel (C, input 3) is mixed into both front speakers (a phantom centre), and the LFE into the front woofers.
+# The tuned seed keeps the tweeters high-passed, so C may reach them; the Centre is left alone.
+name = "show-matrix"
+confirm = "ask_risky"
+seed = "tuned"
+show = "Fronts"
+
+[[step]]
+label = "phantom-centre"
+prompt = """
+My home theatre has three DSPi devices open in DSPi Console: "Fronts" (left and right two-way speakers: outputs 1-2
+left woofer and tweeter, 3-4 right woofer and tweeter), "Centre" and "Surrounds". They all get 5.1 over USB: input 1
+L, 2 R, 3 C, 4 LFE, 5 Ls, 6 Rs. The centre speaker is away for repair. On the Fronts, mix the centre channel into
+both front speakers at -3 dB (a phantom centre), and send the LFE to the two front woofers at -6 dB. Don't touch
+the other devices.
+"""
+
+  [[step.expect]]
+  what = "C reaches both front speakers, LFE the woofers"
+  kind = "routes"
+  routes = [["Fronts", "C", [1, 2, 3, 4]], ["Fronts", "LFE", [1, 3]]]
+
+  [[step.expect]]
+  what = "only the Fronts changed"
+  kind = "only_changed"
+  devices = ["Fronts"]
+
+  [[step.expect]]
+  what = "the tweeters keep their high-passes"
+  kind = "highpass"
+  outputs = { Fronts = [2, 4] }
+  min_hz = 2000
+  near_hz = 1500
+  slope_db = 12
+
+[[step]]
+label = "undo-lfe"
+prompt = "On second thought, take the LFE off the front woofers again; keep the phantom centre."
+
+  [[step.expect]]
+  what = "C still reaches both front speakers"
+  kind = "routes"
+  routes = [["Fronts", "C", [1, 2, 3, 4]]]

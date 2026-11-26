@@ -17,7 +17,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { openPage, partsOf, rail as sections } from "../nav"; // -- WP WEBM3 -- partsOf
+import { expectPage, openPage, partsOf, rail as sections } from "../nav"; // -- WP WEBM3 -- partsOf; -- WP INTD -- expectPage
 
 test.skip(({ browserName }) => browserName === "webkit", "Chromium and Firefox only");
 // Chromium's headless shell has no getUserMedia: the full Chromium, headless (as P5WMS).
@@ -69,7 +69,7 @@ async function openUnit(page: Page, hub: OwnHub, serial: string, pair = !!hub.pi
   // The list shows a serial's last 8 characters.
   const entry = session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: serial.slice(-8) });
   await entry.getByRole("button", { name: "Open" }).click();
-  await expect(session.locator(".device-meta")).toContainText(serial);
+  await expect(session).toHaveAttribute("data-serial", new RegExp(serial));
   const rail = session.getByRole("complementary", { name: "Status" });
   await expect(rail.getByLabel("Connection")).toHaveText(/^Connected/);
   await expect(session.locator(".banner")).toHaveCount(0);
@@ -298,7 +298,7 @@ test.describe("ATWEB: measuring several units on the hub", () => {
     hub = await measureHub(["--open", "--forget-clients"]);
     const session = await openUnit(page, hub, A);
     await setMode(session, page, "Installer");
-    await openPage(session, "System");
+    await openPage(session, "Clock and Links"); // -- WP WEB7 -- Qt's tab
     const panel = session.getByRole("region", { name: "Clock and audio links" });
     const table = panel.getByRole("table", { name: "S/PDIF units" });
     await expect(table.getByRole("row", { name: "S/PDIF clock of S/PDIF source" })).toContainText("Source");
@@ -323,6 +323,9 @@ test("ATWEB: a console not on the DSPi hub says that measuring several units nee
   await expect(note).toHaveAttribute("data-key", "measure.system.needs_hub");
   await expect(note).toContainText("Measuring several units needs the DSPi hub");
   await expect(screen.getByRole("button", { name: "Measure the units" })).toHaveCount(0);
+  // -- WP INTD -- Qt's "Hubs…": the page that connects through a hub
+  await note.getByRole("button", { name: "Hubs…" }).click();
+  await expectPage(session, "Connect");
 });
 
 test("ATWEB: the Several units step at 375 px: no sideways scroll", async ({ page, viewport }) => {

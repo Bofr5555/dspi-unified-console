@@ -9,13 +9,14 @@ import type { Session } from "../../ui/session";
 import { XOVER_BASE } from "../outputs/model";
 import { freeBand, passChoices, passes, setPass, type Pass } from "./align";
 import { ValueField } from "./Field";
-import { clamp, freqText, parseFreq, roundFreq } from "./model";
+import { bareFreq, clamp, parseFreq, roundFreq } from "./model";
 
 /** What Off writes to the band (`clearCrossover`): off, 1 kHz. */
 const CLEARED_FREQ = 1000;
 
-const HP = passChoices(true);
-const LP = passChoices(false);
+// -- WP WEB6 -- Qt's words: the table's brief ("LR 24 dB"), the inspector's long ("Linkwitz-Riley 24 dB/oct")
+const HP = { brief: passChoices(true, "brief"), long: passChoices(true, "long") };
+const LP = { brief: passChoices(false, "brief"), long: passChoices(false, "long") };
 
 export function PassFields(props: {
   session: Session;
@@ -43,11 +44,12 @@ export function PassFields(props: {
   const part = (highPass: boolean, pass: Pass | null) => {
     const kind = highPass ? "high pass" : "low pass";
     const label = props.who ? `${props.who} ${kind}` : kind[0]!.toUpperCase() + kind.slice(1);
-    const choices = highPass ? HP : LP;
+    const choices = (highPass ? HP : LP)[props.as === "cells" ? "brief" : "long"];
     // A pass the list does not offer (another family's odd order): shown as it is.
     const listed = !pass || choices.some((c) => c.value === pass.filterType);
     const select = (
       <select
+        class="combo"
         aria-label={label}
         disabled={disabled || (!pass && full)}
         title={!pass && full ? "All four crossover bands are in use" : undefined}
@@ -65,7 +67,8 @@ export function PassFields(props: {
     const field = (
       <ValueField
         label={`${label} frequency`}
-        text={pass ? freqText(pass.freq) : "–"}
+        text={pass ? bareFreq(pass.freq) : "–"}
+        unit="Hz"
         parse={parseFreq}
         disabled={disabled || !pass}
         onCommit={(v) => pass && void session.write("eq.freq", { float: roundFreq(clamp(v, props.freq)) }, [wire, XOVER_BASE + pass.band])}
@@ -79,7 +82,7 @@ export function PassFields(props: {
             {select}
             {off}
           </td>
-          <td class="c-freq">{field}</td>
+          <td class="c-freq">{pass ? field : null}</td>
         </>
       );
     return (

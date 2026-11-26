@@ -41,6 +41,20 @@ QString unknown(int n) { return QCoreApplication::translate("StatsController", "
 
 QJsonObject json(const QByteArray &bytes) { return QJsonDocument::fromJson(bytes).object(); }
 
+// -- WP INTE -- (owner 2026-11-24) nothing is routed to either output of the
+// pair `pair` (outputs 2·pair and 2·pair+1; dspi_output_labels' `unused`): the
+// stats only show, so its rows are left out. -- WP FIN015 -- (REVF R1) `hidden`:
+// not while the generator plays on one of them
+bool pairUnused(const QJsonArray &labels, int pair) {
+    int unused = 0;
+    for (const QJsonValue &v : labels) {
+        const QJsonObject o = v.toObject();
+        const int output = o.value(QLatin1String("output")).toInt(-1);
+        if ((output == 2 * pair || output == 2 * pair + 1) && o.value(QLatin1String("hidden")).toBool()) ++unused;
+    }
+    return unused == 2;
+}
+
 constexpr int kStatCount = 23;
 
 } // namespace
@@ -334,11 +348,14 @@ QVariantMap StatsController::counters() const {
 QVariantMap StatsController::starvation() const {
     QVariantList perSlot;
     const int n = std::max(state()->numSpdif, 2);
-    for (int i = 0; i < n && i < 4; ++i)
+    const QJsonArray &labels = m_ctx.device->snapshot().outputLabels; // -- WP INTE --
+    for (int i = 0; i < n && i < 4; ++i) {
+        if (pairUnused(labels, i)) continue; // -- WP INTE --
         perSlot.append(QVariantMap{ { QStringLiteral("label"), QCoreApplication::translate("StatsController", "Out %1/%2")
                                                                    .arg(2 * i + 1)
                                                                    .arg(2 * i + 2) },
                                   { QStringLiteral("count"), qint64(state()->slow.starvation[i]) } });
+    }
     return { { QStringLiteral("known"), state()->slow.statOk[STAT_STARVATION_TOTAL] },
              { QStringLiteral("total"), qint64(state()->slow.stat[STAT_STARVATION_TOTAL]) },
              { QStringLiteral("delta"), qint64(state()->delta) },
@@ -558,7 +575,9 @@ QVariantList StatsController::fillRows() const {
                             { QStringLiteral("history"), historyOf(series) } };
     };
     const QVariantList spdif = state()->buffers.value(QStringLiteral("spdif")).toList();
+    const QJsonArray &labels = m_ctx.device->snapshot().outputLabels; // -- WP INTE --
     for (int i = 0; i < state()->numSpdif; ++i) {
+        if (pairUnused(labels, i)) continue; // -- WP INTE -- both outputs unused
         const bool i2s = st && i < 4 && st->output_types[i] == 1;
         const QString title = i2s ? QCoreApplication::translate("StatsController", "Out %1/%2 (I2S)").arg(2 * i + 1).arg(2 * i + 2)
                                   : QCoreApplication::translate("StatsController", "Out %1/%2 (SPDIF)").arg(2 * i + 1).arg(2 * i + 2);

@@ -53,6 +53,17 @@ test("ATWEB: nothing plays before the person chose the listening position; headp
   assert.equal(s.micDocument, "mic text");
 });
 
+// -- WP FIN015 -- (REVF R2, probe P5) the core's sentence refusal is shown as the core said it
+test("FIN015: Several units shows the core's words for a refusal, not the invalid notice's title over them", () => {
+  const words = "Lower the volume to −12 dB or below to measure; it is 0.0 dB.";
+  const e = new CoreCallError("invalid", `invalid argument: ${words}`, "invalid", words);
+  const invalid = (k: string) => (k === "invalid" ? ({ key: "invalid", kind: "error", title: "Not a valid value", reason: "", action: "", detail: "" } as NoticeRecord) : null);
+  assert.deepEqual(refusalWords(e, invalid), { key: "invalid", text: words });
+  // A hub's refusal keeps the step's notice, whatever words the core has for it
+  const hub = new CoreCallError("link", "DSPi Link: the units' domain ids differ", "dlink.not_one_domain", "Something went wrong: the units' domain ids differ");
+  assert.deepEqual(refusalWords(hub, row), { key: KEYS.notOneDomain, text: "These units do not share a clock: The units' domain ids differ" });
+});
+
 test("ATWEB: the hub's refusals and the session's issues in words, with their notices", () => {
   const e = new CoreCallError("link", "DSPi Link: the units' domain ids differ", "dlink.not_one_domain");
   assert.deepEqual(refusalWords(e, row), { key: KEYS.notOneDomain, text: "These units do not share a clock: The units' domain ids differ" });
@@ -384,7 +395,7 @@ test("ATWEB: the placement first; then each unit's own core judges it right befo
   assert.deepEqual(rig.desk.units.map((u) => [u.serial, u.online, u.own]), [["A", true, true], ["B", true, false], ["Z", false, false]]);
   rig.desk.setDraft(withUnit(withUnit(rig.desk.draft, "A", true), "B", true));
   await until(() => rig.desk.units[1]!.outputs.length === 2);
-  assert.deepEqual(rig.desk.units[1]!.outputs.map((o) => o.name), ["OUT1 Out 1", "OUT2 Out 2"]);
+  assert.deepEqual(rig.desk.units[1]!.outputs.map((o) => o.name), ["Out 1", "Out 2"]);
   // No placement chosen: nothing is sent, nothing plays.
   assert.equal(await rig.desk.start(), false);
   assert.match(rig.desk.error, /Choose where the microphone is/);

@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import type { FilterFileInspect } from "../../core/protocol";
 import { useDesk } from "../snapshots/Bars";
 import { download, type SnapshotDesk } from "../snapshots/model";
+import type { Session } from "../../ui/session";
 import {
   FILTERS_FILE,
   autoEqLibrary,
@@ -18,8 +19,6 @@ import {
   importFilters,
   inspectFilters,
   inspectProblem,
-  saveMasterVolume,
-  saveOutputConfig,
   type AutoEqLibrary,
   type LibraryState,
 } from "./model";
@@ -59,27 +58,17 @@ export function FiltersCard(props: { desk: SnapshotDesk; onChosen: (p: PendingFi
     }
   };
 
+  // -- WP WEB7 -- Qt's words and order: Import Filters…, then Export Filters…
   return (
     <div class="card" role="region" aria-label="Filters">
       <h3>Filters</h3>
-      <p class="note">Every channel's EQ and crossover bands as a text file. Import reads a DSPi filter file, or a REW or AutoEQ filter list.</p>
+      <p class="note">The bands of the channels you choose, as a text file that other programs read too.</p>
       {problem ? (
         <p class="error" role="alert">
           {problem}
         </p>
       ) : null}
       <div class="files-row">
-        <button
-          type="button"
-          disabled={busy || !open}
-          onClick={() =>
-            void exportFilters(desk).then((t) => {
-              if (t) download(t, FILTERS_FILE);
-            })
-          }
-        >
-          Export Filters
-        </button>
         <button type="button" disabled={busy || !open || !!desk.readOnly} onClick={() => file.current?.click()}>
           Import Filters…
         </button>
@@ -91,6 +80,17 @@ export function FiltersCard(props: { desk: SnapshotDesk; onChosen: (p: PendingFi
           aria-label="Filter file to import"
           onChange={(e) => void choose(e.target as HTMLInputElement)}
         />
+        <button
+          type="button"
+          disabled={busy || !open}
+          onClick={() =>
+            void exportFilters(desk).then((t) => {
+              if (t) download(t, FILTERS_FILE);
+            })
+          }
+        >
+          Export Filters…
+        </button>
       </div>
     </div>
   );
@@ -152,29 +152,6 @@ export function FilterPicker(props: { desk: SnapshotDesk; pending: PendingFilter
   );
 }
 
-/** Save Master Volume, Save Output Configuration: what the device starts with. */
-export function DeviceSaveCard(props: { desk: SnapshotDesk }) {
-  const { desk } = props;
-  const st = useDesk(desk);
-  const disabled = !!st.busy || !!desk.readOnly || !desk.session.state.snapshot || !!desk.session.document;
-  return (
-    <div class="card" role="region" aria-label="Save to the device">
-      <h3>Save to the device</h3>
-      <p class="note">
-        Where the master volume or the output configuration is kept apart from the presets, these store the live values for the next start.
-      </p>
-      <div class="files-row">
-        <button type="button" disabled={disabled} onClick={() => void saveMasterVolume(desk)}>
-          Save Master Volume
-        </button>
-        <button type="button" disabled={disabled} onClick={() => void saveOutputConfig(desk)}>
-          Save Output Configuration
-        </button>
-      </div>
-    </div>
-  );
-}
-
 /** The library's state, kept fresh. */
 export function useLibrary(lib: AutoEqLibrary): LibraryState {
   const [, bump] = useState(0);
@@ -182,26 +159,28 @@ export function useLibrary(lib: AutoEqLibrary): LibraryState {
   return lib.state;
 }
 
-/** The AutoEQ database: what is loaded, Download…, Import File…, Reset to Built-in, the favourites. */
-export function AutoEqDatabaseCard(props: { desk: SnapshotDesk; library?: AutoEqLibrary }) {
-  const session = props.desk.session;
+/**
+ * -- WP WEB7 -- The AutoEQ database (Library › AutoEQ's ▾ › Update Database…, as Qt's dialog): what is
+ * loaded, Download…, Import File…, Reset to Built-in, the favourites and Clear Favorites.
+ */
+export function AutoEqDatabasePanel(props: { session: Session; library?: AutoEqLibrary }) {
+  const session = props.session;
   const lib = props.library ?? autoEqLibrary();
   const st = useLibrary(lib);
-  const [open, setOpen] = useState(false);
   const [url, setUrl] = useState("");
   const [result, setResult] = useState<{ text: string; tone: "info" | "error" } | null>(null);
   const [names, setNames] = useState<{ id: string; name: string }[]>([]);
   const file = useRef<HTMLInputElement>(null);
   const busy = !!st.busy;
 
+  useEffect(() => void lib.ready(session), [session]);
   useEffect(() => {
-    if (!open) return;
     let alive = true;
     void lib.favouriteHits(session).then((h) => alive && setNames(h.map((x) => ({ id: x.id, name: x.name }))));
     return () => {
       alive = false;
     };
-  }, [open, st.favourites, st.info]);
+  }, [st.favourites, st.info]);
 
   const done = (what: string, p: Promise<{ entryCount: number }>) =>
     p.then(
@@ -226,71 +205,55 @@ export function AutoEqDatabaseCard(props: { desk: SnapshotDesk; library?: AutoEq
   };
 
   return (
-    <div class="card autoeq-db" role="region" aria-label="AutoEQ database">
-      <h3>AutoEQ database</h3>
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => {
-          const next = !open;
-          setOpen(next);
-          if (next) void lib.ready(session);
-        }}
-      >
-        Update Database…
-      </button>
-      {open ? (
-        <>
-          <p role="status" aria-label="Current database">
-            {st.problem && !st.info ? st.problem : databaseLine(st.info)}
-          </p>
-          {st.info?.problem ? <p class="note">Your own database could not be read ({st.info.problem}); the built-in one is used.</p> : null}
-          <div class="files-row">
-            <label>
-              Address of a database file
-              <input name="autoeq-url" type="url" value={url} placeholder="https://…/autoeq_database.json" onInput={(e) => setUrl((e.target as HTMLInputElement).value)} />
-            </label>
-            <button type="button" disabled={busy || !url.trim()} onClick={() => void fetchIt()}>
-              Download
-            </button>
-          </div>
-          <div class="files-row">
-            <button type="button" disabled={busy} onClick={() => file.current?.click()}>
-              Import File…
-            </button>
-            <input ref={file} type="file" hidden accept=".json,application/json" aria-label="AutoEQ database file" onChange={(e) => void importFile(e.target as HTMLInputElement)} />
-            {st.info?.hasUserDatabase ? (
-              <button type="button" disabled={busy} onClick={() => void done("Reset to Built-in", lib.resetToBuiltIn(session))}>
-                Reset to Built-in
-              </button>
-            ) : null}
-          </div>
-          <p class="note">Rebuild from GitHub is not offered here: download a ready-made database file or import one instead.</p>
-          {result ? (
-            <p class={`autoeq-outcome ${result.tone}`} role={result.tone === "error" ? "alert" : "status"} aria-label="Database result">
-              {result.text}
-            </p>
-          ) : null}
-          <h4>Favorite Profiles</h4>
-          {names.length ? (
-            <ul class="change-list" aria-label="Favorite Profiles">
-              {names.map((n) => (
-                <li key={n.id}>
-                  {n.name}{" "}
-                  <button type="button" class="dismiss" aria-label={`Remove ${n.name} from the favorites`} onClick={() => void lib.toggleFavourite(session, n.id)}>
-                    ×
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p class="note">No favorites yet. Mark a profile with its heart in the EQ's AutoEQ panel.</p>
-          )}
-          <button type="button" disabled={!st.favourites.length} onClick={() => void lib.clearFavourites(session)}>
-            Clear Favorites
+    <div class="autoeq-db" role="region" aria-label="AutoEQ database">
+      <p role="status" aria-label="Current database">
+        {st.problem && !st.info ? st.problem : databaseLine(st.info)}
+      </p>
+      {st.info?.problem ? <p class="note">Your own database could not be read ({st.info.problem}); the built-in one is used.</p> : null}
+      <div class="files-row">
+        <label>
+          Address of a database file
+          <input name="autoeq-url" type="url" value={url} placeholder="https://…/autoeq_database.json" onInput={(e) => setUrl((e.target as HTMLInputElement).value)} />
+        </label>
+        <button type="button" disabled={busy || !url.trim()} onClick={() => void fetchIt()}>
+          Download
+        </button>
+      </div>
+      <div class="files-row">
+        <button type="button" disabled={busy} onClick={() => file.current?.click()}>
+          Import File…
+        </button>
+        <input ref={file} type="file" hidden accept=".json,application/json" aria-label="AutoEQ database file" onChange={(e) => void importFile(e.target as HTMLInputElement)} />
+        {st.info?.hasUserDatabase ? (
+          <button type="button" disabled={busy} onClick={() => void done("Reset to Built-in", lib.resetToBuiltIn(session))}>
+            Reset to Built-in
           </button>
-        </>
+        ) : null}
+      </div>
+      <p class="note">Rebuild from GitHub is not offered here: download a ready-made database file or import one instead.</p>
+      {result ? (
+        <p class={`autoeq-outcome ${result.tone}`} role={result.tone === "error" ? "alert" : "status"} aria-label="Database result">
+          {result.text}
+        </p>
       ) : null}
+      <h4 class="section-label">Favorite Profiles</h4>
+      {names.length ? (
+        <ul class="change-list" aria-label="Favorite Profiles">
+          {names.map((n) => (
+            <li key={n.id}>
+              {n.name}{" "}
+              <button type="button" class="dismiss" aria-label={`Remove ${n.name} from the favorites`} onClick={() => void lib.toggleFavourite(session, n.id)}>
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p class="note">No favorites yet. Mark a headphone with its heart in Library › AutoEQ.</p>
+      )}
+      <button type="button" disabled={!st.favourites.length} onClick={() => void lib.clearFavourites(session)}>
+        Clear Favorites
+      </button>
     </div>
   );
 }

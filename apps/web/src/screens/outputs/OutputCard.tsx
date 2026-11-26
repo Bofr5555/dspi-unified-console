@@ -4,8 +4,14 @@
 // DELAY (owner rule SL1, `Level.tsx`), mute and, with firmware that has it,
 // the output limiter. It sits atop the output's page (the EQ screen with an
 // output chosen), as on the Console. Every change is the core's, read back.
+//
+// -- WP WEB3 -- (DL8 on the web) Qt's channel strip: one row, no card: the output's pill and name,
+// MIX (the inputs' dots, levels and ø), GAIN (field and slider), DELAY, the mute icon, the limiter.
 
 import { memo } from "preact/compat";
+import { Glyph } from "../../ui/design"; // -- WP WEB3 --
+import { Pill } from "../../ui/Pill"; // -- WP WEB3 --
+import "./outputs.css"; // -- WP WEB3 --
 import { useState } from "preact/hooks";
 import type { DspState, OutputLabel } from "../../core/protocol";
 import type { Session } from "../../ui/session";
@@ -35,6 +41,10 @@ export const OutputCard = memo(function OutputCard(props: {
   /** The output's index (`out.*`) and wire channel. */
   output: number;
   name: string;
+  /** -- WP WEB3 -- the strip's head: the output's pill ("OUT1"), its name and its colour */
+  tag?: string;
+  title?: string;
+  colour?: string;
   inputs: ChannelRow[];
   limits: OutputLimits;
   disabled: boolean;
@@ -46,7 +56,16 @@ export const OutputCard = memo(function OutputCard(props: {
   const muted = s.outputMuted[output] ?? false;
   const names = Array.from({ length: s.numOutputChannels }, (_, o) => outputLabel(s, props.labels, o));
   return (
-    <section class="card output-card" aria-label={`Output settings, ${props.name}`}>
+    <section class="output-card ch-strip" aria-label={`Output settings, ${props.name}`}>
+      {props.tag ? (
+        <span class="strip-who">
+          <Pill text={props.tag} colour={props.colour ?? "var(--accent)"} />
+          <span class="strip-name">{props.title ?? props.name}</span>
+        </span>
+      ) : null}
+      <span class="strip-label" aria-hidden="true">
+        Mix
+      </span>
       <div class="output-routes" role="group" aria-label="Routing">
         {props.inputs.slice(0, PREVIEW_INPUTS).map((i) => (
           <Route key={i.wire} session={session} s={s} input={i} output={output} outName={props.name} disabled={disabled} />
@@ -54,7 +73,7 @@ export const OutputCard = memo(function OutputCard(props: {
       </div>
       <LevelControl
         session={session}
-        label="GAIN"
+        label="Gain"
         name="Gain"
         unit="dB"
         value={s.outputGainDb[output] ?? 0}
@@ -70,7 +89,7 @@ export const OutputCard = memo(function OutputCard(props: {
       />
       <LevelControl
         session={session}
-        label="DELAY"
+        label="Delay"
         name="Delay"
         unit="ms"
         value={s.outputDelayMs[output] ?? 0}
@@ -87,13 +106,14 @@ export const OutputCard = memo(function OutputCard(props: {
       <div class="output-switches">
         <button
           type="button"
-          class="toggle output-mute"
+          class="eq-icon-toggle output-mute"
           aria-pressed={muted}
           aria-label="Mute"
+          title={muted ? "Muted" : "Mute"}
           disabled={disabled}
           onClick={() => void session.write("out.mute", { bool: !muted }, [output])}
         >
-          {muted ? "Muted" : "Mute"}
+          <Glyph name={muted ? "volume-x" : "volume"} />
         </button>
         {limiterSupported(s) ? <LimiterButtons session={session} s={s} output={output} name={props.name} disabled={disabled} open={() => setLimiter(true)} /> : null}
       </div>
@@ -142,14 +162,14 @@ function Route(props: { session: Session; s: DspState; input: ChannelRow; output
       </span>
       <button
         type="button"
-        class="toggle route-inv"
+        class="eq-icon-toggle route-inv"
         aria-pressed={inv}
         aria-label={`${input.name} inverted`}
         title={inv ? "Phase inverted" : "Normal phase"}
         disabled={disabled || !on}
         onClick={() => set({ invert: !inv })}
       >
-        INV
+        ø
       </button>
     </div>
   );

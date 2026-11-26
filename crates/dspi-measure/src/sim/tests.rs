@@ -903,6 +903,17 @@ fn any_world() -> impl Strategy<Value = World> {
         )
 }
 
+// INTB: CIPAR's proptest case (proptest-regressions/sim/tests.txt): a
+// subnormal f1 made f2 / f1 overflow, ln() infinite and every sample NaN.
+#[test]
+fn intb_test_sweep_refuses_a_span_wider_than_f64() {
+    assert!(test_sweep(48_000, 1e-308, 32.9, 0.02, 0.0, 0.5).is_err());
+    assert!(test_sweep(48_000, 1e-308, 32.9, 0.02, 0.0, -0.0).is_err());
+    // The narrowest span that still fits is a finite sweep
+    let s = test_sweep(48_000, 1e-300, 32.9, 0.02, 0.0, 0.5).unwrap();
+    assert!(s.iter().all(|v| v.is_finite() && v.abs() <= 0.5 + 1e-6));
+}
+
 proptest! {
     #![proptest_config(ProptestConfig { cases: 48, ..ProptestConfig::default() })]
 

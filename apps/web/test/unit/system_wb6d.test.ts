@@ -83,9 +83,9 @@ function state(over: Partial<DspState> = {}): DspState {
 }
 
 const LABELS: OutputLabel[] = [
-  { output: 0, label: "Out 1 · L · Low", shortLabel: "L · Low", slotName: "I2S 1 L", userNamed: false, channel: "L", band: "Low" },
-  { output: 1, label: "Out B", shortLabel: "Out B", slotName: "I2S 1 R", userNamed: true, channel: "L+R", band: "Full" },
-  { output: 2, label: "Out C", shortLabel: "Out C", slotName: "PDM", userNamed: true, channel: "None", band: "Full" },
+  { output: 0, label: "Out 1 · L · Low", shortLabel: "L · Low", slotName: "I2S 1 L", userNamed: false, channel: "L", band: "Low", unused: false, hidden: false },
+  { output: 1, label: "Out B", shortLabel: "Out B", slotName: "I2S 1 R", userNamed: true, channel: "L+R", band: "Full", unused: false, hidden: false },
+  { output: 2, label: "Out C", shortLabel: "Out C", slotName: "PDM", userNamed: true, channel: "None", band: "Full", unused: true, hidden: true },
 ];
 
 const block = (bs: { id: string }[], id: string) => bs.find((b) => b.id === id) as ReturnType<typeof chainView>["outputs"][number]["blocks"][number];
@@ -138,6 +138,9 @@ test("WB6d: outputs: routing summary, blocks on or off, level, and where each op
   assert.equal(o3!.enabled, false);
   assert.deepEqual(o3!.open, { screen: "matrix" });
   assert.deepEqual(block(o3!.blocks, "eq").open, { screen: "matrix" });
+  // -- WP WEB7 -- the core's `unused` (nothing routed): the chain view leaves it out
+  assert.deepEqual(c.outputs.map((o) => o.unused), [false, false, true]);
+  assert.deepEqual(chainView(state(), undefined, 2).outputs.map((o) => o.unused), [false, false, false], "no labels, nothing known unused");
 });
 
 test("WB6d: effects: per-output ones only while on, by their output mask; device-wide ones listed with their state", () => {

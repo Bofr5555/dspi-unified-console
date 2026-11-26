@@ -44,6 +44,9 @@ class HomeModelTest {
         )
         val some = DashboardCard.cards(5, listOf(true, false, false, true, false))
         assertEquals(listOf(DashboardCard.Input, DashboardCard.Output(0), DashboardCard.Output(3)), some)
+        // -- WP REVEFIX -- an unused output has no card, also where the core gave none (owner 2026-11-24)
+        val used = DashboardCard.cards(emptyList(), 9, List(9) { true }) { it >= 2 }
+        assertEquals(listOf(DashboardCard.Input, DashboardCard.OutputPair(0, 1)), used)
         assertEquals(1, DashboardCard.columnCount(0, 380f, 6))
         assertEquals(2, DashboardCard.columnCount(0, 900f, 6))
         assertEquals(2, DashboardCard.columnCount(3, 380f, 2))

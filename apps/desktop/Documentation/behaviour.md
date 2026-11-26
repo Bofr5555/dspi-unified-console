@@ -664,7 +664,8 @@ The NSIS script and its test (`apps/desktop/packaging/windows/`) are kept. Behav
 ## 25. Other desktop behaviours not in the Mac app
 
 - **Output labels:** an output whose slot name is still the default shows the derived label from the core, for
-  example "Out 1 · L · Full", in the sidebar, the overview cards and the matrix; a user name wins.
+  example "Out 1 · L · Low", in the sidebar, the overview cards and the matrix; a user name wins. A full-range output
+  says no "· Full" ("Out 1 · L"), and one fed by nothing no "· None" ("Out 3").
 - **Quick strip:** eight icon buttons (matrix, crossfeed, loudness, leveller, psychoacoustic bass, stats, settings,
   bypass). A secondary click opens the tool (M60). Buttons for features the firmware lacks are hidden (§14.1).
 - **Slider reset and rename:** right-click resets a slider to its default; Alt+click on a channel row renames it

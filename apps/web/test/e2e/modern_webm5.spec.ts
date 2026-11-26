@@ -7,7 +7,7 @@
 // from its Worker.
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { expectPage, openDevices, openPage, rail } from "../nav";
+import { expectPage, openDevices, openPage, rail, openSetting } from "../nav";
 
 /**
  * Firefox's report of a core Worker it ended itself (a reload, a page left) while a core call was
@@ -52,7 +52,7 @@ async function openDemo(page: Page): Promise<Locator> {
   await page.getByRole("listitem").filter({ hasText: "Demo DSPi" }).getByRole("button", { name: "Connect" }).click();
   const session = page.getByRole("article").first();
   await expect(rail(session)).toBeVisible();
-  await expect(session.locator(".device-meta")).toBeVisible();
+  await expect(session).toHaveAttribute("data-status", "open");
   return session;
 }
 
@@ -63,14 +63,14 @@ async function openVenues(page: Page, two = false): Promise<{ one: Locator; sess
   await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article").first();
   await expect(rail(session)).toBeVisible();
-  await expect(session.locator(".device-meta")).toBeVisible();
+  await expect(session).toHaveAttribute("data-status", "open");
   const tabs = one.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab");
   if (two) {
     await openDevices(one);
     await one.getByRole("region", { name: "Venue B" }).getByRole("button", { name: "Connect" }).click();
     await expect(tabs).toHaveCount(2);
     await tabs.first().click();
-    await expect(session.locator(".device-meta")).toBeVisible();
+    await expect(session).toHaveAttribute("data-status", "open");
   }
   return { one, session, tabs };
 }
@@ -85,8 +85,10 @@ async function setMode(page: Page, session: Locator, mode: "Simple" | "Advanced"
 
 /** Every page of the demo device, in the rail's order; the first of each section is its screenshot. */
 const PAGES = [
-  "Main", "Overview", "EQ", "Crossover", "Delay & gain", "Inputs", "Matrix", "Effects", "Measure", "Analyser", "Signal Generator",
-  "Stats for nerbs", "Interrupt Monitor", "Snapshots", "History", "Files", "System", "Events", "Connect", "Device", "Settings", "Control Surfaces",
+  "Main", "Overview", "EQ", "Crossover", "Delay & Gain", "Inputs", "Matrix", "Effects", "Measure", "Analyser", "Signal Generator",
+  "Stats for nerbs", "Interrupt Monitor", "Presets", "Snapshots", "History", "Files", "AutoEQ", // -- WP WEB7 --
+  "System", "Clock and Links", "Installation", "Events", "Signal Chain", // -- WP WEB7 --
+  "Connect", "Device", "Settings", "Control Surfaces",
 ];
 const SHOTS = new Set(["Main", "EQ", "Crossover", "Matrix", "Effects", "Measure", "Analyser", "Snapshots", "History", "System", "Device", "Settings"]);
 
@@ -128,7 +130,7 @@ test("WEBM5: two devices, the menus, the palette and the drawer at ~1000 px and 
     await shot(page, "palette");
     await page.keyboard.press("Escape");
     await openPage(session, "Settings");
-    await session.getByRole("navigation", { name: "Settings pages" }).getByRole("button", { name: "Appearance" }).click();
+    await openSetting(session, "Appearance"); // -- WP WEB7 -- its part, then its row
     await noSidewaysScroll(page);
     await shot(page, "appearance");
   }
@@ -151,9 +153,11 @@ test("WEBM5 (review RC13): at 375 px the shell's controls are 44 px tap targets,
   };
   const top = one.locator("header.top");
   await tall(top.locator(".app-menu .menu > button"), "the app menu");
-  await tall(top.locator(".device-tab > [role=tab]"), "a device tab");
-  await tall(top.locator(".device-tab-close"), "a tab's close", true);
-  await tall(top.locator(".device-add"), "Open another DSPi", true);
+  // -- WP REVEFIX -- two devices: their tabs are the row over the top bar (Qt's device row)
+  const row = one.locator(".device-row");
+  await tall(row.locator(".device-tab > [role=tab]"), "a device tab");
+  await tall(row.locator(".device-tab-close"), "a tab's close", true);
+  await tall(row.locator(".device-add"), "Open another DSPi", true);
   // (the search is the app menu's here)
   await expect(top.locator(".top-search")).toBeHidden();
   await tall(top.locator(".bell"), "the bell", true);
@@ -174,7 +178,7 @@ test("WEBM5 (review RC13): at 375 px the shell's controls are 44 px tap targets,
   await page.keyboard.press("Escape");
   // Appearance's choices, and the device tabs at the rail's top
   await openPage(session, "Settings");
-  await session.getByRole("navigation", { name: "Settings pages" }).getByRole("button", { name: "Appearance" }).click();
+  await openSetting(session, "Appearance"); // -- WP WEB7 -- its part, then its row
   const card = session.getByRole("region", { name: "Appearance" });
   await tall(card.locator("label"), "Appearance's choices");
   await card.getByRole("radio", { name: "At the top of the rail" }).check();
@@ -197,7 +201,7 @@ test("WEBM5 (review RC6): Appearance's Inspector choice applies at once, and the
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
   // Hidden in Settings › Appearance: the EQ page has it hidden at once, with no reload or tab switch
   await openPage(session, "Settings");
-  await session.getByRole("navigation", { name: "Settings pages" }).getByRole("button", { name: "Appearance" }).click();
+  await openSetting(session, "Appearance"); // -- WP WEB7 -- its part, then its row
   const card = session.getByRole("region", { name: "Appearance" });
   await card.getByRole("radio", { name: "Hidden" }).check();
   await openPage(session, "EQ");
@@ -207,7 +211,7 @@ test("WEBM5 (review RC6): Appearance's Inspector choice applies at once, and the
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
   await openPage(session, "Settings");
-  await session.getByRole("navigation", { name: "Settings pages" }).getByRole("button", { name: "Appearance" }).click();
+  await openSetting(session, "Appearance"); // -- WP WEB7 -- its part, then its row
   await expect(card.getByRole("radio", { name: "Beside the page" })).toBeChecked();
   // And kept: a new page load has the choice
   await card.getByRole("radio", { name: "Hidden" }).check();
@@ -271,13 +275,13 @@ test("WEBM5: devices opened and closed in turn, from the tab's ✕ and its menu:
     await openDevices(one);
     await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
     await expect(tabs).toHaveCount(2);
-    await expect(session.locator(".device-meta")).toBeVisible();
+    await expect(session).toHaveAttribute("data-status", "open");
   }
   for (let n = 2; n > 0; n--) {
     await one.getByRole("button", { name: /^Close / }).first().click();
     await expect(tabs).toHaveCount(n - 1);
   }
-  await expect(one.getByText("Choose a DSPi to connect to.")).toBeVisible();
+  await expect(one.getByText("No DSPi is connected. Connect one over USB, or try the demo device.")).toBeVisible();
   // A Worker's end is reported a moment after the close, if at all
   await page.waitForTimeout(500);
   expect(errors).toEqual([]);

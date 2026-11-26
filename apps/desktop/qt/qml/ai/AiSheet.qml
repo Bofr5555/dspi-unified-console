@@ -12,6 +12,9 @@ Dialog {
     property var question           // what the buttons are for; it arms them anew
     property bool wanted: false
     property string prefix
+    // -- WP SHOWFIX -- (finding 10) an agent's question: AiController may bring its
+    // device's tab to the front under it
+    readonly property bool aiQuestion: true
     default property alias body: column.data
     readonly property alias armed: answers.armed
     signal answered(bool allow)

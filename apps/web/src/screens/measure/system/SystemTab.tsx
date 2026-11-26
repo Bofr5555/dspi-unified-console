@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
 import type { MeasureDocCurvesRecord, MeasureRole } from "../../../core/measure-protocol";
 import { noticeRow } from "../../../ui/texts";
+import { CONNECT } from "../../../ui/shell/sections"; // -- WP INTD --
 import { MeasureGraph, type Series } from "../graph";
 import { ROLES } from "../model";
 import type { MeasureTab, MeasureTabProps } from "../MeasureScreen";
@@ -33,6 +34,7 @@ import {
   withUnit,
   type SystemPlacement,
 } from "./model";
+import { EmptyState } from "../../../ui/design"; // -- WP WEB --
 
 const col = { display: "flex", flexDirection: "column", gap: "8px", minWidth: 0 } as const;
 const row = { display: "flex", flexWrap: "wrap", gap: "8px 16px", alignItems: "flex-end" } as const;
@@ -60,7 +62,7 @@ function useSystemDesk(d: SystemDesk): SystemDesk {
 function Notice(props: { k: string; text?: string; label?: string }) {
   const r = noticeRow(props.k);
   return (
-    <p class={r?.kind === "warning" || r?.kind === "error" ? "error" : "muted"} role="note" aria-label={props.label ?? r?.title ?? "Notice"} data-key={props.k}>
+    <p class={r?.kind === "warning" || r?.kind === "error" ? "notice-row notice-row-warning" : "m-caption"} role="note" aria-label={props.label ?? r?.title ?? "Notice"} data-key={props.k}>
       <strong>{r?.title ?? ""}</strong> {props.text ?? (r ? `${r.reason} ${r.action}` : "")}
     </p>
   );
@@ -78,20 +80,30 @@ export function SystemTabView(props: MeasureTabProps) {
   d.micDeviceId = screen.mic.kind === "browser" ? screen.mic.deviceId : "";
   d.micDocument = screen.draft?.micDocument ?? screen.micDocument;
 
+  // -- WP WEB -- the empty state of DL2 (Qt's words), keeping the core's notice key
   if (d.unavailable)
     return (
-      <section class="card" aria-label="Several units" style={col}>
-        <Notice k={KEYS.needsHub} />
+      <section aria-label="Several units">
+        <div role="note" aria-label={noticeRow(KEYS.needsHub)?.title ?? "Notice"} data-key={KEYS.needsHub}>
+          <EmptyState
+            icon="network"
+            title={noticeRow(KEYS.needsHub)?.title ?? "Measuring several units needs the DSPi hub"}
+            text="The hub starts every unit's generator on one shared clock. Connect through the DSPi hub, or measure one unit at a time."
+            // -- WP INTD -- Qt's "Hubs…": the page that connects through a hub (Devices › Open a DSPi)
+            action={props.go ? { label: "Hubs…", run: () => props.go?.(CONNECT) } : undefined}
+          />
+        </div>
       </section>
     );
   const busy = !!d.busy || d.running;
   const draft = d.draft;
   const placement = placementProblem(draft.placement);
   return (
-    <section class="card" aria-label="Several units" style={col}>
+    // -- WP WEB4 -- DL2's Several units on a hub: no card, the run bar in the notice look with a secondary Stop
+    <section class="measure-units measure-column" aria-label="Several units" style={col}>
       {d.running ? (
-        <div class="banner" role="status" aria-label="Measuring across units" style={{ position: "sticky", top: 0, zIndex: 2, display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
-          <span style={{ flex: "1 1 12em" }} aria-label="Phase">
+        <div class="notice-row notice-row-info measure-stopbar" role="status" aria-label="Measuring across units">
+          <span class="notice-text" aria-label="Phase">
             {phaseWords(d.state)}
           </span>
           {/* -- WP ATDEMO -- */}
@@ -100,12 +112,12 @@ export function SystemTabView(props: MeasureTabProps) {
               {d.sim?.label}
             </span>
           ) : null}
-          <button type="button" class="danger" onClick={() => void d.stop()}>
+          <button type="button" onClick={() => void d.stop()}>
             Stop
           </button>
         </div>
       ) : null}
-      <p class="muted">
+      <p class="m-caption">
         Every unit plays its own generator, each start on its sample of the units' shared clock, and one microphone hears them all. The hub stops every unit if anything changes.
       </p>
       <label style={field}>
@@ -298,7 +310,7 @@ function ResultView(props: { d: SystemDesk }) {
   const series: Series[] = curves.flatMap((u, ui) => u.c.outputs.map((o, oi) => ({ label: outputLabel(u.serial, o.output), kind: "measured" as const, curve: o.measured, colour: ui * 4 + oi })));
   return (
     <section style={col} aria-label="Result across units">
-      <h3 style={{ margin: 0 }}>Result</h3>
+      <h4 class="section-label">Result</h4>
       <p class={r.timingReliable ? "muted" : "error"} aria-label="Timing across units" data-key={r.timingReliable ? "" : "measure.system.timing_unreliable"}>
         {r.timingReliable ? "The timing of every run was reliable." : issueWords({ key: "measure.system.timing_unreliable", message: r.reasons[0] ?? "the capture clock wandered between the units' sweeps" })}
         {r.runs > 1 ? ` ${r.runs} runs, chained through the anchor output.` : ""}
@@ -374,7 +386,7 @@ function ProposalView(props: { d: SystemDesk; busy: boolean }) {
   const wait = q ? Math.max(0, Math.ceil((q.since + 1000 - Date.now()) / 1000)) : 0;
   return (
     <section style={col} aria-label="Proposal across units">
-      <h3 style={{ margin: 0 }}>Proposal</h3>
+      <h4 class="section-label">Proposal</h4>
       <p class="muted">The measured arrivals go into the hub's installation; the hub's alignment then sets every unit's delays. Nothing else changes.</p>
       {p.arrivals.length ? (
         <ul aria-label="Arrivals to write" style={{ margin: 0 }}>
@@ -464,7 +476,7 @@ function ProposalView(props: { d: SystemDesk; busy: boolean }) {
             ) : null}
           </div>
           {q ? (
-            <div role="alertdialog" aria-label="Keep anyway?" class="banner" style={col}>
+            <div role="alertdialog" aria-label="Keep anyway?" class="notice-row notice-row-warning m-question" style={col}>
               <p>{q.text}</p>
               <div style={row}>
                 <button type="button" class="danger" disabled={!ready || busy} onClick={() => void d.confirmKeep()}>

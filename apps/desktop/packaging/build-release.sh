@@ -65,20 +65,40 @@ run() {  # <image> <name> <command>: the tree at /src, scratch at /work, files t
         "$1" bash -c "$3"
 }
 
+# -- WP CIPAR -- DSPI_RELEASE_JOBS=N runs up to N of the builds below at once
+# (each its own image, scratch and target; default 1, one after another as
+# before). Each build's output then goes to $scratch/<name>.log, printed when
+# it ends; the first that fails fails the script once the others are done.
+jobs=${DSPI_RELEASE_JOBS:-1}
+pids=(); names=()
+build() {  # <name> <command>: run (above) in the image just made, now or beside the others
+    if [ "$jobs" -le 1 ]; then run "$tag" "$1" "$2"; return; fi
+    while [ "$(jobs -rp | wc -l)" -ge "$jobs" ]; do wait -n || true; done
+    run "$tag" "$1" "$2" > "$scratch/$1.log" 2>&1 &
+    pids+=($!); names+=("$1")
+}
 L=$here/linux
 image uconsole-for-dspi-ubuntu "$L/Containerfile.ubuntu" "$L"
-run "$tag" ubuntu 'apps/desktop/packaging/linux/build-ubuntu.sh && apps/desktop/packaging/linux/make-appimage.sh /work/build/AppDir /dist'
+build ubuntu 'apps/desktop/packaging/linux/build-ubuntu.sh && apps/desktop/packaging/linux/make-appimage.sh /work/build/AppDir /dist'
 if [ -z "$only" ]; then
 image uconsole-for-dspi-debian "$L/Containerfile.debian" "$L"
-run "$tag" debian 'apps/desktop/packaging/linux/build-debian.sh /dist'
+build debian 'apps/desktop/packaging/linux/build-debian.sh /dist'
 for fc in $FEDORAS; do
     image uconsole-for-dspi-fedora "$L/Containerfile.fedora" "$L" --build-arg "FEDORA=$fc"
-    run "$tag" "fedora$fc" 'apps/desktop/packaging/linux/build-fedora.sh /dist'
+    build "fedora$fc" 'apps/desktop/packaging/linux/build-fedora.sh /dist'
 done
 image uconsole-for-dspi-windows "$here/windows/Containerfile" "$here/windows"
-run "$tag" windows 'apps/desktop/packaging/windows/build-windows.sh /work/dist && cp /work/dist/uConsole-for-DSPi-*-windows-x86_64.zip /work/dist/uConsole-for-DSPi-*-windows-x86_64-setup.exe /dist/'
+build windows 'rm -f /work/dist/uConsole-for-DSPi-*-windows-x86_64.zip /work/dist/uConsole-for-DSPi-*-windows-x86_64-setup.exe && apps/desktop/packaging/windows/build-windows.sh /work/dist && cp /work/dist/uConsole-for-DSPi-*-windows-x86_64.zip /work/dist/uConsole-for-DSPi-*-windows-x86_64-setup.exe /dist/'
 "$repo/ci/release-source.sh" --with-desktop "$version" "$dist" >/dev/null
 fi
+failed=
+for i in "${!pids[@]}"; do
+    if wait "${pids[$i]}"; then rc=0; else rc=$?; fi
+    echo "== build-release: ${names[$i]}: exit $rc"; cat "$scratch/${names[$i]}.log"
+    [ "$rc" = 0 ] || failed+=" ${names[$i]}"
+done
+[ -z "$failed" ] || { echo "build-release: failed:$failed" >&2; exit 1; }
+# -- WP CIPAR end --
 
 # The release folder: exactly the files above, nothing else (release-sums.sh
 # sums every file in it)

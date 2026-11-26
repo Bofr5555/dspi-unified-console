@@ -5,7 +5,7 @@
 // SHOTS_DIR names a directory.
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { expectPage, openDevices, openPage, partsOf, rail } from "../nav";
+import { expectPage, openDevices, openPage, partsOf, rail, openSetting } from "../nav";
 
 function errorsOf(page: Page) {
   const errors: string[] = [];
@@ -41,15 +41,15 @@ async function open(page: Page, two = false): Promise<{ one: Locator; session: L
   await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article").first();
   await expect(rail(session)).toBeVisible();
-  await expect(session.locator(".device-meta")).toBeVisible();
+  await expect(session).toHaveAttribute("data-status", "open");
   if (two) {
     await openDevices(one);
     await one.getByRole("region", { name: "Venue B" }).getByRole("button", { name: "Connect" }).click();
     const tabs = one.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab");
     await expect(tabs).toHaveCount(2);
-    await expect(session.locator(".device-meta")).toBeVisible();
+    await expect(session).toHaveAttribute("data-status", "open");
     await tabs.first().click();
-    await expect(session.locator(".device-meta")).toBeVisible();
+    await expect(session).toHaveAttribute("data-status", "open");
   }
   return { one, session };
 }
@@ -128,7 +128,7 @@ test("WEBM4: the top bar's search; greyed rows say why; other devices are a swit
   const tabs = one.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab");
   await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
   // Venue B is view only: its writes are listed greyed, with why, and not chosen
-  await expect(session.locator(".badge.read-only")).toBeVisible();
+  await expect(session.locator(".read-only-reason")).toBeVisible(); // -- WP REVEFIX -- said in the strip (the badge is gone with the session bar)
   await page.keyboard.press(`${mod}+k`);
   await field(page).fill("commit");
   const commit = option(page, /^Commit Parameters…/);
@@ -171,7 +171,8 @@ test("WEBM4: context menus of a channel, a device tab and a preset slot, by the 
   await out1.click({ button: "right" });
   const menu = one.getByRole("menu", { name: /^OUT1/ });
   await expect(menu).toBeVisible();
-  await expect(menu.getByRole("menuitem", { name: "Copy Parameters" })).toBeFocused();
+  await expect(menu.getByRole("menuitem", { name: "Rename", exact: true })).toBeFocused(); // -- WP INTD -- actions.json's channel.rename first
+  await expect(menu.getByRole("menuitem", { name: "Copy Parameters" })).toBeVisible();
   await expect(menu.getByRole("menuitem", { name: "Identify" })).toBeVisible();
   await shot(page, "channel-menu");
   await page.keyboard.press("Escape");
@@ -181,19 +182,21 @@ test("WEBM4: context menus of a channel, a device tab and a preset slot, by the 
   await page.keyboard.press("Shift+F10");
   await one.getByRole("menu", { name: /^OUT1/ }).getByRole("menuitem", { name: "Edit Routing…" }).click();
   await expectPage(session, "Matrix");
-  // The Channel button has the same rows
+  // -- WP WEB6 -- Qt's page tools: Files ▾ and the inspector's toggle, no Channel button (the menu is the right click's)
   await openPage(session, "EQ");
-  await session.locator(".eq-tools").getByRole("button", { name: "Channel" }).click();
-  await expect(session.getByRole("menu", { name: "Channel" }).getByRole("menuitem", { name: "Copy Parameters" })).toBeVisible();
-  await page.keyboard.press("Escape");
+  await expect(session.locator(".eq-tools").getByRole("button", { name: "Channel" })).toHaveCount(0);
+  await expect(session.locator(".eq-tools").getByRole("button", { name: "Files" })).toBeVisible();
 
-  // A preset slot (Library): Recall and Save Current Settings Here
-  await openPage(session, "Snapshots");
-  const slot = session.getByRole("group", { name: "Preset slots" }).locator(".slot").nth(1);
-  await slot.click({ button: "right" });
-  const slotMenu = one.getByRole("menu", { name: "Preset 2" });
-  await expect(slotMenu.getByRole("menuitem", { name: "Recall" })).toBeVisible();
-  await expect(slotMenu.getByRole("menuitem", { name: "Save Current Settings Here" })).toBeVisible();
+  // A preset slot (-- WP INTD -- its row in the session bar's preset popover): actions.json's `slot` menu
+  await session.getByRole("button", { name: /^Presets: / }).click();
+  const slot = session.getByRole("dialog", { name: "Presets" }).getByRole("listitem", { name: /^2: / });
+  await slot.getByRole("button", { name: "More" }).click();
+  const slotMenu = slot.getByRole("menu");
+  // -- WP REVEFIX -- (REVE B1, D8) Copy to… is the active slot's only; Clear names its slot
+  for (const item of ["Recall", "Save Current Settings Here", "Rename…", "Set as Startup Preset", /^Clear ".+"…$/, "Clear All Slots…"])
+    await expect(slotMenu.getByRole("menuitem", { name: item, exact: true })).toBeVisible();
+  await expect(slotMenu.getByRole("menuitem", { name: "Copy to…" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
   await page.keyboard.press("Escape");
 
   await noSidewaysScroll(page);
@@ -236,21 +239,22 @@ test("WEBM4: Settings › Appearance arranges the shell at once and keeps it in 
   const errors = errorsOf(page);
   const { one, session } = await open(page, true);
   await openPage(session, "Settings");
-  await session.getByRole("navigation", { name: "Settings pages" }).getByRole("button", { name: "Appearance" }).click();
+  await openSetting(session, "Appearance"); // -- WP WEB7 -- its part, then its row
   const card = session.getByRole("region", { name: "Appearance" });
   const root = one.locator(".dspi-web");
   // The device tabs at the rail's top
   await card.getByRole("radio", { name: "At the top of the rail" }).check();
   await expect(root).toHaveAttribute("data-device-tabs", "rail");
   await expect(rail(session).getByRole("tablist", { name: "Open DSPi" }).getByRole("tab")).toHaveCount(2);
-  await expect(one.locator("header.top").getByRole("tablist", { name: "Open DSPi" })).toHaveCount(0);
+  await expect(one.locator("header.top, .device-row").getByRole("tablist", { name: "Open DSPi" })).toHaveCount(0);
   await noSidewaysScroll(page);
   await shot(page, "devices-in-rail");
   // Tabs along the top: no rail, so the device tabs go back to the top bar
   await card.getByRole("radio", { name: "Tabs along the top" }).check();
   await expect(root).toHaveAttribute("data-nav", "tabs");
   await expect(root).not.toHaveAttribute("data-device-tabs", "rail");
-  await expect(one.locator("header.top").getByRole("tablist", { name: "Open DSPi" })).toBeVisible();
+  // -- WP REVEFIX -- two devices: their own row over the top bar (Qt's device row)
+  await expect(one.locator(".device-row").getByRole("tablist", { name: "Open DSPi" })).toBeVisible();
   await expect(card.getByRole("radio", { name: "In the top bar" })).toBeDisabled();
   // The theme
   await card.getByRole("radio", { name: "Dark" }).check();
@@ -261,7 +265,7 @@ test("WEBM4: Settings › Appearance arranges the shell at once and keeps it in 
   await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
   await expect(root).toHaveAttribute("data-nav", "tabs");
   await expect(root).toHaveAttribute("data-theme", "dark");
-  await expect(session.locator(".device-meta")).toBeVisible();
+  await expect(session).toHaveAttribute("data-status", "open");
   expect(errors).toEqual([]); // before a close (see the context menus' test)
   // With no device open, Settings… in the app menu has the same
   await one.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab").first().click({ button: "right" });

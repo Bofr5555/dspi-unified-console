@@ -10,6 +10,9 @@ import UConsole
 // pair map on firmware that has it. While a preset other than Custom is
 // chosen the parameter rows are dimmed and show that preset's own values;
 // moving one makes the preset Custom.
+// -- WP DL1 -- Modern (DESIGN-LANGUAGE): the intro row, the graph in a
+// GraphFrame, no lines between the parts, the pairs as option chips, the
+// two columns at most 1200 wide from the left of the page.
 // -- WP LAY1a -- A panel (Panel.qml): PanelTable's row for
 // tools.crossfeed gives its window's title and sizes.
 Panel {
@@ -60,7 +63,8 @@ Panel {
             id: body
             Layout.fillWidth: true
             Layout.fillHeight: true
-            contentHeight: columns.implicitHeight + 2 * Theme.spacingLarge
+            readonly property int topGap: LayoutController.modern ? Theme.spacingSection : Theme.spacingLarge   // -- WP DL1 --
+            contentHeight: columns.implicitHeight + topGap + Theme.spacingLarge
             clip: true
             boundsBehavior: Flickable.StopAtBounds
             ScrollBar.vertical: AppScrollBar {}
@@ -74,8 +78,8 @@ Panel {
             RowLayout {
                 id: columns
                 x: 0
-                y: Theme.spacingLarge
-                width: parent.width
+                y: body.topGap
+                width: LayoutController.modern ? Math.min(parent.width, 1200) : parent.width   // -- WP DL1 --
                 spacing: 0
 
                 // ---- Left: the response and the presets ----
@@ -94,7 +98,7 @@ Panel {
                             id: graph
                             objectName: "CrossfeedWindow.graph"
                             Layout.fillWidth: true
-                            Layout.preferredHeight: 160
+                            Layout.preferredHeight: LayoutController.modern ? 200 : 160   // -- WP DL1 --
                             title: qsTr("Frequency Response")
                             active: EffectsController.crossfeedOn
                             readonly property var graphData: EffectsController.crossfeedGraph(
@@ -298,12 +302,11 @@ Panel {
                             Layout.fillWidth: true
                         }
                         // One chip per pair: two columns with the map, one row without
-                        GridLayout {
+                        // (-- WP DL1 -- Modern: as wide as their labels, from the left)
+                        EffectChipRow {
                             objectName: panel.showPairMap ? "CrossfeedWindow.pairChips" : "CrossfeedWindow.plainPairChips"
                             Layout.fillWidth: true
-                            columns: panel.showPairMap ? 2 : Math.max(1, EffectsController.crossfeedPairCount)
-                            columnSpacing: 6
-                            rowSpacing: 6
+                            classicColumns: panel.showPairMap ? 2 : Math.max(1, EffectsController.crossfeedPairCount)
                             Repeater {
                                 model: EffectsController.crossfeedPairCount
                                 EffectChip {

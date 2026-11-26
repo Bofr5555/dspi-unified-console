@@ -23,10 +23,12 @@ use crate::records::{DspState, FilterParams};
 pub struct OutputLabel {
     /// 0-based output index.
     pub output: u8,
-    /// What to show: the user's name, else "Out 1 · R · Low".
+    /// What to show: the user's name, else "Out 1 · R · Low"; an unused
+    /// output "3 · None" (owner 2026-11-24).
     pub label: String,
     /// The same for a phone row, beside the output's "OUTn" button: the
-    /// user's name, else "R · Low" (owner decision, review c86 F3).
+    /// user's name, else "R · Low" (owner decision, review c86 F3); an unused
+    /// output "None".
     pub short_label: String,
     /// The firmware's name for the slot ("I2S 1 L", "PDM"), for a tooltip or
     /// a detail line.
@@ -37,6 +39,19 @@ pub struct OutputLabel {
     pub channel: String,
     /// "Low", "High", "Band" or "Full".
     pub band: String,
+    // -- WP REVEFIX --
+    /// No input is routed to the output (owner 2026-11-24): a view that only
+    /// shows (the Overview's cards and tiles, a phone's Home, a summary) leaves
+    /// it out; a view that edits it shows `label`. [`DspiCore::output_cards`]
+    /// leaves it out already.
+    pub unused: bool,
+    // -- WP FIN015 -- (REVF R1)
+    /// `unused`, and no test signal plays on it (the signal generator, which a
+    /// measurement, a live run and Identify use too): what a view that only
+    /// shows levels (meters, a Spectrum chooser, Stats) leaves out. The
+    /// generator writes after the matrix, so an unused output it plays on is
+    /// loud and keeps its meter; it still reads "3 · None".
+    pub hidden: bool,
 }
 
 /// One dashboard card: two outputs side by side, or one alone.
@@ -118,6 +133,7 @@ impl From<&OutputLabelInput> for LabelSource {
                 .collect(),
             output_enabled: i.output_enabled.clone(),
             pair_map: pair_map(&i.crossfeed_pair_map),
+            playing: Vec::new(), // -- WP FIN015 -- the client's own state has no generator
         }
     }
 }
@@ -140,7 +156,20 @@ pub(crate) fn source(s: &DspState) -> LabelSource {
         filters: (0..no).map(|o| bands(ni.saturating_add(o))).collect(),
         output_enabled: s.output_enabled.clone(),
         pair_map: pair_map(&s.crossfeed_pair_map),
+        playing: Vec::new(), // -- WP FIN015 -- see `playing`
     }
+}
+
+// -- WP FIN015 -- (REVF R1)
+/// The mirror's view with the outputs this connection knows a test signal
+/// plays on (`stats::SiggenOutputs`).
+fn source_now(inner: &crate::Inner) -> LabelSource {
+    let mut src = source(&inner.state);
+    let mask = inner.conn.as_ref().map_or(0, |c| c.siggen.playing());
+    src.playing = (0..src.num_outputs)
+        .map(|o| u32::try_from(o).is_ok_and(|o| mask.checked_shr(o).is_some_and(|m| m & 1 != 0)))
+        .collect();
+    src
 }
 
 fn index(i: usize) -> u8 {
@@ -158,6 +187,8 @@ fn labels(src: &LabelSource) -> Vec<OutputLabel> {
             user_named: l.user_named,
             channel: l.channel,
             band: l.band.word().into(),
+            unused: l.unused, // -- WP REVEFIX --
+            hidden: l.hidden, // -- WP FIN015 --
         })
         .collect()
 }
@@ -195,7 +226,7 @@ impl DspiCore {
     /// else "Out N · channel · band" from the routing and the filters. Call it
     /// when the state changes, not per frame. Never fails.
     pub fn output_labels(&self) -> Vec<OutputLabel> {
-        let src = source(&self.lock().state);
+        let src = source_now(&self.lock()); // -- WP FIN015 --
         labels(&src)
     }
 
@@ -340,13 +371,24 @@ mod tests_bug1 {
         let l = shown(&core);
         assert_eq!(l.len(), usize::from(s.num_output_channels));
         // Every label is either the demo's own name or a derived one, and a
-        // derived one starts with its output number
+        // derived one is its output number, then the words it has (-- WP INTD
+        // -- W12; -- WP REVEFIX -- an unused output is "3 · None")
         for (o, x) in core.output_labels().iter().enumerate() {
             let name = &s.channel_names[usize::from(s.num_input_channels) + o];
             if x.user_named {
                 assert_eq!(&x.label, name);
+            } else if x.unused {
+                assert_eq!(x.label, format!("{} · None", o + 1));
             } else {
-                assert!(x.label.starts_with(&format!("Out {} · ", o + 1)), "{x:?}");
+                let number = format!("Out {}", o + 1);
+                assert!(
+                    x.label == number || x.label.starts_with(&format!("{number} · ")),
+                    "{x:?}"
+                );
+                assert!(
+                    !x.label.contains("· None") && !x.label.contains("· Full"),
+                    "{x:?}"
+                );
             }
         }
         // The demo has no pair map: cards pair by slot
@@ -381,5 +423,71 @@ mod tests_bug1 {
         // An empty input is no outputs, not a panic
         assert!(output_labels_for(OutputLabelInput::default()).is_empty());
         assert!(output_cards_for(OutputLabelInput::default()).is_empty());
+    }
+
+    // -- WP FIN015 --
+    /// An unrouted output the generator plays on is unused ("3 · None") but
+    /// not hidden: the generator writes after the matrix, so it is loud and
+    /// keeps its meter (REVF R1, code-regr P4). A start by another console
+    /// (only its event seen here) is read from the device; the stop event
+    /// hides it again.
+    #[test]
+    fn fin015_an_unused_output_the_generator_plays_on_is_not_hidden() {
+        use crate::consts::{NOTIFY_SIGGEN, SIGGEN_CTL_START, SIGGEN_CTL_STOP_NOW};
+        let core = demo();
+        let s = core.get_state();
+        const OUT: u8 = 2;
+        for i in 0..s.num_input_channels {
+            core.set_matrix_route(i, OUT, false, 0.0, false)
+                .expect("unroute");
+        }
+        let at = |core: &DspiCore| core.output_labels()[usize::from(OUT)].clone();
+        let l = at(&core);
+        assert!(l.unused && l.hidden, "silent and unrouted: {l:?}");
+        let until_siggen = |core: &DspiCore| {
+            let t = std::time::Instant::now();
+            while core.process_notifications().flags & NOTIFY_SIGGEN == 0 {
+                assert!(
+                    t.elapsed() < std::time::Duration::from_secs(5),
+                    "no siggen event"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+        };
+
+        core.siggen_set_config(crate::records::SiggenConfig {
+            signal_type: 3, // pink
+            channel_mask: 1 << OUT,
+            level_db: -40.0,
+            p: vec![0.0; 4],
+            ..Default::default()
+        })
+        .expect("stage");
+        core.siggen_control(SIGGEN_CTL_START).expect("start");
+        let l = at(&core);
+        assert!(l.unused, "still unused: {l:?}");
+        assert!(!l.hidden, "shown while the generator plays on it: {l:?}");
+        assert_eq!(l.label, format!("{} · None", OUT + 1));
+        until_siggen(&core);
+        assert!(!at(&core).hidden, "the start event keeps it shown");
+
+        core.siggen_control(SIGGEN_CTL_STOP_NOW).expect("stop");
+        until_siggen(&core);
+        assert!(at(&core).hidden, "stopped: hidden again");
+
+        // Started elsewhere: this connection only sees the event.
+        core.siggen_control(SIGGEN_CTL_START).expect("start");
+        core.lock().conn().unwrap().siggen = crate::stats::SiggenOutputs::default();
+        assert!(at(&core).hidden);
+        until_siggen(&core);
+        assert!(!at(&core).hidden, "learnt from the device's config");
+        let others = core.output_labels();
+        assert!(
+            others
+                .iter()
+                .filter(|l| l.output != OUT)
+                .all(|l| l.hidden == l.unused),
+            "only the generator's output: {others:?}"
+        );
     }
 }

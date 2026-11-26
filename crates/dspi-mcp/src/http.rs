@@ -100,16 +100,16 @@ pub const HEADER_MISMATCH: i64 = -32020;
 
 /// What a paused server answers `tools/call` with (-- WP AIVIS -- as `status:
 /// "paused"`, not as an error).
-pub const PAUSED_TEXT: &str = "DSPi Console: the user has paused AI agents. This call was not run \
+pub const PAUSED_TEXT: &str = "uConsole for DSPi: the user has paused AI agents. This call was not run \
 and nothing was changed. Wait, or ask the user to press Resume; then call again.";
 
 // -- WP MCP4 --
 /// The 503 reply's words while the server stops.
-const STOPPED_TEXT: &str = "AI agents have been turned off in DSPi Console";
+const STOPPED_TEXT: &str = "AI agents have been turned off in uConsole for DSPi";
 
 /// The 401 reply's words.
-pub const UNAUTHORISED_TEXT: &str = "DSPi Console does not know this token. Pair this agent again, or add it \
-in DSPi Console under Settings, AI agents.";
+pub const UNAUTHORISED_TEXT: &str = "uConsole for DSPi does not know this token. Pair this agent again, or add it \
+in uConsole for DSPi under Settings, AI agents.";
 
 /// The bounds of the listener.
 #[derive(Debug, Clone)]
@@ -431,8 +431,13 @@ impl Shared {
             "device".into(),
             json!(device.as_ref().map(dspi_core::DeviceId::as_str)),
         );
+        // -- WP SHOWFIX -- the agent counts from 1; the app's row from 0
         for key in ["output", "input", "channel", "band", "slot"] {
-            if let Some(n) = args.and_then(|a| a.get(key)).and_then(Value::as_u64) {
+            if let Some(n) = args
+                .and_then(|a| a.get(key))
+                .and_then(Value::as_u64)
+                .and_then(|n| n.checked_sub(1))
+            {
                 row.insert(key.into(), json!(n));
             }
         }
@@ -738,6 +743,10 @@ impl HttpServer {
                     if let Some(o) = v.as_object_mut() {
                         o.insert("title".into(), json!(title));
                         o.insert("at_unix_ms".into(), json!(started.saturating_add(e.at_ms)));
+                        // -- WP SHOWFIX -- (finding 4) the app's words, the app's alone
+                        if !e.said.is_empty() {
+                            o.insert("said".into(), json!(e.said));
+                        }
                     }
                     v
                 })

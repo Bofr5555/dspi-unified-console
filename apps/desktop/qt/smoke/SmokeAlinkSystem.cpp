@@ -300,6 +300,7 @@ void alinkSystemSection(SmokeDriver &d) {
     d.check("lkui1: the editor's fields and buttons", latencyB() && save() && reload() && staleNote());
     if (!latencyB() || !save() || !reload() || !staleNote()) return;
     latencyB()->setProperty("text", QStringLiteral("150"));
+    QMetaObject::invokeMethod(latencyB(), "textEdited"); // -- WP INTE -- (REVE C1) as typed: Enter writes only typed text
     QMetaObject::invokeMethod(latencyB(), "accepted");
     d.check("lkui1: an edit makes a draft, Save offered", sys->dirty() && !sys->stale() && save()->isVisible() && save()->isEnabled());
     d.check("lkui1: another installer saves meanwhile",
@@ -314,6 +315,7 @@ void alinkSystemSection(SmokeDriver &d) {
     // A Save sent before the poll sees the change: the hub's conflict, the same outcome
     d.check("lkui1: a view after Reload", fresh());
     latencyB()->setProperty("text", QStringLiteral("160"));
+    QMetaObject::invokeMethod(latencyB(), "textEdited"); // -- WP INTE -- (REVE C1) as typed: Enter writes only typed text
     QMetaObject::invokeMethod(latencyB(), "accepted");
     d.check("lkui1: another installer saves again",
             saveElsewhere(hub.url, R"({"units":[{"unitId":"C","measuredLatencyUs":95}]})"));
@@ -323,6 +325,7 @@ void alinkSystemSection(SmokeDriver &d) {
     // Saved for real
     d.check("lkui1: a view to edit", fresh());
     latencyB()->setProperty("text", QStringLiteral("170"));
+    QMetaObject::invokeMethod(latencyB(), "textEdited"); // -- WP INTE -- (REVE C1) as typed: Enter writes only typed text
     QMetaObject::invokeMethod(latencyB(), "accepted");
     const int before = sys->revision();
     d.check("lkui1: Save", click(save()) && d.waitFor(15000, [&] { return !sys->busy() && !sys->dirty(); }) && !sys->actionFailed());

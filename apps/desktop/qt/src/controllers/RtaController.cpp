@@ -365,7 +365,7 @@ int RtaController::requestsSent() const { return m_requestsSent; }
 
 // ---- Selections ----
 
-QList<int> RtaController::available(int tap) const {
+QList<int> RtaController::available(int tap, bool hideUnused, const QList<int> &keep) const {
     QList<int> out;
     const ChannelListModel *rows = m_ctx.device->channels();
     if (!rows || !ready()) return out;
@@ -379,6 +379,10 @@ QList<int> RtaController::available(int tap) const {
         const int ch = input ? wire : wire - inputs;
         if (ch < 0 || ch >= limit) continue;
         if (!input && !rows->get(r, QStringLiteral("outputEnabled")).toBool()) continue;
+        // -- WP INTE -- (owner 2026-11-24) the chooser only shows: an output
+        // nothing is routed to is left out, unless it is being analysed
+        // -- WP FIN015 -- (REVF R1) or the generator plays on it
+        if (hideUnused && !input && rows->get(r, QStringLiteral("hidden")).toBool() && !keep.contains(ch)) continue;
         out.append(ch);
     }
     return out;
@@ -511,7 +515,9 @@ QVariantMap RtaController::channelInfo(int tap, int channel) const {
     const ChannelListModel *rows = m_ctx.device->channels();
     const int row = rows ? rows->rowOfChannel(wire) : -1;
     if (row >= 0) {
-        const QString label = rows->get(row, QStringLiteral("label")).toString();
+        // -- WP FIN015 -- (REVF D1) the name the other pages use ("Centre woofer"), else the label
+        const QString shown = rows->get(row, QStringLiteral("displayName")).toString();
+        const QString label = shown.isEmpty() ? rows->get(row, QStringLiteral("label")).toString() : shown;
         if (!label.isEmpty()) m.insert(QStringLiteral("name"), label);
         m.insert(QStringLiteral("number"), rows->get(row, QStringLiteral("number")));
         m.insert(QStringLiteral("pdm"), rows->get(row, QStringLiteral("pdm")));
@@ -520,8 +526,13 @@ QVariantMap RtaController::channelInfo(int tap, int channel) const {
 }
 
 QVariantList RtaController::channels(int tap) const {
+    // -- WP INTE -- (owner 2026-11-24) an unused output is not offered, but one
+    // being analysed stays, so it can be turned off
+    QList<int> keep;
+    for (const Selection &s : { own(), drawn() })
+        if (s.tap == tap) keep += s.channels;
     QVariantList out;
-    for (int c : available(tap)) out.append(channelInfo(tap, c));
+    for (int c : available(tap, true, keep)) out.append(channelInfo(tap, c));
     return out;
 }
 

@@ -14,7 +14,7 @@
 //   between screens.
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { appMenu, expectPage, openPage } from "../nav";
+import { appMenu, expectPage, openPage, openSetting } from "../nav";
 
 type Client = { call(m: string, p: unknown): Promise<unknown> };
 type G = { dspiClients: Client[] };
@@ -78,23 +78,25 @@ test("WB6l CG20: a control's row is the core's, Pending until Apply, live until 
   await knob.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(knob.locator(".cs-pill")).toHaveText("Active");
   expect((await call<Snap>(page, "csSnapshot")).bindings[0]!.noun).toBe(other.value);
+  // -- WP WEB7 -- Save and Revert on Qt's save bar, there only while something is unsaved
   const bar = session.getByRole("region", { name: "Control surfaces" });
-  await expect(bar.locator(".cs-pill")).toHaveText("Unsaved changes");
+  await expect(bar.locator(".cs-save-title")).toHaveText("Unsaved changes");
 
   // Revert asks, then the stored function is back.
   await bar.getByRole("button", { name: "Revert", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Revert Control Surfaces" });
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Revert" }).click();
-  await expect(bar.locator(".cs-pill")).toHaveText("Saved");
+  await expect(bar).toHaveCount(0);
   await expect(pick).toHaveValue(String(noun.value));
 
   // Apply again and Save: stored.
   await pick.selectOption(String(other.value));
   await knob.getByRole("button", { name: "Apply", exact: true }).click();
-  await expect(bar.locator(".cs-pill")).toHaveText("Unsaved changes");
+  await expect(bar.locator(".cs-save-title")).toHaveText("Unsaved changes");
+  await expect(bar.getByRole("button", { name: "Save", exact: true })).toHaveClass(/primary/);
   await bar.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(bar.locator(".cs-pill")).toHaveText("Saved");
+  await expect(bar).toHaveCount(0);
   expect((await call<Snap>(page, "csSnapshot")).status.dirty).toBe(false);
   if (test.info().project.name === "narrow") await noOverflow(page);
   expect(errors).toEqual([]);
@@ -104,15 +106,17 @@ test("WB6l CG20: a new control works when added; a group needs a member; a macro
   const errors = errorsOf(page);
   const session = await openSession(page);
   await openSurfaces(session);
-  await session.getByRole("combobox", { name: "Component type" }).selectOption({ label: "Toggle Switch" });
+  // -- WP WEB7 -- Add Control is a menu of the types (Qt's CsAddButton), no select
+  await expect(session.getByRole("combobox", { name: "Component type" })).toHaveCount(0);
   await session.getByRole("button", { name: "Add Control" }).click();
+  await session.getByRole("menu", { name: "Add Control" }).getByRole("menuitem", { name: "Toggle Switch" }).click();
   const sw = card(session, "Toggle Switch");
   await expect(sw.locator(".cs-pill")).toHaveText("Active");
   await expect(sw.getByRole("button", { name: "Collapse Toggle Switch" })).toBeVisible();
   await sw.getByRole("button", { name: "Remove Toggle Switch" }).click();
   await expect(sw).toHaveCount(0);
 
-  await session.getByRole("tab", { name: "Groups", exact: true }).click();
+  await openSetting(session, "Channel Groups"); // -- WP WEB7 -- a page of Settings › Control
   await expect(card(session, "Front Pair")).toBeVisible();
   await session.getByRole("button", { name: "Add Group" }).click();
   const g = card(session, "Group 2");
@@ -123,7 +127,7 @@ test("WB6l CG20: a new control works when added; a group needs a member; a macro
   await expect(g.getByRole("button", { name: "Apply", exact: true })).toBeDisabled();
   await expect(g.locator(".cs-message")).toHaveText("");
 
-  await session.getByRole("tab", { name: "Macros", exact: true }).click();
+  await openSetting(session, "Macros");
   const night = card(session, "Night");
   await night.getByRole("button", { name: "Run Night" }).click();
   await expect(night.locator(".cs-summary")).toHaveText(/Running|step/);
@@ -234,7 +238,8 @@ test("WB6l read only: the editor and the strip show but write nothing; the keys 
   await expect(knob.getByRole("button", { name: "Apply", exact: true })).toBeDisabled();
   await expect(knob.getByRole("button", { name: "Remove Volume Knob" })).toBeDisabled();
   await expect(session.getByRole("button", { name: "Add Control" })).toBeDisabled();
-  await expect(session.getByRole("region", { name: "Control surfaces" }).getByRole("button", { name: "Save" })).toBeDisabled();
+  // -- WP WEB7 -- nothing unsaved: no save bar (Qt's shows only while something is pending)
+  await expect(session.getByRole("region", { name: "Control surfaces" })).toHaveCount(0);
   // Past the page, the core refuses before anything is sent.
   const r = await call<{ ok: boolean }>(page, "csApply", { op: { op: "save" } });
   expect(r.ok).toBe(false);

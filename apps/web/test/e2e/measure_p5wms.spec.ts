@@ -25,13 +25,21 @@ async function call<T>(page: Page, method: string, params: unknown = null): Prom
   return (await page.evaluate(([m, p]) => (globalThis as unknown as G).dspiClients[0]!.call(m as string, p), [method, params] as const)) as T;
 }
 
-function errorsOf(page: Page) {
+// -- INTC -- `expected`: a console error the test causes on purpose, left out
+function errorsOf(page: Page, expected: (text: string) => boolean = () => false) {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => {
-    if (m.type() === "error") errors.push(m.text());
+    if (m.type() === "error" && !expected(m.text())) errors.push(m.text());
   });
   return errors;
+}
+
+/** -- INTC -- The browser's console line for a WebSocket to `port`'s /dspi/v1 that was refused (Firefox: "Firefox
+ * can't establish a connection to the server at ws://…", Chromium: "WebSocket connection to 'ws://…' failed"). */
+function refusedSocket(text: string, port: number): boolean {
+  const url = `ws://127.0.0.1:${port}/dspi/v1`;
+  return text.includes(`establish a connection to the server at ${url}`) || text.includes(`WebSocket connection to '${url}' failed`);
 }
 
 const desktop = (w: number | undefined) => (w ?? 0) >= 500;
@@ -53,12 +61,13 @@ async function measureScreen(page: Page, venue = "Venue A", lowerVolume = true):
 // -- WP P5FOLLOW --
 /** No placement is assumed: Check and Start wait for the person, said in words; then speakers at the listening position. */
 async function choosePlacement(setup: Locator): Promise<void> {
-  await expect(setup.getByRole("radiogroup", { name: "Placement" }).getByRole("radio", { checked: true })).toHaveCount(0);
-  await expect(setup.getByRole("button", { name: "Start measuring" })).toBeDisabled();
+  // -- WP WEB7 -- a combo as Qt's: "Choose the placement" until the person chooses
+  await expect(setup.getByLabel("Placement", { exact: true })).toHaveValue("");
+  await expect(setup.getByRole("button", { name: "Measure", exact: true })).toBeDisabled();
   await expect(setup.getByRole("button", { name: "Check" })).toBeDisabled();
   await expect(setup).toContainText("Choose the placement first: speakers or headphones on a coupler.");
-  await setup.getByRole("radio", { name: "Listening position" }).check();
-  await expect(setup.getByRole("button", { name: "Start measuring" })).toBeEnabled();
+  await setup.getByLabel("Placement", { exact: true }).selectOption("listeningPosition");
+  await expect(setup.getByRole("button", { name: "Measure", exact: true })).toBeEnabled();
 }
 
 async function noSidewaysScroll(page: Page) {
@@ -88,8 +97,8 @@ test("P5WMS: a measurement end to end on the simulated microphone: preflight in 
   await call(page, "write", { path: "vol.user", value: { float: -20 } });
   await setup.getByLabel("Sweep length").fill("1");
   await setup.getByRole("button", { name: "Check" }).click();
-  await expect(preflight).toContainText("Ready: nothing blocks the measurement.");
-  await setup.getByRole("button", { name: "Start measuring" }).click();
+  await expect(preflight).toContainText("Clear to measure."); // -- WP WEB7 -- Qt's words
+  await setup.getByRole("button", { name: "Measure", exact: true }).click();
   // Stop is shown while it runs, above the tabs.
   await expect(screen.getByRole("status", { name: "Measuring" }).getByRole("button", { name: "Stop" })).toBeVisible();
   const run = screen.getByRole("region", { name: "Measurement run" });
@@ -102,12 +111,12 @@ test("P5WMS: a measurement end to end on the simulated microphone: preflight in 
   const graph = results.getByRole("img", { name: "Measured responses" });
   // The core's curves: smoothed (1/6 octave by default), each output with its levelled target.
   await expect(results.getByLabel("Curves drawn")).toHaveAttribute("data-smoothing", "6");
-  await expect(graph).toHaveAttribute("data-series", /^measured:OUT1 [^|]*\|target:Target for OUT1 [^|]*\|measured:OUT2 [^|]*\|target:Target for OUT2 /);
+  await expect(graph).toHaveAttribute("data-series", /^measured:Out 1[^|]*\|target:Target for Out 1[^|]*\|measured:Out 2[^|]*\|target:Target for Out 2/);
   expect(await graph.locator('path[data-kind="target"]').count()).toBeGreaterThan(1);
   await results.getByLabel("Results smoothing").selectOption("24");
   await expect(results.getByLabel("Curves drawn")).toHaveAttribute("data-smoothing", "24");
   await results.getByLabel("Show the target").uncheck();
-  await expect(graph).toHaveAttribute("data-series", /^measured:OUT1 [^|]*\|measured:OUT2 /);
+  await expect(graph).toHaveAttribute("data-series", /^measured:Out 1[^|]*\|measured:Out 2/);
   // The curves drawn, the untrusted points faint.
   expect(await graph.locator("path.trusted").count()).toBeGreaterThan(1);
   expect(await graph.locator("path.untrusted").count()).toBeGreaterThan(0);
@@ -128,19 +137,19 @@ test("P5FOLLOW: nothing is measured before the placement is chosen; headphones s
   const screen = await measureScreen(page);
   const setup = screen.getByRole("region", { name: "Measurement setup" });
   await expect(setup.getByLabel("Placement detail")).toContainText("Where is the microphone?");
-  await expect(setup.getByRole("button", { name: "Start measuring" })).toBeDisabled();
+  await expect(setup.getByRole("button", { name: "Measure", exact: true })).toBeDisabled();
   await expect(setup.getByRole("button", { name: "Check" })).toBeDisabled();
   await expect(setup).toContainText("Choose the placement first");
   expect((await call<{ active: boolean }>(page, "measureState")).active).toBe(false);
   expect((await call<{ state: number }>(page, "siggenStatus")).state).toBe(0);
-  await setup.getByRole("radio", { name: "Headphones on a coupler" }).check();
+  await setup.getByLabel("Placement", { exact: true }).selectOption("headphones");
   await expect(setup.getByLabel("Placement detail")).toContainText("On the coupler, not on a head");
-  await expect(setup.getByText("Coupler", { exact: true })).toBeVisible();
-  await expect(setup.getByRole("button", { name: "Start measuring" })).toBeEnabled();
+  await expect(setup.getByLabel("Coupler", { exact: true })).toBeVisible();
+  await expect(setup.getByRole("button", { name: "Measure", exact: true })).toBeEnabled();
   await expect(setup.getByLabel("Passes hint")).toHaveCount(0);
   await setup.getByRole("spinbutton", { name: "Passes" }).fill("2");
   await expect(setup.getByLabel("Passes hint")).toHaveText("Two passes cannot judge timing; use three or more for auto-tune.");
-  await expect(setup.getByRole("button", { name: "Start measuring" })).toBeEnabled();
+  await expect(setup.getByRole("button", { name: "Measure", exact: true })).toBeEnabled();
   await setup.getByRole("spinbutton", { name: "Passes" }).fill("3");
   await expect(setup.getByLabel("Passes hint")).toHaveCount(0);
   expect((await call<{ state: number }>(page, "siggenStatus")).state).toBe(0);
@@ -156,25 +165,25 @@ test("P5FOLLOW: the live view assumes no placement, plays nothing until one is c
   await tabs.getByRole("tab", { name: "Live" }).click();
   let live = screen.getByRole("region", { name: "Live response" });
   await expect(live.getByLabel("Live placement", { exact: true })).toHaveValue("");
-  await expect(live.getByRole("button", { name: "Start live" })).toBeDisabled();
+  await expect(live.getByRole("button", { name: "Start Live" })).toBeDisabled();
   await expect(live.getByLabel("Live placement needed")).toHaveText("Choose the placement first: speakers or headphones on a coupler. Headphones are measured much more quietly.");
   expect((await call<{ active: boolean }>(page, "measureLiveState")).active).toBe(false);
   expect((await call<{ state: number }>(page, "siggenStatus")).state).toBe(0);
   // Several positions on the Setup tab is no live placement: still none.
   await tabs.getByRole("tab", { name: "Measure", exact: true }).click();
   const setup = screen.getByRole("region", { name: "Measurement setup" });
-  await setup.getByRole("radio", { name: "Several positions" }).check();
+  await setup.getByLabel("Placement", { exact: true }).selectOption("multiPosition");
   await tabs.getByRole("tab", { name: "Live" }).click();
   live = screen.getByRole("region", { name: "Live response" });
-  await expect(live.getByRole("button", { name: "Start live" })).toBeDisabled();
+  await expect(live.getByRole("button", { name: "Start Live" })).toBeDisabled();
   // Headphones chosen on the Setup tab: the live view takes it, with its coupler.
   await tabs.getByRole("tab", { name: "Measure", exact: true }).click();
-  await setup.getByRole("radio", { name: "Headphones on a coupler" }).check();
+  await setup.getByLabel("Placement", { exact: true }).selectOption("headphones");
   await tabs.getByRole("tab", { name: "Live" }).click();
   live = screen.getByRole("region", { name: "Live response" });
   await expect(live.getByLabel("Live placement", { exact: true })).toHaveValue("headphones");
   await expect(live.getByLabel("Live coupler")).toBeVisible();
-  await expect(live.getByRole("button", { name: "Start live" })).toBeEnabled();
+  await expect(live.getByRole("button", { name: "Start Live" })).toBeEnabled();
   await expect(live.getByLabel("Live placement needed")).toHaveCount(0);
   expect((await call<{ state: number }>(page, "siggenStatus")).state).toBe(0);
   expect(errors).toEqual([]);
@@ -187,7 +196,7 @@ test("P5WMS: Stop stops the generator at once, and the run says nothing was kept
   const screen = await measureScreen(page);
   const setup = screen.getByRole("region", { name: "Measurement setup" });
   await choosePlacement(setup); // -- WP P5FOLLOW --
-  await setup.getByRole("button", { name: "Start measuring" }).click();
+  await setup.getByRole("button", { name: "Measure", exact: true }).click();
   const run = screen.getByRole("region", { name: "Measurement run" });
   // Once the generator plays (the ramp), Stop.
   await expect.poll(async () => (await call<{ state: number }>(page, "siggenStatus")).state, { timeout: 20_000 }).not.toBe(0);
@@ -209,19 +218,22 @@ test("P5WMS: the live view: a curve per sweep with the target, 'cut this peak' p
   const live = screen.getByRole("region", { name: "Live response" });
   await live.getByLabel("Smoothing").selectOption("6");
   // -- WP P5FOLLOW -- no placement assumed: Start live waits for the person, said in words
-  await expect(live.getByRole("button", { name: "Start live" })).toBeDisabled();
+  await expect(live.getByRole("button", { name: "Start Live" })).toBeDisabled();
   await expect(live.getByLabel("Live placement needed")).toContainText("Choose the placement first");
   await live.getByLabel("Live placement", { exact: true }).selectOption("listeningPosition");
   await expect(live.getByLabel("Live placement needed")).toHaveCount(0);
-  await live.getByRole("button", { name: "Start live" }).click();
+  await live.getByRole("button", { name: "Start Live" }).click();
   await expect.poll(async () => Number(await live.locator("[data-seq]").getAttribute("data-seq")), { timeout: 60_000 }).toBeGreaterThanOrEqual(2);
   const graph = live.getByRole("img", { name: "Live response" });
   await expect(graph).toHaveAttribute("data-series", /measured:.*\|target:Target/);
+  // -- WP WEB7 -- (REVE D4) one Stop on the Live tab: Stop Live, no second stop bar above the tabs
+  await expect(live.getByRole("button", { name: "Stop Live" })).toBeVisible();
+  await expect(screen.getByRole("status", { name: "Measuring" })).toHaveCount(0);
   const filters = async () => JSON.stringify((await call<{ state: { filters: unknown } }>(page, "state")).state.filters);
   const before = await filters();
-  await live.getByRole("button", { name: "Find the highest peak" }).click();
+  await live.getByRole("button", { name: "Find the Highest Peak" }).click();
   await expect(live.getByLabel("Peak frequency")).not.toHaveValue("");
-  await live.getByRole("button", { name: "Cut this peak" }).click();
+  await live.getByRole("button", { name: "Cut This Peak" }).click();
   const pending = live.getByRole("group", { name: "Pending change" });
   await expect(pending).toContainText(/PEQ band \d+: flat → peak -[\d.]+ dB/);
   await expect(graph).toHaveAttribute("data-series", /predicted:Predicted/);
@@ -231,8 +243,8 @@ test("P5WMS: the live view: a curve per sweep with the target, 'cut this peak' p
   expect(await filters()).not.toBe(before);
   await page.locator("#one").getByRole("group", { name: "Undo and Redo" }).getByRole("button", { name: /^Undo/ }).click();
   await expect.poll(filters).toBe(before);
-  await live.getByRole("button", { name: "Stop live" }).click();
-  await expect(live.getByRole("button", { name: "Start live" })).toBeVisible();
+  await live.getByRole("button", { name: "Stop Live" }).click();
+  await expect(live.getByRole("button", { name: "Start Live" })).toBeVisible();
   expect((await call<{ state: number }>(page, "siggenStatus")).state).toBe(0);
   expect(errors).toEqual([]);
 });
@@ -248,7 +260,7 @@ test.describe("the browsers' fake microphone", () => {
     const setup = screen.getByRole("region", { name: "Measurement setup" });
     await setup.getByLabel("Microphone").selectOption("mic:");
     await choosePlacement(setup); // -- WP P5FOLLOW --
-    await setup.getByRole("button", { name: "Start measuring" }).click();
+    await setup.getByRole("button", { name: "Measure", exact: true }).click();
     const refused = screen.getByRole("alert").filter({ hasText: "Microphone capture did not start" });
     await expect(screen.getByRole("status", { name: "Measuring" }).or(refused)).toBeVisible({ timeout: 15_000 });
     if (await refused.isVisible()) {
@@ -273,7 +285,7 @@ test.describe("the browsers' fake microphone", () => {
       await run.getByRole("button", { name: "See the results" }).click();
       const results = screen.getByRole("region", { name: "Measurement results" });
       await expect(results.getByLabel("Timing")).toHaveText(/^(Timing reliable|Timing unreliable|No timing)/);
-      await expect(results.getByRole("img", { name: "Measured responses" })).toHaveAttribute("data-series", /measured:OUT1 /);
+      await expect(results.getByRole("img", { name: "Measured responses" })).toHaveAttribute("data-series", /measured:Out 1/);
     } else await expect(run.getByRole("alert")).not.toBeEmpty();
     await expect(screen.getByRole("status", { name: "Measuring" })).toHaveCount(0);
     expect((await call<{ state: number }>(page, "siggenStatus")).state).toBe(0);
@@ -285,8 +297,8 @@ test.describe("the browsers' fake microphone", () => {
 async function passiveListens(page: Page, screen: Locator, browserName: string) {
   const tabs = partsOf(screen, "Measurement").getByRole("tab");
   await expect(tabs).toHaveText(["Passive RTA", "Results", "Documents"]); // -- WP P5WAT -- its documents tab (a Viewer reads documents)
-  await expect(screen.getByRole("button", { name: "Start measuring" })).toHaveCount(0);
-  await expect(screen.getByRole("button", { name: "Start live" })).toHaveCount(0);
+  await expect(screen.getByRole("button", { name: "Measure", exact: true })).toHaveCount(0);
+  await expect(screen.getByRole("button", { name: "Start Live" })).toHaveCount(0);
   const passive = screen.getByRole("region", { name: "Passive microphone RTA" });
   await expect(passive).toContainText(/only the passive microphone RTA and the documents/i);
   await passive.getByRole("button", { name: "Listen" }).click();
@@ -330,15 +342,24 @@ test.describe("passive", () => {
   test("P5WMS: a Viewer through the hub gets the passive RTA computed and nothing that plays", async ({ page, browserName, viewport }) => {
     test.skip(!desktop(viewport?.width) || !process.env.DSPI_TERM, "desktop width, with uconsole");
     test.setTimeout(120_000);
-    const errors = errorsOf(page);
+    // -- INTC -- While the test has the hub stopped, the first page's session tries to reconnect to it (its worker
+    // keeps the hub's entry), and the browser may log the refused socket before the page is left: that line, for
+    // this hub only, is expected until the first page is gone. Any other error, and any error after it, still counts.
+    let hubDown = 0;
+    const errors = errorsOf(page, (text) => hubDown > 0 && refusedSocket(text, hubDown));
     let hub = await demoHub(true);
     try {
       await hubSession(page, hub, true);
       const { port, store } = hub;
+      hubDown = port;
       await stopHub(hub);
       const listed = JSON.parse(execFileSync(process.env.DSPI_TERM!, ["hub", "clients", "--store", store, "--json"], { encoding: "utf8" }).trim().split("\n").pop()!) as { clients: { cid: number }[] };
       execFileSync(process.env.DSPI_TERM!, ["hub", "role", String(listed.clients[0]!.cid), "viewer", "--store", store]);
       hub = await demoHub(false, store, port);
+      // -- INTC -- leave the first page (its worker with it) before the window closes: the reconnect as the Viewer
+      // below is the second page's, from the kept token, and must log nothing
+      await page.goto("about:blank");
+      hubDown = 0;
       const session = await hubSession(page, hub, false);
       await openPage(session, "Measure");
       const screen = session.getByRole("region", { name: "Measure" });
@@ -401,7 +422,7 @@ async function hubSession(page: Page, hub: OwnHub, pair: boolean): Promise<Locat
   }
   const entry = session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: DEMO.slice(-8) });
   await entry.getByRole("button", { name: "Open" }).click();
-  await expect(session.locator(".device-meta")).toContainText(DEMO);
+  await expect(session).toHaveAttribute("data-serial", new RegExp(DEMO));
   await expect(session.locator(".banner")).toHaveCount(0, { timeout: 10_000 });
   return session;
 }

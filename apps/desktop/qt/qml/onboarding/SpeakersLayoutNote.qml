@@ -11,7 +11,8 @@ Banner {
     objectName: "SpeakersLayoutNote"
     readonly property var sc: SpeakersController
     readonly property string status: sc.status
-    readonly property bool kept: ["autoDetected", "unconfirmed", "imported"].indexOf(status) >= 0
+    // -- WP ROLES -- set by AI from the person's words, not checked
+    readonly property bool kept: ["autoDetected", "stated", "unconfirmed", "imported"].indexOf(status) >= 0
     readonly property string words: status, sc.loaded, sc.stampText, kept ? sc.bannerText(false) : ""
     kind: status === "imported" ? "warning" : "info"
     iconName: "volume-2"

@@ -123,6 +123,8 @@ impl Registry {
         tools.extend(tools::hub::TOOLS.iter().copied());
         tools.extend(tools::analysis::TOOLS.iter().copied());
         tools.extend(tools::info::TOOLS.iter().copied());
+        // -- WP ROLES -- speaker roles from the user's words
+        tools.extend(tools::roles::TOOLS.iter().copied());
         // -- WP MCP5 -- measuring, the auto-tune, measuring across units
         tools.extend(tools::measure::TOOLS.iter().copied());
         // -- WP FEAT1 -- routing and sources in the installation draft
@@ -438,6 +440,10 @@ pub struct RunOutcome {
     pub touched: Vec<(String, Vec<u8>)>,
     /// What the policy found (-- WP MCP2a --).
     pub judging: Judging,
+    // -- WP SHOWFIX -- (finding 4)
+    /// The changes in words, the channels named as the person knows them
+    /// (`dspi_core::change_words`); empty when it made none.
+    pub said: String,
 }
 
 // -- WP INT5 --
@@ -558,6 +564,7 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
             journal_ids: Vec::new(),
             touched: Vec::new(), // -- WP AIVIS --
             judging,
+            said: String::new(), // -- WP SHOWFIX --
         };
     }
     let (id, serial, core) = match resolve(ctx.set, ctx.active, args) {
@@ -569,6 +576,7 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
                 journal_ids: Vec::new(),
                 touched: Vec::new(), // -- WP AIVIS --
                 judging: Judging::default(),
+                said: String::new(), // -- WP SHOWFIX --
             };
         }
     };
@@ -652,12 +660,20 @@ pub fn run(ctx: &RunCtx<'_>, tool: &Tool, args: &Map<String, Value>) -> RunOutco
     }
     journal_ids.sort_unstable();
     journal_ids.dedup();
+    // -- WP SHOWFIX -- (finding 4) oldest first, as they were made
+    let said = if mine.is_empty() {
+        String::new()
+    } else {
+        let oldest_first: Vec<dspi_core::HistoryEntry> = mine.iter().rev().cloned().collect();
+        dspi_core::change_words::changes_text(&oldest_first, &core.channel_words())
+    };
     RunOutcome {
         device: Some(id.as_str().to_owned()),
         result,
         journal_ids,
         touched, // -- WP AIVIS --
         judging,
+        said,
     }
 }
 

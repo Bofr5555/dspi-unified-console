@@ -4,16 +4,22 @@ import UConsole
 
 // -- WP MCP4 -- Device > AI Agents... (Classic's tool window; a panel as any):
 // the agents' state, Pause and Stop, what waits for the user, and what they did.
+// -- WP DL7 -- Modern (DESREV): Stop is a secondary button in dangerText, not
+// a red fill beside Pause; with nothing done yet the page shows an EmptyState
+// instead of an empty framed list.
 Panel {
     id: panel
     objectName: "AiAgentsPanel"
     readonly property string state: AiController.state
+    readonly property bool modern: LayoutController.modern   // -- WP DL7 --
 
     onShownChanged: if (shown) AiController.refresh()
 
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: Theme.spacing
+        // -- WP DL7 -- Modern: a list stops at Theme.contentMaxWidth, left-aligned
+        anchors.rightMargin: panel.modern ? Math.max(Theme.spacing, panel.width - Theme.spacing - Theme.contentMaxWidth) : Theme.spacing
         spacing: Theme.spacing
 
         RowLayout {
@@ -41,11 +47,13 @@ Panel {
                 onClicked: AiController.setPaused(!AiController.paused)
             }
             AppButton {
+                id: stop
                 objectName: "AiAgents.stop"
                 visible: AiController.enabled
                 text: qsTr("Stop")
                 iconName: "square"
-                destructive: true
+                destructive: !panel.modern   // -- WP DL7 -- Modern: quiet, its text in dangerText
+                danger: panel.modern         // -- INTC (DL7 fold) -- AppButton's quiet danger kind
                 onClicked: AiController.stop()
             }
             AppButton {
@@ -120,7 +128,9 @@ Panel {
             Layout.fillWidth: true
         }
 
+        // -- WP DL7 -- Modern: an EmptyState while nothing is done (INTC: the list's own)
         AiActivityList {
+            emptyName: "AiAgentsPanel.empty"
             Layout.fillWidth: true
             Layout.fillHeight: true
         }

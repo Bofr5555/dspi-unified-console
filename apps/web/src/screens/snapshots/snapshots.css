@@ -1,0 +1,52 @@
+/* -- WP WEB4 -- Library › Snapshots in the Modern design (DL3a): sections in the 760 px column, no cards;
+   the snapshots as striped rows with quiet actions; the hub's snapshots a section too. */
+.dspi-web .snapshots { display: flex; flex-direction: column; gap: 24px; max-width: var(--content-max); }
+.dspi-web .snapshots > .desk-outcome { margin-bottom: -12px; }
+.dspi-web .snap-sec, .dspi-web .snapshots .hub-snapshots.card { display: flex; flex-direction: column; gap: 8px; min-width: 0; margin: 0; padding: 0; background: none; border-radius: 0; }
+.dspi-web .snapshots .hub-snapshots.card > h3 { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.dspi-web .snapshots .hub-snapshots .note { margin: 0; font-size: 11px; color: var(--muted); }
+.dspi-web .snap-caption { margin: 0; font-size: 11px; color: var(--muted); flex-basis: 100%; }
+.dspi-web .snapshots .snap-capture label, .dspi-web .snapshots .snap-compare label { font-size: 12px; color: var(--muted); }
+.dspi-web .snapshots .snap-capture > button, .dspi-web .snapshots .snap-compare > button { align-self: end; }
+.dspi-web .snapshots .snap-compare label { flex: 1 1 12rem; }
+
+/* The rows (§9): 28 px and more, a stripe on every second, the actions quiet until hovered */
+.dspi-web .snapshots .snap-list { gap: 0; font-size: 12.5px; }
+.dspi-web .snapshots .snap-list[hidden] { display: none; }
+.dspi-web .snapshots .snap-row { min-height: 32px; padding: 4px 8px; border: 0; border-radius: 4px; }
+.dspi-web .snapshots .snap-row:nth-child(even) { background: var(--stripe); }
+.dspi-web .snapshots .snap-row:hover { background: var(--control-hover); }
+.dspi-web .snapshots .snap-what strong { font-weight: 600; }
+.dspi-web .snapshots .snap-meta, .dspi-web .snapshots .snap-row .note { font-size: 11px; color: var(--muted); }
+.dspi-web .snapshots .snap-row .snap-actions > button { min-height: 24px; padding: 0.1rem 0.55rem; font-size: 12px; background: none; }
+.dspi-web .snapshots .snap-row .snap-actions > button:hover:not(:disabled) { background: var(--control); }
+.dspi-web .snapshots .snap-row:hover .snap-actions > button:not(:disabled), .dspi-web .snapshots .snap-row:focus-within .snap-actions > button:not(:disabled) { background: var(--control); }
+.dspi-web .snapshots .danger-text { color: var(--bad); }
+.dspi-web .snapshots .empty-state { min-height: 12rem; }
+
+/* The recall's form row */
+.dspi-web .snapshots .snap-seconds { width: 72px; font-family: var(--mono); font-size: 12px; text-align: right; }
+.dspi-web .snapshots .snap-unit { font-size: 11px; color: var(--muted); }
+/* -- WP INTD -- Capture's popover: Name and Note one under the other, Capture at the right */
+.dspi-web .snapshots .popover { width: 320px; }
+.dspi-web .snapshots .popover .snap-capture { flex-direction: column; align-items: stretch; gap: 8px; }
+.dspi-web .snapshots .popover .snap-capture label { flex: none; }
+.dspi-web .snapshots .popover .snap-capture > button { align-self: flex-end; }
+
+/* -- WP WEB7 -- Qt Modern's page: the A/B row always (A ▾ B ▾ Start on one line), the running compare's
+   segments and buttons, the rows (rows.css), the rollback switch and its stepper as form rows. */
+.dspi-web .snapshots .snap-compare { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.dspi-web .snapshots .snap-compare label { display: flex; align-items: center; gap: 8px; flex: 1 1 12rem; min-width: 0; font-size: 13px; }
+.dspi-web .snapshots .snap-compare select { flex: 1 1 auto; min-width: 0; }
+.dspi-web .snapshots .snap-side { color: var(--muted); }
+.dspi-web .snapshots .snap-compare > button { align-self: center; }
+.dspi-web .snapshots .snap-ab-run { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.dspi-web .snapshots .snap-rows .badge { margin-left: 6px; font-size: 10.5px; }
+.dspi-web .snapshots .empty-state .popover-anchor { display: inline-block; }
+.dspi-web .snapshots .snap-stepper { display: inline-flex; align-items: center; gap: 0; height: 24px; border-radius: 6px; background: var(--control); }
+.dspi-web .snapshots .snap-stepper > button { min-height: 24px; width: 24px; padding: 0; background: none; }
+.dspi-web .snapshots .snap-stepper > button:hover:not(:disabled) { background: var(--control-hover); }
+.dspi-web .snapshots .snap-stepper .snap-seconds { width: 48px; height: 24px; padding: 0 4px; background: none; text-align: right; }
+.dspi-web .snapshots .snap-stepper .snap-unit { padding: 0 4px 0 3px; }
+.dspi-web .snapshots .snap-sec > .form-row { min-height: 36px; }
+.dspi-web .popover .snap-capture > button { align-self: flex-end; }

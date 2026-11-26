@@ -45,9 +45,10 @@ device the app shows is used. A device that is not open may be a known one
   (`how_to_set_default`). `dspi_get_meters` shows whether signal arrives.
 
 ## Channels
-- Inputs and outputs are numbered from 0. Name them `{\"input\": n}` or `{\"output\": n}`.
-- Wire channels count the inputs first: with 2 inputs, output 0 is wire channel 2. Prefer
-  output and input numbers; `{\"channel\": n}` takes a wire channel.
+- Inputs and outputs are numbered from 1, as the app shows them: output 1 is Out 1, input 1
+  is In 1. Name them `{\"input\": n}` or `{\"output\": n}`.
+- Wire channels count the inputs first, from 1: with 2 inputs, output 1 (Out 1) is wire
+  channel 3. Prefer output and input numbers; `{\"channel\": n}` takes a wire channel.
 - `dspi_get_overview` lists both, with each output's role from the user's speaker setup.
 
 ## Filters
@@ -67,17 +68,42 @@ device the app shows is used. A device that is not open may be a known one
   too, is fine while it stays at the floor or above. A tweeter the user left playing without
   that high-pass may be turned down or muted, never made louder (its gain, the volumes, a
   route, an effect or an EQ boost on it or on an input that feeds it).
+- If the user tells you which output drives what (\"tweeter, mid, woofer, left then right,
+  outputs 1-6\"), set it with `dspi_set_speaker_roles`: one row per output they named (outputs
+  from 1: Out 1 is 1), their words quoted verbatim in `user_words`. The user is asked once, with the whole
+  table (under \"never ask\" only with their switch: `agent_may.set_roles`). The roles then
+  guard the outputs (`roles_from: speaker_setup_stated`, every tweeter rule applies); an output
+  you leave out is unknown and treated as a tweeter (`treated_as_tweeter`). They are not
+  checked: before your test signal plays below 1 kHz on an output stated as a midrange, woofer,
+  sub or full range, the app first checks its top end (quiet sweeps above 1 kHz). If the top
+  falls, its stated role holds; if it holds like a tweeter's, nothing lower plays there, it is a
+  tweeter to the safety rules from then on (`treated_as_tweeter`), and the request's note says
+  \"looks like a tweeter\": tell the user, who corrects the wiring or the role in Settings ›
+  Speakers. Set a low-pass after the measurement: one that hides the top end leaves the output
+  unchecked. Never set roles
+  the user did not state. Over a confirmed setup only when the user's own words say what
+  changed (`what_changed`).
 - If the user has not set up the speakers (`roles_from` is `none` or
-  `speaker_setup_unconfirmed`), do not guess: run `dspi_detect_speakers`. It plays quiet sweeps
+  `speaker_setup_unconfirmed`) and did not tell you the roles, do not guess: run
+  `dspi_detect_speakers`. It plays quiet sweeps
   on each output, finds which outputs reach a driver and which drive a tweeter, and gives every
   output a detected role that the safety rules then use as if the user had confirmed it
   (`roles_from: speaker_setup_auto_detected`). Anything it cannot tell apart is a tweeter. Tell
   the user what it found; only the user can confirm or correct it, in Settings › Speakers, and
   the detection cannot be overruled by what you believe. An output on which nothing was heard
   (`reaches: nothing`) may not be routed, switched on or unmuted.
-- Numbers: every field (`output`, `input`, `slot`, `channel`) counts from 0. In texts,
-  \"output N\" is that same number; \"Out N\" and \"In N\" are the app's labels, from 1
-  (output 0 is Out 1).
+- Numbers: every number you read or give counts from 1, as the app shows it: output 1 is
+  Out 1, input 1 is In 1, preset 1 is the app's preset 1, PEQ band 1..10 and crossover slot 1
+  are the app's, wire channel 1 is the first input, and `change 1` in a
+  `dspi_apply_changes` error is the first change. Texts say \"Out N\", \"In N\" and
+  \"preset N\" with the same numbers. Codes are not counts and stay as they are: an input
+  source (`source`: 0 is USB), a physical output slot (`pin_slot`), audio link channels and
+  slots (0..63, 255 silent), ids, cursors and masks (`output_pairs`, `pair_map`). A document
+  in a file's own format keeps that format's fields, which count from 0 (output 0 there is
+  Out 1): a snapshot's `document` (`dspi_snapshot_export`), a template (`dspi_get_template`),
+  a configuration document for `dspi_config_preview` or `dspi_config_import`, and a filter
+  file's text. Read their numbers as the file's; the tools' own arguments and results count
+  from 1 (`dspi_get_limits` names its profile's outputs from 1).
 - What an agent may change, and what the user must confirm in the app, is in
   `dspi_get_overview`'s `agent_may`. A change that is louder, a big boost, a long delay step
   or a lowered tweeter high-pass may be held for the user: the result then says
@@ -134,8 +160,12 @@ device the app shows is used. A device that is not open may be a known one
 - A measurement needs a person: the app's microphone, put where you say. Tell the user what
   to do before you start, and wait for them.
 - `dspi_measure_preflight` says what blocks a measurement. The roles come from the user's
-  confirmed speaker layout, or one `dspi_detect_speakers` found; if there is neither, detect it
-  or ask the user to confirm it in Settings › Speakers. No tool sets a role.
+  confirmed speaker layout, one `dspi_detect_speakers` found, or one set from the user's words
+  (`dspi_set_speaker_roles`); if there is none, set it from what the user told you, detect it,
+  or ask the user to set it up in Settings › Speakers. No measuring tool takes a role.
+- On roles set from the user's words, a measurement or low-end search first checks the top
+  end of each stated midrange, woofer, sub or full range not yet checked, then goes on as its
+  own request (`continues_as`; `dspi_measure_status` follows it). Relay the note.
 - `dspi_detect_speakers` is one question to the user with a warning (under \"never ask\" it
   needs the user's switch: `agent_may.detect`). Poll `dspi_measure_status`; its `detect` block
   gives each output's class, confidence, role and evidence, the summary and what to do next.

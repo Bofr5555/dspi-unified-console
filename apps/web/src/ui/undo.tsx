@@ -9,6 +9,7 @@
 import type { RefObject } from "preact";
 import { useEffect } from "preact/hooks";
 import type { Session, SessionState } from "./session";
+import { Glyph } from "./design"; // -- WP REVEFIX --
 
 /** Whether the platform's command key is Cmd (Apple) rather than Ctrl. */
 export function appleKeys(platform: string): boolean {
@@ -63,7 +64,7 @@ export function useUndoKeys(session: Session, root: RefObject<HTMLElement | null
   }, [session, root]);
 }
 
-/** The two buttons. */
+/** The two buttons: -- WP REVEFIX -- (REVE D1) Qt's undo-2 and redo-2 icons, their names and keys in the tooltip. */
 export function UndoButtons(props: { session: Session; state: SessionState }) {
   const { session, state } = props;
   const ro = !!session.readOnlyReason;
@@ -74,26 +75,22 @@ export function UndoButtons(props: { session: Session; state: SessionState }) {
       <button
         type="button"
         disabled={ro || !state.history.canUndo}
+        aria-label="Undo"
         title={`Undo (${mod}Z)`}
         aria-keyshortcuts={apple ? "Meta+Z" : "Control+Z"}
         onClick={() => void session.undo()}
       >
-        <span class="ur-icon" aria-hidden="true">
-          ↶
-        </span>
-        <span class="ur-text">Undo</span>
+        <Glyph name="undo-2" />
       </button>
       <button
         type="button"
         disabled={ro || !state.history.canRedo}
+        aria-label="Redo"
         title={apple ? "Redo (⇧⌘Z)" : "Redo (Ctrl+Shift+Z)"}
         aria-keyshortcuts={apple ? "Meta+Shift+Z" : "Control+Shift+Z Control+Y"}
         onClick={() => void session.redo()}
       >
-        <span class="ur-icon" aria-hidden="true">
-          ↷
-        </span>
-        <span class="ur-text">Redo</span>
+        <Glyph name="redo-2" />
       </button>
     </div>
   );

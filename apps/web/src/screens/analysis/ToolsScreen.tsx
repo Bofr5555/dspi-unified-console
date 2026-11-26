@@ -3,54 +3,34 @@
 // Spectrum Analyser (M22), Stats for nerbs with Reset Watermarks (M53), the Interrupt Monitor (M54).
 // Each part reads the core only while it is shown; every change is the core's call.
 
-import { Fragment } from "preact";
-import { useEffect, useMemo, useRef, useState } from "preact/hooks";
-import type { MonitorEntryRecord, SiggenCapsInfo, SiggenConfigRecord, SiggenStatusRecord, StatsRead, StatsTickRecord } from "../../core/tools-protocol";
+import { useEffect, useRef, useState } from "preact/hooks";
+import type { MonitorEntryRecord } from "../../core/tools-protocol";
 import { useSessionState } from "../../ui/components";
 import type { ScreenProps } from "../../ui/screens";
 import type { Session } from "../../ui/session";
-import { outputRows } from "../main/model";
-import { SpectrumStrip, tapNames } from "./SpectrumStrip";
-import {
-  FLAG_DECORR,
-  FLAG_RAW,
-  FLAG_WALK,
-  LEVEL_MAX,
-  LEVEL_MIN,
-  LIVE_APPLY_MS,
-  SLIDER_MIN,
-  STATUS_POLL_MS,
-  TIMING_PATTERN,
-  TIMING_SWEEP,
-  initialDraft,
-  playableMask,
-  playing,
-  startBlocker,
-  transportDetail,
-  transportTitle,
-  typeOf,
-  withLevel,
-  withParam,
-  withType,
-} from "./siggen";
-import { FAST_MS, MONITOR_POLL_MS, SLOW_MS, appendLines, copyText, eventCount, fillText, lineTime, mergeSlow, slowSections, starvationDelta } from "./stats";
+import { SpectrumPage } from "./SpectrumPage"; // -- WP WEB6 --
+import { MONITOR_POLL_MS, appendLines, copyText, eventCount, lineTime } from "./stats";
+import { Glyph, StatusChip } from "../../ui/design"; // -- WP WEB --
+import "./analysis.css"; // -- WP WEB4 --
+import { GeneratorPage } from "./GeneratorPage"; // -- WP WEB7 --
+import { StatsPage } from "./StatsPage"; // -- WP WEB7 --
 
 /** Signal Generator (M46). */
 export function GeneratorScreen(props: ScreenProps) {
-  return <SiggenPanel session={props.session} />;
+  return <GeneratorPage {...props} />; // -- WP WEB7 -- Qt Modern's SiggenPanel (GeneratorPage.tsx)
 }
 
-/** The Spectrum Analyser: the bar strip with its chooser, on a screen of its own (M22). */
+/** The Spectrum Analyser on a screen of its own (M22): -- WP WEB6 -- Qt's Spectrum page. */
 export function AnalyserScreen(props: ScreenProps) {
   const st = useSessionState(props.session);
   const snap = st.snapshot;
   if (!snap) return null;
-  return <SpectrumStrip session={props.session} names={tapNames(snap.state, snap.outputLabels)} title="Spectrum Analyser" />;
+  return <SpectrumPage session={props.session} s={snap.state} labels={snap.outputLabels} />;
 }
 
 /** Stats for nerbs (M53). */
 export function StatsScreen(props: ScreenProps) {
-  return <StatsPanel session={props.session} />;
+  return <StatsPage {...props} />; // -- WP WEB7 -- Qt Modern's StatsPanel (StatsPage.tsx)
 }
 
 /** Interrupt Monitor (M54). */
@@ -77,425 +57,7 @@ function usePoll(fn: () => Promise<void>, ms: number, on: boolean, deps: unknown
   }, [on, ms, ...deps]);
 }
 
-// ------------------------------------------------------------ signal generator
-
-const UNIT_STEP: Record<number, number> = { 1: 1, 2: 1, 3: 1, 4: 1, 5: 0.1, 6: 1 };
-
-function SiggenPanel(props: { session: Session }) {
-  const { session } = props;
-  const st = useSessionState(session);
-  const open = st.status === "open";
-  const s = st.snapshot?.state;
-  const ro = session.readOnlyReason;
-  const [caps, setCaps] = useState<SiggenCapsInfo | null>(null);
-  const [draft, setDraft] = useState<SiggenConfigRecord>(initialDraft);
-  const [status, setStatus] = useState<SiggenStatusRecord | null>(null);
-  const live = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const busy = useRef(false);
-
-  useEffect(() => {
-    if (!open) return;
-    let alive = true;
-    void session.core.call("siggenCaps", undefined).then(
-      (c) => alive && setCaps(c),
-      () => alive && setCaps(null),
-    );
-    // An Identify may have started it: read what it does once now.
-    void session.core.call("siggenStatus", undefined).then(
-      (x) => alive && setStatus(x),
-      () => undefined,
-    );
-    return () => {
-      alive = false;
-    };
-  }, [session, open]);
-
-  const isPlaying = playing(status);
-  usePoll(
-    async () => {
-      setStatus(await session.core.call("siggenStatus", undefined));
-    },
-    STATUS_POLL_MS,
-    open && isPlaying,
-    [session],
-  );
-  useEffect(() => () => clearTimeout(live.current), []);
-
-  const outputs = s ? (caps?.outputChannels || s.numOutputChannels) : 0;
-  const rows = useMemo(() => (s ? outputRows(s, st.snapshot?.outputLabels) : []), [s, st.snapshot?.outputLabels]);
-  const nameOf = (o: number) => {
-    const r = rows.find((x) => x.index === o);
-    return r ? `${r.descriptor} ${r.name}` : `Output ${o + 1}`;
-  };
-  const playable = playableMask(caps, outputs);
-  const type = typeOf(caps, draft.signalType);
-  const blocker = startBlocker(open, caps, draft, ro);
-  const disabled = !open || !!ro || caps?.supported === false;
-
-  const send = async (cfg: SiggenConfigRecord, start: boolean) => {
-    if (busy.current) return;
-    busy.current = true;
-    try {
-      await session.core.call("siggenSet", { config: cfg });
-      if (start) await session.core.call("siggenControl", { action: "start" });
-      setStatus(await session.core.call("siggenStatus", undefined));
-    } catch (e) {
-      session.fail(e);
-    } finally {
-      busy.current = false;
-    }
-  };
-  /** A change of the draft; while it plays, sent once the person pauses (the generator restarts with a fade). */
-  const edit = (d: SiggenConfigRecord) => {
-    setDraft(d);
-    if (!isPlaying) return;
-    clearTimeout(live.current);
-    live.current = setTimeout(() => {
-      if (!startBlocker(open, caps, d, session.readOnlyReason)) void send(d, false);
-    }, LIVE_APPLY_MS);
-  };
-  const stop = async (now: boolean) => {
-    clearTimeout(live.current);
-    try {
-      await session.core.call("siggenControl", { action: now ? "stopNow" : "stop" });
-      setStatus(await session.core.call("siggenStatus", undefined));
-    } catch (e) {
-      session.fail(e);
-    }
-  };
-
-  if (!s) return null;
-  if (caps && !caps.supported) return <p class="empty">Firmware has no signal generator.</p>;
-  const timing = type?.timing ?? 0;
-  return (
-    <section class="card siggen" aria-label="Signal Generator">
-      <div class="siggen-transport" role="group" aria-label="Transport">
-        <div>
-          <strong class="siggen-title" aria-live="polite">
-            {transportTitle(caps, draft, status, blocker)}
-          </strong>
-          <div class="siggen-detail">{transportDetail(status, nameOf)}</div>
-        </div>
-        {isPlaying ? (
-          <>
-            <button type="button" class="danger" disabled={!open || !!ro} onClick={() => void stop(false)}>
-              Stop
-            </button>
-            <button type="button" disabled={!open || !!ro} onClick={() => void stop(true)} title="Cut at once, no fade">
-              Stop Now
-            </button>
-          </>
-        ) : (
-          <button type="button" class="primary" disabled={!!blocker} onClick={() => void send(draft, true)}>
-            Play
-          </button>
-        )}
-      </div>
-
-      <div class="siggen-types" role="radiogroup" aria-label="Signal">
-        {(caps?.types ?? []).filter((t) => t.offered).map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="radio"
-            aria-checked={t.id === draft.signalType}
-            title={t.blurb}
-            disabled={disabled}
-            onClick={() => edit(withType(draft, t))}
-          >
-            {t.tile}
-          </button>
-        ))}
-      </div>
-      {type ? <p class="siggen-blurb">{type.name}: {type.blurb}</p> : null}
-
-      <div class="siggen-outputs" role="group" aria-label="Outputs">
-        {Array.from({ length: Math.min(16, outputs) }, (_, o) => {
-          const bit = 1 << o;
-          if (!(playable & bit)) return null;
-          const on = (draft.channelMask & bit) !== 0;
-          return (
-            <button key={o} type="button" aria-pressed={on} disabled={disabled} onClick={() => edit({ ...draft, channelMask: draft.channelMask ^ bit })}>
-              {nameOf(o)}
-            </button>
-          );
-        })}
-        <button type="button" disabled={disabled} onClick={() => edit({ ...draft, channelMask: playable })}>
-          All
-        </button>
-        <button type="button" disabled={disabled} onClick={() => edit({ ...draft, channelMask: 0 })}>
-          None
-        </button>
-      </div>
-
-      <label class="siggen-level">
-        <span>Level</span>
-        <input
-          type="range"
-          min={SLIDER_MIN}
-          max={LEVEL_MAX}
-          step={0.5}
-          value={Math.max(SLIDER_MIN, draft.levelDb)}
-          disabled={disabled}
-          aria-label="Level"
-          onInput={(e) => edit(withLevel(draft, Number((e.target as HTMLInputElement).value)))}
-        />
-        <input
-          type="number"
-          class="siggen-number"
-          min={LEVEL_MIN}
-          max={LEVEL_MAX}
-          step={0.1}
-          value={draft.levelDb}
-          disabled={disabled}
-          aria-label="Level in dBFS"
-          onChange={(e) => edit(withLevel(draft, Number((e.target as HTMLInputElement).value)))}
-        />
-        <span>dBFS</span>
-      </label>
-
-      {type ? (
-        <div class="siggen-params">
-          {type.params.map((p, i) =>
-            p.semantic === 0 ? null : (
-              <label key={i}>
-                <span>{p.label}</span>
-                {p.semantic === 6 ? (
-                  <select disabled={disabled} value={draft.p[i] ?? 0} onChange={(e) => edit(withParam(draft, type, i, Number((e.target as HTMLSelectElement).value)))}>
-                    {Array.from({ length: Math.round(p.max - p.min) + 1 }, (_, k) => (
-                      <option key={k} value={p.min + k}>
-                        Pattern {p.min + k + 1}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    type="number"
-                    class="siggen-number"
-                    min={p.min}
-                    max={p.max}
-                    step={UNIT_STEP[p.semantic] ?? 1}
-                    value={draft.p[i] ?? p.def}
-                    disabled={disabled}
-                    aria-label={p.label}
-                    onChange={(e) => edit(withParam(draft, type, i, Number((e.target as HTMLInputElement).value)))}
-                  />
-                )}
-                {p.unit ? <span>{p.unit}</span> : null}
-              </label>
-            ),
-          )}
-          {timing === TIMING_SWEEP || timing === TIMING_PATTERN ? (
-            <label>
-              <span>{timing === TIMING_SWEEP ? "Length" : "Duration"}</span>
-              <input
-                type="number"
-                class="siggen-number"
-                min={timing === TIMING_SWEEP ? 0.1 : 0}
-                max={600}
-                step={0.1}
-                value={draft.durationMs / 1000}
-                disabled={disabled}
-                aria-label={timing === TIMING_SWEEP ? "Sweep length in seconds" : "Duration in seconds"}
-                onChange={(e) => {
-                  const v = Number((e.target as HTMLInputElement).value);
-                  if (Number.isFinite(v)) edit({ ...draft, durationMs: Math.round(Math.min(600, Math.max(0, v)) * 1000) });
-                }}
-              />
-              <span>s</span>
-            </label>
-          ) : null}
-          {timing === TIMING_SWEEP ? (
-            <label>
-              <span>Repeat</span>
-              <input
-                type="number"
-                class="siggen-number"
-                min={0}
-                max={1000}
-                step={1}
-                value={draft.repeat}
-                disabled={disabled}
-                aria-label="Repeat count"
-                onChange={(e) => {
-                  const v = Math.round(Number((e.target as HTMLInputElement).value));
-                  if (Number.isFinite(v)) edit({ ...draft, repeat: Math.min(1000, Math.max(0, v)) });
-                }}
-              />
-            </label>
-          ) : null}
-        </div>
-      ) : null}
-
-      <div class="siggen-options" role="group" aria-label="Options">
-        {[
-          { flag: FLAG_RAW, label: "Bypass EQ", tip: "Played past each output's crossover and EQ" },
-          { flag: FLAG_WALK, label: "Walk Outputs", tip: "One output at a time, in turn" },
-          { flag: FLAG_DECORR, label: "Decorrelated", tip: "A different noise on each output" },
-        ].map((o) => (
-          <label key={o.flag} title={o.tip}>
-            <input
-              type="checkbox"
-              checked={(draft.flags & o.flag) !== 0}
-              disabled={disabled}
-              onChange={(e) => edit({ ...draft, flags: (e.target as HTMLInputElement).checked ? draft.flags | o.flag : draft.flags & ~o.flag })}
-            />
-            {o.label}
-          </label>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-// ------------------------------------------------------------- stats for nerbs
-
-function Dot(props: { band?: string }) {
-  return props.band ? <span class={`stat-dot ${props.band}`} aria-hidden="true" /> : null;
-}
-
-function StatsPanel(props: { session: Session }) {
-  const { session } = props;
-  const st = useSessionState(session);
-  const open = st.status === "open";
-  const [slow, setSlow] = useState<StatsRead | null>(null);
-  const [fast, setFast] = useState<StatsTickRecord | null>(null);
-  const [error, setError] = useState("");
-  const starv = useRef<{ last: number | null; at: number | null; before: number | null }>({ last: null, at: null, before: null });
-
-  usePoll(
-    async () => {
-      try {
-        const r = await session.core.call("statsRead", undefined);
-        const total = r.counters.starvationTotal ?? null;
-        if (typeof total === "number") {
-          const d = starvationDelta(starv.current.last, total);
-          if (d > 0) starv.current = { ...starv.current, before: starv.current.at, at: Date.now() };
-          starv.current.last = total;
-        }
-        setSlow((prev) => mergeSlow(prev, r));
-        setError("");
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
-      }
-    },
-    SLOW_MS,
-    open,
-    [session],
-  );
-  usePoll(
-    async () => {
-      setFast(await session.core.call("statsTick", undefined));
-    },
-    FAST_MS,
-    open,
-    [session],
-  );
-
-  const d = st.snapshot?.device;
-  const reset = async () => {
-    try {
-      await session.core.call("statsResetWatermarks", undefined);
-    } catch (e) {
-      session.fail(e);
-    }
-  };
-  const b = fast?.buffers;
-  return (
-    <section class="stats" aria-label="Stats for nerbs">
-      <div class="stats-head">
-        <span class="muted">Updated every 2 seconds</span>
-        <button type="button" disabled={!open || !!session.readOnlyReason} onClick={() => void reset()}>
-          Reset Watermarks
-        </button>
-      </div>
-      {error ? <p class="error">{error}</p> : null}
-      <div class="stats-grid">
-        {d ? (
-          <section class="card" aria-label="Device Information">
-            <h3>Device Information</h3>
-            <dl class="stat-rows">
-              <dt>Firmware</dt>
-              <dd>{d.firmware}</dd>
-              <dt>Platform</dt>
-              <dd>{d.platform}</dd>
-              <dt>Serial</dt>
-              <dd>{d.serial || "-"}</dd>
-            </dl>
-          </section>
-        ) : null}
-        {b ? (
-          <section class="card" aria-label="Buffer Fill Levels">
-            <h3>Buffer Fill Levels</h3>
-            <dl class="stat-rows">
-              <dt>Audio Streaming</dt>
-              <dd>
-                <Dot band={b.streaming ? "good" : "off"} />
-                {b.streaming ? "Yes" : "No"}
-              </dd>
-              {(fast?.fills ?? []).map((f, i) => (
-                <Fragment key={`o${i}`}>
-                  <dt>Output {i + 1}</dt>
-                  <dd data-band={f.band}>
-                    <Dot band={f.band} />
-                    {fillText(f)}
-                  </dd>
-                </Fragment>
-              ))}
-              {b.spdif.slice(0, b.numSpdif).map((x, i) => (
-                <Fragment key={`s${i}`}>
-                  <dt>S/PDIF {i + 1}</dt>
-                  <dd>
-                    {x.fillPct}% ({x.minPct}–{x.maxPct}%)
-                  </dd>
-                </Fragment>
-              ))}
-              <dt>PDM Active</dt>
-              <dd>{b.pdmActive ? "Yes" : "No"}</dd>
-              {b.pdmActive ? (
-                <>
-                  <dt>DMA Buffer</dt>
-                  <dd>
-                    {b.pdm.dmaFillPct}% ({b.pdm.dmaMinPct}–{b.pdm.dmaMaxPct}%)
-                  </dd>
-                  <dt>Ring Buffer</dt>
-                  <dd>
-                    {b.pdm.ringFillPct}% ({b.pdm.ringMinPct}–{b.pdm.ringMaxPct}%)
-                  </dd>
-                </>
-              ) : null}
-            </dl>
-          </section>
-        ) : null}
-        {slow
-          ? slowSections(slow).map((sec) => (
-              <section class="card" key={sec.title} aria-label={sec.title}>
-                <h3>{sec.title}</h3>
-                <dl class="stat-rows">
-                  {sec.rows.map((r) => (
-                    <Fragment key={r.label}>
-                      <dt>{r.label}</dt>
-                      <dd>
-                        <Dot band={r.band} />
-                        {r.text}
-                      </dd>
-                    </Fragment>
-                  ))}
-                  {sec.title === "S/PDIF DMA Starvation" && starv.current.at ? (
-                    <>
-                      <dt>Time since last event</dt>
-                      <dd>{Math.round((Date.now() - starv.current.at) / 1000)} s</dd>
-                    </>
-                  ) : null}
-                </dl>
-                {sec.note ? <p class="muted">{sec.note}</p> : null}
-              </section>
-            ))
-          : null}
-      </div>
-    </section>
-  );
-}
+// -- WP WEB7 -- the signal generator and Stats for nerbs moved to GeneratorPage.tsx and StatsPage.tsx
 
 // ------------------------------------------------------------ interrupt monitor
 
@@ -535,13 +97,8 @@ function MonitorPanel(props: { session: Session }) {
     void navigator.clipboard?.writeText(copyText(lines)).catch(() => undefined);
   };
   return (
-    <section class="card monitor" aria-label="Interrupt Monitor">
-      <div class="card-head">
-        <h3>Notifications</h3>
-        <span class="muted" role="status">
-          {!open ? "Inactive" : paused ? "Paused" : "Listening"} · {eventCount(lines.length)}
-        </span>
-      </div>
+    // -- WP WEB4 -- no card: the tools and the state in one row at the top, the lines in mono, an empty state while there are none
+    <section class="monitor" aria-label="Interrupt Monitor">
       <div class="monitor-tools">
         <button type="button" aria-pressed={paused} onClick={() => setPaused((p) => !p)}>
           {paused ? "Resume" : "Pause"}
@@ -552,8 +109,19 @@ function MonitorPanel(props: { session: Session }) {
         <button type="button" title="Copies the lines shown, oldest first" disabled={!lines.length} onClick={copy}>
           Copy
         </button>
+        <StatusChip kind={open && !paused ? "ok" : "idle"} role="status">
+          {!open ? "Inactive" : paused ? "Paused" : "Listening"} · {eventCount(lines.length)}
+        </StatusChip>
       </div>
-      <ol class="monitor-lines" ref={list} aria-label="Notification lines">
+      {/* the empty state's look without its status role: the chip above is this page's status */}
+      {lines.length ? null : (
+        <div class="empty-state">
+          <Glyph name="activity" class="empty-icon" />
+          <p class="empty-title">No notifications yet</p>
+          <p class="empty-text">The device's notifications are listed here as they come, oldest first.</p>
+        </div>
+      )}
+      <ol class="monitor-lines" ref={list} aria-label="Notification lines" hidden={!lines.length}>
         {lines.map((l) => (
           <li key={l.id}>
             <time>{lineTime(l.timeMs)}</time> <code>{l.text}</code>

@@ -5343,6 +5343,12 @@ uint32_t dspi_output_labels(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_output_cards(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
+ * The names a person knows the channels by (`DspiCore::channel_words`), in
+ * JSON: `{ok, inputs, outputs, fromLayout}`; "Centre woofer", "LFE", "Out 3".
+ */
+uint32_t dspi_channel_words(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
  * Step back through the change history (`DspiCore::undo`): the newest
  * change that can be undone is written back through its setter. The reply
  * is `{ok, entry, skipped, note}`: `entry` the change reversed (`null` when
@@ -8693,6 +8699,15 @@ bool dspi_mcp_set_agent_spl_cap(struct FfiMcp *mcp, float spl_db);
  * handle.
  */
 bool dspi_mcp_set_agent_detect(struct FfiMcp *mcp, bool allowed);
+
+/**
+ * Settings › AI Agents › Agents may set speaker roles from my words (off by
+ * default): under "never ask" an agent's `dspi_set_speaker_roles` is refused
+ * unless it is on; under the other settings the user is asked instead (one
+ * question showing the whole table). Holds from the next call on, also while
+ * the server runs. False for a null handle.
+ */
+bool dspi_mcp_set_agent_roles(struct FfiMcp *mcp, bool allowed);
 
 /**
  * This computer's audio as `dspi_get_host_audio` reads it, for the devices

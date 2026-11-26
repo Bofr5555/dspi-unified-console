@@ -32,7 +32,7 @@ async function openDemo(page: Page): Promise<Locator> {
   const one = page.locator("#one");
   await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article").first();
-  await expect(session.getByRole("region", { name: "Presets" })).toBeVisible();
+  await expect(session.getByRole("button", { name: /^Presets: / })).toBeVisible(); // -- WP INTD -- the session bar's presets (DL5)
   return session;
 }
 
@@ -51,7 +51,7 @@ test("WB6K M28: Export Filters downloads the bands; Import Filters… on the cho
   await openPage(session, "Files");
   const files = session.getByRole("region", { name: "Files" });
   const card = files.getByRole("region", { name: "Filters" });
-  const [dl] = await Promise.all([page.waitForEvent("download"), card.getByRole("button", { name: "Export Filters" }).click()]);
+  const [dl] = await Promise.all([page.waitForEvent("download"), card.getByRole("button", { name: "Export Filters…" }).click() /* -- WP WEB7 -- actions.json's words */]);
   expect(dl.suggestedFilename()).toBe("DSPi Filters.txt");
   const text = readFileSync(await dl.path(), "utf8");
   expect(text.length).toBeGreaterThan(0);
@@ -86,23 +86,34 @@ test("WB6K M28: Export Filters downloads the bands; Import Filters… on the cho
 test("WB6K M30: Save Master Volume and Save Output Configuration store the live values", async ({ page }) => {
   const errors = errorsOf(page);
   const session = await openDemo(page);
-  await openPage(session, "Files");
-  const files = session.getByRole("region", { name: "Files" });
-  const card = files.getByRole("region", { name: "Save to the device" });
-  await card.getByRole("button", { name: "Save Master Volume" }).click();
-  await expect(files.getByRole("status", { name: "Result" })).toContainText(/Master volume saved \(.+ dB\)\. It will be applied on next boot\./);
-  await card.getByRole("button", { name: "Save Output Configuration" }).click();
-  await expect(files.getByRole("status", { name: "Result" })).toContainText("Output configuration saved. It will be applied on next boot.");
+  // -- WP WEB7 -- Qt's Save ▾ rows (they were a card on Files); what they did in a notice
+  for (const [row, said] of [
+    ["Save Master Volume", /Master volume saved \(.+ dB\)\. It will be applied on next boot\./],
+    ["Save Output Configuration", /Output configuration saved\. It will be applied on next boot\./],
+  ] as const) {
+    await session.getByRole("button", { name: "Save options" }).click();
+    await session.getByRole("menuitem", { name: row }).click();
+    const told = page.getByRole("dialog", { name: row });
+    await expect(told).toContainText(said);
+    await told.getByRole("button", { name: "OK" }).click();
+    await expect(told).toHaveCount(0);
+  }
   if (test.info().project.name === "narrow") await noSidewaysScroll(page);
   expect(errors).toEqual([]);
 });
 
+/** -- WP WEB7 -- Update Database… is Library › AutoEQ's ▾ (Qt's), a dialog with the database's panel. */
+async function updateDatabase(session: Locator, page: Page): Promise<Locator> {
+  await openPage(session, "AutoEQ");
+  await session.getByRole("toolbar", { name: "AutoEQ tools" }).getByRole("button", { name: "More" }).click();
+  await session.getByRole("menuitem", { name: "Update Database…" }).click();
+  return page.getByRole("dialog", { name: "Update Database" }).getByRole("region", { name: "AutoEQ database" });
+}
+
 test("WB6K M32: Update Database: the built-in one, Download (the page's GET, a local fixture), Import File refused, Reset to Built-in", async ({ page, baseURL }) => {
   const errors = errorsOf(page);
   const session = await openDemo(page);
-  await openPage(session, "Files");
-  const card = session.getByRole("region", { name: "AutoEQ database" });
-  await card.getByRole("button", { name: "Update Database…" }).click();
+  const card = await updateDatabase(session, page);
   const current = card.getByRole("status", { name: "Current database" });
   await expect(current).toContainText(/Current database: .*, \d{3,} profiles \(the built-in one\)\./, { timeout: 15_000 });
   await expect(card.getByRole("button", { name: "Reset to Built-in" })).toHaveCount(0);
@@ -126,9 +137,7 @@ test("WB6K M32: Update Database: the built-in one, Download (the page's GET, a l
   // Kept for the next visit, in the page's storage.
   await page.reload();
   const again = await openDemo(page);
-  await openPage(again, "Files");
-  const card2 = again.getByRole("region", { name: "AutoEQ database" });
-  await card2.getByRole("button", { name: "Update Database…" }).click();
+  const card2 = await updateDatabase(again, page);
   await expect(card2.getByRole("status", { name: "Current database" })).toContainText("3 profiles (your own)");
   await card2.getByRole("button", { name: "Reset to Built-in" }).click();
   await expect(card2.getByRole("status", { name: "Current database" })).toContainText("(the built-in one)", { timeout: 15_000 });
@@ -141,7 +150,7 @@ test("WB6K M31: Browse Profiles and Favorite Profiles in the AutoEQ panel; a fou
   const errors = errorsOf(page);
   const session = await openDemo(page);
   await openPage(session, "EQ");
-  await session.getByRole("button", { name: "AutoEQ…" }).click();
+  await session.getByRole("button", { name: "Headphone Profile…" }).click(); // -- WP WEB6 -- Qt's tool on an input's page (was AutoEQ…)
   const panel = session.getByRole("region", { name: "AutoEQ" });
   await panel.getByLabel("Search profiles").fill("sennheiser hd 600");
   const found = panel.getByRole("list", { name: "Profiles found" });
@@ -159,9 +168,7 @@ test("WB6K M31: Browse Profiles and Favorite Profiles in the AutoEQ panel; a fou
   await expect(panel).toContainText("No profile matches “zzzz no such headphone”.");
   if (test.info().project.name === "narrow") await noSidewaysScroll(page);
 
-  await openPage(session, "Files");
-  const card = session.getByRole("region", { name: "AutoEQ database" });
-  await card.getByRole("button", { name: "Update Database…" }).click();
+  const card = await updateDatabase(session, page);
   await expect(card.getByRole("list", { name: "Favorite Profiles" })).toContainText("Sennheiser HD 600");
   await card.getByRole("button", { name: "Clear Favorites" }).click();
   await expect(card).toContainText("No favorites yet.");
@@ -178,7 +185,9 @@ test("WB6K: the .dspipreset carries the input pair links, and an import with rou
 
   await openPage(session, "Files");
   const files = session.getByRole("region", { name: "Files" });
-  const [dl] = await Promise.all([page.waitForEvent("download"), files.getByRole("button", { name: "Export Configuration" }).click()]);
+  // -- WP WEB7 -- Qt's Export Device Configuration…: the name asked in a dialog
+  await files.getByRole("button", { name: "Export Device Configuration…" }).click();
+  const [dl] = await Promise.all([page.waitForEvent("download"), page.getByRole("dialog", { name: "Export Device Configuration" }).getByRole("button", { name: "Export" }).click()]);
   const text = readFileSync(await dl.path(), "utf8");
   expect(JSON.parse(text).global.inputPairLinked[0]).toBe(true);
 

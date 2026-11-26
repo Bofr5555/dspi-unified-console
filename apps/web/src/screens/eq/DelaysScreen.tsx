@@ -3,6 +3,10 @@
 // limiter. Typing a distance writes the delay it takes sound to travel it. Writes are the output
 // card's (`out.gain`, `out.delay`, `out.mute`, `limit.on`: the core's guards, limits and undo);
 // read only, nothing is editable. Disabled outputs are listed, greyed, as on the Overview.
+//
+// -- WP WEB3 -- (DL8 on the web) Qt's Delay & Gain: a §9 table (caps header over one rule, striped
+// 28 px rows), each output's pill and name, its ON switch (`out.enable`, with the PDM question),
+// mono right-aligned fields, the arrival bar, the mute icon and the limiter; Qt's help sentence.
 
 import { useEffect, useState } from "preact/hooks";
 import { useSessionState } from "../../ui/components";
@@ -12,6 +16,10 @@ import { clamp, delayText, levelText, limiterSupported, parseLevel } from "../ou
 import { arrivals, delayToMetres, distanceText, metresToDelay, parseDistance, SOUND_MPS } from "./align";
 import { ValueField } from "./Field";
 import { channelColour } from "./model";
+import { EmptyState, Glyph, Switch } from "../../ui/design"; // -- WP WEB -- -- WP WEB3 -- Glyph, Switch
+import { Pill } from "../../ui/Pill"; // -- WP WEB3 --
+import { toggleOutput } from "../outputs/enable"; // -- WP WEB3 --
+import "./eq.css"; // -- WP WEB3 --
 
 const DEFAULT_GAIN: [number, number] = [-60, 20];
 const DEFAULT_DELAY: [number, number] = [0, 21];
@@ -36,19 +44,20 @@ export function DelaysScreen(props: ScreenProps) {
       alive = false;
     };
   }, [session]);
-  if (!snap) return <p class="empty">This DSPi's outputs are not known yet.</p>;
+  if (!snap) return <EmptyState icon="chart-line" title="Reading the outputs…" text="This DSPi's outputs are not known yet." />; // -- WP WEB --
   const s = snap.state;
   const ro = session.readOnlyReason !== "";
   const rows = overviewRows(s, snap.outputLabels);
   const bars = arrivals(rows.map((r) => (r.enabled ? r.delayMs : 0)));
   const limiter = limiterSupported(s);
   return (
-    <section class="card band-list delays" aria-label="Delay and gain of every output">
+    <section class="band-list delays eq-table" aria-label="Delay and gain of every output">
       <div class="tbl-scroll">
         <table>
           <thead>
             <tr>
               <th scope="col">Output</th>
+              <th scope="col" class="c-on">On</th>
               <th scope="col">Gain</th>
               <th scope="col">Delay</th>
               <th scope="col">Distance</th>
@@ -67,10 +76,14 @@ export function DelaysScreen(props: ScreenProps) {
               return (
                 <tr key={o} class={r.enabled ? undefined : "xover-off"} aria-label={who} data-output={o}>
                   <th scope="row">
-                    <span class="swatch" style={{ background: channelColour(r.wire) }} aria-hidden="true" />
-                    {who}
-                    {r.enabled ? null : <span class="ov-state"> Disabled</span>}
+                    <span class="eq-who">
+                      <Pill text={r.descriptor} colour={channelColour(s, r.wire)} />
+                      <span class="eq-who-name">{r.name}</span>
+                    </span>
                   </th>
+                  <td class="c-on">
+                    <Switch label={`${who} on`} on={r.enabled} disabled={ro} toggle={() => void toggleOutput(session, props.ask, o)} />
+                  </td>
                   <td>
                     <ValueField
                       label={`${who} gain`}
@@ -101,26 +114,27 @@ export function DelaysScreen(props: ScreenProps) {
                       aria-valuemax={100}
                       aria-valuenow={Math.round(bars[i]! * 100)}
                     >
-                      <span style={{ width: `${(bars[i]! * 100).toFixed(1)}%`, background: channelColour(r.wire) }} />
+                      <span style={{ width: `${(bars[i]! * 100).toFixed(1)}%`, background: channelColour(s, r.wire) }} />
                     </span>
                   </td>
                   <td>
                     <button
                       type="button"
-                      class="toggle"
+                      class="eq-icon-toggle eq-mute"
                       aria-pressed={r.muted}
                       aria-label={`Mute ${who}`}
+                      title={r.muted ? "Muted" : "Mute"}
                       disabled={ro}
                       onClick={() => void session.write("out.mute", { bool: !r.muted }, [o])}
                     >
-                      {r.muted ? "Muted" : "Mute"}
+                      <Glyph name={r.muted ? "volume-x" : "volume"} />
                     </button>
                   </td>
                   {limiter ? (
                     <td>
                       <button
                         type="button"
-                        class="toggle"
+                        class="eq-limit"
                         aria-pressed={r.limiter?.on ?? false}
                         aria-label={`Limiter on ${who}`}
                         title={r.limiter?.on ? `Ceiling ${levelText(r.limiter.thresholdDb, "dBFS")}` : "Off"}
@@ -137,7 +151,9 @@ export function DelaysScreen(props: ScreenProps) {
           </tbody>
         </table>
       </div>
-      <p class="note">Time alignment across the outputs: the longest delay fills its bar. Distances at {SOUND_MPS} m/s; Measure can work the delays out.</p>
+      <p class="eq-help">
+        The distance is what the delay stands for at {SOUND_MPS} m/s: typing one sets the delay. The latest output has the longest bar. Measure can find the delays by itself (Auto-tune).
+      </p>
     </section>
   );
 }

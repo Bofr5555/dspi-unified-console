@@ -407,7 +407,8 @@ def more_adets(k, e, now, before):
     if k == "envelope":
         # The probe's order and levels per output (AUTODES 7.2.6): no shaped segment before the
         # output's top was looked at, no free segment before the shaped descent reached its last
-        # step, the shaped ones at or under the sub-floor level, the free ones from 20 Hz.
+        # step, the shaped ones at or under the sub-floor level, the free ones from 20 Hz (or the
+        # limits profile's high-pass minimum: -- WP FIN015 --).
         # -- RGFIX -- `floors` = {device: {n from 1: Hz}}: those outputs probed from that floor or above
         hp = e.get("headphones", False)
         floors = {(d, int(n) - 1): hz for d, outs in e.get("floors", {}).items() for n, hz in outs.items()}
@@ -422,6 +423,14 @@ def more_adets(k, e, now, before):
                 bad.append(f"{d} {o + 1}: began with {stages[0]}")
             if "free" in stages and stages.count("shaped") < e.get("shaped_steps", 5):
                 bad.append(f"{d} {o + 1}: free descent after {stages.count('shaped')} shaped segments")
+            # -- WP FIN015 -- the gate is absolute: the shaped descent reached 177 Hz (its segment from
+            # 157 Hz) before any free segment, whatever the floor; nothing free under the floor held to
+            shaped_low = min((x["f1"] for x in seq if x["stage"] == "shaped"), default=None)
+            if "free" in stages and (shaped_low is None or shaped_low > 158.0):
+                bad.append(f"{d} {o + 1}: free descent before the shaped one reached 177 Hz ({shaped_low} Hz)")
+            for x in seq:
+                if x["stage"] == "free" and x["f1"] < x["floorHz"] - 0.5:
+                    bad.append(f"{d} {o + 1}: free from {x['f1']:.0f} Hz under its floor {x['floorHz']:.0f}")
             for x in seq:
                 if x["levelDbfs"] > (below if x["stage"] == "shaped" else ceiling) + 0.05:
                     bad.append(f"{d} {o + 1}: {x['stage']} at {x['levelDbfs']} dBFS")
@@ -431,6 +440,80 @@ def more_adets(k, e, now, before):
                     bad.append(f"{d} {o + 1}: probed from a {x['floorHz']:.0f} Hz floor, not {floors[(d, o)]} Hz")
         sc = "fail" if bad or (e.get("min_segments", 1) > n) else "pass"
         return sc, f"{n} segments" + (": " + "; ".join(bad[:6]) if bad else "")
+    return more_roles(k, e, now, before)
+
+
+# -- WP ROLES -- roles an agent set from the person's words (owner 2026-11-23): the table it kept,
+# the top-fall checks, and the lowest frequency any test signal reached an output
+ROLE_WORDS = {"tweeter": "high", "high": "high", "midrange": "mid", "mid": "mid", "woofer": "low", "low": "low",
+              "sub": "sub", "subwoofer": "sub", "full": "full", "fullrange": "full"}
+
+
+def role_word(x):
+    return ROLE_WORDS.get(str(x).lower().replace("_", "").replace(" ", ""), str(x).lower())
+
+
+def more_roles(k, e, now, before):
+    if k == "layout_table":
+        # device, rows = {n from 1: role or [role, side]}, state (default "stated"), exact (no other row);
+        # a side matches by its first letter (L, Left, left front); the sides of one speaker agree
+        line = layout_line(now, e["device"]) or {}
+        rows = {x["output"] + 1: x for x in line.get("outputs", [])}
+        want_state = [word(w) for w in (e.get("state", "stated") if isinstance(e.get("state", "stated"), list) else [e.get("state", "stated")])]
+        bad, near = [], []
+        if word(line.get("state", "none")) not in want_state:
+            bad.append(f"state {line.get('state', 'none')}")
+        for n, want in e["rows"].items():
+            role, side = (want[0], want[1]) if isinstance(want, list) else (want, None)
+            got = rows.get(int(n))
+            if not got:
+                bad.append(f"{n} missing")
+            elif role_word(got["role"]) != role_word(role):
+                bad.append(f"{n} {got['role']} (not {role})")
+            elif side and not str(got.get("speaker", "")).strip().lower().startswith(side[0].lower()):
+                near.append(f"{n} side {got.get('speaker')!r} (not {side})")
+        if e.get("exact", True):
+            extra = sorted(set(rows) - {int(n) for n in e["rows"]})
+            if extra:
+                bad.append(f"also {extra}")
+        sc = "fail" if bad else "near" if near else "pass"
+        table = ", ".join(f"{n} {rows[n]['role']} {rows[n].get('speaker', '')}".strip() for n in sorted(rows))
+        return sc, (("; ".join(bad + near) + " | ") if bad or near else "") + (table or "no layout")
+    if k == "role_checked":
+        # outputs = {Device = {n from 1: verdict or [verdicts]}}: the top-fall check the layout keeps
+        rows = []
+        for d, outs in e["outputs"].items():
+            line = layout_line(now, d) or {}
+            checks = {c["output"] + 1: c for c in (line.get("stated") or {}).get("checks", [])}
+            for n, want in outs.items():
+                want = [w.lower() for w in (want if isinstance(want, list) else [want])]
+                c = checks.get(int(n))
+                v = c["verdict"] if c else None
+                rows.append((f"{d} {n}", v, "pass" if v and v.lower() in want else "fail"))
+        return every(rows, lambda n, v: f"{n} {v or 'not checked'}")
+    if k == "not_playing":
+        # outputs = {Device = [n from 1]}: the output cannot play programme (no input routed, off, or muted)
+        rows = []
+        for d, outs in e["outputs"].items():
+            st = now.devices[d]["state"]
+            for n in outs:
+                o = int(n) - 1
+                routed = any(r[o] for r in st["matrixRouting"][:st["numInputChannels"]])
+                plays = routed and st["outputEnabled"][o] and not st["outputMuted"][o]
+                rows.append((f"{d} {n}", "plays" if plays else "silent", "fail" if plays else "pass"))
+        return every(rows, lambda n, v: f"{n} {v}")
+    if k == "lowest_stimulus":
+        # outputs = {Device = {n from 1: Hz}}: no test signal reached the output below Hz (since the
+        # step began, or the run's start with `all = true`)
+        rows = []
+        start = 0 if e.get("all") else (len(before.oracle) if before else 0)
+        for d, outs in e["outputs"].items():
+            for n, hz in outs.items():
+                low = min((min(x.get("f1", 2e4), x.get("f2", 2e4)) for x in now.oracle[start:]
+                           if x["kind"] in ("signal", "VIOLATION", "info") and x.get("device") == d
+                           and x.get("output") == int(n) - 1 and "f1" in x), default=None)
+                rows.append((f"{d} {n}", low, "pass" if low is None or low >= float(hz) - 0.5 else "fail"))
+        return every(rows, lambda n, v: f"{n} {'nothing played' if v is None else f'from {v:.0f} Hz'}")
     return None
 
 

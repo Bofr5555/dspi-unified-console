@@ -1219,6 +1219,7 @@ uint32_t dspi_filter_type_name(uint8_t code, char *buf, uint32_t len);
 uint32_t dspi_core1_conflict_reason(struct FfiCore *core, uint8_t output, char *buf, uint32_t len);
 uint32_t dspi_output_labels(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_output_cards(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_channel_words(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_undo(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_redo(struct FfiCore *core, char *buf, uint32_t len);
 bool dspi_can_undo(const struct FfiCore *core);
@@ -2145,6 +2146,7 @@ uint32_t dspi_mcp_activity(struct FfiMcp *mcp, uint32_t n, char *buf, uint32_t l
 bool dspi_mcp_set_confirm(struct FfiMcp *mcp, const char *mode);
 bool dspi_mcp_set_agent_spl_cap(struct FfiMcp *mcp, float spl_db);
 bool dspi_mcp_set_agent_detect(struct FfiMcp *mcp, bool allowed);
+bool dspi_mcp_set_agent_roles(struct FfiMcp *mcp, bool allowed);
 uint32_t dspi_mcp_host_audio(struct FfiMcp *mcp, char *buf, uint32_t len);
 bool dspi_mcp_set_autoeq(struct FfiMcp *mcp, const uint8_t *data, uint32_t len);
 uint32_t dspi_mcp_confirmations(struct FfiMcp *mcp, char *buf, uint32_t len);

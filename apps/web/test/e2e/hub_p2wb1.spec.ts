@@ -130,7 +130,7 @@ test.describe("P2WB1 on a hub", () => {
     // Open the demo DSPi from the inventory: no choose step.
     await picker.getByRole("listitem").filter({ hasText: "· online" }).getByRole("button", { name: "Connect" }).click();
     const session = page.getByRole("article").last();
-    await expect(session.locator(".device-meta")).toContainText(DEMO);
+    await expect(session).toHaveAttribute("data-serial", new RegExp(DEMO));
 
     // The hub screen, in Advanced (monitoring, as the event log).
     await setMode(session, page, "Advanced");
@@ -166,6 +166,9 @@ test.describe("P2WB1 on a hub", () => {
     await expect(hot).toContainText("Raised");
     const banner = session.getByRole("status", { name: "Hub alarms" });
     await expect(banner).toContainText("alarm");
+    // -- WP WEB7 -- (REVE D5) the status rail counts what the banner counts, never "No hub alarms" under it
+    const railAlarms = session.getByRole("complementary", { name: "Status" }).getByLabel("Alarms");
+    await expect(railAlarms).toHaveText(/^[1-9]\d* hub alarms?$/);
     await noSidewaysScroll(page);
     await hot.getByRole("button", { name: "Acknowledge" }).click();
     await expect(hot).toContainText("Acknowledged");
@@ -175,6 +178,7 @@ test.describe("P2WB1 on a hub", () => {
     expect(who).toMatch(new RegExp(`^(Session \\d+|${WEB_CLIENT.replace(/[()]/g, "\\$&")})$`));
     await expect(hot.getByRole("button", { name: "Acknowledge" })).toHaveCount(0);
     await expect(banner).toHaveCount(0);
+    await expect(railAlarms).toHaveText("No hub alarms"); // -- WP WEB7 --
 
     // The events view: "On the hub", the hub's records of this DSPi with who did it.
     await openPage(session, "Events");
@@ -207,7 +211,7 @@ test.describe("P2WB1 on a hub", () => {
     await session.getByLabel("PIN").fill(h.pin);
     await session.getByRole("button", { name: "Pair" }).click();
     await session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: DEMO.slice(-8) }).getByRole("button", { name: "Open" }).click();
-    await expect(session.locator(".device-meta")).toContainText(DEMO);
+    await expect(session).toHaveAttribute("data-serial", new RegExp(DEMO));
     await setMode(session, page, "Advanced");
     await openPage(session, "Hub");
     const devices = session.getByRole("region", { name: "Devices on the hub" });

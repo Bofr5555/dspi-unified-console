@@ -7,6 +7,10 @@ import UConsole
 // least 380×400): the header with the switch, then one scrolling column: the
 // channel masks (with more than two inputs, on firmware with them, wire V18),
 // amount, speed, largest gain, gate and lookahead.
+// -- WP DL1 -- Modern: with room for them (a page), two columns from the left
+// like the other effects: the channels on the left, the parameters on the
+// right; Detector and Apply as option chips, Speed as content-sized segments,
+// no lines between the parts. A narrow host keeps the one column.
 // -- WP LAY1a -- A panel (Panel.qml): PanelTable's row for
 // tools.leveller gives its window's title and sizes.
 Panel {
@@ -16,6 +20,8 @@ Panel {
     fitBodies: [body]
 
     readonly property bool writable: EffectsController.writable
+    // -- WP DL1 -- Modern with room: channels and parameters side by side
+    readonly property bool twoColumns: LayoutController.modern && EffectsController.levellerMasksShown && body.width >= 720
     readonly property var speedTexts: [
         qsTr("Slow — Gentle response for music and wide dynamic range content."),
         qsTr("Medium — Balanced response for general purpose use."),
@@ -46,9 +52,8 @@ Panel {
                 color: Theme.textMuted
             }
         }
-        RowLayout {
+        EffectChipRow {   // -- WP DL1 --
             Layout.fillWidth: true
-            spacing: 6
             Repeater {
                 model: EffectsController.levellerChannels
                 EffectChip {
@@ -85,22 +90,33 @@ Panel {
             id: body
             Layout.fillWidth: true
             Layout.fillHeight: true
-            contentHeight: column.implicitHeight + 2 * Theme.spacingLarge
+            readonly property int topGap: LayoutController.modern ? Theme.spacingSection : Theme.spacingLarge   // -- WP DL1 --
+            contentHeight: column.implicitHeight + topGap + Theme.spacingLarge
             clip: true
             boundsBehavior: Flickable.StopAtBounds
             ScrollBar.vertical: AppScrollBar {}
 
-            ColumnLayout {
+            // -- WP DL1 -- One column (the window), or two (Modern with room):
+            // the channels at the top or on the left, the parameters under
+            // them or on the right
+            GridLayout {
                 id: column
+                readonly property real columnWidth: (width - columnSpacing) / 2
                 x: Theme.spacingLarge
-                y: Theme.spacingLarge
-                width: body.width - 2 * Theme.spacingLarge
-                spacing: 14
+                y: body.topGap
+                width: (LayoutController.modern ? Math.min(body.width, 1200) : body.width) - 2 * Theme.spacingLarge
+                columns: panel.twoColumns ? 2 : 1
+                columnSpacing: panel.twoColumns ? 2 * Theme.spacingLarge : 0
+                rowSpacing: 14
 
                 ColumnLayout {
                     objectName: "LevellerWindow.channels"
                     visible: EffectsController.levellerMasksShown
+                    Layout.row: 0
+                    Layout.column: 0
                     Layout.fillWidth: true
+                    Layout.preferredWidth: panel.twoColumns ? column.columnWidth : -1
+                    Layout.alignment: Qt.AlignTop
                     spacing: 10
                     EffectSection {
                         text: qsTr("Channels")
@@ -136,118 +152,144 @@ Panel {
                         hint: qsTr("receives the gain")
                     }
                 }
-                EffectRule { visible: EffectsController.levellerMasksShown }
+                EffectRule {
+                    visible: EffectsController.levellerMasksShown && !panel.twoColumns
+                    Layout.row: 1
+                    Layout.column: 0
+                }
 
-                SectionHeading { text: qsTr("Parameters") }
-                EffectParameterRow {
-                    objectName: "LevellerWindow.amount"
-                    Layout.fillWidth: true
-                    enabled: panel.writable
-                    title: qsTr("Amount")
-                    unit: qsTr("%")
-                    value: EffectsController.levellerAmount
-                    from: 0
-                    to: 100
-                    resetValue: 50
-                    caption: qsTr("Compression strength. Higher values reduce dynamic range more aggressively.")
-                    onLive: v => EffectsController.setLevellerAmount(v)
-                    onCommit: v => EffectsController.setLevellerAmount(v)
-                }
-                EffectRule {}
                 ColumnLayout {
+                    id: parameters
+                    Layout.row: panel.twoColumns ? 0 : 2
+                    Layout.column: panel.twoColumns ? 1 : 0
                     Layout.fillWidth: true
-                    spacing: 6
-                    Text {
-                        text: qsTr("Speed")
-                        font: Theme.fontBody
-                        color: Theme.text
-                    }
-                    AppTabBar {
-                        objectName: "LevellerWindow.speed"
+                    Layout.preferredWidth: panel.twoColumns ? column.columnWidth : -1
+                    Layout.alignment: Qt.AlignTop
+                    spacing: 14
+
+                    SectionHeading { text: qsTr("Parameters") }
+                    EffectParameterRow {
+                        objectName: "LevellerWindow.amount"
                         Layout.fillWidth: true
-                        label: qsTr("Speed")
                         enabled: panel.writable
-                        currentIndex: EffectsController.levellerSpeed
-                        AppTabButton {
-                            objectName: "LevellerWindow.speed.0"
-                            text: qsTr("Slow")
-                            onClicked: EffectsController.setLevellerSpeed(0)
-                        }
-                        AppTabButton {
-                            objectName: "LevellerWindow.speed.1"
-                            text: qsTr("Medium")
-                            onClicked: EffectsController.setLevellerSpeed(1)
-                        }
-                        AppTabButton {
-                            objectName: "LevellerWindow.speed.2"
-                            text: qsTr("Fast")
-                            onClicked: EffectsController.setLevellerSpeed(2)
-                        }
+                        title: qsTr("Amount")
+                        unit: qsTr("%")
+                        value: EffectsController.levellerAmount
+                        from: 0
+                        to: 100
+                        resetValue: 50
+                        caption: qsTr("Compression strength. Higher values reduce dynamic range more aggressively.")
+                        onLive: v => EffectsController.setLevellerAmount(v)
+                        onCommit: v => EffectsController.setLevellerAmount(v)
                     }
-                    Text {
-                        objectName: "LevellerWindow.speedText"
-                        Layout.fillWidth: true
-                        text: panel.speedTexts[EffectsController.levellerSpeed] || panel.speedTexts[1]
-                        font: Theme.fontCaption
-                        color: Theme.textMuted
-                        wrapMode: Text.Wrap
-                    }
-                }
-                EffectRule {}
-                EffectParameterRow {
-                    objectName: "LevellerWindow.maxGain"
-                    Layout.fillWidth: true
-                    enabled: panel.writable
-                    title: qsTr("Max Gain")
-                    unit: qsTr("dB")
-                    value: EffectsController.levellerMaxGain
-                    from: 0
-                    to: 35
-                    resetValue: 15
-                    caption: qsTr("Maximum boost for quiet passages. Higher values risk amplifying noise.")
-                    onLive: v => EffectsController.setLevellerMaxGain(v)
-                    onCommit: v => EffectsController.setLevellerMaxGain(v)
-                }
-                EffectRule {}
-                EffectParameterRow {
-                    objectName: "LevellerWindow.gate"
-                    Layout.fillWidth: true
-                    enabled: panel.writable
-                    title: qsTr("Gate Threshold")
-                    unit: qsTr("dB")
-                    value: EffectsController.levellerGate
-                    from: -96
-                    to: 0
-                    resetValue: -96
-                    caption: qsTr("Silence gate. Signals below this level are not boosted, preventing noise amplification.")
-                    onLive: v => EffectsController.setLevellerGate(v)
-                    onCommit: v => EffectsController.setLevellerGate(v)
-                }
-                EffectRule {}
-                RowLayout {
-                    Layout.fillWidth: true
+                    EffectRule {}
                     ColumnLayout {
                         Layout.fillWidth: true
-                        spacing: 2
+                        spacing: 6
                         Text {
-                            text: qsTr("Lookahead")
+                            text: qsTr("Speed")
                             font: Theme.fontBody
                             color: Theme.text
                         }
-                        Text {
+                        AppTabBar {
+                            objectName: "LevellerWindow.speed"
+                            visible: !LayoutController.modern   // -- WP DL1 -- Modern: the segments under it
                             Layout.fillWidth: true
-                            text: qsTr("Adds 5ms latency. Improves transient handling.")
+                            label: qsTr("Speed")
+                            enabled: panel.writable
+                            currentIndex: EffectsController.levellerSpeed
+                            AppTabButton {
+                                objectName: "LevellerWindow.speed.0"
+                                text: qsTr("Slow")
+                                onClicked: EffectsController.setLevellerSpeed(0)
+                            }
+                            AppTabButton {
+                                objectName: "LevellerWindow.speed.1"
+                                text: qsTr("Medium")
+                                onClicked: EffectsController.setLevellerSpeed(1)
+                            }
+                            AppTabButton {
+                                objectName: "LevellerWindow.speed.2"
+                                text: qsTr("Fast")
+                                onClicked: EffectsController.setLevellerSpeed(2)
+                            }
+                        }
+                        // -- WP DL1 -- Modern: content-sized segments, the chosen one grey with accent text
+                        ToolSegments {
+                            objectName: "LevellerWindow.speed"
+                            visible: LayoutController.modern
+                            Layout.fillWidth: true
+                            label: qsTr("Speed")
+                            enabled: panel.writable
+                            model: [qsTr("Slow"), qsTr("Medium"), qsTr("Fast")]
+                            current: EffectsController.levellerSpeed
+                            onChosen: index => EffectsController.setLevellerSpeed(index)
+                        }
+                        Text {
+                            objectName: "LevellerWindow.speedText"
+                            Layout.fillWidth: true
+                            text: panel.speedTexts[EffectsController.levellerSpeed] || panel.speedTexts[1]
                             font: Theme.fontCaption
                             color: Theme.textMuted
                             wrapMode: Text.Wrap
                         }
                     }
-                    AppSwitch {
-                        objectName: "LevellerWindow.lookahead"
+                    EffectRule {}
+                    EffectParameterRow {
+                        objectName: "LevellerWindow.maxGain"
+                        Layout.fillWidth: true
                         enabled: panel.writable
-                        checked: EffectsController.levellerLookahead
-                        onToggled: EffectsController.setLevellerLookahead(checked)
-                        Accessible.name: qsTr("Lookahead")
+                        title: qsTr("Max Gain")
+                        unit: qsTr("dB")
+                        value: EffectsController.levellerMaxGain
+                        from: 0
+                        to: 35
+                        resetValue: 15
+                        caption: qsTr("Maximum boost for quiet passages. Higher values risk amplifying noise.")
+                        onLive: v => EffectsController.setLevellerMaxGain(v)
+                        onCommit: v => EffectsController.setLevellerMaxGain(v)
+                    }
+                    EffectRule {}
+                    EffectParameterRow {
+                        objectName: "LevellerWindow.gate"
+                        Layout.fillWidth: true
+                        enabled: panel.writable
+                        title: qsTr("Gate Threshold")
+                        unit: qsTr("dB")
+                        value: EffectsController.levellerGate
+                        from: -96
+                        to: 0
+                        resetValue: -96
+                        caption: qsTr("Silence gate. Signals below this level are not boosted, preventing noise amplification.")
+                        onLive: v => EffectsController.setLevellerGate(v)
+                        onCommit: v => EffectsController.setLevellerGate(v)
+                    }
+                    EffectRule {}
+                    RowLayout {
+                        Layout.fillWidth: true
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                                text: qsTr("Lookahead")
+                                font: Theme.fontBody
+                                color: Theme.text
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: qsTr("Adds 5ms latency. Improves transient handling.")
+                                font: Theme.fontCaption
+                                color: Theme.textMuted
+                                wrapMode: Text.Wrap
+                            }
+                        }
+                        AppSwitch {
+                            objectName: "LevellerWindow.lookahead"
+                            enabled: panel.writable
+                            checked: EffectsController.levellerLookahead
+                            onToggled: EffectsController.setLevellerLookahead(checked)
+                            Accessible.name: qsTr("Lookahead")
+                        }
                     }
                 }
             }

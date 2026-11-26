@@ -5,39 +5,44 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 
 /** Each screen's section and id, and its tab's label when that is not the screen's name here. */
-const PLACES: Record<string, { section: string; id: string; tab?: string }> = {
+const PLACES: Record<string, { section: string; id: string; tab?: string; part?: string }> = {
   Main: { section: "Overview", id: "main", tab: "Dashboard" },
   Overview: { section: "Overview", id: "overview", tab: "All Channels" },
   Sender: { section: "Overview", id: "sender" },
   EQ: { section: "Equaliser", id: "eq", tab: "PEQ" }, // -- WP WEBM2 -- the tab is PEQ (MODLAY 2)
   Crossover: { section: "Equaliser", id: "xover" }, // -- WP WEBM2 --
-  "Delay & gain": { section: "Equaliser", id: "delays" }, // -- WP WEBM2 --
+  "Delay & Gain": { section: "Equaliser", id: "delays" }, // -- WP WEBM2 --
   Inputs: { section: "Equaliser", id: "inputs" },
   Matrix: { section: "Routing", id: "matrix" },
   Effects: { section: "Effects", id: "effects" },
   Measure: { section: "Measure", id: "measure" },
-  Analyser: { section: "Analyse", id: "analyser" },
+  Analyser: { section: "Analyse", id: "analyser", tab: "Spectrum" }, // -- WP INTD -- Qt's tab name
   "Signal Generator": { section: "Analyse", id: "generator" },
   "Stats for nerbs": { section: "Analyse", id: "stats" },
   "Interrupt Monitor": { section: "Analyse", id: "monitor" },
+  Presets: { section: "Library", id: "presets" }, // -- WP WEB7 --
   Snapshots: { section: "Library", id: "snapshots" },
   History: { section: "Library", id: "history" }, // -- WP WEBM3 --
   Files: { section: "Library", id: "files" },
-  System: { section: "System", id: "system" },
+  AutoEQ: { section: "Library", id: "autoeq" }, // -- WP WEB7 --
+  System: { section: "System", id: "system", tab: "Units" }, // -- WP WEB7 -- Qt's System tabs
+  "Clock and Links": { section: "System", id: "system-clock" }, // -- WP WEB7 --
+  Installation: { section: "System", id: "system-installation" }, // -- WP WEB7 --
+  "Signal Chain": { section: "System", id: "chain" }, // -- WP WEB7 -- the web's own
   Events: { section: "System", id: "events" },
-  Connect: { section: "Devices", id: "connect", tab: "Open a DSPi" },
+  Connect: { section: "Devices", id: "connect", tab: "This Computer" }, // -- WP WEB7 -- Qt's tab name
   Hub: { section: "Devices", id: "hub" },
   "Hub Settings": { section: "Devices", id: "hub-settings" },
   Device: { section: "Devices", id: "device" },
   Settings: { section: "Settings", id: "settings" },
-  "Control Surfaces": { section: "Settings", id: "surfaces" },
+  "Control Surfaces": { section: "Settings", id: "settings", tab: "Settings", part: "Control" }, // -- WP WEB7 -- Settings' Control part (Qt Modern)
   Installer: { section: "Settings", id: "installer" },
 };
 
-function place(name: string): { section: string; id: string; tab: string } {
+function place(name: string): { section: string; id: string; tab: string; part?: string } {
   const p = PLACES[name];
   if (!p) throw new Error(`no such screen: ${name}`);
-  return { section: p.section, id: p.id, tab: p.tab ?? name };
+  return { section: p.section, id: p.id, tab: p.tab ?? name, part: p.part };
 }
 
 export const rail = (session: Locator) => session.getByRole("navigation", { name: "Sections" });
@@ -57,6 +62,8 @@ export async function openPage(session: Locator, name: string): Promise<void> {
   await expect(section(session, p.section)).toHaveAttribute("aria-current", "page");
   // The tabs come with the section, or not at all (a section with one page).
   if (await pageTabs(session).count()) await pageTab(session, name).click();
+  // -- WP WEB7 -- a place that is a part of its page (Settings › Control)
+  if (p.part) await partsOf(session, p.section).getByRole("tab", { name: p.part, exact: true }).click();
   await expectPage(session, name);
 }
 
@@ -64,6 +71,34 @@ export async function openPage(session: Locator, name: string): Promise<void> {
 export async function expectPage(session: Locator, name: string): Promise<void> {
   await expect(session.locator(".page[data-page]")).toHaveAttribute("data-page", place(name).id);
   await expect(section(session, place(name).section)).toHaveAttribute("aria-current", "page");
+  const part = place(name).part; // -- WP WEB7 --
+  if (part) await expect(partsOf(session, place(name).section).getByRole("tab", { name: part, exact: true })).toHaveAttribute("aria-selected", "true");
+}
+
+// -- WP WEB7 -- Settings as Qt Modern: its parts (Application, Display, Device, Control) are the
+// page's tabs; each lists its pages beside the page ("Settings pages")
+const SETTINGS_PART: Record<string, string> = {
+  About: "Application",
+  Advanced: "Application",
+  Appearance: "Application",
+  Graphing: "Display",
+  "Spectrum Analyser": "Display",
+  Pins: "Device",
+  "Global Parameters": "Device",
+  Speakers: "Device",
+  "Control Surfaces": "Control",
+  "Channel Groups": "Control",
+  Macros: "Control",
+  "Auxiliary Outputs": "Control",
+};
+
+/** The Settings tab of `title`'s part, then its row in the list ("Settings pages"). */
+export async function openSetting(session: Locator, title: string): Promise<void> {
+  const part = SETTINGS_PART[title];
+  if (!part) throw new Error(`no such Settings page: ${title}`);
+  await partsOf(session, "Settings").getByRole("tab", { name: part, exact: true }).click();
+  await session.getByRole("navigation", { name: "Settings pages" }).getByRole("button", { name: title, exact: true }).click();
+  await expect(session.getByRole("navigation", { name: "Settings pages" }).getByRole("button", { name: title, exact: true })).toHaveAttribute("aria-current", "page");
 }
 
 /** Whether the console offers the screen `name` now; goes to its section to see, when there is one. */

@@ -24,6 +24,9 @@ cmake -S apps/desktop/qt -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
 cmake --build "$build" -j"${JOBS:-4}" --target uconsole-for-dspi
 # The release's own glibc: the .rpm is for this Fedora release only
 "$here/check-binary.sh" "$build/uconsole-for-dspi" "$(ldd --version | sed -n '1s/.* //p')"
+# -- WP FIN015 -- the build folder is kept between releases: an older version's package left in it
+# would be found beside this one
+rm -f "$build"/uconsole-for-dspi-*.rpm
 (cd "$build" && cpack -G RPM)
 mkdir -p "$out"
 rpm=$(ls "$build"/uconsole-for-dspi-*.fc"$fc".x86_64.rpm)

@@ -57,11 +57,11 @@ async function openOn(page: Page, hub: OwnHub, serial: string): Promise<Locator>
     await session.getByRole("button", { name: "Pair" }).click();
   }
   const entry = session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: serial.slice(-8) });
-  const meta = session.locator(".device-meta");
+  const meta = page.locator(`article[data-serial="${serial}"]`); // -- WP REVEFIX -- the open DSPi
   // A hub with one DSPi opens it at once; one with several lists them.
-  await expect(entry.or(meta.filter({ hasText: serial }))).toBeVisible();
+  await expect(entry.or(meta)).toBeVisible();
   if (await entry.isVisible()) await entry.getByRole("button", { name: "Open" }).click();
-  await expect(meta).toContainText(serial);
+  await expect(meta).toBeVisible();
   const rail = session.getByRole("complementary", { name: "Status" });
   await expect(rail.getByLabel("Connection")).toHaveText(/^Connected/);
   await expect(session.locator(".banner")).toHaveCount(0);
@@ -74,8 +74,7 @@ async function installerTab(session: Locator, page: Page): Promise<Locator> {
   await dialog.getByRole("radio", { name: "Installer" }).check();
   await dialog.getByRole("button", { name: "Use" }).click();
   await expect(session.getByRole("button", { name: "Mode: Installer" })).toBeVisible();
-  await openPage(session, "System");
-  await session.getByRole("tablist", { name: "System" }).getByRole("tab", { name: "Installation" }).click();
+  await openPage(session, "Installation"); // -- WP WEB7 -- Qt's System tab
   const inst = session.getByRole("region", { name: "Installation", exact: true });
   await expect(inst.getByRole("heading", { name: "Units" })).toBeVisible();
   return inst;
@@ -215,7 +214,7 @@ test.describe("INSTW: the Installation tab on a hub", () => {
     await shots(page, "installation-375-saved");
 
     // The System screen's status shows the new room and the zone.
-    await session.getByRole("tablist", { name: "System" }).getByRole("tab", { name: "Status" }).click();
+    await openPage(session, "System"); // -- WP WEB7 -- Qt\'s Units tab
     const room = session.getByRole("region", { name: "Room Patio" });
     await expect(room.getByLabel("Unit Patio speaker")).toBeVisible();
     await expect(session.getByRole("region", { name: "Room Terrace" }).locator(".sys-chip", { hasText: "Outside" })).toBeVisible();
@@ -287,7 +286,7 @@ test.describe("INSTW: the Installation tab on a hub", () => {
     await expect(inst.getByRole("status", { name: "Installation saved" })).toBeVisible();
     await expect(inst.getByLabel("Unit Desk").getByRole("combobox", { name: "Role" })).toHaveValue("usb_direct");
     // The System screen shows the installation now, not the device alone.
-    await session.getByRole("tablist", { name: "System" }).getByRole("tab", { name: "Status" }).click();
+    await openPage(session, "System"); // -- WP WEB7 -- Qt\'s Units tab
     await expect(session.getByRole("region", { name: "Room Studio" }).getByLabel("Unit Desk")).toBeVisible();
   });
 });

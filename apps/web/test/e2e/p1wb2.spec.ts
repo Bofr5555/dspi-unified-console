@@ -12,6 +12,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { hasPage, openPage, rail as sections } from "../nav";
+import { openPresets, presetsButton, presetsReady } from "../presets"; // -- WP INTD -- -- WP REVEFIX -- openPresets
 
 type Clients = { dspiClients: { call(m: string, p: unknown): Promise<unknown> }[] };
 type State = { outputGainDb: number[]; presetDefaultSlot: number; presetStartupMode: number; activePresetSlot: number; filters: { filterType: number }[][]; limiterEnabled: boolean[]; numOutputChannels: number };
@@ -51,7 +52,7 @@ async function openDemo(page: Page): Promise<Locator> {
   const one = page.locator("#one");
   await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article").first();
-  await expect(session.getByRole("region", { name: "Presets" })).toBeVisible();
+  await presetsReady(session); // -- WP INTD --
   return session;
 }
 
@@ -87,19 +88,32 @@ test("P1WB2 Installer: a limit narrowed below the device is held and reported; a
   await expect(session.getByRole("region", { name: "Installer lock" })).toContainText("No installer PIN is set: nothing is locked.");
   await expect(page.getByRole("dialog", { name: "Unlock" })).toHaveCount(0);
 
-  const out2 = limits.getByRole("group", { name: /^OUT2/ });
-  const highest = out2.getByLabel("Highest gain (dB)");
-  // -- WP P1EFIX -- the ranges are the core's one table
-  await expect(highest).toHaveAttribute("max", "20");
-  await expect(highest).toHaveAttribute("min", "-60");
-  await expect(limits.getByLabel("Highest master volume (dB)")).toHaveAttribute("min", "-128");
-  await expect(out2.getByLabel("Longest delay (ms)")).toHaveAttribute("max", "85");
-  await highest.fill("2");
-  await highest.dispatchEvent("change");
+  const out2 = limits.getByRole("group", { name: /^Out 2\b/ }); // -- WP REVEFIX -- the core's label alone (REVE D2)
+  const highest = out2.getByLabel("Gain at most (dB)");
+  // -- WP P1EFIX -- the ranges are the core's one table (-- WP WEB -- on the text field, which reads "−2,5 dB" as Qt's fields do)
+  await expect(highest).toHaveAttribute("data-max", "20");
+  await expect(highest).toHaveAttribute("data-min", "-60");
+  await expect(limits.getByLabel("Master volume at most (dB)")).toHaveAttribute("data-min", "-128");
+  await expect(out2.getByLabel("Delay at most (ms)")).toHaveAttribute("data-max", "85");
+  // -- WP REVEFIX -- (REVE §3.1, Qt's) off until its check box: then Qt's default (0 dB), which holds OUT2's 8 dB
+  await expect(highest).toBeDisabled();
+  await out2.getByRole("checkbox", { name: "Gain at most" }).check();
   const report = limits.getByRole("status", { name: "Limits report" });
   await expect(report).toContainText("Held to the new limits");
-  await expect(report).toContainText("out.gain[1] 8 → 2 dB");
-  await expect.poll(async () => (await coreState(page)).outputGainDb[1]).toBe(2);
+  await expect(report).toContainText("out.gain[1] 8 → 0 dB");
+  await expect.poll(async () => (await coreState(page)).outputGainDb[1]).toBe(0);
+  // Typed: "2,0 dB" read as Qt's fields read it; a typo is refused and the value stays (REVE G4)
+  await highest.fill("2,0 dB");
+  await highest.dispatchEvent("change");
+  await expect.poll(async () => (await call<{ text: string }>(page, "limitsProfile")).text).toContain('"maxGainDb": 2');
+  await highest.fill("two");
+  await highest.dispatchEvent("change");
+  await expect(highest).toHaveValue("2");
+  // The stepper: one step up and back (the core's step)
+  await out2.getByRole("button", { name: "Gain at most: more" }).click();
+  await expect(highest).not.toHaveValue("2");
+  await out2.getByRole("button", { name: "Gain at most: less" }).click();
+  await expect(highest).toHaveValue("2");
   await shot(page, "limits-held", limits);
   await noSidewaysScroll(page);
 
@@ -111,11 +125,11 @@ test("P1WB2 Installer: a limit narrowed below the device is held and reported; a
     ),
   );
   expect(r).toBe("limit_exceeded");
-  await openPage(session, "Main");
-  const outputs = session.getByRole("region", { name: "Outputs" });
-  const slider = outputs.getByRole("slider").nth(1);
-  await slider.fill("6");
-  await slider.dispatchEvent("change");
+  // -- WP INTD -- OUT2's gain typed on Delay & Gain (the Overview's level cards are gone)
+  await openPage(session, "Delay & Gain");
+  const field = session.getByRole("region", { name: "Delay and gain of every output" }).getByRole("row", { name: /^OUT2 / }).getByRole("textbox", { name: /gain$/ });
+  await field.fill("6");
+  await field.press("Enter");
   const alert = session.locator("p.error.notice");
   await expect(alert).toHaveAttribute("data-key", "limit_exceeded");
   await expect(alert).toContainText("Outside the limits.");
@@ -127,8 +141,8 @@ test("P1WB2 Installer: a limit narrowed below the device is held and reported; a
   await expect.poll(async () => (await call<{ text: string }>(page, "limitsProfile")).text).toContain('"maxGainDb": 2');
   await setMode(again, page, "Installer");
   await openPage(again, "Installer");
-  await expect(again.getByRole("region", { name: "Limits" }).getByRole("group", { name: /^OUT2/ }).getByLabel("Highest gain (dB)")).toHaveValue("2");
-  await again.getByRole("region", { name: "Limits" }).getByRole("button", { name: "Clear Profile" }).click();
+  await expect(again.getByRole("region", { name: "Limits" }).getByRole("group", { name: /^Out 2\b/ }).getByLabel("Gain at most (dB)")).toHaveValue("2");
+  await again.getByRole("region", { name: "Limits" }).getByRole("button", { name: "Remove All Limits" }).click();
   await expect.poll(async () => (await call<{ text: string }>(page, "limitsProfile")).text).toBe("");
   expect(errors).toEqual([]);
 });
@@ -142,7 +156,7 @@ test("P1WB2 Installer: outputs without a limiter, Protect all outputs; power-on 
   await openPage(session, "Installer");
   const limits = session.getByRole("region", { name: "Limits" });
   const warning = limits.getByRole("status", { name: "Outputs without a limiter" });
-  await expect(warning).toContainText("above -10 dB gain");
+  await expect(warning).toContainText("above -10 dB of gain");
   await shot(page, "protect-warning", limits);
   await warning.getByRole("button", { name: "Protect all outputs" }).click();
   await expect(warning).toHaveCount(0);
@@ -198,7 +212,7 @@ test("P1WB2 tokens and groups: tokens on, Save asks and saves; an EQ Clear All i
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await page.keyboard.press("Control+s");
   await page.getByRole("dialog", { name: "Save Preset" }).getByRole("button", { name: "Save" }).click();
-  await expect(session.getByRole("region", { name: "Presets" }).getByText("Unsaved changes")).toHaveCount(0);
+  await expect(presetsButton(session)).not.toHaveAccessibleName(/unsaved/); // -- WP INTD --
   await expect(session.locator("p.error")).toHaveCount(0);
 
   // Clear All on the EQ: one undo puts every band back.
@@ -206,7 +220,7 @@ test("P1WB2 tokens and groups: tokens on, Save asks and saves; an EQ Clear All i
   for (const b of [0, 1, 2]) await call(page, "filter", { channel: 0, band: b, filterType: 1, freq: 300 + 200 * b, q: 1, gain: 4, bypass: false, qp: 1 });
   await call(page, "endGroup");
   const list = session.getByRole("region", { name: /^Bands of IN1/ });
-  await list.getByRole("button", { name: "Clear All" }).click();
+  await list.getByRole("button", { name: /^Clear (\d+\/\d+ )?PEQ$/ }).click(); // -- WP WEB6 -- Qt's "Clear PEQ" ("Clear 1/2 PEQ" on a linked pair)
   const ask = page.getByRole("dialog", { name: "Clear All Bands?" });
   await expect(ask).toContainText("One Undo puts them all back.");
   await ask.getByRole("button", { name: "Clear All" }).click();
@@ -220,7 +234,7 @@ test("P1WB2 AutoEQ: a profile previewed on the graph writes nothing; Apply write
   const errors = errorsOf(page);
   const session = await openDemo(page);
   await openPage(session, "EQ");
-  await session.getByRole("button", { name: "AutoEQ…" }).click();
+  await session.getByRole("button", { name: "Headphone Profile…" }).click(); // -- WP WEB6 -- Qt's tool on an input's page (was AutoEQ…)
   const panel = session.getByRole("region", { name: "AutoEQ" });
   const profile = { id: "o/Sony A", manufacturer: "Sony", model: "A", preamp: -4, filters: [{ type: "PK", freq: 105, q: 0.7, gain: 3 }] };
   await panel.getByLabel("AutoEQ profile").setInputFiles({ name: "sony-a.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(profile)) });
@@ -310,7 +324,7 @@ async function openUnit(page: Page, hub: OwnHub, serial: string): Promise<Locato
   await session.getByRole("button", { name: "Pair" }).click();
   const entry = session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: serial.slice(-8) });
   await entry.getByRole("button", { name: "Open" }).click();
-  await expect(session.locator(".device-meta")).toContainText(serial);
+  await expect(session).toHaveAttribute("data-serial", new RegExp(serial));
   return session;
 }
 
@@ -334,19 +348,27 @@ test.describe("P1WB2 on a hub", () => {
     await expect(banner).toContainText("Locked by the installer: only volume, mute and presets can be changed.");
     await expect(banner).toContainText("Venue A: volume and presets only, please.");
     await expect(sections(session).getByRole("button")).toHaveText(["Overview", "Devices"]);
-    await expect(session.getByRole("tab")).toHaveCount(0);
+    await expect(session.getByRole("tablist", { name: "Pages" })).toHaveCount(0); // -- WP REVEFIX -- the device's own tab is in the bar
     await shot(page, "locked-user");
     await noSidewaysScroll(page);
-    // Volume passes; an output trim is refused, by the hub, in its notice row's words.
+    // -- WP REVEFIX -- (REVE C3) the lock lets preset loads through and nothing else: no Save, Copy, Rename, Clear
+    const pop = await openPresets(session);
+    const activeRow = pop.locator("li[aria-current=true]");
+    await expect(activeRow.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+    await activeRow.getByRole("button", { name: /^More/ }).click();
+    for (const item of ["Save Current Settings Here", "Rename…", "Copy to…", "Set as Startup Preset"])
+      await expect(activeRow.getByRole("menuitem", { name: item })).toBeDisabled();
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
+    // Volume passes; Bypass is refused, by the hub, in its notice row's words (-- WP INTD -- the
+    // Overview's output trims are gone; the dock's Bypass is the write the lock leaves out there).
     const volume = session.getByRole("slider", { name: "Volume" });
     const shown = await session.locator(".volume-value").textContent();
     await volume.fill("100");
     await volume.dispatchEvent("change");
     await expect(session.locator(".volume-value")).not.toHaveText(shown!);
     await expect(session.locator("p.error")).toHaveCount(0);
-    const trim = session.getByRole("region", { name: "Outputs" }).getByRole("slider").first();
-    await trim.fill("-3");
-    await trim.dispatchEvent("change");
+    await session.getByRole("button", { name: "Bypass EQ", exact: true }).click();
     const refused = session.locator("p.error.notice");
     await expect(refused).toHaveAttribute("data-key", /^installer_lock/);
     await shot(page, "locked-refused", refused);
@@ -374,8 +396,9 @@ test.describe("P1WB2 on a hub", () => {
     await rail.getByRole("button", { name: /^Mode:/ }).click();
     await expect(page.getByRole("dialog", { name: "Mode" })).toContainText("This console is pinned to Simple for this DSPi.");
     await page.getByRole("dialog", { name: "Mode" }).getByRole("button", { name: "Cancel" }).click();
-    await trim.fill("-3");
-    await trim.dispatchEvent("change");
+    // -- WP INTD -- unlocked, the Bypass the lock refused goes through
+    await session.getByRole("button", { name: "Bypass EQ", exact: true }).click();
+    await expect(session.getByRole("button", { name: "Bypass EQ", exact: true })).toHaveAttribute("aria-pressed", "true");
     await expect(session.locator("p.error")).toHaveCount(0);
     await shot(page, "unlocked-pinned");
     expect(errors).toEqual([]);
@@ -404,7 +427,7 @@ test.describe("P1WB2 a fleet's pinned mode", () => {
     await page.goto(`${HUB}/test/fleet-hub.html?${q}`);
     await page.getByRole("region", { name: "Site A" }).getByRole("listitem").filter({ hasText: "Stage rack" }).getByRole("button", { name: "Connect" }).click();
     const session = page.getByRole("article");
-    await expect(session.locator(".device-meta")).toContainText(FAKE_SERIAL);
+    await expect(session).toHaveAttribute("data-serial", new RegExp(FAKE_SERIAL));
     const rail = session.getByRole("complementary", { name: "Status" });
     await expect(rail.getByRole("button", { name: "Mode: Simple (pinned)" })).toBeVisible();
     expect(await hasPage(session, "System")).toBe(false);

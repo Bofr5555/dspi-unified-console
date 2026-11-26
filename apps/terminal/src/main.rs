@@ -748,8 +748,8 @@ USAGE:
                              hub's code: {COMMAND} api --help)
     {COMMAND} web             the web console on this machine, at
                              http://localhost:11916/console/ ({COMMAND} hub --local)
-    {COMMAND} mcp             let an AI agent use DSPi Console (an MCP server
-                             over stdio; {COMMAND} mcp --help)
+    {COMMAND} mcp             let an AI agent use uConsole for DSPi (an MCP
+                             server over stdio; {COMMAND} mcp --help)
     {COMMAND} --version       show app and protocol versions, and credits
     {COMMAND} --license       show the licence notice and its additional terms
     {COMMAND} --third-party-licences

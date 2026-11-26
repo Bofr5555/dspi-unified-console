@@ -23,7 +23,16 @@ Rectangle {
     // Tighter rows when many inputs show, as the Mac does at 6 and 8
     readonly property int rowHeight: DeviceModel.numInputs >= 8 ? 23 : DeviceModel.numInputs >= 6 ? 27 : 28
     // Wider names while an output shows a derived label ("Out 2 · R · High")
-    readonly property int nameWidth: SidebarController.derivedLabels ? 112 : 80
+    // -- WP INTE -- (SHOWFIX leftover) and as wide as the longest name shown
+    // ("Centre woofer" whole), at most the derived labels' 112
+    FontMetrics { id: nameMetrics; font: Theme.fontBody }
+    readonly property int nameWidth: {
+        let widest = SidebarController.derivedLabels ? 112 : 80
+        if (DeviceModel.revision >= 0)
+            for (let r = 0; r < DeviceModel.channels.count; ++r)
+                widest = Math.max(widest, Math.ceil(nameMetrics.advanceWidth(DeviceModel.channels.get(r, "displayName") || "")) + 2)
+        return Math.min(widest, 112)
+    }
 
     Connections {
         target: SidebarController

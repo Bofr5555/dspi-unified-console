@@ -13,13 +13,15 @@ import type { Session } from "./session";
 import { aboutData, linkText } from "./texts";
 // -- WP WB6a --
 import { Screens } from "./screens";
-import { meterNames } from "../screens/main/model";
+import { meterHidden, meterNames } from "../screens/main/model";
 import { SenderScreen } from "../screens/device/DeviceScreen"; // -- WP PGWEB --
 // -- WP WEBM1 -- the Modern shell
 import type { ComponentChildren } from "preact";
 import { Frame } from "./shell/Frame";
 import { CONNECT, sectionsFor, type Page, type SectionId } from "./shell/sections";
 import type { ActionBoard } from "./menus/board"; // -- WP WEBM4 --
+import { EmptyState, Glyph } from "./design"; // -- WP WEB --
+import { NoDeviceEmpty, NoDeviceFrame, NoDeviceStrip } from "./shell/NoDevice"; // -- WP REVEFIX --
 
 export function useSessionState(s: Session) {
   const [, bump] = useState(0);
@@ -267,6 +269,17 @@ function hostOf(url: string): string {
 
 // ---------------------------------------------------------------- one session
 
+/**
+ * -- WP WEB2 -- (REVD W13) What a session is called before its DSPi answered: "Connecting" only while it
+ * is still trying; a session that failed says so, as its notice does (a hub that does not answer).
+ */
+export function sessionName(st: { snapshot: { device: { name: string } } | null; status: string }): string {
+  if (st.snapshot) return st.snapshot.device.name;
+  if (st.status === "failed") return "Not connected";
+  if (st.status === "closed") return "Closed";
+  return "Connecting";
+}
+
 /** A tab's name: where the device is, then what it is called once it answers. */
 export function TabLabel(props: { session: Session }) {
   const st = useSessionState(props.session);
@@ -274,7 +287,7 @@ export function TabLabel(props: { session: Session }) {
     <>
       {/* -- WP WEBM5 -- the site's part is left to screen readers where the top bar is narrow */}
       <span class="device-tab-site">{props.session.installationName} · </span>
-      {st.snapshot?.device.name ?? "Connecting"}
+      {sessionName(st)}
     </>
   );
 }
@@ -285,34 +298,17 @@ export function SessionView(props: { session: Session; onClose: () => void; shel
   const snap = st.snapshot;
   const ro = s.readOnlyReason;
   // -- WP WEBM1 -- the parts of the shell's frame (ui/shell/Frame.tsx) that are the same whatever the session shows
-  const head = (
-    <header class="strip">
-      <span class={`dot dot-${st.status}`} aria-hidden="true" />
-      <strong class="device-name">{snap?.device.name ?? "Connecting"}</strong>
-      {snap && st.document ? (
-        // -- WP P1WB1 -- a document opened with no device: its file in place of a serial
-        <span class="device-meta">
-          {snap.device.platform} · <span class="badge file-badge">File: {st.document.fileName || st.document.name}</span>
-        </span>
-      ) : snap ? (
-        <span class="device-meta">
-          {snap.device.platform} · firmware {snap.device.firmware}
-          {snap.device.serial ? ` · ${snap.device.serial}` : ""}
-        </span>
-      ) : null}
-      {ro ? (
-        <span class="badge read-only" title={ro}>
-          Read only
-        </span>
-      ) : null}
-      {/* -- WP WB6a -- a screen may hold the user back first (unsaved changes) */}
-      <button type="button" class="close" onClick={() => void s.mayLeave().then((go) => go && props.onClose())}>
-        Disconnect
-      </button>
-    </header>
-  );
+  // -- WP REVEFIX -- (REVE §3.1) no bar of its own: the device's name, firmware and state are its tab's (Qt's
+  // TopBar), Disconnect is the tab's ×, read only is said in the strip; the demo says so there, as Qt's strip does
   const strip = (
     <>
+      {props.shell.note}
+      {s.source.kind === "demo" && snap ? (
+        <div class="banner banner-info demo-strip" role="note">
+          <Glyph name="info" class="banner-icon" />
+          <span>This is the demo DSPi, a simulated device: nothing you change here reaches a real DSPi.</span>
+        </div>
+      ) : null}
       {st.link && st.link.phase !== "bound" ? <LostLinkBanner phase={st.link} onClose={props.onClose} /> : null}
       {ro ? <p class="note read-only-reason">{ro}</p> : null}
       {st.error ? (
@@ -334,17 +330,40 @@ export function SessionView(props: { session: Session; onClose: () => void; shel
   // -- WP PGWEB -- the alink sender: its own page, no DSP screen and no meters
   const sender = open !== null && st.protocol?.deviceKind === "alinkSender";
   return (
-    <article class="session" aria-label={snap?.device.name ?? "DSPi"} data-status={st.status}>
+    // -- WP REVEFIX -- which DSPi (or file) this is, now that its name and firmware are its tab's
+    <article class="session" aria-label={snap?.device.name ?? "DSPi"} data-status={st.status} data-serial={(snap && !st.document && snap.device.serial) || undefined} data-file={st.document ? st.document.fileName || st.document.name : undefined}>
       {open && !sender ? (
         // -- WP WB6a -- the session's screens (WB6 slices); the skeleton's volume is the main window's now
-        <Screens session={s} shell={props.shell} head={head} strip={strip} meters={<Meters session={s} names={meterNames(open.state, open.outputLabels)} />} />
-      ) : (
-        <BareFrame shell={props.shell} sender={sender} bar={head} strip={strip}>
-          {/* -- WP WB4b -- Link's steps before a DSPi is open */}
-          {st.status === "pairing" ? <PinEntry session={s} error={st.pinError} /> : null}
-          {st.status === "choosing" ? <HubChooser session={s} /> : null}
-          {sender ? <SenderScreen session={s} /> : null}
+        <Screens session={s} shell={props.shell} strip={strip} meters={<Meters session={s} names={meterNames(open.state, open.outputLabels)} hidden={meterHidden(open.state, open.outputLabels)} />} />
+      ) : sender ? (
+        <BareFrame shell={props.shell} strip={strip}>
+          <SenderScreen session={s} />
         </BareFrame>
+      ) : (
+        // -- WP REVEFIX -- (REVD D12) not open (yet, or any more): the whole rail and an empty state on every page, as Qt
+        <NoDeviceFrame
+          key={st.status === "failed" || st.status === "closed" ? "none" : "on-the-way" /* a fresh frame once it has failed */}
+          shell={props.shell}
+          connecting={st.status === "opening" || st.status === "pairing" || st.status === "choosing"}
+          strip={
+            <>
+              {strip}
+              {st.status === "failed" || st.status === "closed" ? <NoDeviceStrip openDemo={props.shell.openDemo} /> : null}
+            </>
+          }
+          empty={(overview) =>
+            // -- WP WB4b -- Link's steps before a DSPi is open
+            st.status === "pairing" ? (
+              <PinEntry session={s} error={st.pinError} />
+            ) : st.status === "choosing" ? (
+              <HubChooser session={s} />
+            ) : st.status === "opening" ? (
+              <EmptyState icon="unplug" title="Connecting…" text="Waiting for the DSPi to answer." />
+            ) : (
+              <NoDeviceEmpty overview={overview} hub={s.source.kind === "hub"} onChoose={() => props.shell.onPicking(true)} />
+            )
+          }
+        />
       )}
     </article>
   );
@@ -364,19 +383,25 @@ export interface ShellProps {
   // -- WP WEBM4 --
   /** Where the device's view says what it can do now (the app menu's and the command palette's rows). */
   board?: ActionBoard;
+  // -- WP REVEFIX --
+  /** The top bar (Qt's TopBar), with the device's own parts beside its tab and before the bell. */
+  top: (session?: { left: ComponentChildren; right: ComponentChildren }) => ComponentChildren;
+  /** What the page has to say (another tab has this DSPi already), in the strip. */
+  note?: ComponentChildren;
+  /** Opens the demo, where the page has one (the no-device strip's Open Demo). */
+  openDemo: (() => void) | null;
 }
 
 const NO_PAGES: ReadonlyMap<SectionId, string> = new Map();
 const OVERVIEW_PAGES: Page[] = [{ id: "sender", label: "Sender" }];
 
-/** The frame of a session with no screens: not open yet (or no longer), or an alink sender. */
-function BareFrame(props: { shell: ShellProps; sender: boolean; bar: ComponentChildren; strip: ComponentChildren; children: ComponentChildren }) {
+/** The frame of an alink sender: its page, and the devices' page. */
+function BareFrame(props: { shell: ShellProps; strip: ComponentChildren; children: ComponentChildren }) {
   const { shell } = props;
-  const sections = sectionsFor(props.sender ? OVERVIEW_PAGES : []);
-  // Not open yet: the page is part of getting to a device, as the devices' own page is.
-  const page = shell.picking || !props.sender ? CONNECT : "sender";
+  const sections = sectionsFor(OVERVIEW_PAGES);
+  const page = shell.picking ? CONNECT : "sender";
   return (
-    <Frame bar={props.bar} strip={props.strip} sections={sections} page={page} last={NO_PAGES} onPage={(id) => shell.onPicking(id === CONNECT)}>
+    <Frame bar={shell.top()} strip={props.strip} sections={sections} page={page} last={NO_PAGES} onPage={(id) => shell.onPicking(id === CONNECT)}>
       {shell.picking ? shell.connect : props.children}
     </Frame>
   );
@@ -464,7 +489,7 @@ function LostLinkBanner(props: { phase: { phase: Parameters<typeof linkText>[0];
 }
 
 /** Polls only while the page is visible: nothing runs for a hidden tab. */
-function Meters(props: { session: Session; names: string[] }) {
+function Meters(props: { session: Session; names: string[]; hidden?: boolean[] }) {
   const [levels, setLevels] = useState<number[]>([]);
   // -- WP P1WB2 -- (S8) not a fresh reading (Link): since when, greyed
   const [staleSince, setStaleSince] = useState<number | null>(null);
@@ -499,6 +524,7 @@ function Meters(props: { session: Session; names: string[] }) {
     ) : null}
     <ul class={staleSince !== null ? "meters stale" : "meters"} aria-label="Levels">
       {props.names.map((n, i) => {
+        if (props.hidden?.[i]) return null; // -- WP INTE -- an unused output has no meter (owner 2026-11-24)
         const db = levels[i] ?? -90;
         const pct = Math.max(0, Math.min(100, ((db + 90) / 90) * 100));
         return (

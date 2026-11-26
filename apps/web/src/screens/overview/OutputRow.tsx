@@ -7,6 +7,10 @@
 // phone's width (each cell says what it is there).
 
 import { memo } from "preact/compat";
+import type { DspState } from "../../core/protocol"; // -- WP WEB3 --
+import { Glyph } from "../../ui/design"; // -- WP WEB3 --
+import { channelColour } from "../eq/model"; // -- WP WEB3 --
+import { Pill } from "../../ui/Pill"; // -- WP WEB3 --
 import type { Session } from "../../ui/session";
 import { ValueField } from "../eq/Field";
 import { compactGain, parseLevel } from "../outputs/model";
@@ -22,6 +26,8 @@ export const OutputRow = memo(function OutputRow(props: {
   gr: number[] | null;
   stale: boolean;
   disabled: boolean;
+  /** -- WP WEB3 -- for the pill's colour (Qt's ChannelPalette) */
+  s: Pick<DspState, "numInputChannels" | "numOutputChannels">;
 }) {
   const { session, row, units, disabled } = props;
   const t = valueTexts(row, units);
@@ -32,8 +38,8 @@ export const OutputRow = memo(function OutputRow(props: {
   return (
     <tr class={`ov-row${row.enabled ? "" : " ov-off"}`} role="row" aria-label={who} data-output={row.index} data-enabled={row.enabled}>
       <th scope="row" role="rowheader" class="ov-name" title={row.slot || undefined}>
-        <span class="ov-kind">{row.descriptor}</span> <span class="ov-label">{row.name}</span>
-        {row.enabled ? null : <span class="ov-state"> Disabled</span>}
+        {/* -- WP WEB3 -- the output's pill; a disabled output's row is dimmed (no "Disabled" word) */}
+        <Pill text={row.descriptor} colour={channelColour(props.s, row.wire)} class="ov-kind" /> <span class="ov-label">{row.name}</span>
       </th>
       <td role="cell" class="ov-routing" data-label="Routing" aria-label={`Routing of ${row.descriptor}`} title={routingText(row)}>
         {row.sources.length ? (
@@ -64,13 +70,14 @@ export const OutputRow = memo(function OutputRow(props: {
       <td role="cell" class="ov-mute" data-label="Mute">
         <button
           type="button"
-          class="toggle ov-mute-btn"
+          class="eq-icon-toggle eq-mute ov-mute-btn"
           aria-pressed={row.muted}
           aria-label={`${who} mute`}
+          title={row.muted ? "Muted" : "Mute"}
           disabled={disabled}
           onClick={() => void session.write("out.mute", { bool: !row.muted }, [row.index])}
         >
-          {row.muted ? "Muted" : "Mute"}
+          <Glyph name={row.muted ? "volume-x" : "volume"} />
         </button>
       </td>
       <td role="cell" class="ov-limit" data-label={`Limiter (${units.threshold.unit})`} aria-label={`${who} limiter`}>

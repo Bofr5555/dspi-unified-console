@@ -84,15 +84,21 @@ async function levelAt(page: Page, freq: number): Promise<number> {
   }, freq);
 }
 
-/** A synthetic touch pointer (every browser takes PointerEvents with pointerType "touch"). */
-async function touch(graph: Locator, type: string, id: number, x: number, y: number) {
-  await graph.evaluate(
-    (el, [type, id, x, y]) =>
+/** A synthetic touch pointer event (every browser takes PointerEvents with pointerType "touch"). */
+type Touch = [type: string, id: number, x: number, y: number];
+
+/** -- INTC -- One touch gesture: its pointer events in order, in one call into the page, each in its own task (the
+ * page handles and renders it before the next, as with a real finger). The graph times its double tap (400 ms) and
+ * long press (500 ms); with a round trip to the test per event, a loaded host turned the drag into a long press. */
+async function gesture(graph: Locator, steps: Touch[]) {
+  await graph.evaluate(async (el, steps) => {
+    for (const [type, id, x, y] of steps) {
       el.dispatchEvent(
-        new PointerEvent(type as string, { pointerId: id as number, pointerType: "touch", isPrimary: id === 1, clientX: x as number, clientY: y as number, bubbles: true, button: 0, buttons: type === "pointerup" ? 0 : 1 }),
-      ),
-    [type, id, x, y] as const,
-  );
+        new PointerEvent(type, { pointerId: id, pointerType: "touch", isPrimary: id === 1, clientX: x, clientY: y, bubbles: true, button: 0, buttons: type === "pointerup" ? 0 : 1 }),
+      );
+      await new Promise((r) => setTimeout(r, 0));
+    }
+  }, steps);
 }
 
 test("WB6b graph: add a band by double click, drag it, and the device keeps what the page shows", async ({ page }) => {
@@ -177,13 +183,17 @@ test("WB6b chip and list: change type and Q, bypass a band (chip, Alt-click, lis
   // A 1st-order shelf has no Q.
   await expect(chip.getByRole("textbox", { name: "Q", exact: true })).toBeDisabled();
 
-  // Bypass: the chip's button, the list's box, Alt-click on the dot.
+  // Bypass: the chip's button, the list's disc (-- WP WEB6 -- Qt's "Band N plays"), Alt-click on the dot.
   await chip.getByRole("button", { name: "Bypass" }).click();
   await expect.poll(async () => (await out1(page))[slot]!.bypass).toBe(true);
-  await expect(list.getByRole("checkbox", { name: `Band ${slot + 1} bypass` })).toBeChecked();
-  await list.getByRole("checkbox", { name: `Band ${slot + 1} bypass` }).uncheck();
+  const disc = list.getByRole("checkbox", { name: `Band ${slot + 1} plays` });
+  await expect(disc).not.toBeChecked();
+  await disc.click();
   await expect.poll(async () => (await out1(page))[slot]!.bypass).toBe(false);
+  await expect(disc).toBeChecked();
   const b = (await out1(page))[slot]!;
+  // -- WP REVEFIX -- the graph in the middle of the view first: the demo's strip moves it down, under the dock
+  await graph.evaluate((e) => e.scrollIntoView({ block: "center" }));
   // A 1st-order shelf's dot is at about half its gain.
   const dot = await at(graph, b.freq, b.gain / 2);
   await page.keyboard.down("Alt");
@@ -200,7 +210,7 @@ test("WB6b chip and list: change type and Q, bypass a band (chip, Alt-click, lis
   // Clear All asks first, as on the Console.
   await list.getByRole("combobox", { name: `Band ${slot + 1} type` }).selectOption("1");
   await expect.poll(async () => (await out1(page))[slot]!.filterType).toBe(1);
-  await list.getByRole("button", { name: "Clear All" }).click();
+  await list.getByRole("button", { name: "Clear PEQ" }).click(); // -- WP WEB6 -- Qt's words
   const ask = page.getByRole("dialog", { name: "Clear All Bands?" });
   await expect(ask).toContainText("One Undo puts them all back."); // -- WP P1WB2 -- one undo group
   await ask.getByRole("button", { name: "Clear All" }).click();
@@ -329,7 +339,8 @@ test("WB6b read only: a view-only session shows the EQ with editing off, and a d
   const list = session.getByRole("region", { name: /^Bands of OUT1/ });
   for (const c of await list.getByRole("combobox").all()) await expect(c).toBeDisabled();
   for (const t of await list.getByRole("textbox").all()) await expect(t).toBeDisabled();
-  await expect(list.getByRole("button", { name: "Clear All" })).toBeDisabled();
+  await expect(list.getByRole("button", { name: "Clear PEQ" })).toBeDisabled(); // -- WP WEB6 -- Qt's words
+  for (const d of await list.getByRole("checkbox").all()) await expect(d).toBeDisabled();
   for (const name of ["Shape", "Slope"]) await expect(session.getByRole("combobox", { name, exact: true })).toBeDisabled();
   await expect(session.getByRole("textbox", { name: "Frequency", exact: true })).toBeDisabled();
   // Keys change nothing either.
@@ -354,16 +365,13 @@ test("WB6b unsaved: the session's state survives a screen switch; the host page 
   const unsaved = () => page.evaluate(() => (globalThis as unknown as { dspiConsoles: { unsaved(): boolean }[] }).dspiConsoles[1]!.unsaved());
   await expect.poll(unsaved).toBe(true);
   expect(await page.evaluate(() => (globalThis as unknown as { dspiUnsavedChanges: boolean[] }).dspiUnsavedChanges)).toEqual([true]);
-  // The Main screen shows it too; Disconnect asks from the EQ screen as well.
-  await openPage(session, "Main");
-  // -- WP WB6F -- exact: the status rail says "· unsaved changes" too
-  await expect(session.getByText("Unsaved changes", { exact: true })).toBeVisible();
-  await openPage(session, "EQ");
-  await session.getByRole("button", { name: "Disconnect" }).click();
+  // The session bar's presets show it too (-- WP INTD -- on every page); Disconnect asks from the EQ screen as well.
+  await expect(session.getByRole("button", { name: /^Presets: .*, unsaved changes$/ })).toBeVisible();
+  await session.getByRole("tablist", { name: "Open DSPi" }).getByRole("button", { name: /^Close / }).click(); // -- WP REVEFIX -- the tab's ×
   const prompt = page.getByRole("dialog", { name: "Unsaved Changes" });
   await expect(prompt).toBeVisible();
   await prompt.getByRole("button", { name: "Save" }).click();
-  await expect(two.getByText("Choose a DSPi to connect to.")).toBeVisible();
+  await expect(two.getByText("No DSPi is connected. Connect one over USB, or try the demo device.")).toBeVisible();
   await expect.poll(unsaved).toBe(false);
   // No leave prompt for this console: the page closes without asking.
   let asked = false;
@@ -419,26 +427,29 @@ test.describe("375 px, in every browser", () => {
     // Touch: a double tap adds a bell.
     const slot = (await out1(page)).findIndex((b) => b.filterType === 0);
     const p = await at(graph, 1000, 6);
-    for (const t of ["pointerdown", "pointerup", "pointerdown", "pointerup"]) await touch(graph, t, 1, p.x, p.y);
+    await gesture(graph, ["pointerdown", "pointerup", "pointerdown", "pointerup"].map((t): Touch => [t, 1, p.x, p.y]));
     await expect.poll(async () => (await out1(page))[slot]!.filterType).toBe(1);
     const band = (await out1(page))[slot]!;
     // A finger drags its dot up 4 dB.
     const dot = await at(graph, band.freq, band.gain);
     const up = await at(graph, band.freq, band.gain + 4);
-    await touch(graph, "pointerdown", 1, dot.x, dot.y);
-    for (let i = 1; i <= 6; i++) await touch(graph, "pointermove", 1, dot.x, dot.y + ((up.y - dot.y) * i) / 6);
-    await touch(graph, "pointerup", 1, up.x, up.y);
+    const drag: Touch[] = [["pointerdown", 1, dot.x, dot.y]];
+    for (let i = 1; i <= 6; i++) drag.push(["pointermove", 1, dot.x, dot.y + ((up.y - dot.y) * i) / 6]);
+    drag.push(["pointerup", 1, up.x, up.y]);
+    await gesture(graph, drag);
     await expect.poll(async () => (await out1(page))[slot]!.gain).toBeGreaterThan(band.gain + 3);
     // Two fingers pinch its Q: closer together, narrower.
     const q0 = (await out1(page))[slot]!.q;
-    await touch(graph, "pointerdown", 1, dot.x - 60, dot.y);
-    await touch(graph, "pointerdown", 2, dot.x + 60, dot.y);
+    const pinch: Touch[] = [
+      ["pointerdown", 1, dot.x - 60, dot.y],
+      ["pointerdown", 2, dot.x + 60, dot.y],
+    ];
     for (let i = 1; i <= 4; i++) {
-      await touch(graph, "pointermove", 1, dot.x - 60 + i * 7, dot.y);
-      await touch(graph, "pointermove", 2, dot.x + 60 - i * 7, dot.y);
+      pinch.push(["pointermove", 1, dot.x - 60 + i * 7, dot.y]);
+      pinch.push(["pointermove", 2, dot.x + 60 - i * 7, dot.y]);
     }
-    await touch(graph, "pointerup", 2, dot.x + 32, dot.y);
-    await touch(graph, "pointerup", 1, dot.x - 32, dot.y);
+    pinch.push(["pointerup", 2, dot.x + 32, dot.y], ["pointerup", 1, dot.x - 32, dot.y]);
+    await gesture(graph, pinch);
     await expect.poll(async () => (await out1(page))[slot]!.q).toBeGreaterThan(q0 * 1.5);
 
     // With a band chosen, its chip filled, and a menu open: the same height, still no sideways scroll.

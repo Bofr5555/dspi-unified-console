@@ -26,7 +26,7 @@ pub struct DocumentSeed {
 }
 
 /// `name` cut to at most `NAME_LEN - 1` bytes without splitting a character.
-fn stored_name(name: &str) -> &[u8] {
+pub(super) fn stored_name(name: &str) -> &[u8] {
     let max = NAME_LEN.saturating_sub(1);
     let mut end = name.len().min(max);
     while end > 0 && !name.is_char_boundary(end) {
@@ -138,5 +138,20 @@ mod tests_wp_p1of {
         assert_eq!(s.presets.master_volume_mode, MV_INDEPENDENT);
         assert_eq!(s.presets.output_config_mode, OC_WITH_PRESET);
         assert_eq!(&s.presets.names[0][..4], b"Demo");
+    }
+}
+
+// -- WP SHOWFIX -- (finding 12)
+#[cfg(test)]
+mod tests_wp_showfix {
+    use crate::Transport;
+    use crate::fake::FakeDevice;
+    use dspi_proto::generated::opcodes as op;
+
+    #[test]
+    fn wp_showfix_a_demo_stores_the_name_it_is_given() {
+        let mut d = FakeDevice::demo().with_device_name("Centre");
+        let name = d.control_in(op::REQ_GET_DEVICE_NAME, 0, 32).unwrap();
+        assert_eq!(name.get(..7), Some(&b"Centre\0"[..]));
     }
 }

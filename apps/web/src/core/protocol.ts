@@ -242,6 +242,17 @@ export interface OutputLabel {
   channel: string;
   /** "Low", "High", "Band" or "Full". */
   band: string;
+  /**
+   * -- WP REVEFIX -- No input is routed to it (owner 2026-11-24): a view that only shows (the Overview, a summary)
+   * leaves it out; a view that edits it shows `label`, "3 · None". `outputCards` leave it out already.
+   */
+  unused: boolean;
+  /**
+   * -- WP FIN015 -- (REVF R1) `unused`, and no test signal plays on it (the generator, a measurement, Identify):
+   * what a view that only shows levels (the meters, the Spectrum chooser, Stats) leaves out. The generator
+   * writes after the matrix, so an unused output it plays on is loud and keeps its meter.
+   */
+  hidden: boolean;
 }
 
 /** -- BUG1 -- A dashboard card: two outputs side by side ("Woofers L" | "Woofers R"), or one. */
@@ -348,6 +359,8 @@ export interface HistoryEntry {
   source: string;
   atMs: number;
   undoable: boolean;
+  /** -- WP INTE -- the undo group's label; for a folded measurement (`sig.run`, SHOWFIX) the row's words */
+  label?: string | null;
 }
 
 /** What `undo` or `redo` did (`dspi_core::HistoryMove`). */
@@ -569,6 +582,95 @@ export interface CoreMethods extends HubFleetMethods /* -- WP P3CC -- */, AlinkM
   features: { params: { names: string[] }; result: Record<string, boolean> };
   /** The effects' choice parameters in the Console's words, by registry path (`cf.preset`, `tube.type`, ...). */
   effectChoices: { params: undefined; result: Record<string, { value: number; label: string; detail: string }[]> };
+  // -- WP WEB6 -- the effect pages' drawings and starting points (dspi_core::effect_curves), no device needed
+  /** The drawing of one effect at the values given (the sliders' live values while they move). */
+  effectGraph: { params: EffectGraphParams; result: EffectGraphResult };
+  /** An effect's starting points ("Apply preset"): the registry writes of each, in order. */
+  effectStartingPoints: { params: { effect: "psybass" | "subharm" | "tube" }; result: EffectStartingPoint[] };
+  /** The tube picture's family of tube type `type` (0..9). */
+  tubeFamily: { params: { type: number }; result: number };
+  /** The upmixer's live status: running, why parked (1 off, 2 not stereo, 3 above 48 kHz), correlation -1..1, the derived gains 0..1. */
+  upmixStatus: { params: undefined; result: { active: boolean; parkedReason: number; correlation: number; balance: number; centerGain: number; lsGain: number; rsGain: number } };
+  /** The subharmonic synthesizer's headroom cost as the device reports it, dB (0: none). */
+  subharmHeadroom: { params: undefined; result: number };
+}
+
+// -- WP WEB6 -- the effect drawings (crates/dspi-core/src/effect_curves.rs). Points are [x, y], 0..1.
+export type EffectGraphParams =
+  | { kind: "crossfeed"; freq: number; feed: number }
+  | { kind: "loudness"; refSpl: number; intensity: number }
+  | { kind: "psybass"; cutoff: number; harmonics: number; original: number }
+  | { kind: "subharm"; low: number; high: number; top: number; boost: number; ceiling: number }
+  | { kind: "tube"; drive: number; bias: number; asym: number; hardness: number; mix: number; trim: number; damping?: number };
+
+/** Crossfeed and loudness: curves with y from the bottom, the dB grid (`gridDb[i]` at `gridY[i]`). */
+export interface EffectCurveGraph {
+  curves: { name: string; points: [number, number][] }[];
+  gridDb: number[];
+  gridY: number[];
+}
+
+/** Psy Bass: the cutoff and 4x it on the 20 Hz..20 kHz axis, the bands' heights 0..1. */
+export interface PsybassSketch {
+  fc: number;
+  fc4: number;
+  original: number;
+  harmonics: number;
+}
+
+/** Subharmonic: the 16..250 Hz band graph, y from the top. */
+export interface SubharmGraph {
+  bell: [number, number][];
+  bellX: number;
+  bellLabelY: number;
+  blocks: {
+    off: boolean;
+    x0: number;
+    x1: number;
+    srcX0: number;
+    srcX1: number;
+    midY: number;
+    label: string;
+    source: string;
+    fromX: number;
+    toX: number;
+    arrowRow: number;
+    top: [number, number][];
+  }[];
+  allOff: boolean;
+  ceilingOn: boolean;
+  ceilingY: number;
+  ceilingX: number;
+  zeroY: number;
+  gridX: number[];
+  freqs: number[];
+  gridY: number[];
+  gridDb: number[];
+}
+
+/** Tube: the transfer curve (y from the top), where the input clips (null: never), the harmonics at full scale. */
+export interface TubeGraph {
+  curve: [number, number][];
+  clipPos: number | null;
+  clipNeg: number | null;
+  fullScaleTop: number;
+  fullScaleBottom: number;
+  half: [number, number];
+  zeroY: number;
+  lineFrom: number;
+  lineTo: number;
+  second: number;
+  third: number;
+  /** The output stage's lift at the damping asked, dB. */
+  lift?: { bell: number; top: number };
+}
+
+export type EffectGraphResult = EffectCurveGraph | PsybassSketch | SubharmGraph | TubeGraph;
+
+export interface EffectStartingPoint {
+  name: string;
+  detail: string;
+  writes: [string, number][];
 }
 
 // -- WP P1WB1 -- documents, snapshots, A/B, safe apply, offline files, limits status, notices
@@ -955,6 +1057,8 @@ export interface CoreError {
   message: string;
   /** -- WP P1WB1 -- the core's notice key (P1NT, `noticeFor`), when it has one. */
   noticeKey?: string;
+  /** -- WP INTE -- (SHOWFIX finding 1) the core's words for the person (`DspiError::user_text`), when it has them. */
+  text?: string;
 }
 
 export type Reply =
@@ -977,6 +1081,8 @@ export class CoreCallError extends Error {
     message: string,
     // -- WP P1WB1 -- the core's notice key (P1NT), when the failure has one
     readonly noticeKey?: string,
+    // -- WP INTE -- (SHOWFIX finding 1) the core's words for the person, when it has them
+    readonly text?: string,
   ) {
     super(message);
     this.name = "CoreCallError";

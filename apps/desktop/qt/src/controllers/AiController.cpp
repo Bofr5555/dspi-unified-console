@@ -13,11 +13,15 @@
 #include "DeviceSession.h"
 #include "FilesController.h"
 #include "MeasureController.h"   // -- WP AIVIS --
+#include "SpeakersController.h"  // -- WP ROLES --
 #include "NoticeCenter.h"
 #include "SessionModel.h"
 #include "SettingsController.h"
 #include "Shell.h"
 #include "SnapshotsController.h"
+#include "ChannelController.h"     // -- WP SHOWFIX --
+#include "PeqEditorController.h"   // -- WP SHOWFIX --
+#include "SidebarController.h"     // -- WP SHOWFIX --
 #include "UnitsMeasureController.h"   // -- WP AIVIS --
 #include "Snapshot.h"
 
@@ -65,6 +69,7 @@ const char *const kConfirmKey = "mcp/confirm";
 const char *const kSplCapKey = "mcp/agentSplCapDb";
 const char *const kSplCapOnKey = "mcp/agentSplCapOn";   // -- WP INTG --
 const char *const kAgentDetectKey = "mcp/agentDetect";   // -- WP ADETQ --
+const char *const kAgentRolesKey = "mcp/agentRoles";     // -- WP ROLES --
 const char *const kRememberedKey = "devices/remembered";
 const QString kConfirmDefault = QStringLiteral("ask_risky");
 const QStringList kConfirmModes{ QStringLiteral("ask_everything"), kConfirmDefault, QStringLiteral("never_ask") };
@@ -144,6 +149,9 @@ AiController::AiController(const AppContext &ctx, QObject *parent) : QObject(par
     // -- WP ADETQ -- the never-ask switch for the speaker detection
     m_agentDetect = s.value(QLatin1String(kAgentDetectKey), false).toBool();
     if (m_mcp) dspi_mcp_set_agent_detect(m_mcp, m_agentDetect);
+    // -- WP ROLES -- the never-ask switch for speaker roles from the person's words
+    m_agentRoles = s.value(QLatin1String(kAgentRolesKey), false).toBool();
+    if (m_mcp) dspi_mcp_set_agent_roles(m_mcp, m_agentRoles);
     loadRemembered();
     m_tick.setInterval(1000);
     connect(&m_tick, &QTimer::timeout, this, &AiController::tick);
@@ -162,8 +170,16 @@ AiController::AiController(const AppContext &ctx, QObject *parent) : QObject(par
     m_followTimer.setSingleShot(true);
     connect(&m_followTimer, &QTimer::timeout, this, [this] {
         const QString device = std::exchange(m_followPendingDevice, QString());
-        const QString section = std::exchange(m_followPendingSection, QString());
-        if (!device.isEmpty()) followChange(device, section);
+        const FollowAt at = std::exchange(m_followPendingAt, FollowAt());   // -- WP SHOWFIX --
+        if (!device.isEmpty()) followTo(device, at);
+    });
+    // -- WP SHOWFIX -- (finding 10) a question's device, once an input rests
+    m_questionTimer.setSingleShot(true);
+    connect(&m_questionTimer, &QTimer::timeout, this, &AiController::followQuestion);
+    // -- WP SHOWFIX -- (finding 3) the channel and band of a change followed to
+    m_showTimer.setInterval(50);
+    connect(&m_showTimer, &QTimer::timeout, this, [this] {
+        if (showFollowedStep()) m_showTimer.stop();
     });
     // -- WP INTI -- (review RF7) the user's input, for the follow gate
     if (QCoreApplication::instance()) QCoreApplication::instance()->installEventFilter(this);
@@ -702,6 +718,7 @@ QString AiController::riskLabel(const QString &kind) {
         { QStringLiteral("change"), QT_TRANSLATE_NOOP("AiController", "Change") },
         { QStringLiteral("test_signal"), QT_TRANSLATE_NOOP("AiController", "Test signal") },
         { QStringLiteral("detect"), QT_TRANSLATE_NOOP("AiController", "Speaker detection") },   // -- WP ADETQ --
+        { QStringLiteral("speaker_roles"), QT_TRANSLATE_NOOP("AiController", "Speaker roles") },   // -- WP ROLES --
         { QStringLiteral("recall"), QT_TRANSLATE_NOOP("AiController", "Replaces settings") },
         { QStringLiteral("flash_write"), QT_TRANSLATE_NOOP("AiController", "Saved on the device") },
         { QStringLiteral("installation_save"), QT_TRANSLATE_NOOP("AiController", "Installation") },
@@ -734,12 +751,31 @@ void AiController::readConfirmations() {
                          // -- WP LAY8 --
                          const QString label = riskLabel(str(r.toObject(), "kind"));
                          // -- WP ADETQ -- a risk whose words already start with its kind ("Speaker detection: ...") keeps them
-                         const bool named = !label.isEmpty() && w.risks.constLast().startsWith(label + QLatin1Char(':'));
+                         const bool named = (!label.isEmpty() && w.risks.constLast().startsWith(label + QLatin1Char(':')))
+                                            // -- WP ROLES -- "Speaker roles from your words: ..." names itself too
+                                            || str(r.toObject(), "kind") == QLatin1String("speaker_roles");
                          //: %1 is a kind of change ("Louder"), %2 the change ("Out 1 gain up from -12 dB to -3 dB")
                          w.riskLines << (label.isEmpty() || named ? w.risks.constLast() : tr("%1: %2").arg(label, w.risks.constLast()));
                      }
                      w.grant = c.value(QLatin1String("grant")).toObject();   // -- WP ODEC --
                      w.warning = str(c, "warning");   // -- WP ADETQ --
+                     // -- WP ROLES -- the whole table of speaker roles from the person's words
+                     const QJsonObject roles = c.value(QLatin1String("roles")).toObject();
+                     static const QHash<QString, const char *> roleWords{
+                         { QStringLiteral("tweeter"), QT_TRANSLATE_NOOP("AiController", "Tweeter") },
+                         { QStringLiteral("midrange"), QT_TRANSLATE_NOOP("AiController", "Midrange") },
+                         { QStringLiteral("woofer"), QT_TRANSLATE_NOOP("AiController", "Woofer") },
+                         { QStringLiteral("sub"), QT_TRANSLATE_NOOP("AiController", "Subwoofer") },
+                         { QStringLiteral("full_range"), QT_TRANSLATE_NOOP("AiController", "Full range") },
+                     };
+                     for (const QJsonValue &r : roles.value(QLatin1String("rows")).toArray()) {
+                         const QJsonObject row = r.toObject();
+                         const char *word = roleWords.value(str(row, "role"));
+                         //: An output in the speaker roles' table: %1 its number from 1
+                         w.roleCells << tr("Out %1").arg(row.value(QLatin1String("output")).toInt() + 1) << str(row, "speaker")
+                                     << (word ? tr(word) : str(row, "role"));
+                     }
+                     w.rolesAfter = str(roles, "after");
                      w.ends = QDateTime::currentDateTimeUtc().addMSecs(c.value(QLatin1String("remaining_ms")).toInteger());
                      there.insert(w.id);
                      list.append(w);
@@ -749,6 +785,7 @@ void AiController::readConfirmations() {
                  // Only a change: the rows' buttons are armed anew with each
                  if (list == m_waiting) return;
                  m_waiting = list;
+                 followQuestion();   // -- WP SHOWFIX -- before its sheet opens
                  emit confirmationsChanged();
                  emit secondsChanged();
                  emit stateChanged();
@@ -764,6 +801,7 @@ QVariantList AiController::confirmations() const {
             { QStringLiteral("client"), w.client },
             { QStringLiteral("title"), w.title },
             { QStringLiteral("device"), deviceTitle(w.device) },
+            { QStringLiteral("deviceId"), w.device },   // -- WP SHOWFIX --
             { QStringLiteral("risks"), w.risks },
             { QStringLiteral("riskLines"), w.riskLines },   // -- WP LAY8 --
             { QStringLiteral("sound"), w.sound },           // -- WP FEATUI --
@@ -774,6 +812,9 @@ QVariantList AiController::confirmations() const {
             // -- WP ADETQ -- the speaker detection's question (AUTODES 4.1): its heading and the warning
             { QStringLiteral("detect"), w.detect },
             { QStringLiteral("warning"), w.warning },
+            // -- WP ROLES -- speaker roles from the person's words: the table, then the rest
+            { QStringLiteral("roleCells"), w.roleCells },
+            { QStringLiteral("rolesAfter"), w.rolesAfter },
         });
     }
     return out;
@@ -809,6 +850,7 @@ void AiController::answer(double id, bool allow) {
     const quint64 n = quint64(id);
     if (m_answered.contains(n)) return;
     m_answered.insert(n);
+    followQuestion();   // -- WP SHOWFIX -- the next question's device
     emit confirmationsChanged();
     emit stateChanged();
     FfiMcp *mcp = m_mcp;
@@ -882,7 +924,8 @@ QVariantList AiController::activity() const {
               QLocale().toString(QDateTime::fromMSecsSinceEpoch(e.value(QLatin1String("at_unix_ms")).toInteger()).time(), QLocale::ShortFormat) },
             { QStringLiteral("client"), str(e, "client_name") },
             { QStringLiteral("title"), title.isEmpty() ? str(e, "tool") : title },
-            { QStringLiteral("detail"), str(e, "detail") },
+            // -- WP SHOWFIX -- (finding 4) the core's words where the server has them
+            { QStringLiteral("detail"), str(e, "said").isEmpty() ? str(e, "detail") : str(e, "said") },
             { QStringLiteral("device"), deviceTitle(device) },
             { QStringLiteral("write"), write },
             { QStringLiteral("outcome"), outcome },
@@ -1029,6 +1072,7 @@ QString AiController::doing(const QJsonObject &row) const {
         { QStringLiteral("dspi_measure_start"), QT_TRANSLATE_NOOP("AiController", "Starting a measurement") },
         { QStringLiteral("dspi_measure_rolloff_start"), QT_TRANSLATE_NOOP("AiController", "Starting a low-end search") },
         { QStringLiteral("dspi_detect_speakers"), QT_TRANSLATE_NOOP("AiController", "Asking to detect the speakers") },   // -- WP ADETQ --
+        { QStringLiteral("dspi_set_speaker_roles"), QT_TRANSLATE_NOOP("AiController", "Setting the speaker roles from your words") },   // -- WP ROLES --
         { QStringLiteral("dspi_measure_stop"), QT_TRANSLATE_NOOP("AiController", "Stopping a measurement") },
         { QStringLiteral("dspi_tune_propose"), QT_TRANSLATE_NOOP("AiController", "Working out an auto-tune") },
         { QStringLiteral("dspi_tune_apply"), QT_TRANSLATE_NOOP("AiController", "Applying an auto-tune") },
@@ -1045,33 +1089,26 @@ QString AiController::doing(const QJsonObject &row) const {
     return (row.value(QLatin1String("write")).toBool() ? tr("Changing: %1") : tr("Reading: %1")).arg(title);
 }
 
-// Where: "OUT3 Centre, band 2", with the device's own labels
+// Where: "Centre woofer, band 2", as the person knows the channel
+// -- WP SHOWFIX -- (finding 5) the core's channel words (dspi_channel_words):
+// the speaker layout's "Centre woofer", the input's "LFE", else "Out 3"
 QString AiController::targetOf(const QJsonObject &row, DeviceSession *session) const {
     QStringList parts;
     const DspState *st = session ? session->model()->state() : nullptr;
-    const auto channelName = [&](int wire) {
-        if (!st || wire < 0 || wire >= MAX_CHANNELS) return QString();
-        return fieldText(st->channel_names[wire], CHANNEL_NAME_LEN);
+    const QJsonObject words = session ? session->model()->snapshot().channelWords : QJsonObject();
+    const auto word = [&](const char *kind, int i, const QString &number) {
+        const QString w = words.value(QLatin1String(kind)).toArray().at(i).toString();
+        return w.isEmpty() ? number : w;
     };
     const int inputs = st ? st->num_input_channels : 0;
-    const auto named = [](const QString &what, const QString &name) { return name.isEmpty() ? what : what + QLatin1Char(' ') + name; };
     int output = row.value(QLatin1String("output")).toInt(-1);
     int input = row.value(QLatin1String("input")).toInt(-1);
     const int channel = row.value(QLatin1String("channel")).toInt(-1);
     if (channel >= 0 && st) (channel < inputs ? input : output) = channel < inputs ? channel : channel - inputs;
-    //: An input's or an output's short name: %1 is its number
-    if (input >= 0) parts << named(tr("IN%1").arg(input + 1), channelName(input));
-    if (output >= 0) {
-        QString label;
-        for (const QJsonValue &v : session ? session->model()->snapshot().outputLabels : QJsonArray()) {
-            const QJsonObject o = v.toObject();
-            if (o.value(QLatin1String("output")).toInt(-1) == output) label = str(o, "label");
-        }
-        if (label.isEmpty() && st) label = channelName(inputs + output);
-        // The core's label of an unnamed output says its number itself
-        const QString number = QStringLiteral("Out %1").arg(output + 1);
-        parts << (label == number || label.startsWith(number + QLatin1Char(' ')) ? label : named(tr("OUT%1").arg(output + 1), label));
-    }
+    //: An input's short name: %1 is its number
+    if (input >= 0) parts << word("inputs", input, tr("In %1").arg(input + 1));
+    //: An output's short name: %1 is its number
+    if (output >= 0) parts << word("outputs", output, tr("Out %1").arg(output + 1));
     const int band = row.value(QLatin1String("band")).toInt(-1);
     if (band >= 0) parts << tr("band %1").arg(band + 1);
     return parts.join(QStringLiteral(", "));
@@ -1121,14 +1158,19 @@ void AiController::refreshWork() {
         plays = running;
         // The Measure view's own words for where it is ("Measuring: position 1 of 3")
         const DeviceSession *s = device_of(device);
-        text = running && s && s->hasJob(QStringLiteral("MeasureController")) ? s->job() : QString();
-        text.remove(QRegularExpression(QStringLiteral("^Requested by [^.]*\\. ?")));
-        // -- WP ADETQ -- the speaker detection says which output, of how many (AUTODES 5.1)
-        if (running && str(job, "kind") == QLatin1String("detect")) {
-            const auto *measure = Registrar::instance<MeasureController>();
-            const MeasureSession *m = measure ? measure->sessionOf(const_cast<DeviceSession *>(s)) : nullptr;
-            text = m && m->detecting() ? m->detectStripText() : tr("Detecting speakers");
+        const auto *measure = Registrar::instance<MeasureController>();
+        const MeasureSession *m = measure && s ? measure->sessionOf(const_cast<DeviceSession *>(s)) : nullptr;
+        const bool measureJob = running && s && s->hasJob(QStringLiteral("MeasureController"));
+        // -- WP REVDFIX -- (REVD D3) the agent's run as the session says it, not
+        // its job line cut at the first "." ("5.5 s sweeps" lost the sentence)
+        text = measureJob && m ? m->agentDoing() : QString();
+        if (text.isEmpty() && measureJob) {
+            text = s->job();
+            text.remove(QRegularExpression(QStringLiteral("^Requested by [^:]*: ?")));
         }
+        // -- WP ADETQ -- the speaker detection says which output, of how many (AUTODES 5.1)
+        if (running && str(job, "kind") == QLatin1String("detect"))
+            text = m && m->detecting() ? m->detectStripText() : tr("Detecting speakers");
         if (text.isEmpty()) text = running ? tr("Measuring: %1").arg(str(job, "what")) : tr("Starting: %1").arg(str(job, "what"));
     } else if (!asked.isEmpty()) {
         const QVariantMap q = asked.first().toMap();
@@ -1297,8 +1339,10 @@ int AiController::inputIdleLeftMs() const {
 
 bool AiController::inputBusy() const { return inputIdleLeftMs() > 0; }
 
-bool AiController::userInteracting() const {
-    if (inputBusy()) return true;   // -- WP INTI --
+bool AiController::userInteracting() const { return inputBusy() || userAt(true); }
+
+// -- WP SHOWFIX -- (finding 10) `questionSheets`: an agent's question open counts
+bool AiController::userAt(bool questionSheets) const {
     for (DeviceSession *s : m_ctx.registry->sessions())
         if (s->model() && s->model()->dragging()) return true;
     if (m_ctx.device && m_ctx.device->dragging()) return true;
@@ -1309,7 +1353,9 @@ bool AiController::userInteracting() const {
         if (!window->isVisible()) continue;
         const QList<QObject *> all = window->findChildren<QObject *>();
         for (const QObject *o : all)
-            if (o->inherits("QQuickPopup") && o->property("opened").toBool() && !o->property("aiPassive").toBool()) return true;
+            if (o->inherits("QQuickPopup") && o->property("opened").toBool() && !o->property("aiPassive").toBool()
+                && (questionSheets || !o->property("aiQuestion").toBool()))
+                return true;
     }
     return false;
 }
@@ -1336,26 +1382,120 @@ bool AiController::mayFollow(const QString &device, const QString &section, bool
 // the section of the change; held off while the user is at something, and at most
 // one switch in kFollowMs (the newest change is followed after it)
 void AiController::followChange(const QString &device, const QString &section) {
+    FollowAt at;   // -- WP SHOWFIX --
+    at.section = section;
+    followTo(device, at);
+}
+
+// -- WP SHOWFIX -- (finding 3) and the tab, channel and band of the change
+void AiController::followTo(const QString &device, const FollowAt &at) {
     if (!m_followAgent || device.isEmpty() || !m_ctx.registry->session(device)) return;
     const QDateTime now = QDateTime::currentDateTimeUtc();
-    const QString key = device + QLatin1Char('\n') + section;
-    if (key == m_lastFollowKey && m_lastFollowKeyAt.isValid() && m_lastFollowKeyAt.msecsTo(now) < kFollowSameMs) return;
+    const QString key = device + QLatin1Char('\n') + at.section;
+    // The same device and section again soon after: left alone where the user went
+    // from it; where the user still is, only the tab, channel and band of the change
+    const bool again = key == m_lastFollowKey && m_lastFollowKeyAt.isValid() && m_lastFollowKeyAt.msecsTo(now) < kFollowSameMs;
+    if (again && !stillAt(device, at.section)) return;
     if (m_lastFollow.isValid() && m_lastFollow.msecsTo(now) < kFollowMs) {
         m_followPendingDevice = device;
-        m_followPendingSection = section;
+        m_followPendingAt = at;
         m_followTimer.start(int(kFollowMs - m_lastFollow.msecsTo(now)) + 50);
         return;
     }
     // -- WP INTI -- (review RF7) an input in flight: tried again once it is over
     if (inputBusy()) {
         m_followPendingDevice = device;
-        m_followPendingSection = section;
+        m_followPendingAt = at;
         m_followTimer.start(inputIdleLeftMs() + 50);
         return;
     }
-    if (!mayFollow(device, section)) return;
-    if (device != m_ctx.registry->activeId()) m_ctx.registry->activate(device);
-    if (!section.isEmpty()) emit followSection(section);
+    if (again) {
+        if (userInteracting()) return;
+        m_lastFollow = now;
+    } else {
+        if (!mayFollow(device, at.section)) return;
+        if (device != m_ctx.registry->activeId()) m_ctx.registry->activate(device);
+    }
+    if (!at.section.isEmpty()) emit followSection(at.section, at.tab);
+    showFollowed(device, at);
+}
+
+// -- WP SHOWFIX -- (finding 10) The question in front (the sheet shows the first one
+// not answered): its device's tab comes to the front as it opens, so that it is not
+// asked over another device's page. Not the rate limit of changes: the question
+// takes the user's eyes anyway. Not while the user is at a control, a text field
+// or another dialog (the sheet names the device then); after an input once it rests.
+void AiController::followQuestion() {
+    m_questionTimer.stop();
+    const Waiting *front = nullptr;
+    for (const Waiting &w : std::as_const(m_waiting))
+        if (!m_answered.contains(w.id)) {
+            front = &w;
+            break;
+        }
+    if (!front || front->id == m_questionFollowed) return;
+    if (!m_followAgent || front->device.isEmpty() || front->device == m_ctx.registry->activeId()
+        || !m_ctx.registry->session(front->device) || !m_pairing.isEmpty()) {
+        m_questionFollowed = front->id;
+        return;
+    }
+    if (userAt(false)) {
+        m_questionFollowed = front->id;
+        return;
+    }
+    if (inputBusy()) {
+        m_questionTimer.start(inputIdleLeftMs() + 50);
+        return;
+    }
+    m_questionFollowed = front->id;
+    m_lastFollow = QDateTime::currentDateTimeUtc();
+    m_ctx.registry->activate(front->device);
+}
+
+// -- WP SHOWFIX -- The device shown, and Modern's section (none in Classic)
+bool AiController::stillAt(const QString &device, const QString &section) const {
+    if (device != m_ctx.registry->activeId()) return false;
+    const QObject *pages = m_ctx.shell ? m_ctx.shell->pageHost() : nullptr;
+    return section.isEmpty() || !pages || pages->property("section").toString() == section;
+}
+
+// -- WP SHOWFIX -- (finding 3) The channel of a change selected (the Equaliser's, and
+// Classic's sidebar), and its PEQ band in the graph and the table. Each waits for
+// what it needs: the device's channels, the graph editing that channel.
+void AiController::showFollowed(const QString &device, const FollowAt &at) {
+    m_showTimer.stop();
+    if (at.channel < 0 && at.output < 0) return;
+    m_showDevice = device;
+    m_showAt = at;
+    m_showFor.start();
+    if (!showFollowedStep()) m_showTimer.start();
+}
+
+bool AiController::showFollowedStep() {
+    // The user went elsewhere or took over meanwhile: left as it is
+    if (m_showDevice != m_ctx.registry->activeId() || m_showFor.elapsed() > kShowMs || inputBusy()) return true;
+    auto *sidebar = Registrar::instance<SidebarController>();
+    if (!sidebar || !m_ctx.device) return true;
+    int channel = m_showAt.channel;
+    if (channel < 0) {
+        auto *channels = Registrar::instance<ChannelController>();
+        if (!channels) return true;
+        if (!m_ctx.device->state()) return false;   // the device's state is not read yet
+        channel = channels->outputChannel(m_showAt.output);
+    }
+    if (sidebar->selectedChannel() != channel) {
+        sidebar->select(channel);
+        if (sidebar->selectedChannel() != channel) return false;   // its channels are not read yet
+    }
+    if (m_showAt.band < 0) return true;
+    auto *peq = Registrar::instance<PeqEditorController>();
+    if (!peq) return true;
+    // The graph takes the channel after the selection (PeqOverlay), which drops
+    // the selection of another channel's bands: the band once it has
+    if (peq->editedChannel() != channel) return false;
+    if (peq->selected() != QList<int>{ m_showAt.band }) peq->rowClicked(m_showAt.band, 0);
+    peq->reveal(m_showAt.band);
+    return true;
 }
 
 void AiController::showWork() { m_ctx.registry->activate(m_workShown.value(QStringLiteral("deviceId")).toString()); }
@@ -1380,6 +1520,35 @@ QString AiController::sectionOf(const QString &path) {
     return {};
 }
 
+// -- WP SHOWFIX -- (finding 3) The journal's indices: a band's [wire channel, band]
+// (a crossover band from 20, as BandRow's), a channel's or an input's preamp
+// [wire channel], an output's [output from 0] (255: every output)
+AiController::FollowAt AiController::followAtOf(const QString &path, const QVariantList &indices) {
+    FollowAt at;
+    at.section = sectionOf(path);
+    if (at.section != QLatin1String("equaliser")) return at;
+    const QString group = path.section(QLatin1Char('.'), 0, 0);
+    const int i0 = indices.isEmpty() ? -1 : indices.value(0).toInt();
+    constexpr int kCrossoverBase = 20;
+    if (group == QLatin1String("eq") && indices.size() >= 2) {
+        const int band = indices.value(1).toInt();
+        at.channel = i0;
+        if (band >= kCrossoverBase) {
+            at.tab = QStringLiteral("crossover");
+        } else {
+            at.tab = QStringLiteral("peq");
+            at.band = band;
+        }
+    } else if (group == QLatin1String("ch") || path == QLatin1String("pre")) {
+        at.channel = i0;
+        if (path == QLatin1String("ch.delay")) at.tab = QStringLiteral("delay");
+    } else if (group == QLatin1String("out") || group == QLatin1String("limit")) {
+        if (i0 >= 0 && i0 < MAX_OUTPUTS) at.output = i0;
+        if (group == QLatin1String("out")) at.tab = QStringLiteral("delay");   // gain, delay, mute: Delay & Gain
+    }
+    return at;
+}
+
 QVariantList AiController::recentTouches() const {
     QVariantList out;
     const QDateTime now = QDateTime::currentDateTimeUtc();
@@ -1398,7 +1567,8 @@ void AiController::tell(const QList<QJsonObject> &rows) {
     if (first && rows.size() > 8) return;
     const QDateTime now = QDateTime::currentDateTimeUtc();
     m_touches.removeIf([&](const Touch &t) { return t.at.msecsTo(now) >= kTouchMs; });
-    QString followDevice, followSectionOf;   // -- WP ODEC --
+    QString followDevice;   // -- WP ODEC --
+    FollowAt followAt;      // -- WP SHOWFIX --
     for (const QJsonObject &e : rows) {
         const QString device = str(e, "device");
         const bool write = e.value(QLatin1String("write")).toBool();
@@ -1423,14 +1593,17 @@ void AiController::tell(const QList<QJsonObject> &rows) {
         readBehind(device, str(e, "tool"), write);
         if (!write) continue;
         // -- WP ODEC -- the screens follow it (the newest change of this read)
-        if (!first) {
+        // -- WP SHOWFIX -- (finding 14) the first read's too: the server's activity
+        // starts empty with the app, and a first read of more is no news (above)
+        {
             const QJsonArray touched = e.value(QLatin1String("touched")).toArray();
-            QString section;
+            FollowAt at;   // -- WP SHOWFIX -- where it is: the section, tab, channel and band
             for (const QJsonValue &v : touched)
-                if (section.isEmpty()) section = sectionOf(str(v.toObject(), "path"));
+                if (at.section.isEmpty())
+                    at = followAtOf(str(v.toObject(), "path"), v.toObject().value(QLatin1String("indices")).toArray().toVariantList());
             if (!touched.isEmpty() || !device.isEmpty()) {
                 followDevice = device;
-                followSectionOf = section;
+                followAt = at;
             }
         }
         for (const QJsonValue &v : e.value(QLatin1String("touched")).toArray()) {
@@ -1447,7 +1620,10 @@ void AiController::tell(const QList<QJsonObject> &rows) {
         if (notices->tag() != QLatin1String("ai") || agent != m_noticeAgent) m_noticeKeys.clear();
         m_noticeAgent = agent;
         m_noticeKeys << rowKey(e);
-        const QString detail = str(e, "detail").isEmpty() ? str(e, "title") : str(e, "detail");
+        // -- WP SHOWFIX -- (finding 4) the core's words, the channels as the
+        // person knows them ("LFE → Left woofer off"), where the server has them
+        const QString detail = !str(e, "said").isEmpty() ? str(e, "said")
+                               : str(e, "detail").isEmpty() ? str(e, "title") : str(e, "detail");
         const DeviceSession *on = m_ctx.registry->session(device);
         const QString where = on && m_ctx.registry->sessions().size() > 1 ? QStringLiteral(" · ") + on->title() : QString();
         //: An AI agent's change: %1 is its name, %2 the change ("Out 3 output gain -6 dB to -8 dB")
@@ -1461,7 +1637,7 @@ void AiController::tell(const QList<QJsonObject> &rows) {
         notices->postTagged(QStringLiteral("ai"), text, canUndo ? tr("Undo") : QString(), [this] { undoNoticed(); });
     }
     emit recentTouchesChanged();
-    if (!followDevice.isEmpty()) followChange(followDevice, followSectionOf);   // -- WP ODEC --
+    if (!followDevice.isEmpty()) followTo(followDevice, followAt);   // -- WP ODEC --, SHOWFIX
 }
 
 // What `tool` changed on `device` that its snapshot does not hold
@@ -1472,6 +1648,9 @@ void AiController::readBehind(const QString &device, const QString &tool, bool w
     if (tool.startsWith(QLatin1String("dspi_system_measure_")))
         if (auto *units = Registrar::instance<UnitsMeasureController>()) units->readAgain();
     if (device != m_ctx.registry->activeId()) return;   // read when it comes to the front
+    // -- WP ROLES -- the speaker roles an agent set from the person's words
+    if (tool == QLatin1String("dspi_set_speaker_roles"))
+        if (auto *speakers = Registrar::instance<SpeakersController>()) speakers->reload();
     if (tool == QLatin1String("dspi_set_subharmonic")) {
         if (auto *tools = Registrar::instance<ToolsController>()) tools->readHeadroom();
     } else if (tool == QLatin1String("dspi_monitor_clear")) {
@@ -1584,6 +1763,15 @@ void AiController::setAgentSplCapOn(bool on) {
 }
 
 // -- WP ADETQ --
+// -- WP ROLES --
+void AiController::setAgentRoles(bool on) {
+    if (on == m_agentRoles || !m_mcp) return;
+    m_agentRoles = on;
+    QSettings().setValue(QLatin1String(kAgentRolesKey), on);
+    dspi_mcp_set_agent_roles(m_mcp, on);
+    emit settingsChanged();
+}
+
 void AiController::setAgentDetect(bool on) {
     if (on == m_agentDetect || !m_mcp) return;
     m_agentDetect = on;
@@ -1596,11 +1784,14 @@ void AiController::setAgentDetect(bool on) {
 // agent's question carries the server's copy; the app's own Detect… and the
 // never-ask switch show this one
 QString AiController::detectWarning() {
+    // -- WP FIN015 -- with the free descent's worst case (the core's absolute gate)
     return tr("Nothing is known about these outputs yet. A tweeter wired where the probe expects a woofer could receive "
-              "a few seconds of sweep below 1 kHz at −50 dBFS: less than a hundredth of what a 1 kHz crossover lets "
-              "through from music, but not nothing. Keep the volume where it is and stay by Stop. Afterwards check the "
-              "result in Settings › Speakers and confirm or correct it: until you do, the detected roles guard your "
-              "speakers in place of a confirmed setup.");
+              "a few seconds of sweep below its floor at −50 dBFS (more with a raised floor): below 1 kHz less than a "
+              "hundredth of what a 1 kHz crossover lets through from music, but not nothing. Only a driver still playing "
+              "flat at 177 Hz under that quiet sweep, as no tweeter does, is then swept down to 20 Hz at up to −24 dBFS. "
+              "Keep the volume where it is and stay by Stop. Afterwards check the result in Settings › Speakers and "
+              "confirm or correct it: until you do, the detected roles guard your speakers in place of a confirmed "
+              "setup.");
 }
 
 void AiController::applySplCap() {

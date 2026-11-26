@@ -147,6 +147,9 @@ export function refusalKey(e: unknown): string {
 /** A refusal in words (a hub's, the core's): its notice's title, then the words the core gave. */
 export function refusalWords(e: unknown, row: Row = noticeRow): { key: string; text: string } {
   const key = refusalKey(e);
+  // -- WP FIN015 -- (REVF R2) the core's words for the person first, as MeasureDesk.fail; a hub's
+  // refusal keeps the step's own notice (LINK_KEYS: the core's table has no row for most of them)
+  if (e instanceof CoreCallError && e.text && !(e.noticeKey ?? "").startsWith("dlink.")) return { key, text: e.text };
   const raw = e instanceof Error ? e.message : String(e);
   // The core's prefixes say nothing to a person.
   const msg = sentence(raw.replace(/^(invalid argument|DSPi Link): /, ""));

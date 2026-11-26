@@ -1,0 +1,23 @@
+/* -- WP WEB4 -- Library › History in the Modern design (DL3a): Undo and Redo at the top, the changes as
+   striped 28 px rows in the 760 px column, the time in mono, a quiet icon for what Undo can do, the values
+   in small muted text under the change; no rules. */
+.dspi-web .history-screen { max-width: var(--content-max); gap: 8px; }
+.dspi-web .history-tools { display: flex; gap: 8px; }
+/* -- WP WEB7 -- Qt's Undo and Redo: the icon before the word, 28 px */
+.dspi-web .history-tools > button { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0.15rem 0.65rem; }
+.dspi-web .history-tools .shell-icon { width: 14px; height: 14px; }
+.dspi-web .history-list { font-size: 12.5px; }
+.dspi-web .history-list li { grid-template-columns: 4.5rem 18px minmax(0, 1fr); gap: 0 8px; align-items: center; min-height: 28px; padding: 4px 8px; border: 0; border-radius: 4px; }
+.dspi-web .history-list li:nth-child(even) { background: var(--stripe); }
+.dspi-web .history-list li:hover { background: var(--control-hover); }
+.dspi-web .history-list .h-time { font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.02em; }
+.dspi-web .history-list .h-mark { display: grid; place-items: center; color: var(--muted); }
+.dspi-web .history-list .h-icon { width: 14px; height: 14px; }
+.dspi-web .history-list .h-what { display: flex; flex-wrap: wrap; align-items: center; gap: 0 6px; }
+.dspi-web .history-list .h-values { flex-basis: 100%; font-size: 11px; color: var(--muted); }
+.dspi-web .history-list .h-pill { display: inline-flex; align-items: center; min-height: 16px; padding: 0 6px; border-radius: 8px; background: var(--control); font-size: 10.5px; color: var(--muted); }
+.dspi-web .history-screen .h-caption { margin: 0; font-size: 11px; color: var(--muted); }
+@media (max-width: 520px) {
+  .dspi-web .history-list li { grid-template-columns: 18px minmax(0, 1fr); }
+  .dspi-web .history-list .h-time { grid-column: 1 / -1; }
+}

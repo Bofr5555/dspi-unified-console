@@ -27,13 +27,31 @@ import {
   verdictWords,
   type RawForm,
 } from "./model";
+// -- WP WEB7 -- Qt's look: each part a group with its icon and DemiBold title outside the panel,
+// the facts as Qt's settings rows (the name at the left, the value at the right edge)
+import { Group, Lucide } from "../../ui/Group";
+import "./device.css";
+
+const CHIP = (
+  <>
+    <rect width="16" height="16" x="4" y="4" rx="2" />
+    <rect width="6" height="6" x="9" y="9" rx="1" />
+    <path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 2v2M9 20v2" />
+  </>
+);
+const TERMINAL = (
+  <>
+    <path d="m4 17 6-6-6-6" />
+    <path d="M12 19h8" />
+  </>
+);
 
 export function DeviceScreen(props: ScreenProps) {
   const st = useSessionState(props.session);
   return (
     <div class="device-screen">
       <DeviceInfo session={props.session} protocol={st.protocol ?? null} />
-      {st.protocol?.generation === "paged" ? <RawById session={props.session} /> : <p class="note raw-none">Raw requests by command id need firmware 1.1.7 (the paged protocol).</p>}
+      {st.protocol?.generation === "paged" ? <RawById session={props.session} /> : null}
       <UpdateCheck session={props.session} />
     </div>
   );
@@ -59,16 +77,19 @@ function DeviceInfo(props: { session: Session; protocol: DeviceProtocolRecord | 
   const p = props.protocol;
   const dev = st.snapshot?.device;
   const row = (label: string, value: string, cls: string) => (
-    <div class={`device-row ${cls}`}>
+    <div class={`device-fact ${cls}`}>
       <dt>{label}</dt>
       <dd>{value}</dd>
     </div>
   );
+  // -- WP WEB7 -- Qt's "Connected Device" (Settings › About): raw requests are for the paged protocol only, said under it
   return (
-    <section class="card device-info" aria-label="Device information">
-      <div class="card-head">
-        <h2>Device</h2>
-      </div>
+    <Group
+      title="Connected Device"
+      icon={<Lucide paths={CHIP} />}
+      class="device-info"
+      footer={p && p.generation !== "paged" ? <span class="raw-none">Raw requests by command id need firmware 1.1.7 or later (the paged protocol).</span> : undefined}
+    >
       {p ? (
         <dl class="device-facts">
           {row("Board", p.boardName, "device-board")}
@@ -81,7 +102,7 @@ function DeviceInfo(props: { session: Session; protocol: DeviceProtocolRecord | 
       ) : (
         <p class="note">This connection does not say its protocol.</p>
       )}
-    </section>
+    </Group>
   );
 }
 
@@ -109,10 +130,7 @@ function SenderLink(props: { session: Session }) {
     };
   }, [props.session]);
   return (
-    <section class="card sender-link" aria-label="Audio link">
-      <div class="card-head">
-        <h2>Audio link</h2>
-      </div>
+    <Group title="Audio Link" icon="link" class="sender-link">
       {error ? (
         <p class="error" role="alert">
           {error}
@@ -120,21 +138,21 @@ function SenderLink(props: { session: Session }) {
       ) : null}
       {info && status ? (
         <dl class="device-facts">
-          <div class="device-row alink-role">
+          <div class="device-fact alink-role">
             <dt>Role</dt>
             <dd>{info.role}</dd>
           </div>
-          <div class="device-row alink-state">
+          <div class="device-fact alink-state">
             <dt>State</dt>
             <dd>{status.state}</dd>
           </div>
-          <div class="device-row alink-channels">
+          <div class="device-fact alink-channels">
             <dt>Channels</dt>
             <dd>
               {status.channels} of {info.maxChannels}
             </dd>
           </div>
-          <div class="device-row alink-errors">
+          <div class="device-fact alink-errors">
             <dt>Errors</dt>
             <dd>
               CRC {status.crc8Errors + status.crc16Errors}, slips {status.bitSlips}, losses {status.lossCount}
@@ -144,7 +162,7 @@ function SenderLink(props: { session: Session }) {
       ) : error ? null : (
         <p class="note">Reading the audio link…</p>
       )}
-    </section>
+    </Group>
   );
 }
 
@@ -183,14 +201,12 @@ function RawById(props: { session: Session }) {
     }
   };
   return (
-    <section class="card raw-id" aria-label="Raw request by id">
-      <div class="card-head">
-        <h2>Raw request by id</h2>
-      </div>
-      <p class="note">
-        A paged command by its id (page &lt;&lt; 8 | command, e.g. 0x0550 ROUTE.MASTER_VOLUME_SAVED). The core refuses with nothing sent what it gates: flash, restart and bulk commands,
-        confirmed operations, the core voltage.
-      </p>
+    <Group
+      title="Raw Request by Id"
+      icon={<Lucide paths={TERMINAL} />}
+      class="raw-id"
+      footer="A paged command by its id, e.g. 0x0550. What the console guards is refused with nothing sent: flash, restart and bulk commands, confirmed operations, the core voltage."
+    >
       <form
         class="raw-form"
         onSubmit={(e) => {
@@ -233,11 +249,12 @@ function RawById(props: { session: Session }) {
           {said.text}
         </p>
       ) : null}
-    </section>
+    </Group>
   );
 }
 
 function UpdateCheck(props: { session: Session }) {
+  const firmware = useSessionState(props.session).snapshot?.device.firmware ?? ""; // -- WP WEB7 --
   const file = useRef<HTMLInputElement>(null);
   const [target, setTarget] = useState<FirmwareTargetRecord | null>(null);
   const [result, setResult] = useState<{ name: string; v: FirmwareUpdateVerdictRecord } | null>(null);
@@ -266,14 +283,26 @@ function UpdateCheck(props: { session: Session }) {
   const v = result?.v;
   const rule = v ? ruleWords(v) : "";
   return (
-    <section class="card update-check" aria-label="Firmware update check">
-      <div class="card-head">
-        <h2>Firmware update check</h2>
-      </div>
-      <p class="note">
-        This web console does not write firmware. Choose an image to see whether the app that writes it (the desktop console, <code>uconsole flash</code>, a hub rollout) would
-        update this board with it, and what changes.
-      </p>
+    <Group
+      title="Firmware Update Check"
+      icon={<Lucide paths={CHIP} />}
+      class="update-check"
+      footer={
+        <>
+          This web console does not write firmware. Choose an image to see whether the app that writes it (the desktop console, <code>uconsole flash</code>, a hub rollout) would update
+          this board with it, and what changes.
+        </>
+      }
+    >
+      {/* -- WP WEB7 -- Qt's Firmware page: the version on the device beside the image's */}
+      {firmware ? (
+        <dl class="device-facts">
+          <div class="device-fact device-version">
+            <dt>Connected device</dt>
+            <dd>{firmware}</dd>
+          </div>
+        </dl>
+      ) : null}
       <div class="update-check-pick">
         <button type="button" disabled={busy} onClick={() => file.current?.click()}>
           Check an Image…
@@ -300,6 +329,6 @@ function UpdateCheck(props: { session: Session }) {
           {v.generationChange ? <p class="update-generation">Generation change: {v.generationChange}</p> : null}
         </div>
       ) : null}
-    </section>
+    </Group>
   );
 }

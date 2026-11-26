@@ -225,6 +225,17 @@ void feat2Section(SmokeDriver &d) {
     // ---- What the app would have to dial, or that is not there, is declined
     ai->setKnownDevices({ QJsonObject{ { QStringLiteral("device"), QStringLiteral("hub:not-connected/UNIT") } },
                           QJsonObject{ { QStringLiteral("device"), QStringLiteral("usb:NOT-PLUGGED-IN") } } });
+    // -- INTC -- the list reaches the server on the AI thread (AiController::
+    // setKnownDevices): ask once the agent sees it, not before (a loaded run
+    // asked first and was refused)
+    d.waitFor(15000, [&] {
+        int seen = 0;
+        for (const QJsonValue &v : known().value(QLatin1String("known")).toArray()) {
+            const QString id = v.toObject().value(QLatin1String("device")).toString();
+            seen += id == QLatin1String("hub:not-connected/UNIT") || id == QLatin1String("usb:NOT-PLUGGED-IN");
+        }
+        return seen == 2;
+    });
     for (const char *id : { "hub:not-connected/UNIT", "usb:NOT-PLUGGED-IN" }) {
         d.check("feat2: a device opened before is a known one", asked("dspi_open_device", QLatin1String(id)) == QLatin1String("waiting_for_app"));
         const QJsonObject o = settled();

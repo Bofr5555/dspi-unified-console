@@ -570,6 +570,20 @@ pub extern "C" fn dspi_mcp_set_agent_detect(mcp: *mut FfiMcp, allowed: bool) -> 
     })
 }
 
+// -- WP ROLES --
+/// Settings › AI Agents › Agents may set speaker roles from my words (off by
+/// default): under "never ask" an agent's `dspi_set_speaker_roles` is refused
+/// unless it is on; under the other settings the user is asked instead (one
+/// question showing the whole table). Holds from the next call on, also while
+/// the server runs. False for a null handle.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_mcp_set_agent_roles(mcp: *mut FfiMcp, allowed: bool) -> bool {
+    with_mcp(mcp, false, |m| {
+        m.policy.set_agent_roles(allowed);
+        true
+    })
+}
+
 // -- WP FEATUI --
 /// This computer's audio as `dspi_get_host_audio` reads it, for the devices
 /// open in the handle's set: the tool's JSON plus `ok` (never an error:
@@ -735,7 +749,7 @@ pub extern "C" fn dspi_mcp_relay_stdio(
                 // -- WP MCP4 --
                 let _ = writeln!(
                     std::io::stderr(),
-                    "dspi-mcp relay: the port must be 1 to 65535; set it in DSPi Console under \
+                    "dspi-mcp relay: the port must be 1 to 65535; set it in uConsole for DSPi under \
                      Settings, AI agents"
                 );
                 return 2;
@@ -940,6 +954,12 @@ mod tests_wp_featui;
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 #[path = "fns_mcp/tests_wp_adet1.rs"]
 mod tests_wp_adet1;
+
+// -- WP ROLES --
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+#[path = "fns_mcp/tests_wp_roles.rs"]
+mod tests_wp_roles;
 
 // -- WP FEAT2 -- the agents' requests to open a known device or close one
 //

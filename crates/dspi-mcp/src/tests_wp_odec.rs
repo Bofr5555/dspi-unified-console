@@ -32,7 +32,7 @@ fn wp_odec_no_level_raise_on_a_tweeter_left_playing_unprotected_under_any_settin
         for (tool, args, what) in [
             (
                 "dspi_set_gain",
-                json!({"output": 1, "gain_db": -4}),
+                json!({"output": 2, "gain_db": -4}),
                 "gain up",
             ),
             (
@@ -57,13 +57,13 @@ fn wp_odec_no_level_raise_on_a_tweeter_left_playing_unprotected_under_any_settin
                 &mut s,
                 c,
                 "dspi_set_gain",
-                json!({"output": 1, "gain_db": -16}),
+                json!({"output": 2, "gain_db": -16}),
             );
             ok(
                 &mut s,
                 c,
                 "dspi_set_mute",
-                json!({"output": 1, "muted": true}),
+                json!({"output": 2, "muted": true}),
             );
         }
     }
@@ -88,14 +88,14 @@ fn wp_odec_a_protected_tweeter_may_be_raised_and_other_outputs_are_not_held_to_i
         &mut s,
         c,
         "dspi_set_gain",
-        json!({"output": 1, "gain_db": -6}),
+        json!({"output": 2, "gain_db": -6}),
     );
     // A woofer's gain with a tweeter elsewhere protected: as before.
     ok(
         &mut s,
         c,
         "dspi_set_gain",
-        json!({"output": 0, "gain_db": -3}),
+        json!({"output": 1, "gain_db": -3}),
     );
 }
 
@@ -148,7 +148,7 @@ fn wp_odec_no_agent_preset_load_while_the_master_volume_is_saved_with_presets() 
         let c = s.connect();
         // Refused at once, never asked.
         for (tool, args) in [
-            ("dspi_preset_load", json!({"slot": 1})),
+            ("dspi_preset_load", json!({"slot": 2})),
             ("dspi_revert_to_saved", json!({})),
         ] {
             let e = err(&mut s, c, tool, args);
@@ -161,7 +161,7 @@ fn wp_odec_no_agent_preset_load_while_the_master_volume_is_saved_with_presets() 
         // Independent of presets again: as before.
         core.set_master_volume_mode(0).unwrap();
         if mode == ConfirmMode::NeverAsk {
-            ok(&mut s, c, "dspi_preset_load", json!({"slot": 1}));
+            ok(&mut s, c, "dspi_preset_load", json!({"slot": 2}));
         }
     }
 }
@@ -171,7 +171,7 @@ fn wp_odec_no_agent_preset_load_while_the_master_volume_is_saved_with_presets() 
 const START: &str = "dspi_measure_start";
 
 fn start_args() -> serde_json::Value {
-    json!({"outputs": [0], "sweep_ms": 1000, "passes": 2})
+    json!({"outputs": [1], "sweep_ms": 1000, "passes": 2})
 }
 
 #[test]
@@ -204,7 +204,7 @@ fn wp_odec_one_question_grants_test_signals_on_a_device_for_ten_minutes() {
             c,
             now,
             "dspi_set_gain",
-            json!({"output": 0, "gain_db": -6}),
+            json!({"output": 1, "gain_db": -6}),
         );
         // Another agent has no grant.
         let other = s.connect_as("other");
@@ -259,7 +259,7 @@ fn wp_odec_the_user_revokes_a_grant_and_never_ask_grants_nothing() {
         c,
         now,
         "dspi_set_gain",
-        json!({"output": 0, "gain_db": -6}),
+        json!({"output": 1, "gain_db": -6}),
     );
     assert_eq!(s.confirmation(cid).unwrap().to_json()["grant"], json!(null));
     s.answer_confirmation(cid, true, now).unwrap();

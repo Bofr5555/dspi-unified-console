@@ -19,13 +19,29 @@ ScrollView {
     contentWidth: availableWidth
 
     readonly property var mc: MeasureController
+    // -- INTC (DL2 fold) -- Modern's page shows Open… in its tab row (MeasurePanel's pageTools)
+    property bool toolsAbove: false
     readonly property var smoothings: [0, 1, 2, 3, 6, 12, 24, 48]
+    // -- WP DL2 -- Modern: nothing to show is an empty state; Classic keeps its line
+    readonly property bool modern: LayoutController.modern
 
     ColumnLayout {
         width: tab.availableWidth
         spacing: Theme.spacing
 
+        EmptyState {
+            objectName: "MeasureResults.empty"
+            visible: tab.modern && !mc.hasResult
+            Layout.fillWidth: true
+            Layout.preferredHeight: Math.max(implicitHeight, tab.availableHeight)
+            iconName: "chart-line"
+            title: qsTr("No measurement yet")
+            text: qsTr("Measure on the Measure tab, or open a measurement file.")
+            actionText: qsTr("Open a Measurement…")
+            onAction: mc.chooseResultFile()
+        }
         RowLayout {
+            visible: !tab.modern || mc.hasResult
             spacing: Theme.spacingSmall
             Text {
                 objectName: "MeasureResults.name"
@@ -37,6 +53,7 @@ ScrollView {
                 wrapMode: Text.WordWrap
             }
             AppButton {
+                visible: !tab.toolsAbove   // -- INTC -- on Modern's page: the tab row's
                 text: qsTr("Open…")
                 onClicked: mc.chooseResultFile()
             }
@@ -58,8 +75,18 @@ ScrollView {
             textFormat: Text.PlainText
             text: mc.resultTiming.length ? mc.resultTiming : qsTr("No timing: a single sweep is magnitude only.")
             font: Theme.fontBody
-            color: reliable === true ? Theme.success : reliable === false ? Theme.warning : Theme.textMuted
+            // -- WP DL2 -- Modern: the state in the icon before it, the words in the text colour
+            color: tab.modern ? (reliable === undefined || reliable === null ? Theme.textMuted : Theme.text)
+                              : reliable === true ? Theme.success : reliable === false ? Theme.warning : Theme.textMuted
             wrapMode: Text.WordWrap
+            leftPadding: timingIcon.visible ? timingIcon.width + 6 : 0
+            Icon {
+                id: timingIcon
+                visible: tab.modern && (parent.reliable === true || parent.reliable === false)
+                y: Math.max(0, (parent.font.pixelSize * 1.3 - height) / 2)
+                name: parent.reliable === true ? "circle-check" : "triangle-alert"
+                color: parent.reliable === true ? Theme.success : Theme.warning
+            }
         }
         RowLayout {
             visible: mc.hasResult

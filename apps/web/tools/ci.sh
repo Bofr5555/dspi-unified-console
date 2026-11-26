@@ -22,6 +22,8 @@ root=$(cd "$(dirname "$0")/../../.." && pwd)
 . "$root/ci/container/images.conf"
 B=${DSPI_BUILD_CACHE:-$HOME/.cache/dspi-build}
 branch=$(git -C "$root" rev-parse --abbrev-ref HEAD 2>/dev/null || echo detached)
+# -- WP SHOWFIX -- a detached worktree is named by its short commit, not "HEAD"
+if [ "$branch" = HEAD ]; then branch=$(git -C "$root" rev-parse --short HEAD); fi
 work=$B/work/web/${branch//\//-}
 mkdir -p "$work/npm" "$work/node_modules" "$work/home" "$work/tmp" "$work/dist" "$work/dist-test" "$work/results" "$work/wasm"
 e2e=1
@@ -36,14 +38,14 @@ e2e=1
 # built in the cross container (Ubuntu 24.04, as the Playwright image) so it runs there
 mkdir -p "$work/hub"
 DSPI_PROFILE=cross "$root/ci/run.sh" "cargo build -p dspi-link --features fake-hub --bin dspi-link-fakehub --locked"
-cp "$B/target/${branch//\//-}-cross/debug/dspi-link-fakehub" "$work/hub/"
+cp "$B/target/${DSPI_TARGET_KEY:-${branch//\//-}}-cross/debug/dspi-link-fakehub" "$work/hub/"
 # -- WP WB7 -- the real hub (`uconsole hub --web`, `uconsole web`) serving the built console,
 # for test/e2e/hosting.spec.ts; without MIDI and mDNS (a loopback hub advertises
 # nothing), so it needs no ALSA in the Playwright image. And the core's Rust notices
 # (notices/rust-crates.txt) must match what the module links.
 DSPI_PROFILE=cross "$root/ci/run.sh" "cargo build -p dspi-term --no-default-features --locked && python3 apps/web/tools/gen_rust_notices.py --check"
 cmd=$("$root/ci/command-name.sh")  # -- WP CLEAN1 --
-cp "$B/target/${branch//\//-}-cross/debug/$cmd" "$work/hub/"
+cp "$B/target/${DSPI_TARGET_KEY:-${branch//\//-}}-cross/debug/$cmd" "$work/hub/"
 
 podman image exists "$PLAYWRIGHT" || podman pull -q "$PLAYWRIGHT" >/dev/null
 podman run --rm --init --userns=keep-id --user "$(id -u):$(id -g)" --ipc=private --shm-size=1g \

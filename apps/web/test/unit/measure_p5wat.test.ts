@@ -69,6 +69,16 @@ test("P5WAT: a refusal in words through the notice table; a key it does not know
   assert.equal(issueWords({ key: "x.y", message: "as is" }, row), "As is");
 });
 
+// -- WP FIN015 -- (REVF R2, probe P5) the core's sentence refusal is shown as the core said it
+test("FIN015: Auto-tune shows the core's words for a refusal, not the invalid notice's title over them", () => {
+  const words = "Lower the volume to −12 dB or below to measure; it is 0.0 dB.";
+  const e = new CoreCallError("invalid", `invalid argument: ${words}`, "invalid", words);
+  assert.deepEqual(refusalWords(e, () => ({ key: "invalid", kind: "error", title: "Not a valid value", reason: "", action: "" }) as NoticeRecord), { key: "invalid", text: words });
+  // A keyed refusal keeps its key (Keep's second question reads it) with the core's words
+  const keyed = new CoreCallError("invalid", `invalid argument: ${KEEP_UNVERIFIED}: why`, "invalid", "The verify did not confirm the tune: Why");
+  assert.deepEqual(refusalWords(keyed, row), { key: KEEP_UNVERIFIED, text: "The verify did not confirm the tune: Why" });
+});
+
 const LAYOUT: TuneLayoutRecord = {
   template: "3way",
   notes: [],
@@ -154,7 +164,8 @@ test("P5WAT: documents: who may delete a hub document, the merge, a page documen
 
 test("P5WAT: the tab slot holds the auto-tune and the documents; the documents are a Viewer's too", () => {
   const ids = MEASURE_TABS.map((t) => `${t.id}${t.passive ? "*" : ""}`);
-  assert.deepEqual(ids.slice(-2), ["tune", "docs*"]);
+  // -- WP WEB4 -- in Qt's order: Several units (ATWEB's "system") after them, last
+  assert.deepEqual(ids, ["measure", "results*", "live", "tune", "docs*", "system"]);
 });
 
 // ------------------------------------------------------------------ the Worker's turns of the tune

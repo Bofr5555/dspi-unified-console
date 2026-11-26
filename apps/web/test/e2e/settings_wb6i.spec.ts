@@ -8,7 +8,7 @@
 // the demo device.
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { openPage } from "../nav";
+import { openPage, openSetting, partsOf } from "../nav";
 
 type Clients = { dspiClients: { call(m: string, p: unknown): Promise<unknown> }[] };
 type State = { channelNames: string[]; numInputChannels: number; outputPins: number[] };
@@ -32,7 +32,7 @@ async function openDemo(page: Page): Promise<Locator> {
   const one = page.locator("#one");
   await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article").first();
-  await expect(session.getByRole("region", { name: "Presets" })).toBeVisible();
+  await expect(session.getByRole("button", { name: /^Presets: / })).toBeVisible(); // -- WP INTD -- the session bar's presets (DL5)
   return session;
 }
 
@@ -56,7 +56,7 @@ test("WB6I Settings: device name and latency through the core; Reset Channel Nam
   const errors = errorsOf(page);
   const session = await openDemo(page);
   await openPage(session, "Settings");
-  await expect(nav(session).getByRole("button", { name: "Global" })).toHaveAttribute("aria-current", "page");
+  await expect(nav(session).getByRole("button", { name: "Global Parameters" })).toHaveAttribute("aria-current", "page");
 
   // Device name: written by the core, read back in the snapshot.
   const name = session.getByRole("region", { name: "Device Name" }).getByLabel("Device Name");
@@ -80,7 +80,7 @@ test("WB6I Settings: device name and latency through the core; Reset Channel Nam
   await call(page, "write", { path: "ch.name", indices: [0], value: { text: "Vocal" } });
   const inputs = (await coreState(page)).numInputChannels;
   await call(page, "write", { path: "ch.name", indices: [inputs], value: { text: "Sub" } });
-  await nav(session).getByRole("button", { name: "Advanced" }).click();
+  await openSetting(session, "Advanced"); // -- WP WEB7 -- Application › Advanced, as Qt
   await session.getByRole("region", { name: "Channel Names" }).getByRole("button", { name: "Reset" }).click();
   const dialog = page.getByRole("dialog", { name: "Reset Channel Names" });
   await dialog.getByRole("button", { name: "Reset" }).click();
@@ -98,16 +98,16 @@ test("WB6I Settings: device name and latency through the core; Reset Channel Nam
   await expect(session.getByText("Core Voltage is in the Installer mode.")).toBeVisible();
   await noSidewaysScroll(page);
 
-  // Help: the two GitHub links, opened elsewhere.
-  await nav(session).getByRole("button", { name: "Help" }).click();
-  const help = session.getByRole("region", { name: "Help" });
+  // Help: the two GitHub links, opened elsewhere. -- WP WEB7 -- on About, under Made By (Qt's About page)
+  await openSetting(session, "About");
+  const help = session.getByRole("region", { name: "Made By" });
   await expect(help.getByRole("link", { name: "DSPi Firmware on GitHub" })).toHaveAttribute("href", "https://github.com/WeebLabs/DSPi");
   await expect(help.getByRole("link", { name: "DSPi Unified Console on GitHub" })).toHaveAttribute("target", "_blank");
 
   await page.reload();
   const again = await openDemo(page);
   await openPage(again, "Settings");
-  await nav(again).getByRole("button", { name: "Advanced" }).click();
+  await openSetting(again, "Advanced");
   await expect(again.getByRole("region", { name: "Diagnostics" }).getByLabel(/Show Debug Information/)).toBeChecked();
   await again.getByRole("region", { name: "Diagnostics" }).getByLabel(/Show Debug Information/).uncheck();
   expect(errors).toEqual([]);
@@ -117,8 +117,8 @@ test("WB6I Pins: every GPIO the device reports; a move goes through the core and
   const errors = errorsOf(page);
   const session = await openDemo(page);
   await openPage(session, "Settings");
-  await nav(session).getByRole("button", { name: "Pins" }).click();
-  const pins = session.getByRole("region", { name: "Pins" });
+  await openSetting(session, "Pins");
+  const pins = session.getByRole("region", { name: "Pin Assignments" }); // -- WP WEB7 -- the group's title as Qt's names its rows
   const st = await coreState(page);
   const out1 = pins.getByRole("row", { name: /^Output 1/ });
   await expect(out1).toContainText(`GPIO ${st.outputPins[0]}`);
@@ -147,7 +147,10 @@ test("WB6I Pins: every GPIO the device reports; a move goes through the core and
 
   await setMode(session, page, "Simple");
   await openPage(session, "Settings");
+  await partsOf(session, "Settings").getByRole("tab", { name: "Device", exact: true }).click(); // -- WP WEB7 -- the part Pins would be in
+  await expect(nav(session).getByRole("button", { name: "Global Parameters" })).toBeVisible();
   await expect(nav(session).getByRole("button", { name: "Pins" })).toHaveCount(0);
+  await expect(partsOf(session, "Settings").getByRole("tab", { name: "Control", exact: true })).toHaveCount(0); // not in Simple, as before
   await expect(nav(session).getByRole("button", { name: "Core Voltage" })).toHaveCount(0);
   await setMode(session, page, "Advanced");
   expect(errors).toEqual([]);
@@ -169,7 +172,7 @@ test("WB6I Graphing: applied to the EQ graph at once (a redraw, the cursor reado
   await expect(readout).toContainText(/dB/);
 
   await openPage(session, "Settings");
-  await nav(session).getByRole("button", { name: "Graphing" }).click();
+  await openSetting(session, "Graphing");
   await session.getByRole("region", { name: "Scale & Grid" }).getByLabel("Show Gain Readout").uncheck();
   await session.getByRole("region", { name: "Scale & Grid" }).getByLabel("Min Frequency").selectOption("100");
   await openPage(session, "EQ");
@@ -182,7 +185,7 @@ test("WB6I Graphing: applied to the EQ graph at once (a redraw, the cursor reado
   const drawsBefore = await graph2.locator("canvas").evaluate((c) => (c as unknown as { dspiDraws?: number }).dspiDraws ?? 0);
 
   await openPage(session, "Settings");
-  await nav(session).getByRole("button", { name: "Graphing" }).click();
+  await openSetting(session, "Graphing");
   await session.getByRole("region", { name: "Graph Appearance" }).getByLabel(/Graph Line Glow/).check();
   await session.getByRole("button", { name: "Restore Defaults" }).click();
   await expect(session.getByRole("region", { name: "Graph Appearance" }).getByLabel(/Graph Line Glow/)).not.toBeChecked();
@@ -200,7 +203,7 @@ test("WB6I Core Voltage: the Installer mode's; the core's word asked; a trial st
   expect(demo.device.demo).toBe(true);
   await setMode(session, page, "Installer");
   await openPage(session, "Settings");
-  await nav(session).getByRole("button", { name: "Advanced" }).click();
+  await openSetting(session, "Advanced");
   await expect(session.getByRole("region", { name: "Core Voltage" })).toContainText("Running at 1.20 V");
   await session.getByRole("region", { name: "Core Voltage" }).getByRole("button", { name: "Open…" }).click();
   const vreg = session.getByRole("region", { name: "Core Voltage" });
@@ -244,5 +247,69 @@ test("WB6I Core Voltage: the Installer mode's; the core's word asked; a trial st
   await cal.getByRole("button", { name: "End Trial" }).click();
   await expect(device).not.toContainText("(trial)", { timeout: 10_000 });
   await noSidewaysScroll(page);
+  expect(errors).toEqual([]);
+});
+
+// -- WP WEB7 -- Settings as Qt Modern: the parts as the page's tabs, the search over every part,
+// the badges, Control Surfaces as the Control part (and where the palette finds it).
+test("WEB7 Settings: Qt's parts as tabs; each lists its pages with badges; the search finds pages in every part; Enter opens the first", async ({ page }) => {
+  const errors = errorsOf(page);
+  const session = await openDemo(page);
+  await openPage(session, "Settings");
+  const parts = partsOf(session, "Settings");
+  await expect(parts.getByRole("tab")).toHaveText(["Application", "Display", "Device", "Control"]);
+  await expect(parts.getByRole("tab", { name: "Device", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(nav(session).getByRole("button")).toHaveText(["Pins", "Global Parameters", "Speakers"]);
+  await expect(nav(session).locator(".st-badge")).toHaveCount(3);
+  await parts.getByRole("tab", { name: "Application", exact: true }).click();
+  await expect(nav(session).getByRole("button")).toHaveText(["About", "Advanced", "Appearance"]);
+  await expect(session.locator(".settings-page-title")).toHaveText("About");
+  await parts.getByRole("tab", { name: "Display", exact: true }).click();
+  await expect(nav(session).getByRole("button")).toHaveText(["Graphing", "Spectrum Analyser"]);
+
+  // The search: every part's pages by their words, under the part's heading; none: said so
+  const search = session.getByRole("searchbox", { name: "Search settings" });
+  await search.fill("latency");
+  await expect(nav(session).getByRole("button")).toHaveText(["Global Parameters"]);
+  await expect(nav(session).getByRole("group", { name: "Device" })).toBeVisible();
+  await search.fill("gpio");
+  await expect(nav(session).getByRole("button")).toHaveText(["Pins", "Control Surfaces"]);
+  await search.fill("no such words");
+  await expect(nav(session).getByRole("button")).toHaveCount(0);
+  await expect(nav(session).getByText("No matching settings")).toBeVisible();
+  // Enter opens the first page left, on its part's tab
+  await search.fill("latency");
+  await search.press("Enter");
+  await expect(session.locator(".settings-page-title")).toHaveText("Global Parameters");
+  await expect(parts.getByRole("tab", { name: "Device", exact: true })).toHaveAttribute("aria-selected", "true");
+  await search.press("Escape");
+  await expect(search).toHaveValue("");
+  await expect(nav(session).getByRole("button")).toHaveText(["Pins", "Global Parameters", "Speakers"]);
+  // A part comes back at the page it was left at
+  await parts.getByRole("tab", { name: "Application", exact: true }).click();
+  await parts.getByRole("tab", { name: "Device", exact: true }).click();
+  await expect(session.locator(".settings-page-title")).toHaveText("Global Parameters");
+  await noSidewaysScroll(page);
+  expect(errors).toEqual([]);
+});
+
+test("WEB7 Settings › Control: the control-surface pages in the list; the palette opens Control Surfaces there", async ({ page }) => {
+  const errors = errorsOf(page);
+  const session = await openDemo(page);
+  await openPage(session, "Settings");
+  await partsOf(session, "Settings").getByRole("tab", { name: "Control", exact: true }).click();
+  await expect(nav(session).getByRole("button")).toHaveText(["Control Surfaces", "Channel Groups", "Macros", "Auxiliary Outputs"]);
+  await expect(session.getByRole("group", { name: "Volume Knob", exact: true })).toBeVisible();
+  // No section tab of its own any more: Settings is the section's one page in this mode
+  await expect(session.getByRole("tablist", { name: "Pages" })).toHaveCount(0);
+  // The palette's "Control Surfaces" opens it, from anywhere
+  await openPage(session, "Main");
+  const mod = (await page.evaluate(() => /mac/i.test(navigator.platform))) ? "Meta" : "Control";
+  await page.keyboard.press(`${mod}+k`);
+  const palette = page.getByRole("dialog", { name: "Command palette" });
+  await palette.getByRole("combobox").fill("Control Surfaces");
+  await palette.getByRole("option", { name: /^Control Surfaces/ }).first().click();
+  await expect(session.locator(".settings-page-title")).toHaveText("Control Surfaces");
+  await expect(partsOf(session, "Settings").getByRole("tab", { name: "Control", exact: true })).toHaveAttribute("aria-selected", "true");
   expect(errors).toEqual([]);
 });

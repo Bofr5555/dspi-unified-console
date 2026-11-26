@@ -93,13 +93,14 @@ export interface MeasureDraft {
   layoutFrom?: string;
 }
 
-/** A draft for the device's enabled outputs: the first two chosen, full range, speaker L. */
+/** A draft for the device's enabled outputs: the first two chosen, full range, no speaker ("Not set":
+ * -- WP WEB4 -- REVD G8, as Qt since INTC; the core takes "" on every path). */
 export function initialDraft(outputs: number[]): MeasureDraft {
   return {
     placement: null,
     count: 3,
     coupler: "iec60318_4",
-    outputs: outputs.map((o, i) => ({ output: o, on: i < 2, role: "full", speaker: "L", group: 0 })),
+    outputs: outputs.map((o, i) => ({ output: o, on: i < 2, role: "full", speaker: "", group: 0 })),
     sweepMs: 5500,
     passes: 3,
     name: "",
@@ -131,6 +132,22 @@ export function withLayout(d: MeasureDraft, layout: { updatedMs: number; outputs
     return l ? { ...o, role: l.role, speaker: l.speaker || o.speaker, group: Math.max(0, Math.min(15, l.group)) } : o;
   });
   return { ...d, outputs, layoutFrom: key };
+}
+
+// -- WP WEB7 -- Qt's "Propose from the Device" (MeasureSession::proposeLayout, layoutInto(…, true))
+/**
+ * The draft with the core's layout proposal: the outputs it names are chosen with its way, speaker
+ * and group, every other output is left out; when it names none, the first two outputs (full range).
+ */
+export function withProposal(d: MeasureDraft, proposal: { outputs: { output: number; role: MeasureRole; speaker: string; group: number }[] } | null): MeasureDraft {
+  const named = proposal?.outputs ?? [];
+  const any = d.outputs.some((o) => named.some((p) => p.output === o.output));
+  const outputs = d.outputs.map((o, i) => {
+    const p = named.find((x) => x.output === o.output);
+    if (!any) return { ...o, on: i < 2 };
+    return p ? { ...o, on: true, role: p.role, speaker: p.speaker, group: Math.max(0, Math.min(15, Math.trunc(p.group) || 0)) } : { ...o, on: false };
+  });
+  return { ...d, outputs };
 }
 
 export function countRange(p: MeasurePlacement | null): [number, number] | null {
@@ -206,6 +223,8 @@ export function issueText(i: MeasureIssueRecord, title: (key: string) => string 
   const t = title(i.key);
   const where = typeof i.output === "number" ? `${outputName(i.output)}: ` : "";
   const msg = i.message ? i.message[0]!.toUpperCase() + i.message.slice(1) : "";
+  // -- WP WEB7 -- (REVE D4) a message that starts with its title says it once
+  if (t && msg.toLowerCase().startsWith(t.toLowerCase())) return `${where}${msg}`;
   return t ? `${t}. ${where}${msg}` : `${where}${msg || i.key}`;
 }
 
@@ -431,6 +450,20 @@ export function micSummary(text: string): string {
 }
 
 /** A file name for a document: its name, safe for a file system, and `.dspipreset`. */
+// -- WP WEB7 -- (REVE F17) a name with the core's ISO time in it ("Measurement 2026-11-24T21:32:00Z")
+// reads in the viewer's local date and time, as Qt shows it; any other name as it is
+const ISO_TIME = /\b(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::\d{2}(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?\b/;
+export function displayName(name: string, format: (d: Date) => string = localTime): string {
+  const m = ISO_TIME.exec(name);
+  if (!m) return name;
+  const d = new Date(m[0]!);
+  return Number.isFinite(d.getTime()) ? name.replace(m[0]!, format(d)) : name;
+}
+
+function localTime(d: Date): string {
+  return d.toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
 export function fileNameOf(name: string, fallback: string): string {
   const base = (name || fallback).replace(/[^\p{L}\p{N} ._-]+/gu, "-").replace(/\s+/g, " ").trim().slice(0, 80) || fallback;
   return `${base}.dspipreset`;

@@ -36,6 +36,15 @@ Item {
     }
     function notice(key) { return NoticeCenter.row(key) }
 
+    // -- WP DL2 -- Modern: off the hub an empty state, the run and what is
+    // held elsewhere as notice rows, the groups as sections in the 760 px
+    // column; Classic keeps its cards and lines
+    readonly property bool modern: LayoutController.modern
+    component Section: Card {
+        color: tab.modern ? "transparent" : Theme.panel
+        padding: tab.modern ? 0 : Theme.spacing
+    }
+
     // Shown: the hub's family, its units; hidden or the window closed:
     // whatever this tab started is stopped and the units' connections close
     onVisibleChanged: visible ? uc.enter() : uc.leave()
@@ -55,14 +64,21 @@ Item {
             visible: tab.uc.running
             Layout.fillWidth: true
             implicitHeight: runRow.implicitHeight + 12
-            radius: Theme.radius
-            color: Theme.selection
+            radius: tab.modern ? Theme.radiusControl : Theme.radius
+            color: tab.modern ? Theme.bannerFill("info") : Theme.selection
             Accessible.role: Accessible.StatusBar
             Accessible.name: qsTr("Measuring across units")
             RowLayout {
                 id: runRow
                 anchors.fill: parent
                 anchors.margins: 6
+                anchors.leftMargin: tab.modern ? Theme.spacing : 6
+                spacing: Theme.spacingSmall
+                Icon {
+                    visible: tab.modern
+                    name: "audio-lines"
+                    color: Theme.bannerEdge("info")
+                }
                 Text {
                     objectName: "MeasureUnits.phase"
                     Layout.fillWidth: true
@@ -84,7 +100,7 @@ Item {
                 AppButton {
                     objectName: "MeasureUnits.stop"
                     text: qsTr("Stop")
-                    destructive: true
+                    destructive: !tab.modern
                     onClicked: tab.uc.stop()
                 }
             }
@@ -92,8 +108,8 @@ Item {
 
         // -- WP MDQT2c -- it still runs, or waits in its guard, on another device
         Text {
-            objectName: "MeasureUnits.held"
-            visible: text.length > 0
+            objectName: tab.modern ? "" : "MeasureUnits.held"
+            visible: text.length > 0 && !tab.modern
             Layout.fillWidth: true
             textFormat: Text.PlainText
             text: tab.uc.heldWords
@@ -101,10 +117,17 @@ Item {
             color: Theme.warning
             wrapMode: Text.WordWrap
         }
+        NoticeRow {
+            objectName: tab.modern ? "MeasureUnits.held" : ""
+            visible: text.length > 0 && tab.modern
+            Layout.fillWidth: true
+            kind: "warning"
+            text: tab.uc.heldWords
+        }
         // Not on our hub
         Text {
-            objectName: "MeasureUnits.unavailable"
-            visible: tab.uc.unavailable.length > 0
+            objectName: tab.modern ? "" : "MeasureUnits.unavailable"
+            visible: tab.uc.unavailable.length > 0 && !tab.modern
             Layout.fillWidth: true
             property string key: tab.uc.unavailableKey
             textFormat: Text.PlainText
@@ -117,6 +140,27 @@ Item {
             wrapMode: Text.WordWrap
             Accessible.role: Accessible.StaticText
         }
+        // -- WP DL2 -- Modern: the notice's title once, then what to do (the
+        // controller's sentence repeated the title); `text` is what it says
+        Item {
+            objectName: tab.modern ? "MeasureUnits.unavailable" : ""
+            visible: tab.uc.unavailable.length > 0 && tab.modern
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            property string key: tab.uc.unavailableKey
+            readonly property var row: tab.notice(key)
+            readonly property string text: hubEmpty.title + ". " + hubEmpty.text
+            EmptyState {
+                id: hubEmpty
+                objectName: "MeasureUnits.empty"
+                anchors.fill: parent
+                iconName: "network"
+                title: parent.row && parent.row.title ? parent.row.title : qsTr("Measuring several units needs the DSPi hub")
+                text: qsTr("The hub starts every unit's generator on one shared clock. Connect through the DSPi hub, or measure one unit at a time.")
+                actionText: Shell.pageHost ? qsTr("Hubs…") : ""
+                onAction: if (Shell.pageHost) Shell.pageHost.go("devices", "hubs")
+            }
+        }
 
         ScrollView {
             id: scroll
@@ -127,9 +171,9 @@ Item {
             clip: true
             contentWidth: availableWidth
 
-            ColumnLayout {
-                width: scroll.availableWidth
-                spacing: Theme.spacing
+            ContentColumn {
+                width: tab.modern ? Math.min(scroll.availableWidth, maximumWidth) : scroll.availableWidth
+                spacing: tab.modern ? Theme.spacingSection : Theme.spacing
 
                 Text {
                     Layout.fillWidth: true
@@ -139,7 +183,7 @@ Item {
                     wrapMode: Text.WordWrap
                 }
 
-                Card {
+                Section {
                     title: qsTr("Where is the microphone?")
                     Layout.fillWidth: true
                     AppComboBox {
@@ -160,7 +204,7 @@ Item {
                         textFormat: Text.PlainText
                         text: tab.uc.placementProblem
                         font: Theme.fontSmall
-                        color: Theme.warning
+                        color: tab.modern ? Theme.textMuted : Theme.warning   // -- WP DL2 -- help text, not orange
                         wrapMode: Text.WordWrap
                     }
                 }
@@ -177,7 +221,7 @@ Item {
                     onToggled: tab.uc.useSim = checked
                 }
 
-                Card {
+                Section {
                     title: qsTr("Units of the group")
                     Layout.fillWidth: true
                     Text {
@@ -274,7 +318,7 @@ Item {
                     }
                 }
 
-                Card {
+                Section {
                     title: qsTr("The runs")
                     Layout.fillWidth: true
                     Flow {
@@ -421,7 +465,7 @@ Item {
                 }
 
                 // ---- The result ----
-                Card {
+                Section {
                     objectName: "MeasureUnits.result"
                     title: qsTr("Result")
                     visible: tab.uc.hasResult
@@ -482,7 +526,7 @@ Item {
                 }
 
                 // ---- The proposal ----
-                Card {
+                Section {
                     objectName: "MeasureUnits.proposal"
                     title: qsTr("Proposal")
                     visible: tab.uc.hasProposal
@@ -603,7 +647,7 @@ Item {
                             textFormat: Text.PlainText
                             text: tab.uc.guardText
                             font: Theme.fontBody
-                            color: Theme.warning
+                            color: tab.modern ? Theme.text : Theme.warning   // -- WP DL2 --
                             wrapMode: Text.WordWrap
                         }
                         RowLayout {

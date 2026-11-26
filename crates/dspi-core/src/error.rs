@@ -245,6 +245,63 @@ impl DspiError {
             | Self::Denied => String::new(),
         }
     }
+
+    // -- WP SHOWFIX -- (finding 1)
+    /// What to tell the person, worded in this one place for every client: a
+    /// refusal whose words are a sentence for them already (a measurement's,
+    /// "Lower the volume to −12 dB or below to measure; it is 0.0 dB.") as it
+    /// is; a keyed refusal ("measure.tune.x: why") as that notice's title and
+    /// the words; anything else as its notice's title and the error's own words.
+    pub fn user_text(&self) -> String {
+        if let Self::InvalidArgument { msg } = self {
+            if is_sentence(msg) {
+                return msg.clone();
+            }
+            if let Some((key, why)) = msg.split_once(": ")
+                && key.contains('.')
+                && crate::notice_text::has_row(key)
+            {
+                let title = crate::notice_text::notice_for_key(key.to_owned(), String::new()).title;
+                return format!("{title}: {}", capitalised(why.trim()));
+            }
+        }
+        let key = self.notice_key();
+        if key.starts_with("core.") {
+            return self.to_string();
+        }
+        let title = crate::notice_text::notice_for_key(key, String::new()).title;
+        let detail = self.notice_detail();
+        if detail.is_empty() {
+            title
+        } else {
+            format!("{title}: {detail}")
+        }
+    }
+}
+
+// -- WP SHOWFIX -- (finding 1)
+/// `text` is a sentence a person reads as it is: a capital first and a full
+/// stop (or ! or ?) last.
+pub(crate) fn is_sentence(text: &str) -> bool {
+    let text = text.trim();
+    text.chars().next().is_some_and(char::is_uppercase) && text.ends_with(['.', '!', '?'])
+}
+
+/// `text` as a sentence: a capital first, a full stop last.
+pub(crate) fn sentence(text: &str) -> String {
+    let mut out = capitalised(text.trim());
+    if !out.ends_with(['.', '!', '?']) {
+        out.push('.');
+    }
+    out
+}
+
+fn capitalised(text: &str) -> String {
+    let mut chars = text.chars();
+    chars
+        .next()
+        .map(|c| c.to_uppercase().chain(chars).collect())
+        .unwrap_or_default()
 }
 
 /// The result of a [`crate::DspiCore`] call.
@@ -485,5 +542,45 @@ mod tests_wp_pgcore {
             assert_eq!(notice.key, key);
             assert!(!notice.title.is_empty() && !notice.action.is_empty());
         }
+    }
+}
+
+// -- WP SHOWFIX -- (finding 1)
+#[cfg(test)]
+mod tests_wp_showfix {
+    use super::*;
+
+    #[test]
+    fn wp_showfix_user_text_words_each_kind_once() {
+        let sentence = DspiError::InvalidArgument {
+            msg: "Lower the volume to \u{2212}12 dB or below to measure; it is 0.0 dB.".into(),
+        };
+        assert_eq!(
+            sentence.user_text(),
+            "Lower the volume to \u{2212}12 dB or below to measure; it is 0.0 dB."
+        );
+        let keyed = DspiError::InvalidArgument {
+            msg: "measure.volume_high: the volume is up".into(),
+        };
+        assert_eq!(
+            keyed.user_text(),
+            "Volume too high to measure: The volume is up"
+        );
+        let plain = DspiError::InvalidArgument {
+            msg: "gain 99 dB is out of range".into(),
+        };
+        assert_eq!(
+            plain.user_text(),
+            "Not a valid value: gain 99 dB is out of range"
+        );
+        assert_eq!(
+            DspiError::Disconnected.user_text(),
+            crate::notice_text::notice_for_key("disconnected".into(), String::new()).title
+        );
+        assert_eq!(sentence_of("a b"), "A b.");
+    }
+
+    fn sentence_of(t: &str) -> String {
+        sentence(t)
     }
 }

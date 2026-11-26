@@ -17,11 +17,19 @@ import UConsole
 // -- WP QTTWEAK -- With `selectAllOnFocus`, Tab or a click into the field
 // selects all its text, so typing replaces the value; a click in a field that
 // already has the focus places the cursor, and a drag selects part of it.
+//
+// -- WP DL0 -- Modern: no outline, radius 6; the focus ring is the only line.
+//
+// -- WP INTE -- (REVE C1) Enter writes only typed text too: with nothing typed
+// it commits nothing and the field keeps the text it shows (it wrote the shown,
+// rounded value back); `enteredUntyped` says so, for an editor that closes on
+// Enter (a rename).
 TextField {
     id: field
     property string label
     property bool selectAllOnFocus: false
     signal committed(string text)
+    signal enteredUntyped() // -- WP INTE --
 
     property string _start
     property bool _selectOnRelease: false
@@ -57,8 +65,11 @@ TextField {
     }
     onAccepted: {
         _start = text
+        // -- WP INTE -- (REVE C1) only what was typed is written
+        const typed = _edited
         _edited = false   // -- WP USR1 --
-        committed(text)
+        if (typed) committed(text)
+        else enteredUntyped()
     }
     Keys.onEscapePressed: {
         _edited = false   // -- WP USR1 --
@@ -97,9 +108,9 @@ TextField {
     bottomPadding: 2
     verticalAlignment: TextInput.AlignVCenter
     background: Rectangle {
-        radius: Theme.radiusSmall
+        radius: Theme.radiusControl   // -- WP DL0 --
         color: Theme.control
-        border.width: field.activeFocus ? 2 : 1
+        border.width: field.activeFocus ? Theme.focusRingWidth : Theme.lineWidth
         border.color: field.activeFocus ? Theme.focusRing : Theme.border
     }
 

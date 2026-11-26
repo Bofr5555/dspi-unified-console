@@ -61,8 +61,20 @@ Chain chainOf(DeviceModel *device) {
     Chain c;
     const DspState *s = device->state();
     if (!s) return c;
-    c.filters = QByteArray(reinterpret_cast<const char *>(&s->filters), sizeof s->filters);
-    c.xover = QByteArray(reinterpret_cast<const char *>(&s->xover), sizeof s->xover);
+    // -- WP SHOWFIX -- field by field, padding left out: a FilterParams has two
+    // bytes of padding after its type and bypass, which a copy of the record need
+    // not keep (they differed after a Revert that put every field back)
+    const auto bands = [](const FilterParams *f, size_t n) {
+        QByteArray out;
+        for (size_t i = 0; i < n; ++i) {
+            out.append(char(f[i].filter_type)).append(char(f[i].bypass ? 1 : 0));
+            for (const float v : { f[i].freq, f[i].q, f[i].gain, f[i].qp })
+                out.append(reinterpret_cast<const char *>(&v), sizeof v);
+        }
+        return out;
+    };
+    c.filters = bands(&s->filters[0][0], sizeof s->filters / sizeof(FilterParams));
+    c.xover = bands(&s->xover[0][0], sizeof s->xover / sizeof(FilterParams));
     c.gains = QByteArray(reinterpret_cast<const char *>(&s->output_gain_db), sizeof s->output_gain_db);
     c.delays = QByteArray(reinterpret_cast<const char *>(&s->output_delay_ms), sizeof s->output_delay_ms);
     c.invert = QByteArray(reinterpret_cast<const char *>(&s->matrix_invert), sizeof s->matrix_invert);
@@ -109,8 +121,8 @@ QString diff(const Chain &a, const Chain &b) {
                 return;
             }
     };
-    part("filters", a.filters, b.filters, int(sizeof(FilterParams)));
-    part("xover", a.xover, b.xover, int(sizeof(FilterParams)));
+    part("filters", a.filters, b.filters, 18);   // -- WP SHOWFIX -- chainOf's 18 bytes a band
+    part("xover", a.xover, b.xover, 18);
     part("gains", a.gains, b.gains, 4);
     part("delays", a.delays, b.delays, 4);
     part("invert", a.invert, b.invert, 1);

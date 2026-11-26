@@ -332,6 +332,19 @@ bool propose(Two &t, const QByteArray &result) {
     return d.waitFor(30000, [&] { return steps.count() > 0; }) && t.tc->hasProposal() && !t.tc->needsSumCheck() && !t.tc->writes().isEmpty();
 }
 
+// -- WP INTE -- a state's filters field by field, padding left out (SHOWFIX's p5qui finding: a
+// FilterParams has padding after its type and bypass that a copy need not keep)
+QByteArray filterBytes(const DspState &s) {
+    QByteArray out;
+    const FilterParams *f = &s.filters[0][0];
+    for (size_t i = 0; i < sizeof s.filters / sizeof(FilterParams); ++i) {
+        out.append(char(f[i].filter_type)).append(char(f[i].bypass ? 1 : 0));
+        for (const float v : { f[i].freq, f[i].q, f[i].gain, f[i].qp })
+            out.append(reinterpret_cast<const char *>(&v), sizeof v);
+    }
+    return out;
+}
+
 void tune(Two &t, const QByteArray &result) {
     SmokeDriver &d = t.d;
     TuneController *tc = t.tc;
@@ -343,7 +356,7 @@ void tune(Two &t, const QByteArray &result) {
     t.r->activate(t.b);
     d.check("mdqt2c: not on B", !tc->hasProposal() && tc->stage() == QLatin1String("idle") && !tc->keepCrossover());
     t.r->activate(t.a);
-    const QByteArray before(reinterpret_cast<const char *>(&t.a->model()->state()->filters), sizeof(DspState::filters));
+    const QByteArray before = filterBytes(*t.a->model()->state());
     tc->apply(60);
     d.check("mdqt2c: applied in its guard on A", d.waitFor(15000, [&] { return tc->applied(); }));
     t.r->activate(t.b);
@@ -360,23 +373,23 @@ void tune(Two &t, const QByteArray &result) {
     d.check("mdqt2c: back on A: still applied, the guard counting", tc->applied() && tc->guardRemainingS() > 0);
     tc->revert();
     d.check("mdqt2c: Revert on A", d.waitFor(15000, [&] { return tc->stage() == QLatin1String("reverted"); }) && t.idle(t.a));
-    const QByteArray after(reinterpret_cast<const char *>(&t.a->model()->state()->filters), sizeof(DspState::filters));
+    const QByteArray after = filterBytes(*t.a->model()->state());
     d.check("mdqt2c: A is as before", before == after && d.waitFor(3000, [&] { return !t.row(t.a).value(QStringLiteral("busy")).toBool(); }));
 
     // B is closed inside its guard: it goes back before it is closed
     t.r->activate(t.b);
-    const QByteArray bBefore(reinterpret_cast<const char *>(&t.b->model()->state()->filters), sizeof(DspState::filters));
+    const QByteArray bBefore = filterBytes(*t.b->model()->state());
     const bool again = propose(t, result);
     if (again) tc->apply(60);
     d.check("mdqt2c: a tune applied on B", again && d.waitFor(15000, [&] { return tc->applied(); }) && t.idle(t.b));
-    const QByteArray bTuned(reinterpret_cast<const char *>(&t.b->model()->state()->filters), sizeof(DspState::filters));
+    const QByteArray bTuned = filterBytes(*t.b->model()->state());
     auto found = std::make_shared<QByteArray>();
     QObject probe;
     QObject::connect(t.r, &DeviceRegistry::sessionStopping, &probe, [found, &t](DeviceSession *s) {
         if (s != t.b) return;
         s->worker()->post([found](FfiCore *c) {
             dspi_fetch_all(c);
-            if (const DspState *st = readSnapshot(c).state.get()) *found = QByteArray(reinterpret_cast<const char *>(&st->filters), sizeof st->filters);
+            if (const DspState *st = readSnapshot(c).state.get()) *found = filterBytes(*st);
             const QByteArray state = readSized([c](char *b, uint32_t n) { return dspi_measure_tune_state(c, b, n); }, 1 << 18);
             std::printf("smoke: mdqt2c: closing: the tune is %s\n", qPrintable(QJsonDocument::fromJson(state).object().value(QLatin1String("stage")).toString()));
         });

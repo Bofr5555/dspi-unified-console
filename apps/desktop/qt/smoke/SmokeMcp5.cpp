@@ -170,7 +170,7 @@ void otherDevice(SmokeDriver &d, MeasureController *mc, const std::function<QJso
     // -- WP LAY7 -- Something runs on the device shown: that stays shown
     registry->activate(a);
     d.waitIdle();
-    const QJsonObject here = call("dspi_measure_start", QJsonObject{ { QStringLiteral("device"), a->id() }, { QStringLiteral("outputs"), QJsonArray{ 0 } },
+    const QJsonObject here = call("dspi_measure_start", QJsonObject{ { QStringLiteral("device"), a->id() }, { QStringLiteral("outputs"), QJsonArray{ 1 } },
                                                                      { QStringLiteral("sweep_ms"), 4000 }, { QStringLiteral("passes"), 8 } });
     d.check("mcp5: a run on the device shown", !here.value(QLatin1String("isError")).toBool(true) && d.waitFor(15000, [&] { return mc->measuring(); }));
     go("measure", "documents");
@@ -281,7 +281,7 @@ void measureSection(SmokeDriver &d) {
         d.waitFor(10000, [&] { return c.done; });
         return c.result();
     };
-    const QJsonObject outs{ { QStringLiteral("outputs"), QJsonArray{ 0 } },
+    const QJsonObject outs{ { QStringLiteral("outputs"), QJsonArray{ 1 } },
                             { QStringLiteral("sweep_ms"), 1000 },
                             { QStringLiteral("passes"), 2 } };
 

@@ -21,6 +21,9 @@ ComboBox {
     // current, not the click.
     property bool follows: false
     property int followIndex: -1
+    // -- WP REVDFIX -- (REVD D1) its tone, and on hover (Theme.barControl on a bar)
+    property color fill: Theme.control
+    property color fillHover: Theme.controlHover
     function _follow() {
         if (follows) currentIndex = Qt.binding(() => followIndex)
     }
@@ -83,9 +86,9 @@ ComboBox {
         verticalAlignment: Text.AlignVCenter
     }
     background: Rectangle {
-        radius: Theme.radiusSmall
-        color: control.down ? Theme.controlPressed : control.hovered ? Theme.controlHover : Theme.control
-        border.width: control.visualFocus ? 2 : 1
+        radius: Theme.radiusControl   // -- WP DL0 -- Modern: no outline but the focus ring
+        color: control.down ? Theme.controlPressed : control.hovered ? control.fillHover : control.fill
+        border.width: control.visualFocus ? Theme.focusRingWidth : Theme.lineWidth
         border.color: control.visualFocus ? Theme.focusRing : Theme.border
     }
     popup: Popup {
@@ -101,11 +104,10 @@ ComboBox {
             currentIndex: control.highlightedIndex
             ScrollBar.vertical: AppScrollBar {}
         }
-        background: Rectangle {
-            radius: Theme.radiusSmall
+        // -- WP REVDFIX -- (REVD D5) the floating surface, as AppMenu's
+        background: FloatingBackground {
             color: Theme.menu
-            border.width: 1
-            border.color: Theme.border
+            radius: LayoutController.modern ? Theme.radius : Theme.radiusSmall
         }
     }
 

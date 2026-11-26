@@ -1,14 +1,14 @@
 {
  "story": "s12-presets.toml",
  "confirm": "ask_everything",
- "about": "FSTORY S12 as a good agent does it, plus the traps: the user's 'Test' (slot 9, index 8) loaded is refused and put back, and the device stays on its own slot (FUNC2b fix); there is no delete.",
+ "about": "FSTORY S12 as a good agent does it, plus the traps: the user's 'Test' (preset 9, slot 9 to the tools as on the screen) loaded is refused and put back, and the device stays on its own slot (FUNC2b fix); there is no delete.",
  "steps": {
   "movie-night": [
    [
     "dspi_preset_save",
     {
      "device": "demo:2",
-     "slot": 1,
+     "slot": 2,
      "name": "Movie night"
     },
     "ok",
@@ -19,7 +19,7 @@
     {
      "device": "demo:2",
      "mode": "slot",
-     "slot": 1
+     "slot": 2
     },
     "ok"
    ],
@@ -40,22 +40,22 @@
      "changes": [
       {
        "op": "set_gain",
-       "output": 4,
+       "output": 5,
        "gain_db": -6
       },
       {
        "op": "set_gain",
-       "output": 0,
+       "output": 1,
        "gain_db": 2
       },
       {
        "op": "set_gain",
-       "output": 1,
+       "output": 2,
        "gain_db": -3
       },
       {
        "op": "set_gain",
-       "output": 2,
+       "output": 3,
        "gain_db": 2
       }
      ]
@@ -66,7 +66,7 @@
     "dspi_preset_save",
     {
      "device": "demo:2",
-     "slot": 2,
+     "slot": 3,
      "name": "Late night"
     },
     "ok",
@@ -84,7 +84,7 @@
     "dspi_preset_load",
     {
      "device": "demo:2",
-     "slot": 8
+     "slot": 9
     },
     "error",
     "the user's Test lowers the tweeter's high-pass: refused and put back",
@@ -94,7 +94,7 @@
     "dspi_preset_load",
     {
      "device": "demo:2",
-     "slot": 1
+     "slot": 2
     },
     "ok"
    ]
@@ -150,7 +150,7 @@
     "dspi_preset_delete",
     {
      "device": "demo:2",
-     "slot": 8
+     "slot": 9
     },
     "error",
     "there is no delete tool"

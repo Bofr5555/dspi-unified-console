@@ -171,6 +171,11 @@ mod measure_sim;
 pub mod actor;
 // -- WP ROLE0 -- the speaker layout: output roles from the user's setup (MPLAN 2.2)
 pub mod speaker_layout;
+// -- WP WEB6 -- the effect pages' drawings (Qt's C++ curves, moved to the core)
+pub mod effect_curves;
+// -- WP SHOWFIX -- the names a person knows a channel by
+pub mod change_words;
+pub mod channel_words; // -- WP SHOWFIX -- (finding 4)
 // -- WP FUNC2a -- the function test's config-time oracle (test-only)
 #[cfg(feature = "sim-scenario")]
 mod functest_oracle;
@@ -278,10 +283,13 @@ pub use write_param::{ParamValue, write_refusal};
 pub use names::{FilterTypeName, filter_type_name, filter_type_names};
 // -- BUG1 --
 // -- WP ROLE0 --
+pub use channel_words::{ChannelWords, speaker_role_name};
 pub use output_labels::{
     OutputCard, OutputLabel, OutputLabelInput, output_cards_for, output_labels_for,
 };
-pub use speaker_layout::{SpeakerLayout, SpeakerLayoutOutput};
+pub use speaker_layout::{SpeakerLayout, SpeakerLayoutOutput}; // -- WP SHOWFIX --
+// -- WP ROLES --
+pub use speaker_layout::{RoleCheck, RoleCheckVerdict, Statement};
 // -- WP ADET0 -- the speaker detection
 pub use measure::{DETECT_NOTICE_KEYS, DetectSetup, DetectStage, DetectState, trusted_roles};
 pub use speaker_layout::{
@@ -739,6 +747,11 @@ pub(crate) struct Connection {
     /// bind's own platform read: `device_protocol` reads it once, not on
     /// every call (the board does not change within a connection).
     pub(crate) board_seen: Option<dspi_proto::packets::Board>,
+    // -- WP FIN015 --
+    /// The outputs the signal generator plays on, as far as this connection
+    /// knows (`stats::SiggenOutputs`): an unused output it plays on is not
+    /// hidden (`OutputLabel::hidden`, REVF R1).
+    pub(crate) siggen: stats::SiggenOutputs,
 }
 
 /// A remote device reached without the [`Inner`] lock (WP C15).
@@ -868,6 +881,8 @@ impl Connection {
             // -- WP PGFIX --
             kind: DeviceKind::Dsp,
             board_seen: None, // -- WP LKFAST --
+            // -- WP FIN015 --
+            siggen: stats::SiggenOutputs::default(),
         }
     }
 

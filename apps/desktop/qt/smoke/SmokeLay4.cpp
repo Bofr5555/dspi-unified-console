@@ -407,6 +407,7 @@ void inspectorPart(Eq &e) {
         QQuickItem *f = e.shown("Linkwitz.fp.field");
         if (!f) return false;
         f->setProperty("text", QString::fromLatin1(value));
+        QMetaObject::invokeMethod(f, "textEdited"); // -- WP INTE -- (REVE C1) as typed: Enter writes only typed text
         QMetaObject::invokeMethod(f, "accepted");
         e.settle();
         return true;
@@ -492,6 +493,39 @@ void foldPart(Eq &e) {
     e.check("and goes", !e.shown("PeqBar"));
 }
 
+// -- WP DL8 -- The Crossover page's graph in a GraphFrame, and its four
+// bands only where the table cannot show them (DESREV §5)
+void dl8CrossoverPart(Eq &e) {
+    QQuickItem *labels = e.shown("EqualiserCrossover.plot.labels");
+    bool inside = labels && labels->width() > 100;
+    int texts = 0;
+    if (inside)
+        for (QQuickItem *c : labels->childItems()) {
+            if (!c->isVisible() || !c->property("text").isValid()) continue;
+            ++texts;
+            inside = inside && Eq::inside(c, labels);
+        }
+    e.d.check(QStringLiteral("dl8: the crossover graph's %1 axis labels are whole inside it").arg(texts), inside && texts >= 10);
+    QQuickItem *grid = e.shown("EqualiserCrossover.grid");
+    e.d.check(QStringLiteral("dl8: its grid is BodePlot's, the frame draws none"), grid && e.shown("EqualiserCrossover.plot")
+                  && !e.shown("EqualiserCrossover.plot")->property("grid").toBool());
+    e.cc->clearBands(e.out + 1, true);
+    e.cc->setBandType(e.out + 1, 0, true, ChannelController::crossoverType(1, 4, true));
+    e.cc->setBandType(e.out + 1, 1, true, ChannelController::crossoverType(1, 4, false));
+    e.settle();
+    e.d.check(QStringLiteral("dl8: Linkwitz-Riley alone, one of each: the table says it all, no band list"),
+              !e.shown("EqualiserCrossover.bands") && !e.shown("EqualiserCrossover.bandsHeading") && e.shown("EqualiserCrossover.legend"));
+    e.cc->setBandType(e.out + 1, 1, true, ChannelController::crossoverType(3, 4, false));
+    e.settle();
+    e.d.check(QStringLiteral("dl8: a Bessel high pass brings the band list back"),
+              e.shown("EqualiserCrossover.bands") && e.shown("EqualiserCrossover.bandsHeading"));
+    e.cc->setBandType(e.out + 1, 1, true, ChannelController::crossoverType(1, 4, false));
+    e.cc->setBandType(e.out + 1, 2, true, ChannelController::crossoverType(1, 2, false));
+    e.settle();
+    e.d.check(QStringLiteral("dl8: so does a second high pass (the table shows the first, +1)"),
+              e.shown("EqualiserCrossover.bands") && e.text("EqualiserCrossover.row.1.highPass.more") == QLatin1String("+1"));
+}
+
 void crossoverPart(Eq &e) {
     e.sc->select(e.out);
     e.go("crossover");
@@ -520,8 +554,10 @@ void crossoverPart(Eq &e) {
     QQuickItem *row = e.shown("EqualiserCrossover.row.1");
     if (row) QTest::mouseClick(e.main, Qt::LeftButton, Qt::NoModifier, row->mapToScene(QPointF(80, row->height() / 2)).toPoint());
     e.settle();
+    // -- WP DL8 -- the four bands show because a Butterworth and a second low pass are there
     e.check("a row selects its output, and its four bands show", e.sc->selectedChannel() == e.out + 1 && e.shown("EqualiserCrossover.bands"));
     e.d.grab(e.main, QStringLiteral("lay4-crossover.png"));
+    dl8CrossoverPart(e);
     e.cc->clearBands(e.out + 1, true);
     e.sc->select(0);
     e.settle();
@@ -627,6 +663,47 @@ void clearPart(Eq &e) {
     e.settle();
 }
 
+// -- WP DL8 -- The tab row's tools: Headphone Profile for an input only, the
+// filter files under one "Files ▾"; and at 720 px high the band table keeps
+// every band in use and one more (DESREV §5)
+void dl8Part(Eq &e) {
+    e.go("peq");
+    e.sc->select(e.out);
+    e.settle();
+    e.d.check(QStringLiteral("dl8: no Headphone Profile for an output"), !e.shown("EqualiserTools.autoeq.browse") && e.shown("EqualiserTools.files"));
+    e.d.check(QStringLiteral("dl8: no Import… / Export… buttons of their own"),
+              !e.shown("EqualiserTools.file.importFilters") && !e.shown("EqualiserTools.file.exportFilters"));
+    e.sc->select(0);
+    e.settle();
+    e.d.check(QStringLiteral("dl8: Headphone Profile for an input"), e.shown("EqualiserTools.autoeq.browse") != nullptr);
+    e.click(QStringLiteral("EqualiserTools.files"));
+    QObject *menu = popup(e, QStringLiteral("EqualiserTools.files.menu"));
+    QObject *import = popup(e, QStringLiteral("EqualiserTools.files.menu.file.importFilters"));
+    QObject *exportRow = popup(e, QStringLiteral("EqualiserTools.files.menu.file.exportFilters"));
+    e.d.check(QStringLiteral("dl8: Files ▾ opens Import Filters… and Export Filters…"),
+              menu && e.d.waitFor(1500, [&] { return menu->property("opened").toBool(); }) && import && exportRow
+                  && import->property("text").toString() == QStringLiteral("Import Filters…")
+                  && exportRow->property("text").toString() == QStringLiteral("Export Filters…"));
+    if (menu) QMetaObject::invokeMethod(menu, "close");
+    e.settle();
+
+    e.resize(1100, 720);
+    e.sc->select(e.out);
+    e.cc->clearBands(e.out, false);
+    for (int b = 0; b < 6; ++b) {
+        e.cc->setBandType(e.out, b, false, FILTER_PEAKING);
+        e.cc->setBandValue(e.out, b, false, QStringLiteral("freq"), 100 * (b + 1));
+    }
+    e.settle();
+    QQuickItem *rows = e.shown("EqualiserPeq.bands.rows"), *plot = e.shown("GraphHost.plot");
+    e.d.check(QStringLiteral("dl8: at 1100x720 the table shows the six bands in use and one more (%1 px)").arg(rows ? rows->height() : 0),
+              rows && rows->height() >= 7 * 29 - 1);
+    e.d.check(QStringLiteral("dl8: and the graph keeps %1 px").arg(plot ? plot->height() : 0), plot && plot->height() >= 160);
+    e.d.grab(e.main, QStringLiteral("dl8-peq-720.png"));
+    e.cc->clearBands(e.out, false);
+    e.resize(1280, 800);
+}
+
 void tonePart(Eq &e) {
     const Qt::ColorScheme before = e.shell->colorSchemeOverride();
     e.shell->setColorSchemeOverride(Qt::ColorScheme::Dark);
@@ -722,6 +799,7 @@ void equaliserSection(SmokeDriver &d) {
     crossoverPart(e);
     delayPart(e);
     clearPart(e);
+    dl8Part(e);   // -- WP DL8 --
     tonePart(e);
     galleryPart(e);
 

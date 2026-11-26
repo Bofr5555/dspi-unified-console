@@ -215,6 +215,13 @@ fun starvationInstanceCount(numSpdif: Int): Int = maxOf(numSpdif, 2)
 
 fun starvationInstanceLabel(i: Int): String = "Out ${i * 2 + 1}/${i * 2 + 2}"
 
+// -- WP INTE -- owner's rule 2026-11-24: an output nothing is routed to is hidden outside edit views
+/** Output pair [i] (outputs 2i and 2i+1) has Stats rows unless both outputs are [unused]. */
+fun statsPairShown(i: Int, unused: (Int) -> Boolean): Boolean = !(unused(2 * i) && unused(2 * i + 1))
+
+/** The output pairs (0 to 3, the S/PDIF / I2S slots) whose Stats rows [statsPairShown] hides. */
+fun statsUnusedPairs(unused: (Int) -> Boolean): Set<Int> = (0 until 4).filterNot { statsPairShown(it, unused) }.toSet()
+
 /** Swift BufferFillRow title for slot [i]: `Out 1/2 (SPDIF)` or `(I2S)`. */
 fun bufferSlotTitle(i: Int, outputType: Int): String = "Out ${i * 2 + 1}/${i * 2 + 2} (${if (outputType == 1) "I2S" else "SPDIF"})"
 

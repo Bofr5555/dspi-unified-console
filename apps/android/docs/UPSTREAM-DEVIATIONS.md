@@ -1058,21 +1058,23 @@ now shows the core's label instead while the name is a default
 (`DspiCore.outputLabels`, dspi-session `output_label.rs`).
 
 1. **Labels:** `DspiBridge.channelLabel` gives "Out 1 · R · Low" (output,
-   channel L/R/L+R/an input's name/Mix/None, band Low/High/Band/Full) for an
-   output with a default name, the user's name as it is otherwise. Worked out
+   channel L/R/L+R/an input's name/Mix, band Low/High/Band) for an
+   output with a default name, the user's name as it is otherwise. A full-range
+   output has no band word and one fed by nothing no channel word ("Out 1 · L",
+   "Out 3"; INTD, REVD W12). Worked out
    once per state snapshot on the FFI thread, never per frame. Shown on the
    graph's channel picker and options, the matrix, the tools and the analyser.
    `channelName` stays the stored name: renames start from it.
 2. **Phone short form** (owner decision F3, review c86): beside an OUTn pill
    the "Out N · " repeats the pill, so the Home rows, the channel page title
    and the dashboard columns show `channelShortLabel`: "R · Low" (the core's
-   `shortLabel`), the user's name as it is.
+   `shortLabel`; "Out 3" for an unused full-range output), the user's name as it is.
 3. **Slot name:** beside the descriptor on the channel page ("OUT1 · I2S 1 L")
    and in each output pill's TalkBack text ("OUT1, Out 1, R, Low, slot I2S 1 L");
    not on the Home rows (no room on a phone).
 4. **Row width:** the Home rows' name column is 100 dp, not 96 dp: the
    narrowest that keeps the short forms whole at 15 sp on a 360 dp phone at
-   font scale 1.0 and 1.3, the longest being "USB 3 · Full"
+   font scale 1.0 and 1.3, the longest being "USB 3 · Full" (before INTD dropped "· Full")
    (`OutputLabelsFitBug1Test`); the meter beside it takes what is left, so the
    row does not grow.
 5. **Dashboard:** output cards pair by the K340 crossfeed pair map when the

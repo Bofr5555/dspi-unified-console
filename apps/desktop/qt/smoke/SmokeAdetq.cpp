@@ -423,7 +423,7 @@ void agentSection(SmokeDriver &d) {
     ai->clearNewClient();
 
     // ---- One question, with the warning and the grant
-    const QJsonObject args{ { QStringLiteral("outputs"), QJsonArray{ 0 } } };
+    const QJsonObject args{ { QStringLiteral("outputs"), QJsonArray{ 1 } } }; // Out 1
     auto held = a.call("dspi_detect_speakers", args);
     d.check(QStringLiteral("adet-agent: the detection is asked"), d.waitFor(5000, [&] { return !ai->confirmations().isEmpty(); }));
     const QVariantMap q = ai->confirmations().value(0).toMap();

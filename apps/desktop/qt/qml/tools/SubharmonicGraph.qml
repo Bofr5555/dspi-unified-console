@@ -8,40 +8,82 @@ import UConsole
 // ToolsController.subharmGraph(); its points are 0..1 across the plot, which
 // sits between the annotation strip (the brackets and the octave arrows) and
 // the frequency labels.
-Rectangle {
+// -- WP DL1 -- In Modern the plot sits in a GraphFrame (DESIGN-LANGUAGE §12):
+// no outline, the panel tone, the frequency and level labels the frame's
+// (fontCaption, whole, inside the plot), "Disabled" its empty label; the
+// annotations in the plot a pixel larger. Classic keeps its box and labels.
+Item {
     id: frame
     property var graph: ({})
     property bool active: true
     // The three subs' colours
     readonly property var blockColors: [Theme.accent, Theme.warning, Theme.danger]
     readonly property real annotation: 38
-    readonly property real axis: 13
+    readonly property bool modern: LayoutController.modern   // -- WP DL1 --
+    // The strip under the plot for the frequency labels: the frame's are taller
+    readonly property real axis: modern ? 22 : 13
+    // A label's size: a pixel more in Modern
+    function px(size) { return modern ? size + 1 : size }
 
-    radius: 8
-    color: Theme.control
-    border.width: 1
-    border.color: Theme.separator
     onGraphChanged: canvas.requestPaint()
     onActiveChanged: canvas.requestPaint()
+    onModernChanged: canvas.requestPaint()
     // The colours are the theme's: a scheme change repaints
     readonly property bool dark: Theme.dark
     onDarkChanged: canvas.requestPaint()
 
+    // -- WP DL1 -- Modern: the frame, its ticks where the canvas puts them
+    GraphFrame {
+        id: graphFrame
+        objectName: frame.objectName.length ? frame.objectName + ".frame" : ""
+        visible: frame.modern
+        anchors.fill: parent
+        grid: false
+        empty: !frame.active
+        emptyText: qsTr("Disabled")
+        readonly property var g: frame.graph || ({})
+        xTicks: g.gridX ? g.gridX.map((x, i) => ({ at: x, text: String(g.freqs[i]) })) : []
+        yTicks: g.gridY && canvas.height > 0
+                ? g.gridY.map((y, i) => ({ at: canvas.yAt(y) / canvas.height, text: g.gridDb[i] > 0 ? "+" + g.gridDb[i] : String(g.gridDb[i]) }))
+                : []
+        Item {
+            id: modernRoom
+            anchors.fill: parent
+        }
+    }
+
+    // Classic: the boxed plot
+    Rectangle {
+        id: box
+        visible: !frame.modern
+        anchors.fill: parent
+        radius: 8
+        color: Theme.control
+        border.width: 1
+        border.color: Theme.separator
+        Item {
+            id: classicRoom
+            anchors.fill: parent
+            anchors.margins: 8
+        }
+    }
+
     Canvas {
         id: canvas
         objectName: frame.objectName.length ? frame.objectName + ".canvas" : ""
+        parent: frame.modern ? modernRoom : classicRoom
         anchors.fill: parent
-        anchors.margins: 8
         onWidthChanged: requestPaint()
         onHeightChanged: requestPaint()
 
         function yAt(t) { return frame.annotation + t * (height - frame.annotation - frame.axis) }
         function label(ctx, text, x, y, color, size, bold, backed) {
-            ctx.font = (bold ? "bold " : "") + size + "px \"" + Theme.fontMono.family + "\""
+            size = frame.px(size)
+            ctx.font = (bold ? "bold " : "") + size + "px \"" + (frame.modern ? Theme.fontCaption.family : Theme.fontMono.family) + "\""
             const w = ctx.measureText(text).width
             if (backed) {
                 ctx.globalAlpha = 0.85
-                ctx.fillStyle = Theme.control
+                ctx.fillStyle = frame.modern ? Theme.panel : Theme.control
                 ctx.fillRect(x - w / 2 - 2, y - size / 2 - 1, w + 4, size + 2)
             }
             ctx.globalAlpha = 1
@@ -78,13 +120,14 @@ Rectangle {
             ctx.globalAlpha = 1
             line(ctx, 0, yAt(g.zeroY), w, yAt(g.zeroY))
             // Level labels down the left edge, where nothing is drawn below 24 Hz
-            for (let i = 0; i < g.gridDb.length; ++i) {
+            // (-- WP DL1 -- Modern: the frame's)
+            for (let i = 0; i < (frame.modern ? 0 : g.gridDb.length); ++i) {
                 const db = g.gridDb[i]
                 label(ctx, db > 0 ? "+" + db : String(db), 9, yAt(g.gridY[i]) - 5, Theme.textMuted, 7, false, false)
             }
 
             if (!frame.active) {
-                label(ctx, qsTr("Disabled"), w / 2, (frame.annotation + base) / 2, Theme.textMuted, 11, true, false)
+                if (!frame.modern) label(ctx, qsTr("Disabled"), w / 2, (frame.annotation + base) / 2, Theme.textMuted, 11, true, false)
             } else {
                 // The program bands, behind the subs, with a bracket and their range above
                 for (let i = 0; i < g.blocks.length; ++i) {
@@ -177,7 +220,7 @@ Rectangle {
                     label(ctx, qsTr("All bands off"), w / 2, (frame.annotation + base) / 2, Theme.textMuted, 10, true, false)
             }
 
-            for (let i = 0; i < g.gridX.length; ++i)
+            for (let i = 0; i < (frame.modern ? 0 : g.gridX.length); ++i)
                 label(ctx, String(g.freqs[i]), g.gridX[i] * w, h - 5, Theme.textMuted, 7, false, false)
         }
     }

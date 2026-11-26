@@ -19,6 +19,7 @@ Panel {
     fitBodies: [setupTab.contentItem, resultsTab.contentItem, liveTab.contentItem, tuneTab.contentItem, passiveTab.contentItem]
 
     readonly property bool blocked: MeasureController.playBlocker.length > 0
+    readonly property bool modern: LayoutController.modern   // -- WP DL2 --
 
     // Closing the window stops what it started (the guard of an applied tune runs on)
     // (review P5-D: always, so a start still on its way is withdrawn too)
@@ -36,6 +37,50 @@ Panel {
         Qt.callLater(takePart)   // -- WP LAY7 -- not inside the page's own change
     }
     Component.onDestruction: if (shown) MeasureController.panelShown(false)
+
+    // -- INTC (DL2 fold) -- Modern's page: Results' Open… and Documents' kind
+    // filter, Reload and Import Calibration… in the tab row (PageHost.pageTools);
+    // a window keeps them in its tabs
+    readonly property Component pageTools: part === "results" ? resultsTools : part === "documents" ? docsTools : null
+    Component {
+        id: resultsTools
+        AppButton {
+            objectName: "MeasureResults.open"
+            text: qsTr("Open…")
+            onClicked: MeasureController.chooseResultFile()
+        }
+    }
+    Component {
+        id: docsTools
+        Row {
+            objectName: "MeasureDocsTools"
+            spacing: 6
+            AppComboBox {
+                objectName: "MeasureDocs.kind"
+                anchors.verticalCenter: parent.verticalCenter
+                visible: !docsTab.none
+                label: qsTr("Kind")
+                width: 160
+                model: docsTab.kinds
+                textRole: "text"
+                currentIndex: Math.max(0, docsTab.kinds.findIndex(k => k.id === docsTab.kind))
+                onActivated: index => docsTab.kind = docsTab.kinds[index].id
+            }
+            AppButton {
+                objectName: "MeasureDocs.reload"
+                anchors.verticalCenter: parent.verticalCenter
+                visible: !docsTab.none
+                text: qsTr("Reload")
+                onClicked: MeasureController.reloadDocuments()
+            }
+            AppButton {
+                objectName: "MeasureDocs.importCalibration"
+                anchors.verticalCenter: parent.verticalCenter
+                text: qsTr("Import Calibration…")
+                onClicked: MeasureController.chooseMicFile()
+            }
+        }
+    }
 
     // -- WP LAY5b -- Modern's page has the tabs (SectionTable.parts): the part is
     // its; a window has its own tabs, as Classic
@@ -75,9 +120,10 @@ Panel {
         spacing: Theme.spacingSmall
 
         // The Stop bar
+        // -- WP DL2 -- Modern: a notice row (below); Classic keeps this bar
         Rectangle {
-            objectName: "Measure.stopBar"
-            visible: MeasureController.running
+            objectName: panel.modern ? "" : "Measure.stopBar"
+            visible: MeasureController.running && !panel.modern
             Layout.fillWidth: true
             implicitHeight: stopRow.implicitHeight + 12
             radius: Theme.radius
@@ -87,7 +133,7 @@ Panel {
                 anchors.fill: parent
                 anchors.margins: 6
                 Text {
-                    objectName: "Measure.runningText"
+                    objectName: panel.modern ? "" : "Measure.runningText"
                     Layout.fillWidth: true
                     // -- WP MDQT2c -- with several devices open, on which
                     textFormat: Text.PlainText
@@ -99,9 +145,30 @@ Panel {
                     wrapMode: Text.WordWrap
                 }
                 AppButton {
-                    objectName: "Measure.stop"
+                    objectName: panel.modern ? "" : "Measure.stop"
                     text: qsTr("Stop")
                     destructive: true
+                    onClicked: MeasureController.stop()
+                }
+            }
+        }
+        // -- WP DL2 -- Modern: what plays or listens as a notice row, with its Stop
+        Item {
+            objectName: panel.modern ? "Measure.stopBar" : ""
+            visible: MeasureController.running && panel.modern
+            Layout.fillWidth: true
+            implicitHeight: runNotice.implicitHeight
+            NoticeRow {
+                id: runNotice
+                objectName: panel.modern ? "Measure.runningText" : ""
+                anchors.fill: parent
+                iconName: "audio-lines"
+                text: MeasureController.runningOn.length
+                      ? qsTr("Running on %1. %2").arg(MeasureController.runningOn).arg(MeasureController.runningText)
+                      : MeasureController.runningText
+                AppButton {
+                    objectName: panel.modern ? "Measure.stop" : ""
+                    text: qsTr("Stop")
                     onClicked: MeasureController.stop()
                 }
             }
@@ -115,8 +182,9 @@ Panel {
                 objectName: "Measure.otherRun"
                 Layout.fillWidth: true
                 implicitHeight: otherRow.implicitHeight + 12
-                radius: Theme.radius
-                color: Theme.selection
+                // -- WP DL2 -- Modern: a notice row's look
+                radius: panel.modern ? Theme.radiusControl : Theme.radius
+                color: panel.modern ? Theme.bannerFill("info") : Theme.selection
                 RowLayout {
                     id: otherRow
                     anchors.fill: parent
@@ -137,15 +205,15 @@ Panel {
                     AppButton {
                         objectName: "Measure.otherRun.stop"
                         text: qsTr("Stop")
-                        destructive: true
+                        destructive: !panel.modern
                         onClicked: MeasureController.stopOther(other.modelData.id)
                     }
                 }
             }
         }
         Text {
-            objectName: "Measure.error"
-            visible: text.length > 0
+            objectName: panel.modern ? "" : "Measure.error"
+            visible: text.length > 0 && !panel.modern
             Layout.fillWidth: true
             textFormat: Text.PlainText
             text: MeasureController.error
@@ -165,13 +233,28 @@ Panel {
             wrapMode: Text.WordWrap
         }
         Text {
-            visible: panel.blocked
+            visible: panel.blocked && !panel.modern
             Layout.fillWidth: true
             textFormat: Text.PlainText
             text: MeasureController.playBlocker
             font: Theme.fontBody
             color: Theme.warning
             wrapMode: Text.WordWrap
+        }
+        // -- WP DL2 -- Modern: the error and why nothing may play as notice rows
+        NoticeRow {
+            objectName: panel.modern ? "Measure.error" : ""
+            visible: text.length > 0 && panel.modern
+            Layout.fillWidth: true
+            kind: "error"
+            text: MeasureController.error
+        }
+        NoticeRow {
+            objectName: "Measure.blocked"
+            visible: panel.blocked && panel.modern
+            Layout.fillWidth: true
+            kind: "warning"
+            text: MeasureController.playBlocker
         }
 
         AppTabBar {
@@ -196,10 +279,10 @@ Panel {
             Layout.fillHeight: true
             currentIndex: panel.index   // -- WP LAY5b --
             MeasureSetupTab { id: setupTab; onShowResults: panel.showPart("results") }
-            MeasureResultsTab { id: resultsTab; onShowTune: panel.showPart("tune") }
+            MeasureResultsTab { id: resultsTab; toolsAbove: panel.paged; onShowTune: panel.showPart("tune") }   // -- INTC -- toolsAbove
             MeasureLiveTab { id: liveTab }
             MeasureTuneTab { id: tuneTab }
-            MeasureDocsTab { onShowResults: panel.showPart("results") }
+            MeasureDocsTab { id: docsTab; toolsAbove: panel.paged; onShowResults: panel.showPart("results") }   // -- INTC -- toolsAbove
             MeasurePassiveTab { id: passiveTab }
             MeasureUnitsTab {}   // -- WP ATQT --
         }

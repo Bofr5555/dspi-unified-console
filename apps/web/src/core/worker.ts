@@ -92,7 +92,7 @@ self.onmessage = (ev: MessageEvent<Request>) => {
       system.after(method, false, null); // -- WP ATWEB --
       const e =
         err instanceof CoreCallError
-          ? { code: err.code, message: err.message, ...(err.noticeKey ? { noticeKey: err.noticeKey } : {}) }
+          ? { code: err.code, message: err.message, ...(err.noticeKey ? { noticeKey: err.noticeKey } : {}), ...(err.text ? { text: err.text } : {}) }
           : { code: "internal", message: err instanceof Error ? err.message : String(err) };
       post({ reply: { id, ok: false, error: e } });
     },

@@ -54,6 +54,11 @@ pub struct LabelSource {
     pub output_enabled: Vec<bool>,
     /// The K340 firmware's crossfeed pair map; all zero on other firmware.
     pub pair_map: [u8; PairMap::SIZE],
+    // -- WP FIN015 -- (REVF R1)
+    /// Per output: a test signal plays on it now (the signal generator, which
+    /// a measurement, a live run and Identify use too). It writes after the
+    /// matrix, so an output with nothing routed to it can still be loud.
+    pub playing: Vec<bool>,
 }
 
 /// The pass band an output's filters leave.
@@ -96,10 +101,13 @@ impl Band {
 pub struct OutputLabel {
     /// 0-based output index.
     pub output: usize,
-    /// What to show: the user's name, else "Out 1 · R · Low".
+    /// What to show: the user's name, else "Out 1 · R · Low" (no "· Full" for
+    /// a full-range one: "Out 1 · L"); an unused output is its number and
+    /// "None", "3 · None" (owner 2026-11-24, REVEFIX).
     pub label: String,
     /// The same for a phone row, beside the output's "OUTn" button: the
-    /// user's name, else channel and band alone, "R · Low" (owner, c86 F3).
+    /// user's name, else channel and band alone, "R · Low" (owner, c86 F3), or
+    /// "None" for an unused output.
     pub short_label: String,
     /// The firmware's name for the slot, "I2S 1 L" or "PDM".
     pub slot_name: String,
@@ -108,6 +116,15 @@ pub struct OutputLabel {
     /// "L", "R", "L+R", an input's name, "Mix", or "None" when nothing is routed.
     pub channel: String,
     pub band: Band,
+    /// -- WP REVEFIX -- No input is routed to it (owner 2026-11-24): views that
+    /// only show (the Overview's cards and tiles, a phone's Home, summaries)
+    /// leave it out; views that edit it show `label`, "3 · None".
+    pub unused: bool,
+    // -- WP FIN015 -- (REVF R1)
+    /// `unused`, and no test signal plays on it: what a view that only
+    /// shows levels (meters, a Spectrum chooser, Stats) leaves out. An unused
+    /// output the generator plays on keeps its meter.
+    pub hidden: bool,
 }
 
 /// One dashboard card: a pair of outputs side by side, or one alone.
@@ -317,19 +334,35 @@ pub fn output_labels(src: &LabelSource) -> Vec<OutputLabel> {
             let user_named = !is_default_name(name, out, src);
             let channel = channel(src, out);
             let band = band(src.filters.get(out).map(Vec::as_slice).unwrap_or(&[]));
+            // -- WP REVEFIX -- (owner 2026-11-24) an unused output is its number
+            // and "None" wherever it is shown, "3 · None", whatever its band
+            let unused = !(0..src.num_inputs).any(|i| routed(src, i, out));
+            // -- WP INTD -- (REVD W12) a full-range output says no "· Full":
+            // "Out 1 · L", "Out 4 · R · Low"
+            let words: Vec<&str> = [
+                Some(channel.as_str()),
+                (band != Band::Full).then_some(band.word()),
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
+            let number = format!("Out {}", out.saturating_add(1));
             let label = if user_named {
                 name.to_string()
+            } else if unused {
+                format!("{} · None", out.saturating_add(1))
             } else {
-                format!(
-                    "Out {} · {channel} · {}",
-                    out.saturating_add(1),
-                    band.word()
-                )
+                std::iter::once(number.as_str())
+                    .chain(words.iter().copied())
+                    .collect::<Vec<_>>()
+                    .join(" · ")
             };
             let short_label = if user_named {
                 name.to_string()
+            } else if unused {
+                "None".into()
             } else {
-                format!("{channel} · {}", band.word())
+                words.join(" · ")
             };
             OutputLabel {
                 output: out,
@@ -339,6 +372,9 @@ pub fn output_labels(src: &LabelSource) -> Vec<OutputLabel> {
                 user_named,
                 channel,
                 band,
+                unused,
+                // -- WP FIN015 --
+                hidden: unused && !src.playing.get(out).copied().unwrap_or(false),
             }
         })
         .collect()
@@ -347,7 +383,8 @@ pub fn output_labels(src: &LabelSource) -> Vec<OutputLabel> {
 /// The dashboard's output cards, in order. Outputs pair by the crossfeed pair
 /// map when the device has one, else by slot (1+2, 3+4, ..). A pair with both
 /// outputs on is one card, a pair with one on is that output's card, and an
-/// output in no pair (the PDM sub) has a card of its own when it is on.
+/// output in no pair (the PDM sub) has a card of its own when it is on. An
+/// unused output counts as off (-- WP REVEFIX --).
 pub fn output_cards(src: &LabelSource) -> Vec<OutputCard> {
     let labels = output_labels(src);
     let pdm = src.num_outputs.checked_sub(1);
@@ -381,7 +418,8 @@ pub fn output_cards(src: &LabelSource) -> Vec<OutputCard> {
     }
     pairs.sort_by_key(|&(l, r)| l.min(r.unwrap_or(l)));
 
-    let on = |o: usize| src.output_enabled.get(o).copied().unwrap_or(false);
+    // -- WP REVEFIX -- an unused output has no card (owner 2026-11-24), as one that is off
+    let on = |o: usize| src.output_enabled.get(o).copied().unwrap_or(false) && !labels[o].unused;
     let mut cards = Vec::new();
     for (l, r) in pairs {
         let card = match (on(l), r.filter(|&r| on(r))) {
@@ -469,6 +507,13 @@ impl LabelSource {
             filters,
             output_enabled: (0..no).map(|o| s.output(o).enabled).collect(),
             pair_map: s.crossfeed_pair_map().0,
+            // -- WP FIN015 -- not in the image: what the host learnt
+            playing: (0..no)
+                .map(|o| {
+                    u32::try_from(o)
+                        .is_ok_and(|o| s.siggen_outputs.checked_shr(o).is_some_and(|m| m & 1 != 0))
+                })
+                .collect(),
         }
     }
 }
@@ -526,6 +571,7 @@ mod tests_bug1 {
             filters,
             output_enabled: [true, true, true, true, false, false, false, false, false].to_vec(),
             pair_map: PairMap::K340.0,
+            playing: Vec::new(),
         }
     }
 
@@ -562,8 +608,11 @@ mod tests_bug1 {
             ]
         );
         assert!(l.iter().all(|l| !l.user_named));
-        assert_eq!(l[4].label, "Out 5 · None · Full");
-        assert_eq!(l[8].label, "Out 9 · None · Full");
+        // -- WP REVEFIX -- (owner 2026-11-24) an unused output is its number and "None"
+        assert_eq!(l[4].label, "5 · None");
+        assert_eq!(l[8].label, "9 · None");
+        assert_eq!(l[4].short_label, "None");
+        assert!(l[4].unused && l[8].unused && !l[0].unused && !l[3].unused);
         // Fits a phone row: no label longer than the longest stock one
         assert!(l.iter().all(|l| l.label.chars().count() <= 20), "{l:?}");
     }
@@ -603,11 +652,11 @@ mod tests_bug1 {
         s.names[2] = String::new();
         s.routing[2][8] = true; // an unnamed input
         let l = labels(&s);
-        assert_eq!(l[4], "Out 5 · L+R · Full");
-        assert_eq!(l[5], "Out 6 · In 3 · Full");
-        assert_eq!(l[6], "Out 7 · Mix · Full");
-        assert_eq!(l[7], "Out 8 · Cente… · Full");
-        assert_eq!(l[8], "Out 9 · In 3 · Full");
+        assert_eq!(l[4], "Out 5 · L+R");
+        assert_eq!(l[5], "Out 6 · In 3");
+        assert_eq!(l[6], "Out 7 · Mix");
+        assert_eq!(l[7], "Out 8 · Cente…");
+        assert_eq!(l[8], "Out 9 · In 3");
     }
 
     #[test]
@@ -668,9 +717,11 @@ mod tests_bug1 {
             ("Out 1 · R · Low", "Out 2 · R · High")
         );
         assert_eq!((c[1].left, c[1].right), (2, Some(3)));
-        // One side off: the other alone; the PDM sub alone when on
+        // One side off: the other alone; the PDM sub alone when on (and used:
+        // -- WP REVEFIX --)
         s.output_enabled[3] = false;
         s.output_enabled[8] = true;
+        s.routing[2][8] = true;
         let c = output_cards(&s);
         assert_eq!(
             (c[1].left, c[1].right, c[1].left_name.as_str()),
@@ -701,6 +752,10 @@ mod tests_bug1 {
         // their outputs get cards of their own
         s.pair_map = [0x08, 0x22, 0, 0];
         s.output_enabled = vec![true; 9];
+        // Every output used (-- WP REVEFIX --: an unused one has no card)
+        for o in 4..9 {
+            s.routing[2][o] = true;
+        }
         let c = output_cards(&s);
         let shape: Vec<(usize, Option<usize>)> = c.iter().map(|c| (c.left, c.right)).collect();
         assert_eq!(
@@ -726,20 +781,71 @@ mod tests_bug1 {
         };
         assert_eq!(
             labels(&s),
-            [
-                "Out 1 · None · Full",
-                "Out 2 · None · Full",
-                "Out 3 · None · Full",
-                "Out 4 · None · Full",
-                "Out 5 · None · Full"
-            ]
+            ["1 · None", "2 · None", "3 · None", "4 · None", "5 · None"]
         );
         assert!(output_cards(&s).is_empty());
         assert!(output_labels(&LabelSource::default()).is_empty());
         let mut odd = s.clone();
         odd.pair_map = [0xFF; 4];
         odd.output_enabled = vec![true; 5];
+        odd.routing = vec![vec![true; 5]; 2];
         assert_eq!(output_cards(&odd).len(), 5);
+    }
+
+    // -- WP REVEFIX --
+    /// An unused output (nothing routed to it) is "3 · None" whatever its
+    /// filters say, and has no card even when it is on (owner 2026-11-24).
+    #[test]
+    fn revefix_an_unused_output_is_its_number_and_none_and_has_no_card() {
+        let mut s = k340();
+        s.filters[4] = vec![f(LP, 300.0)];
+        s.output_enabled = vec![true; 9];
+        let l = output_labels(&s);
+        assert_eq!(
+            (l[4].label.as_str(), l[4].short_label.as_str(), l[4].unused),
+            ("5 · None", "None", true)
+        );
+        assert_eq!(l[4].band, Band::Low);
+        // A name the user set stays, still flagged
+        s.names[12] = "Spare".into();
+        let l = output_labels(&s);
+        assert_eq!((l[4].label.as_str(), l[4].unused), ("Spare", true));
+        let cards: Vec<_> = output_cards(&s).iter().map(|c| (c.left, c.right)).collect();
+        assert!(
+            cards.iter().all(|&(l, r)| l < 4 && r.is_none_or(|r| r < 4)),
+            "{cards:?}"
+        );
+        // Routed again, it is shown and has its card
+        s.routing[0][4] = true;
+        let l = output_labels(&s);
+        assert!(!l[4].unused);
+        assert!(
+            output_cards(&s)
+                .iter()
+                .any(|c| c.left == 4 || c.right == Some(4))
+        );
+    }
+
+    // -- WP FIN015 --
+    /// An unused output the generator plays on is not hidden: it keeps its
+    /// meter, Spectrum entry and Stats rows, and still says "5 · None" and has
+    /// no card (REVF R1). Routed, it is neither.
+    #[test]
+    fn fin015_an_unused_output_a_test_signal_plays_on_is_not_hidden() {
+        let mut s = k340();
+        let l = output_labels(&s);
+        assert!(l[4].unused && l[4].hidden, "silent and unrouted");
+        assert!(!l[0].unused && !l[0].hidden);
+        s.playing = vec![false; 9];
+        s.playing[4] = true;
+        let l = output_labels(&s);
+        assert!(l[4].unused, "still unused");
+        assert!(!l[4].hidden, "but shown while the generator plays on it");
+        assert_eq!(l[4].label, "5 · None");
+        assert!(l[5].hidden, "the others stay hidden");
+        // A short `playing` reads as silent.
+        s.playing = vec![true; 2];
+        assert!(output_labels(&s)[4].hidden);
     }
 
     // -- review c86 --

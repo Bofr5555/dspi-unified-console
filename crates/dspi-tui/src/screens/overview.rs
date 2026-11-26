@@ -56,12 +56,20 @@ fn bands_of(state: &DeviceState, channel: usize) -> (Vec<dsp::Band>, f64) {
     }
 }
 
-/// The channels the grid shows: every input, and every enabled output.
+/// The channels the grid shows: every input, and every enabled output that
+/// something is routed to.
 fn channels(state: &DeviceState) -> Vec<usize> {
     let ni = state.caps.num_inputs as usize;
     let no = state.caps.num_outputs as usize;
+    // -- WP INTE -- (owner 2026-11-24) an unused output is hidden outside the
+    // edit views: the overview is not one, so it has no cell
     (0..ni)
-        .chain((0..no).filter(|o| state.output(*o).enabled).map(|o| ni + o))
+        .chain(
+            (0..no)
+                // -- WP FIN015 -- unless the generator plays on it (REVF R1)
+                .filter(|o| state.output(*o).enabled && !super::channel_hidden(state, ni + o))
+                .map(|o| ni + o),
+        )
         .collect()
 }
 
@@ -541,9 +549,24 @@ mod tests {
     use crate::theme::{ColorDepth, Glyphs};
     use crate::widgets::testing::key;
 
+    // -- WP INTE -- the fixtures route nothing to the Sub (OUT 9), and an output
+    // nothing is routed to now has no cell (owner 2026-11-24): FL and FR feed it
+    // here, so these tests keep the low-passed sub they were written around
+    fn with_sub(mut state: DeviceState) -> DeviceState {
+        let (_, cross, _) = dspi_proto::generated::SECTIONS
+            .iter()
+            .find(|(n, _, _)| *n == "crosspoints")
+            .copied()
+            .unwrap();
+        for input in 0..2 {
+            state.bulk.patch(cross + (input * 9 + 8) * 8, &[1]);
+        }
+        state
+    }
+
     fn draw(w: u16, h: u16) -> String {
         let t = Theme::console(ColorDepth::TrueColor, Glyphs::Braille);
-        let state = fixture::state();
+        let state = with_sub(fixture::state());
         let mut s = Overview::new(shared());
         let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(w, h)).unwrap();
         term.draw(|f| s.draw(f.area(), f.buffer_mut(), &t, &state, true))
@@ -563,7 +586,7 @@ mod tests {
 
     #[test]
     fn identical_curves_share_a_cell_and_roles_never_mix() {
-        let state = fixture::state();
+        let state = with_sub(fixture::state());
         let cells = Overview::new(shared()).cells(&state);
         let members: Vec<Vec<usize>> = cells.iter().map(|c| c.channels.clone()).collect();
         assert_eq!(
@@ -587,7 +610,7 @@ mod tests {
 
     #[test]
     fn the_busy_fixture_fills_the_grid_and_draws_its_crossovers() {
-        let state = fixture::busy_state();
+        let state = with_sub(fixture::busy_state());
         let cells = Overview::new(shared()).cells(&state);
         let members: Vec<Vec<usize>> = cells.iter().map(|c| c.channels.clone()).collect();
         assert_eq!(
@@ -628,7 +651,7 @@ mod tests {
 
     #[test]
     fn a_crossover_and_a_delay_read_in_the_short_form() {
-        let mut state = fixture::state();
+        let mut state = with_sub(fixture::state());
         let (_, xo, _) = dspi_proto::generated::SECTIONS
             .iter()
             .find(|(n, _, _)| *n == "crossovers")
@@ -649,7 +672,7 @@ mod tests {
 
     #[test]
     fn a_disabled_output_leaves_the_grid() {
-        let mut state = fixture::state();
+        let mut state = with_sub(fixture::state());
         let (_, outs, _) = dspi_proto::generated::SECTIONS
             .iter()
             .find(|(n, _, _)| *n == "outputs")
@@ -659,6 +682,40 @@ mod tests {
         let cells = Overview::new(shared()).cells(&state);
         assert!(cells.iter().all(|c| !c.channels.contains(&11)), "{cells:?}");
         assert_eq!(cells.len(), 5);
+    }
+
+    // -- WP INTE -- (owner 2026-11-24) an output nothing is routed to has no
+    // cell: the overview is not an edit view
+    #[test]
+    fn inte_an_unused_output_leaves_the_grid() {
+        let state = fixture::state();
+        assert!(
+            crate::screens::channel_unused(&state, 16),
+            "nothing feeds the Sub"
+        );
+        assert!(!crate::screens::channel_unused(&state, 8), "FL feeds OUT L");
+        let cells = Overview::new(shared()).cells(&state);
+        assert!(cells.iter().all(|c| !c.channels.contains(&16)), "{cells:?}");
+        assert_eq!(cells.len(), 4, "{cells:?}");
+        let cells = Overview::new(shared()).cells(&with_sub(state));
+        assert!(cells.iter().any(|c| c.channels == vec![16]), "{cells:?}");
+        assert_eq!(cells.len(), 5, "{cells:?}");
+    }
+
+    // -- WP FIN015 -- (REVF R1) an unused output the generator plays on keeps
+    // its cell: the generator writes after the matrix
+    #[test]
+    fn fin015_an_unused_output_the_generator_plays_on_keeps_its_cell() {
+        let mut state = fixture::state();
+        state.siggen_outputs = 1 << 8;
+        assert!(crate::screens::channel_unused(&state, 16), "still unused");
+        assert!(!crate::screens::channel_hidden(&state, 16));
+        let cells = Overview::new(shared()).cells(&state);
+        assert!(cells.iter().any(|c| c.channels == vec![16]), "{cells:?}");
+        // The generator elsewhere: hidden again
+        state.siggen_outputs = 1;
+        let cells = Overview::new(shared()).cells(&state);
+        assert!(cells.iter().all(|c| !c.channels.contains(&16)), "{cells:?}");
     }
 
     #[test]
@@ -709,7 +766,7 @@ mod tests {
         assert_eq!(Overview::shape(wide, 17, 2).0, 2);
         assert_eq!(Overview::shape(wide, 17, 3).0, 3);
         assert_eq!(Overview::shape(Rect::new(0, 0, 54, 19), 17, 3).0, 2);
-        let state = fixture::full_state();
+        let state = with_sub(fixture::full_state());
         let t = Theme::console(ColorDepth::TrueColor, Glyphs::Braille);
         let sh = shared();
         sh.borrow_mut().graph.dashboard_cards = 1;
@@ -732,7 +789,7 @@ mod tests {
         // Compact's 54x19 cannot hold seventeen: two columns, the smallest
         // cells, and the grid scrolls.
         assert_eq!(Overview::shape(Rect::new(0, 0, 54, 19), 17, 0), (2, 6));
-        let state = fixture::full_state();
+        let state = with_sub(fixture::full_state());
         let t = Theme::console(ColorDepth::TrueColor, Glyphs::Braille);
         let mut s = Overview::new(shared());
         let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(94, 35)).unwrap();
@@ -765,7 +822,7 @@ mod tests {
             vec!["LP 80 Hz LR4", "-3.0 dB · 2.5 ms"]
         );
         // Seventeen cells at 94x35 are 22 wide: the summaries wrap whole.
-        let state = fixture::full_state();
+        let state = with_sub(fixture::full_state());
         let t = Theme::console(ColorDepth::TrueColor, Glyphs::Braille);
         let mut s = Overview::new(shared());
         let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(94, 35)).unwrap();
@@ -782,7 +839,7 @@ mod tests {
 
     #[test]
     fn arrows_walk_the_grid_and_enter_or_a_digit_names_the_channel() {
-        let state = fixture::state();
+        let state = with_sub(fixture::state());
         let mut s = Overview::new(shared());
         assert_eq!(s.handle(key(KeyCode::Right), &state), ScreenEvent::Handled);
         assert_eq!(s.cursor, 1);
@@ -816,7 +873,7 @@ mod tests {
 
     #[test]
     fn every_advertised_key_is_handled() {
-        let state = fixture::state();
+        let state = with_sub(fixture::state());
         for help in KEYS {
             for k in crate::screens::tests::keys_for(help.key) {
                 let mut s = Overview::new(shared());

@@ -350,11 +350,21 @@ private fun CompactValueField(
     }
 }
 
-/** Typing a value (macOS: focus the field, type, Return). */
+/**
+ * Typing a value (macOS: focus the field, type, Return). OK or Done with the
+ * pre-filled text untouched closes the dialog through [onDismiss]; only typed
+ * text reaches [onSubmit] (REVE C1, [editedText]).
+ */
 @Composable
 fun CompactValueEditor(title: String, unit: String, signed: Boolean, initial: String, onDismiss: () -> Unit, onSubmit: (String) -> Unit) {
     var text by rememberSaveable(stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue(initial, TextRange(0, initial.length)))
+    }
+    // -- WP INTE -- REVE C1: the text the editor opened with (not a later [initial]: the value may move meanwhile)
+    val startText = rememberSaveable { initial }
+    val submit = {
+        val typed = editedText(startText, text.text)
+        if (typed != null) onSubmit(typed) else onDismiss()
     }
     val focus = remember { FocusRequester() }
     AlertDialog(
@@ -370,11 +380,11 @@ fun CompactValueEditor(title: String, unit: String, signed: Boolean, initial: St
                     keyboardType = if (signed) KeyboardType.Text else KeyboardType.Decimal,
                     imeAction = ImeAction.Done
                 ),
-                keyboardActions = KeyboardActions(onDone = { onSubmit(text.text) }),
+                keyboardActions = KeyboardActions(onDone = { submit() }), // -- WP INTE --
                 modifier = Modifier.focusRequester(focus)
             )
         },
-        confirmButton = { TextButton(onClick = { onSubmit(text.text) }) { Text("OK") } },
+        confirmButton = { TextButton(onClick = { submit() }) { Text("OK") } }, // -- WP INTE --
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }

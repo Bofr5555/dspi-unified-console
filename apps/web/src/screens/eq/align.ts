@@ -4,6 +4,7 @@
 
 import type { FilterParams } from "../../core/protocol";
 import { FAMILIES, FAMILY_ORDERS, decodeXover, encodeXover } from "../outputs/model";
+import { plainNumber } from "../../ui/number";
 
 /** The speed of sound the distances use, m/s (as the mockup and Measure's alignment). */
 export const SOUND_MPS = 343;
@@ -37,13 +38,21 @@ export function freeBand(bands: readonly FilterParams[]): number | null {
   return at < 0 ? null : at;
 }
 
-/** A pass's choices: Off, then every family's slopes ("LR4 24 dB/oct"); the value is the type. */
-export function passChoices(highPass: boolean): { value: number; label: string }[] {
+/**
+ * A pass's choices: Off, then every family's slopes; the value is the type. -- WP WEB6 -- `words`:
+ * Qt's, "Linkwitz-Riley 24 dB/oct" (`long`, the inspector) or "LR 24 dB" (`brief`, a table's);
+ * without, the code form "LR4 24 dB/oct".
+ */
+export function passChoices(highPass: boolean, words?: "long" | "brief"): { value: number; label: string }[] {
   const out = [{ value: 0, label: "Off" }];
   const short = ["", "LR", "BW", "BES"];
-  FAMILIES.forEach((_, family) => {
-    for (const order of FAMILY_ORDERS[family] ?? [])
-      out.push({ value: encodeXover({ family, order, highPass }), label: `${short[family]}${order} ${order * 6} dB/oct` });
+  const brief = ["", "LR", "BW", "BS"];
+  FAMILIES.forEach((name, family) => {
+    for (const order of FAMILY_ORDERS[family] ?? []) {
+      const label =
+        words === "long" ? `${name} ${order * 6} dB/oct` : words === "brief" ? `${brief[family]} ${order * 6} dB` : `${short[family]}${order} ${order * 6} dB/oct`;
+      out.push({ value: encodeXover({ family, order, highPass }), label });
+    }
   });
   return out;
 }
@@ -85,8 +94,9 @@ export function distanceText(m: number): string {
 
 /** Typed distance to metres: "1.2", "1.2 m", "35 cm"; null when it is not one or below 0. */
 export function parseDistance(text: string): number | null {
-  const t = text.trim().toLowerCase().replace(",", ".");
-  const m = /^([0-9]*\.?[0-9]+)\s*(cm|mm|m)?$/.exec(t);
+  // -- WP WEB -- spaces, a decimal comma and U+2212 as Qt's fields take them (USR1)
+  const t = plainNumber(text).toLowerCase();
+  const m = /^([0-9]*\.?[0-9]+)(cm|mm|m)?$/.exec(t);
   if (!m) return null;
   const v = Number(m[1]);
   if (!Number.isFinite(v)) return null;

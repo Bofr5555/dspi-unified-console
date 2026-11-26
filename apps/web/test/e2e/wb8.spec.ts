@@ -10,6 +10,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { hasPage, openPage } from "../nav";
+import { presetsButton } from "../presets"; // -- WP INTD --
 
 type Clients = { dspiClients: { call(m: string, p: unknown): Promise<unknown> }[] };
 type Band = { filterType: number; freq: number; gain: number };
@@ -78,7 +79,7 @@ test("WB8 undo: the buttons and the keys step back and forward through the core'
   const start = (await coreState(page)).userVolumeDb;
   // -- WP WEBM1 -- Undo and Redo sit in the device's bar, in one line with the preset picker at every width
   const bar = (await session.getByRole("group", { name: "Device actions" }).boundingBox())!;
-  const picker = (await session.getByRole("combobox", { name: "Recall preset" }).boundingBox())!;
+  const picker = (await presetsButton(session).boundingBox())!; // -- WP INTD -- the presets' popover button
   // (two consoles side by side at 375 px are slivers, where it wraps)
   if (test.info().project.name !== "narrow") expect(Math.abs(bar.height - picker.height)).toBeLessThan(0.5);
 
@@ -193,7 +194,7 @@ test("WB8 undo: a graph drag is one step; a text field keeps Ctrl+Z for itself",
 
 test("WB8 undo: a viewer's session has Undo and Redo off, and the keys do nothing", async ({ page }) => {
   const session = await openDemo(page, "Venue B");
-  await expect(session.locator(".badge.read-only")).toBeVisible();
+  await expect(session.locator(".read-only-reason")).toBeVisible(); // -- WP REVEFIX -- said in the strip (the badge went with the session bar)
   await expect(undoButton(session)).toBeDisabled();
   await expect(redoButton(session)).toBeDisabled();
   await page.keyboard.press("Control+z");
@@ -328,7 +329,7 @@ async function openUnit(page: Page, hub: OwnHub, serial: string): Promise<Locato
   const session = page.getByRole("article").last();
   const entry = session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: serial.slice(-8) });
   await entry.getByRole("button", { name: "Open" }).click();
-  await expect(session.locator(".device-meta")).toContainText(serial);
+  await expect(session).toHaveAttribute("data-serial", new RegExp(serial));
   return session;
 }
 

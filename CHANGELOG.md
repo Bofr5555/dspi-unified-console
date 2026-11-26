@@ -1,332 +1,270 @@
 # Changelog
 
-Release notes of each version: `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
+Release notes of each version: `CHANGELOG-0.15.0.md`, `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
 
-## Unreleased
+## 0.15.0 (2026-11-26)
 
-### Desktop (Qt)
-- AI agents can detect the speakers (WP ADET1, the agents' side; the console's own Detect… and its screens follow): on a
-  device whose speaker setup nobody has confirmed, `dspi_detect_speakers` asks the console to play quiet test sweeps on
-  each output (above 1 kHz at most −24 dBFS; lower only on an output that is no tweeter, at most −50 dBFS) and writes what
-  it finds as a detected speaker setup. One question with a warning; **Allow** also covers the agent's test signals and
-  further detections on that device for 10 minutes, and **Revoke** stops a running detection. Under **Never** it needs
-  Settings › AI Agents › **Agents may detect speakers** (off by default). The detected roles guard the speakers as a
-  confirmed setup does (a detected tweeter keeps its 1 kHz high-pass under every setting), so agents may measure and tune
-  with them; an output where nothing was heard may not be routed, switched on or unmuted by an agent. Refused on a
-  confirmed setup.
-- Speaker detection on screen (WP ADETQ): Settings › Speakers has **Detect…** (one question with the same warning as
-  the agent's; it plays on the open device with the Measure view's microphone, says where it is, and **Stop** keeps what
-  it found). A detected layout says so in its banner and stamp ("Detected by AI, not confirmed"), each row has a marker
-  (detected, detected?, uncertain, nothing heard, off, you, suggested; the reason on hover), and **Show Details** lists
-  the evidence. A speaker layout that is kept but not confirmed is now named on the main screen (Classic's banners,
-  Modern's status strip). The agent's question is headed "Detect the speakers on …"; the Stop bar and the agent strip
-  say which output is probed; Settings › AI Agents has **Agents may detect speakers** (for **Never**; off by default,
-  its warning asked once). The channel inspector says when nothing was heard from an output.
-- Speaker detection, fixes from the function test (WP ADETS, merged in INTK): a measurement of a tweeter now starts no
-  lower than the limits profile's high-pass minimum for that output (it started at 1 kHz); a sub whose top the first
-  sweep could not hear is probed further down and found, instead of ending "unknown"; a detected role you correct is
-  yours, and the layout stays "detected, not confirmed" (that row marked "you") until you confirm it. The manual now says
-  that a profile's high-pass minimum belongs on tweeter outputs only (it also holds the music's high-pass there): for the
-  Koss K340, 2.5 kHz on the two tweeter outputs, or tell the agent the floor for the detection.
-- Fixed (a user's report on 0.14.0, WP USR1): a number typed into a gain, delay or filter field went back to the old
-  value when you clicked another field after pressing Enter, in the main window and the matrix mixer: the field showed
-  the old value again while the device took the new one, and leaving it wrote the old one back. Leaving a field now
-  sends only what you typed, Enter and leaving both commit, and Escape drops the entry. A typed number may have a
-  decimal comma or point, the minus sign "−" and its unit ("-3,5 dB").
-- Fixed (the same report, WP USR1): the preset box showed the first preset while another was active, after any change
-  that marks the preset unsaved, after Save, Copy to and Rename (both layouts); the source box likewise after a source
-  is renamed.
-- AI agents, the owner's answers of 2026-11-23 (WP ODEC): a question about test signals is asked once per device for an
-  agent's task: **Allow** also lets that agent measure there for 10 minutes (the AI page shows it with the time left and
-  **Revoke**); louder changes and saves are still asked one at a time. An agent keeps a tune only after a verify that
-  passed; otherwise only you can. An agent may no longer load a preset (or revert to the saved one) on a device that
-  saves the master volume with each preset. A tweeter you left playing without its high-pass may be turned down by an
-  agent but never made louder (its gain, the volumes, a route, an effect), under every setting. After **Stop** and agents
-  on again, an agent is told you stopped it. The screen follows an agent's work: Modern shows the device tab and page it
-  changes (Classic the device), and Measure for its measurements, never while you drag, type or have a dialog open, and
-  at most every few seconds. In the function test's build, the window title says it is simulated; nothing an agent reads
-  does.
-- The Installation tab sets up the audio link's sources (a sender's channels), what each zone plays (the units it routes
-  are named), a unit's own slots (locked while its zone's source owns them), scenes with their actions (Switch zone source
-  among them) and programme sources (which computer or box feeds which input). Before Save a notice names the units whose
-  hand-made slots a zone's source replaces; after Save it says how many units play the new channels after Align, with
-  Align there. The System view sets a room's or zone's volume, unit by unit, asking first when one gets louder. (WP FEATUI)
-- Settings › This Computer shows whether each open DSPi is an output of this computer, the default one or not, its
-  format, what plays to it and whether the system volume moves it, with how to make it the default. (WP FEATUI)
-- Settings › AI Agents: the loudest an agent's measurement may play (85 dB SPL by default, a hard cap an agent cannot
-  raise), and the USB devices agents may open, remembered across restarts. A device an agent opens or closes is a notice; the
-  question before a test signal no longer promises an undo. An agent's work on a hub's device is said on the hub, so other
-  consoles show it. (WP FEATUI)
-- The screen always shows what an AI agent does: a strip under the top bar (both layouts) names the agent, what it does now
-  and on which device, with Pause and Stop; the AI button, Classic's robot and the tray icon show that it works; what it
-  changed is marked for a moment, with a notice and Undo. The snapshot list, the A/B compare, the auto-tune, the units'
-  alignment, control surfaces and output latency follow an agent's change at once. (WP AIVIS)
-- An AI agent is told when you step in, with its next call: what you changed, undid, loaded, opened, stopped or paused. A
-  control you take back from it is refused to it until it asks; a setting you change while its measurement runs stops it.
-  Pause is told to it as a pause, not as an error. After turning agents off and on again, their measurement requests are
-  taken again. (WP AIVIS)
-- Clicking or tabbing into a number in the band list, the output's control strip, an input's preamp or the band bar
-  under the graph selects all its text, so typing replaces the value; a second click places the cursor. (WP QTTWEAK)
-- The "Filter Response" heading above the graph is gone; the graph takes its space (screen readers still name it).
-  (WP QTTWEAK)
-- An output's control strip is one row where the window is wide enough: both inputs side by side, the gain and delay
-  sliders between their labels and values, mute beside the limiter. Wider still (about 1600 px and up), it sits in the
-  output's name row, between the name and Enabled. Narrow windows keep the two-row strip. At 1366x768 the band list
-  gains about 75 px. (WP QTTWEAK)
-- The main window's minimum height is 660 px (was 780), so it fits a 1366x768 screen with a title bar and a taskbar.
-  (WP QTTWEAK)
-- Tool windows no longer show a scroll bar for content that would fit (owner report: Headphone Crossfeed).
-  Each window that holds a form (Crossfeed, Loudness, Psychoacoustic Bass, Subharmonic, Tube, Leveller,
-  Upmixer, Signal Generator, Statistics, System, Measure and every Settings page) takes the height its content
-  needs when it opens and when its content changes: never less than its usual size, and no more than the main
-  window's size and the screen's, less 48 px on each side. Only content taller than that scrolls. It widens
-  only for content wider than it. Crossfeed opens at 780×586 instead of 780×470, for example. The window can
-  still be resized by hand, larger or smaller; that size stays while it is open (content that grows may enlarge
-  it, nothing shrinks it), and it fits its content again when opened again. Lists of records
-  (events, history, snapshots, the AutoEQ list) and the Matrix window keep their own sizes. The Import Filters,
-  New from Template and Import Device Configuration dialogs show their whole list when the main window has room
-  (they stopped at 320, 320 and 200 px). (WP QTPOP)
-- Window > System… has an **Installation** tab on a hub (Advanced) for setting up the hub's installation: it lists the
-  DSPi units the hub has seen that are not in it, with **Join** (name, room, role, what feeds it), and edits each
-  unit's name, room, role and feed, the senders and fan-outs, rooms, zones and groups. What the hub would refuse is said
-  on the field; what Save would change is listed beside it. Only an Admin of the hub can save; everyone else reads. If
-  the installation was changed elsewhere meanwhile, Save is withdrawn and Reload offered. (WP INSTQ)
-- Your speaker layout: which output drives what (full range, sub, woofer, mid, tweeter). Getting Started has a
-  Speakers step and Settings has a Speakers page, both pre-filled from the DSPi's filters and routing; Confirm keeps
-  it. The Measure tables start from it, and a role, speaker or group changed there is saved to it without confirming
-  it. Measure shows a banner while the layout is not confirmed, also when it came with an imported configuration.
-  (WP ROLEQ)
-- Choosing another DSPi (on USB, or the demo) first stops what plays on the one that is left: a signal from the Signal
-  Generator (faded), a measurement or the live view; an auto-tune not kept yet goes back. Measure no longer takes the
-  placement chosen for another device. (WP MDQT2c)
-- A second layout, **Modern**: one window with a rail of sections (Overview, Equaliser, Routing, Effects, Measure, Analyse,
-  Library, System, Devices, Settings), every tool on a page with tabs, the open device as a tab at the top, the volume,
-  meters, Mute and Bypass EQ in a dock along the bottom, and no menu bar (actions are where they act, and every
-  keyboard shortcut works). States that limit what can be done show in a strip under the top bar; other notices are behind
-  the bell. Any tool page can be opened in its own window. Settings › Appearance switches between Classic and Modern at any
-  time, and arranges Modern; the device, the selected channel and open tool windows stay. **New installs start in Modern**;
-  an install whose Getting Started was finished keeps Classic. An install made with a development build since the layout
-  switch came (or whose Getting Started was never finished) was counted as new and now opens in Modern: choose "Switch to
-  the Classic Layout" in the uConsole menu to go back. Modern's pages are still being filled in. (WP LAY3)
-- A theme setting (Settings › Appearance, and Modern's top bar): the system's, light or dark. (WP LAY3)
-- While a measurement runs, Modern cannot be switched to Classic (that closed the Measure page and stopped it without a
-  word): Settings › Appearance names the device it runs on. (WP RBFIX)
-- A name with markup in it (a device's, a hub's, a room's, a channel's) is shown as it is written. (WP RBFIX)
-- Modern opens several devices at once: a DSPi chosen (on USB, through a hub, or the demo) opens in a tab of its own
-  beside the others, and each tab keeps its device's edits, pages, history, drafts and running measurement. Closing a
-  tab asks about that device's unsaved changes; quitting asks about each open device. Classic still shows one device
-  and replaces it. (WP MDQT2a, MDQT2b, MDQT2c, INT3)
-- **AI agents** (Settings › AI Agents, off until you turn it on): an AI agent on this computer (Claude Desktop, Claude
-  Code, Cursor and other MCP clients) can read your devices and change their settings. Each agent is paired once, with
-  a code; risky changes (louder, an unmute, a preset, a tweeter's protection) wait for your answer, and you can have
-  every change asked about or none. What agents did is listed with Undo for each change (Device › AI Agents…, also the
-  robot icon beside the device in Classic and the AI button in Modern), tagged in the History, and Pause and Stop are
-  there at any time. Nothing on your network can reach it; from another computer, go through SSH
-  (docs/mcp-ssh-forwarding.md). The agent starts this app with `--mcp`, or the Terminal's `uconsole mcp`. (WP MCP4)
-- **AI agents can measure.** An agent can check and start a measurement, find where an output's response drops off at
-  the low end, propose an auto-tune from a measurement, apply and verify it, and measure several units together. Each
-  start opens Measure, which runs it as its own (with your microphone) and says "Requested by AI · name"; the result
-  is filed with your measurements. The roles always come from your confirmed speaker layout (an agent cannot set or
-  change them, and is told to ask you to confirm it in Settings › Speakers); starting test signals is asked about
-  unless you chose "never ask"; the tweeter's 1 kHz floor, the level limits and your limits profile always apply. Only
-  you can keep a tune whose verify did not pass. (WP MCP5)
-- The speaker layout's banner says a layout was "set outside this app (a configuration file or another app)" instead
-  of claiming a configuration file brought it. (WP MCP5)
-- AI agents can set the volume of a whole room or zone of an installation (each unit's limits still hold; louder asks),
-  open a DSPi the console already knows (on USB, listed by a connected hub, or opened before) and close a tab they
-  opened, read a hub's schedule, and for a measurement choose one of your microphone calibrations and target curves and
-  a lower level limit, never a higher one. Finding the low end on a headphone coupler uses the headphones' lower levels.
-  An agent reverts only a tune it applied itself. (WP FEAT2)
-- **AI agents know where the sound comes from.** They are told that a DSPi has no player and plays what its input
-  receives, and which input is in use. A new read-only tool, `dspi_get_host_audio`, tells them whether each open DSPi
-  is an output of the computer the console runs on, whether it is the default output, its format, which apps play to
-  it and the system volume (PipeWire or ALSA on Linux, Windows audio, Core Audio on macOS). It never changes the
-  default output; the agent tells you how. When the system cannot be read, the agent hears "unknown" and why.
-  (WP FEAT3)
-- AI agents have a manual page, docs/manual/ai-agents.md: the configuration for Claude Desktop, Claude Code, Cursor and
-  VS Code (with the token kept out of your shell's history), what is asked, what agents can never do, and undo. The
-  agents' endpoint follows MCP 2026-07-28 more closely (its error codes for a missing `_meta` and a contradicting header;
-  `initialize` and `ping` are not modern methods; resources say how long they may be kept), checked against the
-  official MCP conformance suite in both protocol versions. (WP MCP6)
-- **A zone's source routes, and agents can set it up.** Choosing a zone's source in the installation now gives every
-  unit of the zone on the audio link the source's channels as its slots (it was a label); a slot or channel clash is
-  refused. Saving stores it; the units play it once the audio link is aligned. A scene can switch a zone's source (a
-  `source` action): recalled, the hub stores it and writes the zone's units' slots at once. The installation can also
-  describe where its programme comes from (which computer, box or service feeds which unit input or sender channel).
-  AI agents make these in their installation draft (`dspi_installation_set_source`, `_set_zone_source`, `_set_slots`,
-  `_set_scene`, `_set_programme`); saving follows the confirmation setting, and the agent is told what is live and what
-  is stored only. The forms in Qt and the web follow. (WP FEAT1)
-- Modern's Equaliser: three pages. **PEQ** has the channel in one strip over the graph (name, Enabled, input mix, gain,
-  delay, mute, polarity, limiter; an input's link and preamp), a label on the graph with the selected band's values, the
-  RTA, Phase, All Curves and pop-out switches in the graph's corner, and a denser band table. **Crossover** has every
-  output's curve over one table of all high and low passes, and the selected output's four bands. **Delay & Gain** has
-  every output's gain, delay, distance (343 m/s; typing one sets the delay), arrival bar, polarity, mute and limiter. An
-  **inspector** at the right has the selected band with every shape laid out flat, and the channel: what an input feeds,
-  or an output's crossover, limiter and Linkwitz Transform. Under 1280 px it is folded away and opens over the page.
-  Settings › Appearance shows or hides it, and puts the band bar under the graph for those who want it. (WP LAY4)
-- Modern's Overview, Routing, Effects and Analyse. **Overview** has the device, its effects (choose one to open its page)
-  and its connection over the channel cards; a card opens its channel on the Equaliser. **Routing** has the inspector
-  beside the matrix: an output's header or an input's label selects it. **Effects** has a dot on each tab that says
-  whether the effect is on, and the signal chain beside the page, in the order the DSPi runs it, with a switch for each
-  effect. **Analyse** marks the Signal Generator's tab while it plays and stops it from any of its pages. (WP LAY5a)
-- Modern has neutral grey surfaces; Settings › Appearance offers Darker grey. Classic's colours are unchanged. (WP LAY4)
-- A value typed into a gain, delay or preamp field with Enter is kept when the field is left. Before, leaving the field
-  could put the earlier value back. (WP LAY4)
-- Modern layout: the actions are where they act. A right-click on a channel, a band (its row or its dot on the graph), the
-  graph or a preset slot opens its menu (on the first three the menu key too): rename, copy and paste, mute, identify, routing, headphone
-  profile and Clear PEQ on a channel; shape, slope, bypass, invert, copy and paste of one band, and reset on a band or
-  the selected bands; add a band here, the selection, spectrum, phase, pop-out and settings on the graph; recall, save,
-  rename, startup preset, copy and clear on a slot, also in the preset picker's list. Undo has a ▾ with the recent
-  changes and History. The app button's menu holds only the global actions (files, settings, help, quit). A device tab's
-  Close is greyed while a firmware update or a core voltage calibration runs there, with the reason. (WP LAY3b)
-- In Modern, Window > System… has **Open in tab** on each unit of the hub (**Show tab** when it is open). Measure ›
-  Several units measures a unit that is open in a tab through that tab's connection instead of opening a second one;
-  a unit that is not open gets a connection of its own while it is chosen, and cannot be opened in a tab meanwhile (it
-  says why). A change refused on a device that is not the one shown (a limit, the lock) is now a notice that names
-  that device. Leaving Modern keeps the other devices open: Classic shows the active one and lists the others under
-  Open devices, and back in Modern their tabs are there. (WP XDEV1)
-- In Modern, **Ctrl+K** (or the search in the top bar) opens the command palette: type to find any menu command, page,
-  channel, setting or other open device, and press Enter to run or open it. Each row shows where it is and its shortcut;
-  a setting is found by its own label ("line width"). The search no longer opens Settings itself. (WP LAY6)
-- The Interrupt Monitor clears with **Ctrl+L** instead of Ctrl+K, in both layouts. (WP LAY6)
-- Modern: Measure, System and Settings have their parts as tabs of the page (Settings: Application, Display, Device and
-  Control; its search still finds every page). Library has **Presets** (every slot, with Recall, Save and the slot's
-  menu) and **Files** (the filter and configuration files, files without a device, the templates). Devices is This
-  Computer, Hubs and Firmware; a hub's PIN, and pairing again after its key changed, are asked on the Hubs page, which
-  also shows the hub's key and your role. System › Installation offers "Open in tab" for each unit. A window opened from
-  a page starts on the same part; closing a Measure window in Modern stops the measurement of the device shown, and
-  "Show Here" stops none. (WP LAY5b)
-- Window > System… › Installation: after "changed elsewhere" and Reload, **Make Them Again** makes the changes that were not
-  saved again on the installation as it is now. (WP LAY5b)
-- Modern's **AI** button shows the state (off, waiting for an agent, an agent connected, paused, or something to answer) and
-  opens a popover: the switch, which agents are connected with **Disconnect**, their latest changes with Undo, Pause, and
-  the way to the activity and Settings › AI Agents. The confirmation sheet says what kind of change it asks about
-  ("Louder", "Saved on the device", "Every unit"). (WP LAY8)
-- A measurement holds every output to the strictest of the role asked for, your confirmed speaker layout's and what its
-  filters show, one unit or several. Auto-tune's table follows a Confirm without Reload, and Several units starts from each
-  unit's own layout. (WP RCFIX)
-- Quitting, or closing the main window, asks first while a firmware update or a core voltage calibration runs on any
-  open device, shown or not. A second quit or close while a question is open says so, instead of doing nothing. (WP LAY7)
-- A measurement an AI agent starts brings up the device it runs on (unless something runs on the one shown) and
-  Measure's fitting tab: Measure, Auto-tune or Several units. (WP LAY7)
-- Modern: menus and the command palette follow what changes while they are open; what is off (a disabled output, an Off
-  band) is dimmed no further than can be read; the rail scrolls to the section the keyboard is on; menu rows have
-  names for a screen reader; an agent's change keeps the keyboard on its Undo. (WP LAY7)
-- Several units: a unit can be chosen again right after it was unchosen. Measure chooses its outputs again when a DSPi
-  that had none (an audio link sender) has outputs again. Classic names which of several open demos it shows. (WP LAY7)
-- AI agents: a preset load refused for a tweeter's protection leaves the device on the preset it was on, so a Save cannot
-  overwrite the refused one; "undo" takes back the agent's newest whole call and says what it could not undo. The preset
-  box follows the active preset after a save or a rename. (WP FUNC2b)
-- AI agents under an installer's limits profile: a preset load says what the profile held of the preset; the installer
-  lock's refusal says what still passes (mute, volume, preset load) and where to unlock, never the PIN. The question
-  before an agent's preset load no longer promises an undo. A sub is never a tweeter's measurement reference while a
-  midrange is there. (WP FUNC2c)
-- Loading a preset yourself is guarded as an agent's load is: with a confirmed tweeter or midrange (and the master volume
-  kept apart from presets) the device is silent while the preset loads, a tweeter or midrange the preset leaves without
-  its high-pass is muted, and the volume comes back; a notice says what was muted, or that the volume could not come back.
-  (WP INTI; the web console too)
-- AI agents: a permission to play test signals belongs to the agent's pairing (it survives a reconnect within the 10
-  minutes) and covers that one device: a measurement across several units of a hub is asked each time. A hub scene that
-  loads presets is judged as an agent's preset load (refused on a unit this app does not have open or that saves the
-  master volume with each preset; a unit whose tweeter would lose its protection is put back). A stored preset that
-  raises the level of a tweeter you left without its high-pass is refused, as is an EQ boost on it. An agent names a
-  preset in the save and saves several devices at once: one question. The screen does not follow an agent while a click
-  or a key is under way. (WP INTI)
+One version for every client but the Swift app: the Qt desktop app (Windows, Linux and macOS), Android (versionCode
+15), the Terminal (`uconsole`), the web console and the hub. The Swift app for macOS, iPhone and iPad is still
+deferred. The firmware is unchanged: the fork's v1.1.6-bofr1, as for 0.14.0. Everything below was merged after the
+0.14.0 release (tag `v0.14.0`, `7d681a73`, 2026-11-20) up to 2026-11-26. The release notes are
+`CHANGELOG-0.15.0.md`; they also say what was tested where, and the known limits.
 
-### Android
-- DSPi Link is reachable from the main page (owner report on 0.14.0: only through the settings
-  cogwheel). With no DSPi connected, the strip under the top bar says "No DSPi connected. Plug one
-  in over USB, or connect over DSPi Link." and shows **Connect over DSPi Link** (opens Networking,
-  the same page as Settings › Networking) and **Try the demo**. The device list always offers
-  "DSPi Link…", with DSPi Link off too. DSPi Link stays opt-in: it is turned on only with
-  Networking's switch; hubs are listed only while it is on. (WP ANLINK)
-- The volume buttons change the DSPi's User Volume (the Home "User Volume" slider) while the app
-  is in front and a DSPi is the current device (USB, DSPi Link or the demo): 1 dB a press, held to
-  repeat, -60 to 0 dB. The slider moves; elsewhere a short "User Volume" note replaces Android's
-  volume panel. The mute button toggles the User Volume's mute. With no DSPi, a read-only
-  connection, or the app in the background, the buttons change this device's volume as before.
-  On by default; Settings › Advanced › Volume Buttons turns it off. (WP ANVOL)
-- An unencrypted DSPi Link connection is no longer a red strip: it is amber (a warning tone with WCAG AA contrast in
-  light and dark), still ends in "(unsecured)" and keeps its info button. The info dialog offers "I understand, don't
-  highlight this hub" (on a phone also the strip's overflow menu): that hub's strip then has the normal colours, with
-  the words and the info button kept. The choice is remembered per hub (its id, and for a hub added by address the
-  address), dropped when the hub is next seen encrypted or a different hub answers at that address, and can be undone in
-  the info dialog or in Settings › Networking › Acknowledged Unsecured Hubs (per hub or Forget All). The lost-connection
-  banner stays red. (WP ANSEC)
-- On a phone, a long hub or device name no longer pushes "(unsecured)" out of sight; the name is shortened instead.
-  (WP ANSEC)
-- Settings › Networking no longer says all DSPi Link traffic is unencrypted: DSPi Link connections to a uConsole for
-  DSPi hub are encrypted and pairing pins the hub's key; those to Weeb Labs' DSPi Console or a DSPi bridge are not.
-  The privacy policy and the Play description say the same. (WP ANSEC)
-- The strip under the top bar is thinner: 36 dp instead of 56 dp on one line (68 dp instead of 100 dp for a phone's
-  "No DSPi connected" with its two actions). Its buttons are drawn smaller (32 dp high); each still reports a 48 dp touch area, though a tap right on a neighbouring button goes to that button. (WP ANBAR)
-- The strip's colours are the app's own instead of Material's default pink: a calm blue for DSPi Link, a warm grey for
-  the demo and an open preset file, a cool grey for an acknowledged unsecured hub; the unsecured warning stays amber.
-  Text and icons have WCAG AA contrast (4.5:1 or more) in light and dark, also on the USB strip, whose text was a
-  light grey. (WP ANBAR)
-- The accent blue is a shade per theme so it is readable as text everywhere (WCAG AA, 4.5:1): #005AC2 in light
-  (was #007AFF), #64AEFF in dark with dark navy text on filled accent buttons, chips and switches. Selected pills and
-  tiles have a fainter blue fill so their blue text stays readable. Every Material colour role is now the app's own,
-  so no Material lavender or pink remains (slider tracks, the active preset row, Settings' selected page, menus,
-  dialogs, snackbars). (WP ANBAR)
+### Layouts (desktop)
+- A second layout, **Modern**: a rail of sections (Overview, Equaliser, Routing, Effects, Measure, Analyse, Library,
+  System, Devices, Settings), every tool a page with tabs that can also open in a window of its own, the open devices
+  as tabs at the top, the volume, meters, Mute and Bypass EQ in a dock, and no menu bar: actions are where they act
+  (right-click a channel, a band, the graph or a preset slot; the menu key too), and every keyboard shortcut works.
+  Limiting states show in a strip under the top bar; other notices are behind the bell.
+- Settings › Appearance switches between Classic and Modern at any time (the device, the selected channel and open
+  tool windows stay), sets the theme (system, light or dark) and arranges Modern (a darker grey, the inspector, the
+  band bar under the graph). **New installs start in Modern**; an install whose Getting Started was finished keeps
+  Classic. While a measurement runs, the layout is not switched.
+- **Ctrl+K** (or the search in the top bar) opens the command palette: any menu command, page, channel, setting or
+  open device, with where it is and its shortcut. The Interrupt Monitor now clears with **Ctrl+L**.
+- Modern's Equaliser: **PEQ** (the channel in one strip over the graph, the selected band's values on the graph),
+  **Crossover** (every output's curve over one table of high and low passes) and **Delay & Gain** (gain, delay,
+  distance at 343 m/s, arrival bar, polarity, mute and limiter of every output). An **inspector** shows the selected
+  band with every shape laid out flat, and the channel: what an input feeds, an output's crossover, limiter and
+  Linkwitz Transform. Under 1280 px it opens over the page.
+- Modern's **Overview** has one card per channel (its speaker's name and role, a small response, its level, its
+  chips); **Routing** has the matrix with its inspector; **Effects** marks each effect that is on and shows the signal
+  chain in the DSPi's order with a switch per effect; **Analyse** marks a playing Signal Generator and stops it from
+  any of its pages; **Measure**, **System** and **Settings** have their parts as tabs; **Library** has Presets,
+  Snapshots, History, Files and AutoEQ; **Devices** has This Computer, Hubs (the hub's key, your role, PIN and pairing
+  again) and Firmware.
+- Modern's **AI** button shows the agents' state and opens a popover with the switch, the connected agents, their
+  latest changes with Undo, and Pause.
+- Undo has a ▾ with the recent changes and the History.
+
+### One design language
+- Modern and the web console follow `docs/DESIGN-LANGUAGE.md`: surfaces told apart by tone instead of outlines (the
+  focus ring stays), the accent only for on, chosen and the one main action, notices with a tint and an edge,
+  floating menus and popovers with a shadow, forms at the left and at most 760 px wide, shared empty states, list and
+  form rows, and graph axes with their labels inside the plot. Neutral grey surfaces, with Darker grey as an option.
+  Classic's look is unchanged.
+
+### Matrix mixer
+- Redrawn, on the Routing page and in the Matrix window (both layouts) and in the web console: fixed tiles with the
+  gain and polarity, dots for empty cells, "From inputs / To outputs" in the corner, column footers (gain, delay, fed
+  by), Enabled and Mute in each column's header, sticky headers, and a dense grid (chosen, or past 12 outputs).
+- Full keyboard: arrows, Home/End, Page Up/Down, Space, Enter or digits (typing "-6" on a cell is −6 dB), + and −
+  (Ctrl for 3 dB), I, M, E, Delete, Shift+F10 and Escape; a menu per cell.
+- **Link L/R pairs** (off by default, kept per device) mirrors an edit to the pair's other crosspoint as one undo
+  step; **Direct 1:1**, **Clear** (asks past four crosspoints) and **Dense** as tools.
+
+### Presets
+- Modern's top bar has one preset button: a popover with every slot (Active, unsaved, Startup), Recall, Save, Copy
+  Here and the slot's menu; Up and Down load the next slot, Enter or Space open it. The web console has the same.
+- Loading a preset yourself is guarded when your speaker setup has a confirmed tweeter or midrange and the master
+  volume is kept apart from presets: the device is silent while the preset loads, a tweeter or midrange the preset
+  leaves without its high-pass is muted, and the volume comes back; a notice says what was muted (desktop and web).
+
+### Several devices at once
+- Modern opens each DSPi you choose (USB, a hub's unit, the demo) in a tab of its own; each tab keeps its device's
+  edits, pages, history, drafts and running measurement. Closing a tab asks about that device's unsaved changes;
+  quitting asks about each, and asks first while a firmware update or core-voltage calibration runs on any of them.
+- Classic shows one device and lists the others under Open devices; the tabs are there again back in Modern. Window
+  > System… has **Open in tab** for each unit of a hub.
+- Choosing another device stops what plays on the one left: the Signal Generator (faded), a measurement or the live
+  view; an auto-tune not kept goes back.
+- Measure › Several units uses a unit's open tab; a refusal on a device not shown is a notice naming that device.
+- Web console: device tabs, each coming back at the page it was left at; a DSPi is open once (a second way to the
+  same unit shows the open tab).
+
+### Speaker setup
+- **Settings › Speakers** and a Speakers step in Getting Started: which output drives what (full range, sub, woofer,
+  midrange, tweeter), pre-filled from the filters and routing, kept per device, **Confirm** to keep it. The web console
+  has the same page, kept in the browser per DSPi. Measure starts from it and shows a banner while it is not confirmed
+  or came with an imported configuration ("set outside this app").
+- **Detect…** plays quiet sweeps on each output with the Measure microphone (above 1 kHz at most −24 dBFS; below 1
+  kHz only on an output that is no tweeter, at most −50 dBFS and down to 157 Hz; only a driver still flat at 177 Hz,
+  whatever the floor, is swept on down to 20 Hz at most −24 dBFS, never under the limits profile's high-pass minimum), with a warning first and
+  **Stop**. A detected setup says "Detected, not confirmed"; each row has a marker (detected, uncertain, nothing heard,
+  off, you, suggested) with its reason, and **Show Details** lists the evidence. A role you correct is yours.
+- A measurement holds every output to the strictest of the role asked for, your confirmed setup's and what its filters
+  show, one unit or several: a tweeter without a crossover yet is never played below 1 kHz, and a tweeter's
+  measurement starts no lower than your limits profile's high-pass minimum for it. A sub is never a tweeter's
+  measurement reference while a midrange is there.
+- A layout kept but not confirmed is named on the main screen (Classic's banners, Modern's strip).
+
+### AI agents (desktop app)
+- **Settings › AI Agents** (off until you turn it on): an AI agent on this computer (Claude Desktop, Claude Code,
+  Cursor, VS Code and other MCP clients) can read the open devices and change them. It listens on `127.0.0.1` and
+  `[::1]` only (port 47860); from another computer, through SSH (`docs/mcp-ssh-forwarding.md`). Each agent program is
+  paired once with a code, or uses a token made for it; removing a client stops its token. The agent starts the app
+  with `--mcp`, or `uconsole mcp`, which relays to the running app. The endpoint follows MCP 2026-07-28 and the
+  earlier version, checked against the official conformance suite. User manual: `docs/manual/ai-agents.md`.
+- **Questions**: "About risky changes" (the default: louder, unmute, a preset or snapshot, a flash write, the input
+  source, a tweeter's protection, test signals, every unit of an installation), "About every change", or "Never".
+  Test signals are asked once per device: **Allow** covers that agent's measurements there for 10 minutes, shown with
+  the time left and **Revoke**; it belongs to the agent's pairing and to that one device. An agent's save asks one
+  question that names the preset, one for several devices.
+- **Hard rules, under every setting**: a tweeter in your setup (confirmed, detected or stated in your words), and any
+  output whose high-pass is at 1 kHz or above, keeps a high-pass of at least 1 kHz (or the profile's higher corner),
+  12 dB/octave or steeper, whenever it can play; a midrange is held at 80 Hz; each change is judged on the state it
+  leaves. A tweeter you left playing without a high-pass may be turned down by an agent, never up (gain, volume, a
+  route, an effect, an EQ boost, a preset). Agents never update firmware, enter the bootloader or factory reset, change
+  the limits profile, PIN or lock, hardware or core-voltage settings, play the signal generator or Identify, pair or
+  administer hubs, delete presets, snapshots or measurements, send raw commands or touch files by path. An installer's
+  lock tells the agent what still passes and where to unlock, never the PIN.
+- **Presets**: an agent's load is silent while the app checks it, and is put back if it would leave a tweeter
+  unprotected; a refused load leaves the device on its preset. No agent preset loads on a device that saves the
+  master volume with each preset. A hub scene that loads presets is judged the same way.
+- **What you see**: a strip under the top bar (both layouts) names the agent, what it does and where, with Pause and
+  Stop; the AI button, Classic's robot icon and the tray icon show that it works; its changes are marked with a
+  notice and **Undo**, listed in the activity (Device › AI Agents…) and tagged **AI** in the History. The screen
+  follows its work (device tab, page, Measure), never while you drag, type or have a dialog open. A question about
+  another device brings its tab to the front.
+- **When you step in** the agent is told with its next call: what you changed, undid, loaded, opened, stopped or
+  paused. A control you take back is refused to it until it asks; a change you make while its measurement runs stops
+  it; after Stop, it is told you stopped it. **Undo** takes back the agent's newest whole call.
+- **Measuring**: an agent can check and start a measurement, find an output's low end, propose, apply and verify an
+  auto-tune, and measure several units. Measure runs it with your microphone ("Requested by AI · name"); one
+  microphone, so it waits while anything else measures. Roles come from your speaker setup. Loudest measurement:
+  85 dB SPL by default (60 to 95, with a dB SPL calibration), and never above −12 dBFS at a speaker or −30 dBFS on
+  headphones; an agent may choose your calibrations and targets and only lower the limits. It keeps a tune only
+  after a verify that passed.
+- **Roles from your words**: one question shows the whole table, your words quoted; an output not named is treated as
+  a tweeter; over a confirmed setup only when your words say what changed. Before a test signal below 1 kHz on an
+  output your words made a midrange, woofer, sub or full range, its top end is checked; one that behaves like a
+  tweeter is held as one ("tweeter-like"). Under Never: Settings › AI Agents › **Agents may set speaker roles from my
+  words** (off by default).
+- **Detection by an agent**: on a device nobody set up, with the same sweeps and one question; refused on a confirmed
+  setup; an output where nothing was heard may not be routed, switched on or unmuted by an agent. Under Never:
+  **Agents may detect speakers** (off by default).
+- Agents can also: set a room's or zone's volume (each unit's limits hold; louder asks), open a DSPi the app knows
+  and close a tab they opened, read a hub's schedules, edit a hub's installation in a draft of their own (sources,
+  zone sources, slots, scenes, programme sources; saving follows the questions setting), and read this computer's
+  sound settings (`dspi_get_host_audio`: whether a DSPi is an output, the default, its format, which apps play to it,
+  the system volume; PipeWire or ALSA, Windows audio, Core Audio). They never change the computer's sound settings.
+- Settings › AI Agents also has the USB devices agents may open (remembered), the loudest measurement, and the
+  activity. Every number an agent reads or gives counts from 1, as on the screen.
+
+### Installation setup on a hub
+- **System › Installation** (Window > System… in Classic; the web console's System screen in the Installer mode):
+  the units the hub sees and has not placed (**Join**: name, room, role, what feeds it); each unit's name, room, role
+  and feed; senders and fan-outs, rooms, zones and groups; an S/PDIF source and the outputs it sends its time base on.
+  The hub's checks show on the field; Save lists what changes and needs the hub's Admin role; if someone saved
+  meanwhile, nothing is overwritten and **Make Them Again** redoes your changes. A hub without an installation can get
+  its first one there.
+- The audio link's sources (a sender's channels), what each zone plays (every unit of the zone on the link takes the
+  source's channels as its slots; a clash is refused), a unit's own slots, scenes with actions (a `source` action
+  switches a zone's source at once), and programme sources (which computer or box feeds which input). Before Save, a
+  notice names the units whose hand-made slots a zone's source replaces; after Save, **Align** is offered.
+- The System view sets a room's or zone's volume unit by unit, asking first when one gets louder.
+- Settings › This Computer shows whether each open DSPi is an output of this computer, the default or not, its
+  format, what plays to it and whether the system volume moves it.
+
+### Outputs nothing plays to
+- An output no input is routed to is "unused": the views that only show leave it out (the Overview's cards, the
+  meters, the spectrum's chooser, Stats, Measure's live view; Android's Home, Spectrum and Stats; the Terminal's
+  Overview, Spectrum and Stats; the web's signal chain), and the views that edit it name it "3 · None" unless you
+  named it. The Equaliser's channel list, the History, Measure and an agent's notices name outputs as the Overview does (by
+  their speaker, where the setup names one).
+- An unused output that the signal generator, a measurement or Identify plays on keeps its meter, its spectrum entry
+  and its Stats rows while it plays, in every client.
+
+### Desktop (Qt), other changes
+- Tool windows take the height their content needs (never less than their usual size, no more than the screen's) and
+  scroll only beyond that; a size set by hand stays while open. Crossfeed opens at 780×586 instead of 780×470.
+- Classic: clicking or tabbing into a number selects it; the "Filter Response" heading is gone; an output's control
+  strip is one row on a wide window (in the name row from about 1600 px); the minimum height is 660 px (was 780), so
+  the window fits a 1366×768 screen.
+- A name with markup in it is shown as written. Graph axes read "0", not "+0". Measurement refusals, device events
+  and History rows (one row per measurement) are in plain words. On a Linux desktop Qt has no theme for, the file
+  dialogs are the system's (the portal's).
 
 ### Web console
-- The Installation tab sets up sources, what each zone plays, a unit's slots, scenes and programme sources, with the
-  notice of replaced hand-made slots and Align after Save, as the desktop's; the System view sets a room's or zone's
-  volume. A strip on every screen and an AI mark on the device's tab show when an AI agent works on the hub's devices
-  through another console. (WP FEATUI)
-- The screen follows an AI agent of another console: the device it works on and the page of what it changes, never while
-  you drag, type or have a dialog open, at most every few seconds; the strip shows its permission to play test signals
-  with the time left. (WP ODEC)
-- The Modern layout. The sections (Overview, Equaliser, Routing, Effects, Measure, Analyse, Library, System, Devices,
-  Settings) are in a rail on the left, and each section's pages are tabs beside its title. A row of device tabs along
-  the top holds the open devices, with how each is reached, its state and an unsaved mark; + opens another, and
-  closing a tab asks about unsaved changes first. Each device comes back at the page it was left at. Above the pages:
-  the preset picker, Undo and Redo, Save to device. Below them, on every page: the input source (new on the web), the
-  volume with Mute and Bypass, and the meters. On a narrow screen the rail is a row. (WP WEBM1)
-- A DSPi is open once: another entry for a DSPi that is already open (over USB and through a hub, or through two hubs)
-  shows the open one and says so, rather than making a second session. (WP WEBM1)
-- Web console: the Equaliser has PEQ, Crossover and Delay & gain tabs. Crossover draws every output's curve and sets
-  each output's high and low pass in one table; Delay & gain sets every output's gain, delay or distance, with arrival
-  bars for time alignment, mute and the limiter. An inspector beside the page shows the chosen band (a shape grid and
-  its values) and the chosen channel: what an input feeds and its headphone profile, an output's crossover, limiter and
-  Linkwitz Transform. It can be hidden, and stacks under the page on a narrow screen, where the band bar stays under
-  the graph. The chosen band's values show on the graph by its dot. (WP WEBM2)
-- Web console: a page's parts are tabs beside its title. Effects has one tab per effect with a dot that shows
-  whether it is on, Measure's tabs moved up there, and each device tab comes back to the part it was left at.
-  Library has a History page with this connection's changes, newest first, and Undo and Redo. Settings lists its
-  pages by group beside the page. The Installation tab also shows in the Advanced mode, and edits an S/PDIF
-  source and the outputs it sends its time base on, groups of units, and the source a new zone plays. Measuring
-  several units uses a unit's open tab rather than a second connection to it. (WP WEBM3)
-- Web console: Ctrl+K (Cmd+K on a Mac), or Search in the top bar, opens the command palette. Type part of a name to find
-  a command, a section or page, a channel, a Settings page or another open device; each command shows its shortcut, and
-  one that cannot be used now is listed greyed with the reason. Right-click (or the menu key, or Shift+F10) on a channel,
-  a preset slot, a device tab, a band or the EQ graph opens its menu. The app menu, these menus and the palette use the
-  desktop app's words and groups. The bell in the top bar opens the notifications: what waits on each open device, and
-  what was said earlier. Settings › Appearance puts the sections in a rail or in tabs along the top, the device tabs in
-  the top bar or at the top of the rail, sets the theme (system, light or dark) and shows or hides the inspector; this
-  browser keeps the choice. (WP WEBM4)
-- The System screen has an Installation tab in the Installer mode on a hub. It lists the units the hub sees that
-  are not in the installation, with Join (name, room, role and what feeds it), and edits each unit's room, role and
-  upstream, the rooms and the zones. The hub's own check runs as you edit and shows a problem where it is; Save lists
-  what changes and needs the hub's Admin role. If someone else saved meanwhile, nothing is overwritten: the tab reads
-  the installation again and offers to make your changes again on it. A hub with no installation can get its first
-  one here. (WP INSTW)
-- Settings › Speakers says which output drives what (full range, sub, woofer, mid,
-  tweeter), suggested from the filters and confirmed by you. The Measure setup starts from it,
-  and a way, speaker or group changed there is saved to it. A banner on both says when the
-  layout is not confirmed, or came with an imported configuration and needs checking. The
-  browser keeps it per DSPi. (WP ROLEW)
-- The speaker layout's banner says a layout was "set outside this app (a configuration file or another app)" instead
-  of claiming a configuration file brought it. (WP MCP5)
-- A measurement holds every output to the strictest of the role asked for, your confirmed speaker layout's and what its
-  filters show: a tweeter that has no crossover yet is never played below 1 kHz. (WP RCFIX)
-- Web console, Modern layout: on a phone's width the top bar's buttons, menu rows, page tabs and the drawer's close are
-  44 px tap targets; a device tab shows its device's name with an ellipsis rather than a clipped start, and Search is in
-  the app menu there. Settings › Appearance › Inspector takes effect at once. Menus and the palette show only shortcuts
-  the web has (no Ctrl+Shift+H for History), and in Simple mode Open File… and New from Template… say they go to the
-  Devices page. Measuring several units no longer fails on a unit whose tab was closed: it opens its own connection.
-  (WP WEBM5)
+- The Modern layout (the web's only one), laid out as the desktop's Modern page by page: one top bar (app menu,
+  device tab, presets, search, Undo, Redo, Save to Device, the bell), device tabs, the rail (or tabs along the top),
+  and the dock (input source, volume with User and Master, Mute, Bypass EQ, meters). Overview, Equaliser (PEQ,
+  Crossover, Delay & Gain, Inputs, the inspector), Routing (the new matrix), Effects with the desktop's graphs and
+  gauges, Analyse (Spectrum, Signal Generator, Stats), Measure (Measure, Results, Live, Auto-tune, Documents, Several
+  units), Library (Presets, Snapshots, History with Undo and Redo, Files, AutoEQ), System (Units, Clock and Links,
+  Installation, Events), Devices, Settings (by group, with search) and Control Surfaces.
+- Ctrl+K (Cmd+K on a Mac) opens the command palette; a right-click (or the menu key, or Shift+F10) opens a channel's,
+  preset slot's, device tab's, band's or the graph's menu; the bell opens the notifications. Settings › Appearance
+  places the sections and device tabs and sets the theme; the browser keeps it.
+- On a phone's width: 44 px tap targets, device names shortened with an ellipsis, Search in the app menu.
+- Settings › Speakers, Detect…, and the stated and detected roles, as on the desktop.
+- When an AI agent of a desktop app works on a hub's device: a strip on every screen, a mark on the device's tab, its
+  test-signal permission with the time left, and the screen following its work.
+- A number field writes only what you typed, and reads a decimal comma, "−" and a unit. The installer's limits and
+  the signal generator's decimal fields are text fields.
+- Not yet on the web: Settings › Updates, Networking, AI Agents and This Computer; Devices › Hubs and Firmware; the
+  EQ's phase view; the crossfeed pair map.
+
+### Android
+Changes since 0.14.0 (versionCode 14 on Google Play):
+- The volume buttons change the DSPi's User Volume while the app is in front and a DSPi is the current device: 1 dB a
+  press, held to repeat, −60 to 0 dB; the mute button toggles its mute. Settings › Advanced › Volume Buttons turns it
+  off (on by default). Otherwise the buttons change the phone's volume as before.
+- DSPi Link from the main page: with no DSPi connected, the strip says so and offers **Connect over DSPi Link** and
+  **Try the demo**; the device list always offers "DSPi Link…". DSPi Link stays off until switched on.
+- Reconnect to the last hub at app start (Settings › Networking, on by default), and a faster DSPi Link start,
+  above all to a DSPi bridge (fewer round trips; start-up reads no longer hold up a tap).
+- An unencrypted DSPi Link connection is amber instead of red, still "(unsecured)"; "I understand, don't highlight this
+  hub" gives it the normal colours, per hub, undone in the info dialog or Settings › Networking › Acknowledged
+  Unsecured Hubs. A long name no longer hides "(unsecured)" on a phone.
+- Settings › Networking, the privacy policy and the store description say which DSPi Link connections are encrypted
+  (to a uConsole for DSPi hub) and which are not (to Weeb Labs' DSPi Console or a DSPi bridge).
+- The connection strip is thinner (36 dp) and in the app's own colours; the accent blue is a shade per theme readable
+  as text (WCAG AA); no Material lavender or pink remains.
+- Unused outputs are left out of Home, its meters, the Spectrum chips and Stats.
+- A number field and the compact editor write only what you typed.
+- `android.hardware.wifi` is no longer required (Wi-Fi is only for DSPi Link), and the in-app privacy link points at
+  this repository.
+
+### Terminal
+- `uconsole mcp`: the AI agents' stdio relay to the running desktop app, one token per agent program (`--port`).
+- Unused outputs are left out of the Overview grid, the Spectrum chooser and Stats; the side bar names them "None".
+- `uconsole measure` takes the roles from the device's speaker setup.
+
+### Hub and DSPi Link
+- The installation keeps sources, zone sources (they route: the units' slots follow), scenes with a `source` action,
+  and programme sources; the hub checks them as it checks the rest.
+- The hub tells every console when an AI agent works on one of its devices.
+- A hub once met encrypted is dialled encrypted only, until it is paired again or forgotten; a hub known to answer
+  without encryption is dialled without the TLS try first.
+
+### Fixes
+- **A user's report on 0.14.0**: a number typed into a gain, delay or filter field went back to the old value when you
+  clicked another field after Enter (the main window and the matrix): now Enter and leaving both keep what you typed,
+  Escape drops it, and a decimal comma or point, "−" and a unit are read. The preset box showed the first preset while
+  another was active (after a change, Save, Copy to, Rename), and the source box after a rename.
+- Number fields in every client write only what you typed; tabbing through a field no longer writes its rounded text
+  back.
+- **Preset copy**: the web console's Copy to… on a stored preset overwrote that preset with the live settings. Copy
+  is from the active preset only, and the core refuses any other source.
+- Tool windows no longer show a scroll bar for content that fits (Headphone Crossfeed).
+- The core names the crossfeed preset "Jan Meier", as the desktop app does.
+- Terminal: Preset › Copy to… could overwrite preset 1 when the device did not say which preset was active. Copy to…,
+  Save, Rename, Set as Default and Clear wait until the active preset is known; Copy to… reads it again right before
+  its first write and refuses a mismatch by the core's rule. An active slot of 10 or more counts as unknown.
+- Speaker detection: a raised floor (an agent's `floor_hz`, the limits profile's high-pass minimum) moved the gate of
+  the sweep down to 20 Hz up with it. Now the quiet sweep goes on to 177 Hz first whatever the floor, the sweep to
+  20 Hz never goes below the profile's minimum, and an output whose top end was never heard is swept at the quiet
+  level. The question, the warning and Settings › AI Agents say exactly that.
+- Agents read from 1 the numbers still from 0: `dspi_preset_copy`'s result, the copy refusal and "did not confirm",
+  `dspi_get_limits`' outputs, an installation's speaker, upstream and fan-out outputs (taken from 1 too); an unknown
+  preset slot reads null, not 256; the guide names the documents that keep their file's 0-based fields.
+- Web: Auto-tune and Several units show the core's refusal words; Settings › Speakers names each output once; the
+  Spectrum's bars no longer cover their dB scale.
+- Desktop: a channel has one name on a page (Delay & Gain, the Crossover table and the Spectrum chooser say "Centre
+  woofer" as the Equaliser does; Settings › Speakers, Events and an agent's question "Out 1 (Centre woofer)").
+- Events: a connection says how it came ("Connected to the demo", "over USB", "through a hub"), not "over fake".
+- The relay, the endpoint's texts, `uconsole mcp` and the AI agents manual name the app "uConsole for DSPi".
+
+### Integrators
+- Additive C ABI: `dspi_core_set_*` (one core per open device with one shared hotplug scan), `dspi_mcp_*` (the agents'
+  server), `dspi_speaker_layout_*`, `dspi_installation_*`, `dspi_revert_entry`, `dspi_preset_load_notice`,
+  `dspi_system_volume_plan`/`_set`, `dspi_measure_rolloff_*`; nothing removed (`crates/dspi-capi/include`).
+- The output label carries `unused` and `hidden` (unused and no test signal playing on it; UniFFI record, the C ABI's
+  and the web's JSON), an unused output with its default
+  name is labelled "N · None", and `output_cards` leave unused outputs out.
+- A preset copy whose source is not the active slot is refused as an invalid argument before its token is spent.
+- Every history entry has an actor (`id`, `actor`, `actorLabel`); undo by entry id.
 
 ## 0.14.0 (2026-11-20)
 

@@ -17,7 +17,7 @@ out=${1:?usage: build.sh <out-dir>}
 mkdir -p "$out"
 B=${DSPI_BUILD_CACHE:-$HOME/.cache/dspi-build}
 branch=$(git -C "$root" rev-parse --abbrev-ref HEAD 2>/dev/null || echo detached)
-built=$B/target/${branch//\//-}-cross/wasm32-unknown-unknown/wasm-web
+built=$B/target/${DSPI_TARGET_KEY:-${branch//\//-}}-cross/wasm32-unknown-unknown/wasm-web
 profile="--config profile.wasm-web.inherits=\\\"release\\\" --config profile.wasm-web.opt-level=\\\"s\\\" --profile wasm-web"
 DSPI_PROFILE=cross "$root/ci/run.sh" "set -e
   cargo build -p dspi-wasm $profile --target wasm32-unknown-unknown --locked

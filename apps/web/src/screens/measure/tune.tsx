@@ -11,16 +11,16 @@ import { noticeRow } from "../../ui/texts";
 import type { MeasureTab, MeasureTabProps } from "./MeasureScreen";
 import { DocsTab } from "./docs";
 import { MeasureGraph } from "./graph";
-import { COUPLERS, ROLES } from "./model";
-import { RunPanel } from "./run";
+import { ROLES, displayName } from "./model";
 import { download } from "./setup";
+import { Glyph, NoticeRow } from "../../ui/design"; // -- WP WEB4 (INTD: ui/) --
+import { StepDots, Stepper } from "./parts"; // -- WP WEB4 -- -- WP WEB7 -- Stepper
 import {
   CONFIRM_MS,
   checkWords,
   feedWords,
   guardSeconds,
   issueWords,
-  layoutSetup,
   proposalSeries,
   stageWords,
   templateWords,
@@ -31,7 +31,7 @@ import {
 } from "./tune-model";
 
 const row = { display: "flex", flexWrap: "wrap", gap: "8px 14px", alignItems: "center" } as const;
-const col = { display: "flex", flexDirection: "column", gap: "10px", minWidth: 0 } as const;
+const col = { display: "flex", flexDirection: "column", gap: "8px", minWidth: 0 } as const;
 
 /** Re-render on the desks' changes, and once a second while a countdown or the second question shows. */
 function useTune(t: TuneDesk, props: MeasureTabProps): void {
@@ -67,171 +67,127 @@ export function TuneTab(props: MeasureTabProps) {
   const measuring = !!desk.state?.active;
   const busy = !!t.busy || t.running || measuring;
 
-  const place = t.place;
-  const measure = async () => {
-    // WP P5FOLLOW: never without the person's placement (the button is disabled then too).
-    if (!l || !place) return;
-    t.useMeasurement(null);
-    const on = { ...l, outputs: l.outputs.filter((o) => !t.off.has(o.output)) };
-    await desk.startRun(layoutSetup(on, t.sweepMs, desk.micDocument || desk.draft?.micDocument || "", "Auto-tune layout", place));
-  };
-
+  // -- WP WEB4 -- DL2's Auto-tune: step dots over sections without numbers, the stop bar as an info notice
+  // -- WP WEB7 -- laid out as Qt's MeasureTuneTab: the one notice while there is nothing to tune from
+  // (measured on the Measure tab, or opened on Results or Documents), the layout as Qt's columns
+  // (the core's label, Way, Speaker, a Group stepper, the feed), the options, then Propose from the
+  // Device and Propose a Tune; errors as an error notice. The tab no longer measures by itself.
+  // Qt's afterApply (the Applied section) and beforeApply (the layout: also after a revert, to tune again)
+  const after = !!st && (t.applied || st.stage === "kept" || st.stage === "reverted" || st.stage === "revertIncomplete");
+  const before = !t.applied && st?.stage !== "kept";
+  const step = after ? 2 : p || t.running ? 1 : 0;
+  const idle = !busy && !t.applied;
   return (
-    <div style={col}>
+    <div class="measure-tune measure-column">
+      <StepDots steps={["Layout", "Proposal", "Applied"]} current={step} label="Auto-tune steps" />
       {t.running && !desk.running ? (
-        <div class="banner" role="status" aria-label="Tuning" style={{ position: "sticky", top: 0, zIndex: 2, display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
-          <span style={{ flex: "1 1 12em" }}>{stageWords(st)}</span>
-          <button type="button" class="danger" onClick={() => void t.stop()}>
+        <div class="notice-row notice-row-info measure-stopbar" role="status" aria-label="Tuning">
+          <Glyph name="volume" class="notice-icon" />
+          <span class="notice-text">{stageWords(st)}</span>
+          <button type="button" onClick={() => void t.stop()}>
             Stop
           </button>
         </div>
       ) : null}
+      {!src && before && !p && !t.running ? (
+        <NoticeRow role="status">No measurement yet: measure on the Measure tab, or open one on Results.</NoticeRow>
+      ) : null}
       {t.error ? (
-        <p class="error" role="alert" aria-label="Tune problem">
-          {t.error}
-        </p>
+        <div class="notice-row notice-row-error" role="alert" aria-label="Tune problem">
+          <Glyph name="error" class="notice-icon" />
+          <span class="notice-text">{t.error}</span>
+        </div>
       ) : null}
 
-      <section class="card" aria-label="Tune layout" style={col}>
-        <div class="card-head" style={row}>
-          <strong style={{ flex: "1 1 auto" }}>1. Layout</strong>
-          <button type="button" disabled={busy || t.applied} onClick={() => void t.loadLayout()}>
-            Read the layout again
-          </button>
-        </div>
-        {l ? (
-          <>
-            <p class="muted" aria-label="Layout recognised">
-              {templateWords(l.template)} Each output's way, speaker and alignment group come from its crossover and its programme input; correct them here. One walked run measures each group.
+      {before ? (
+        <section class="m-sec" aria-label="Tune layout" style={col}>
+          <h4 class="section-label">Layout</h4>
+          {src ? (
+            <p class="m-iconline m-ok" aria-label="Measurement to tune from" data-source="yes">
+              <Glyph name="circle-check" class="m-line-icon" />
+              <span>{src.from === "this session's measurement" || !src.from ? "From this session's measurement." : `From "${src.from}".`}</span>
             </p>
-            {l.notes.length ? (
-              <ul class="change-list notes">
-                {l.notes.map((n, i) => (
-                  <li key={i}>{n}</li>
-                ))}
+          ) : (
+            <span class="visually-hidden" aria-label="Measurement to tune from" data-source="none" />
+          )}
+          {l ? (
+            <>
+              <ul class="tune-layout m-rowlist m-outrows" aria-label="Outputs">
+                {l.outputs.map((o) => {
+                  const on = !t.off.has(o.output);
+                  return (
+                    <li key={o.output} data-output={o.output} class={on ? undefined : "off"}>
+                      <label class="m-check m-outname">
+                        <input type="checkbox" aria-label={`Tune ${outputName(o.output)}`} checked={on} disabled={!idle} onChange={(e) => t.setOn(o.output, (e.currentTarget as HTMLInputElement).checked)} /> {outputName(o.output)}
+                      </label>
+                      <select aria-label={`Way of ${outputName(o.output)}`} class="m-combo m-way" value={o.role} disabled={!idle || !on} onChange={(e) => t.editOutput(o.output, { role: (e.currentTarget as HTMLSelectElement).value as typeof o.role })}>
+                        {ROLES.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.label}
+                          </option>
+                        ))}
+                      </select>
+                      <input class="m-speaker" aria-label={`Speaker of ${outputName(o.output)}`} value={o.speaker} size={4} maxLength={16} disabled={!idle || !on} onChange={(e) => t.editOutput(o.output, { speaker: (e.currentTarget as HTMLInputElement).value })} />
+                      <Stepper
+                        label={`Alignment group of ${outputName(o.output)}`}
+                        value={o.group}
+                        min={0}
+                        max={15}
+                        disabled={!idle || !on}
+                        onValue={() => undefined}
+                        onCommit={(g) => {
+                          if (Number.isInteger(g) && g >= 0 && g <= 15) t.editOutput(o.output, { group: g });
+                        }}
+                      />
+                      <span class="m-caption m-feed">{feedWords(o)}</span>
+                    </li>
+                  );
+                })}
               </ul>
-            ) : null}
-            <ul class="tune-layout" aria-label="Outputs" style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "6px" }}>
-              {l.outputs.map((o) => (
-                <li key={o.output} data-output={o.output} style={row}>
-                  <label style={{ minWidth: "9em" }}>
-                    <input type="checkbox" aria-label={`Tune ${outputName(o.output)}`} checked={!t.off.has(o.output)} disabled={busy || t.applied} onChange={(e) => t.setOn(o.output, (e.currentTarget as HTMLInputElement).checked)} />{" "}
-                    {outputName(o.output)}
-                  </label>
-                  <select aria-label={`Way of ${outputName(o.output)}`} value={o.role} disabled={busy || t.applied} onChange={(e) => t.editOutput(o.output, { role: (e.currentTarget as HTMLSelectElement).value as typeof o.role })}>
-                    {ROLES.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.label}
-                      </option>
-                    ))}
-                  </select>
-                  <label>
-                    Speaker{" "}
-                    <input aria-label={`Speaker of ${outputName(o.output)}`} value={o.speaker} size={4} maxLength={16} disabled={busy || t.applied} onChange={(e) => t.editOutput(o.output, { speaker: (e.currentTarget as HTMLInputElement).value })} />
-                  </label>
-                  <label>
-                    Group{" "}
-                    <input
-                      aria-label={`Alignment group of ${outputName(o.output)}`}
-                      type="number"
-                      min={0}
-                      max={15}
-                      value={o.group}
-                      style={{ width: "4em" }}
-                      disabled={busy || t.applied}
-                      onChange={(e) => {
-                        const g = Number((e.currentTarget as HTMLInputElement).value);
-                        if (Number.isInteger(g) && g >= 0 && g <= 15) t.editOutput(o.output, { group: g });
-                      }}
-                    />
-                  </label>
-                  <span class="muted">{feedWords(o)}</span>
-                </li>
-              ))}
-            </ul>
-          </>
-        ) : (
-          <p class="empty">Reading the layout…</p>
-        )}
-      </section>
-
-      <section class="card" aria-label="Tune measurement" style={col}>
-        <div class="card-head">
-          <strong>2. Measure</strong>
-        </div>
-        <p aria-label="Measurement to tune from" data-source={src ? "yes" : "none"}>
-          {src ? `Tuning from ${src.from ? `${src.from}` : "the measurement"}.` : "No measurement yet: measure the layout here (the preflight comes first), or open one on the Documents tab."}
-        </p>
-        <div style={row}>
-          <label>
-            Sweep length, s{" "}
-            <input aria-label="Tune sweep length" type="number" min={1} max={15} step={0.5} value={t.sweepMs / 1000} style={{ width: "5em" }} disabled={busy} onChange={(e) => t.setSweepMs(Number((e.currentTarget as HTMLInputElement).value) * 1000)} />
-          </label>
-          <label>
-            Measured{" "}
-            <select aria-label="Tune placement" value={place?.placement ?? ""} disabled={busy || t.applied} onChange={(e) => t.setHeadphones((e.currentTarget as HTMLSelectElement).value === "headphones")}>
-              {place ? null : (
-                <option value="" disabled>
-                  Choose where it is measured
-                </option>
-              )}
-              <option value="listeningPosition">Speakers, at the listening position</option>
-              <option value="headphones">Headphones on a coupler</option>
-            </select>
-          </label>
-          <button type="button" disabled={busy || t.applied || !l || !place || props.blocked !== ""} onClick={() => void measure()}>
-            Measure this layout
-          </button>
-        </div>
-        <p class={place ? "muted" : "note"} aria-label="Tune placement levels">
-          {!place
-            ? t.placeProblem
-            : place.placement === "headphones"
-              ? `Headphones: on the coupler, not on a head. The levels are the lower ones for headphones (${COUPLERS.find((c) => c.id === place.coupler)?.label ?? "the Setup tab's coupler"}).`
-              : "Speakers: the levels are those for speakers. For headphones choose Headphones on a coupler first: they are measured much more quietly."}
-        </p>
-        {desk.preflight && !desk.preflight.clear ? (
-          <ul class="change-list" aria-label="Tune preflight">
-            {desk.preflight.blockers.map((b, i) => (
-              <li key={i} data-key={b.key}>
-                {issueWords(b)}
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        <RunPanel {...props} />
-      </section>
-
-      <section class="card" aria-label="Tune options" style={col}>
-        <div class="card-head">
-          <strong>3. Propose</strong>
-        </div>
-        <div role="group" aria-label="What the tune may change" style={row}>
-          <label>
-            <input type="checkbox" checked={t.options.keepCrossover} disabled={busy || t.applied} onChange={(e) => t.setOptions({ keepCrossover: (e.currentTarget as HTMLInputElement).checked })} /> Keep the crossover, align only
-          </label>
-          <label>
-            <input type="checkbox" checked={t.options.keepDelays} disabled={busy || t.applied} onChange={(e) => t.setOptions({ keepDelays: (e.currentTarget as HTMLInputElement).checked })} /> Keep the delays
-          </label>
-          <label>
-            <input type="checkbox" checked={t.options.keepLevels} disabled={busy || t.applied} onChange={(e) => t.setOptions({ keepLevels: (e.currentTarget as HTMLInputElement).checked })} /> Keep the levels
-          </label>
-          <label>
-            <input type="checkbox" checked={t.options.keepEq} disabled={busy || t.applied} onChange={(e) => t.setOptions({ keepEq: (e.currentTarget as HTMLInputElement).checked })} /> No EQ fit
-          </label>
-        </div>
-        <p class="muted">Target: {desk.targetName ? desk.targetName : "the placement's default (our own curve)"}. Choose another on the Documents tab.</p>
-        <div>
-          <button type="button" class="primary" disabled={busy || t.applied || !src || !l} onClick={() => void t.propose()}>
-            Propose a tune
-          </button>
-        </div>
-      </section>
+              <p class="m-caption" aria-label="Layout recognised">
+                {templateWords(l.template)} Each output's way, speaker and alignment group come from its crossover and its programme input; correct them here. One walked run measures each group.
+              </p>
+              {l.notes.length ? (
+                <ul class="change-list notes">
+                  {l.notes.map((n, i) => (
+                    <li key={i}>{n}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </>
+          ) : (
+            <p class="m-caption">Reading the layout…</p>
+          )}
+          <div role="group" aria-label="What the tune may change" class="m-checks">
+            <label>
+              <input type="checkbox" checked={t.options.keepCrossover} disabled={!idle} onChange={(e) => t.setOptions({ keepCrossover: (e.currentTarget as HTMLInputElement).checked })} /> Keep the crossover, align only
+            </label>
+            <label>
+              <input type="checkbox" checked={t.options.keepDelays} disabled={!idle} onChange={(e) => t.setOptions({ keepDelays: (e.currentTarget as HTMLInputElement).checked })} /> Keep the delays
+            </label>
+            <label>
+              <input type="checkbox" checked={t.options.keepLevels} disabled={!idle} onChange={(e) => t.setOptions({ keepLevels: (e.currentTarget as HTMLInputElement).checked })} /> Keep the levels
+            </label>
+            <label>
+              <input type="checkbox" checked={t.options.keepEq} disabled={!idle} onChange={(e) => t.setOptions({ keepEq: (e.currentTarget as HTMLInputElement).checked })} /> No EQ fit
+            </label>
+          </div>
+          <p class="m-caption">Target: {desk.targetName ? desk.targetName : "the placement's default (our own curve)"}. Choose another on the Documents tab.</p>
+          <div class="m-actions">
+            <button type="button" disabled={!idle} onClick={() => void t.loadLayout()}>
+              Propose from the Device
+            </button>
+            <button type="button" class={src && !p ? "primary" : undefined} disabled={!idle || !src || !l} onClick={() => void t.propose()}>
+              Propose a Tune
+            </button>
+          </div>
+        </section>
+      ) : null}
 
       {p ? <ProposalCard {...props} t={t} /> : null}
-      {st && (t.applied || st.stage === "kept" || st.stage === "reverted" || st.stage === "revertIncomplete") ? <GuardCard {...props} t={t} /> : null /* -- WP REVERTW -- */}
+      {after ? <GuardCard {...props} t={t} /> : null /* -- WP REVERTW -- */}
       {t.said ? (
-        <p class="note" role="status" aria-label="Tune outcome">
+        <p class="m-iconline m-note" role="status" aria-label="Tune outcome">
           {t.said}
         </p>
       ) : null}
@@ -246,16 +202,17 @@ function ProposalCard(props: MeasureTabProps & { t: TuneDesk }) {
   const pending = p.sumCheck === "pending";
   const series = proposalSeries(p);
   return (
-    <section class="card" aria-label="Tune proposal" style={col} data-proposal={p.id}>
-      <div class="card-head">
-        <strong>4. The proposal{p.measurementName ? `: ${p.measurementName}` : ""}</strong>
-      </div>
-      <p class={p.timingReliable ? "note" : "error"} aria-label="Proposal timing" data-reliable={String(p.timingReliable)}>
-        {p.timingReliable ? "The measurement's timing is reliable: delay, polarity and crossover changes may be offered." : "The measurement's timing is unreliable: no delay, polarity or crossover change is offered from it."}
+    <section class="m-sec" aria-label="Tune proposal" style={col} data-proposal={p.id}>
+      {/* -- WP WEB7 -- Qt's "Proposal"; the measurement's name in words under it, not in the caps label */}
+      <h4 class="section-label">Proposal</h4>
+      {p.measurementName ? <p class="m-caption">{`From "${displayName(p.measurementName)}".`}</p> : null}
+      <p class={`m-iconline ${p.timingReliable ? "m-ok" : "m-bad"}`} aria-label="Proposal timing" data-reliable={String(p.timingReliable)}>
+        <Glyph name={p.timingReliable ? "circle-check" : "warning"} class="m-line-icon" />
+        <span>{p.timingReliable ? "The measurement's timing is reliable: delay, polarity and crossover changes may be offered." : "The measurement's timing is unreliable: no delay, polarity or crossover change is offered from it."}</span>
       </p>
       {series.length ? <MeasureGraph label="Tune curves" series={series} unit={series.some((s) => s.curve.spl) ? "dB SPL" : "dB (relative)"} /> : null}
       <div>
-        <strong>Changes</strong> <span class="muted">(nothing is written until Apply)</span>
+        <strong>Changes</strong> <span class="m-caption">(nothing is written until Apply)</span>
         {p.writes.length ? (
           <ul class="change-list" aria-label="Changes">
             {p.writes.map((w, i) => (
@@ -265,7 +222,7 @@ function ProposalCard(props: MeasureTabProps & { t: TuneDesk }) {
             ))}
           </ul>
         ) : (
-          <p class="muted" aria-label="Changes">
+          <p class="m-caption" aria-label="Changes">
             No change: the speaker is as close to its target as the tune can bring it.
           </p>
         )}
@@ -315,8 +272,9 @@ function ProposalCard(props: MeasureTabProps & { t: TuneDesk }) {
           ))}
         </ul>
       ) : null}
-      <p aria-label="Summed check" data-check={p.sumCheck} class={p.sumCheck === "failed" ? "error" : "note"}>
-        {checkWords(p.sumCheck)}
+      <p aria-label="Summed check" data-check={p.sumCheck} class={`m-iconline ${p.sumCheck === "failed" ? "m-bad" : p.sumCheck === "passed" ? "m-ok" : "m-note"}`}>
+        <Glyph name={p.sumCheck === "failed" ? "error" : p.sumCheck === "passed" ? "circle-check" : "info"} class="m-line-icon" />
+        <span>{checkWords(p.sumCheck)}</span>
       </p>
       <div style={row}>
         {pending ? (
@@ -328,7 +286,7 @@ function ProposalCard(props: MeasureTabProps & { t: TuneDesk }) {
           Apply and verify
         </button>
       </div>
-      <p class="muted">
+      <p class="m-caption">
         Apply files a "before" snapshot, writes every change as one undo step inside a guard, then verifies at once: Keep or Revert before the guard ends, or the settings from before come back.
       </p>
     </section>
@@ -347,10 +305,8 @@ function GuardCard(props: MeasureTabProps & { t: TuneDesk }) {
   const kept = t.kept;
   const row2 = noticeRow("measure.tune.keep_unverified");
   return (
-    <section class="card" aria-label="Tune guard" style={col} data-stage={st.stage}>
-      <div class="card-head">
-        <strong>5. Verify, then Keep or Revert</strong>
-      </div>
+    <section class="m-sec" aria-label="Tune guard" style={col} data-stage={st.stage}>
+      <h4 class="section-label">Verify, then Keep or Revert</h4>
       {/* -- WP REVERTW -- a revert not fully successful is an alert, not a status line */}
       <p aria-label="Tune stage" aria-live="polite" role={st.stage === "revertIncomplete" ? "alert" : undefined} class={st.stage === "revertIncomplete" ? "error" : undefined}>
         {stageWords(st)}
@@ -360,18 +316,21 @@ function GuardCard(props: MeasureTabProps & { t: TuneDesk }) {
           <p aria-label="Guard countdown" data-left={left}>
             {left} s left to Keep or Revert; then the settings from before come back by themselves.
           </p>
-          <progress max={1} value={g.timeoutMs > 0 ? Math.max(0, Math.min(1, g.remainingMs / g.timeoutMs)) : 0} aria-label="Time left" />
+          {/* -- WP WEB7 -- (REVE W19) the page's 4 px progress track, not the browser's native bar */}
+          <div role="progressbar" class="m-progress" aria-label="Time left" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(guardFraction(g) * 100)}>
+            <div style={{ width: `${(guardFraction(g) * 100).toFixed(1)}%` }} />
+          </div>
         </>
       ) : null}
       {st.running ? (
         <div role="progressbar" aria-label="Verify progress" aria-valuemin={0} aria-valuemax={st.runs || 1} aria-valuenow={st.run}>
-          <span class="muted">
+          <span class="m-caption">
             Run {Math.max(1, st.run)} of {Math.max(1, st.runs)}
           </span>
         </div>
       ) : null}
       {v && st.stage === "verified" ? (
-        <div aria-label="Verify" data-passed={String(v.passed)} class={v.passed ? "note" : "error"}>
+        <div aria-label="Verify" data-passed={String(v.passed)} class={`m-verify ${v.passed ? "m-ok" : "m-bad"}`}>
           <strong>{v.passed ? "The verify confirmed the tune." : "The verify did not confirm the tune."}</strong>
           <ul class="change-list">
             {verifyLines(v, outputName).map((x, i) => (
@@ -381,15 +340,15 @@ function GuardCard(props: MeasureTabProps & { t: TuneDesk }) {
         </div>
       ) : null}
       {st.issue && !q && !st.running && st.stage !== "kept" ? (
-        <p class={st.stage === "revertIncomplete" ? "error" : "note"} data-key={st.issue.key}>
+        <p class={st.stage === "revertIncomplete" ? "error" : "m-iconline m-note"} data-key={st.issue.key}>
           {issueWords(st.issue)}
         </p>
       ) : null}
       {q ? (
-        <div role="alertdialog" aria-label="Keep anyway?" class="banner" style={col}>
+        <div role="alertdialog" aria-label="Keep anyway?" class="notice-row notice-row-warning m-question" style={col}>
           <strong>{q.why === "unverified" ? (row2?.title ?? "The verify did not confirm the tune") : "The tune is not verified"}</strong>
           <span>{q.text}</span>
-          {q.why === "unverified" && row2 ? <span class="muted">{`${row2.reason} ${row2.action}`}</span> : null}
+          {q.why === "unverified" && row2 ? <span class="m-caption">{`${row2.reason} ${row2.action}`}</span> : null}
           <div style={row}>
             <button type="button" class="danger" disabled={!ready || !!t.busy} onClick={() => void t.confirmKeep()}>
               {ready ? "Keep anyway" : `Keep anyway (in ${wait} s)`}
@@ -420,7 +379,7 @@ function GuardCard(props: MeasureTabProps & { t: TuneDesk }) {
           </button>
         ) : null}
         {t.running ? (
-          <button type="button" class="danger" onClick={() => void t.stop()}>
+          <button type="button" onClick={() => void t.stop()}>
             Stop the verify
           </button>
         ) : null}
@@ -471,6 +430,11 @@ function GuardCard(props: MeasureTabProps & { t: TuneDesk }) {
       ) : null}
     </section>
   );
+}
+
+/** -- WP WEB7 -- How much of the guard's time is left, 0 to 1. */
+function guardFraction(g: { timeoutMs: number; remainingMs: number }): number {
+  return g.timeoutMs > 0 ? Math.max(0, Math.min(1, g.remainingMs / g.timeoutMs)) : 0;
 }
 
 /** The tabs this WP adds to the Measure screen's slot: the auto-tune, and the documents (a Viewer's too). */

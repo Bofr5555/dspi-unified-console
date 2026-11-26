@@ -184,3 +184,43 @@ fn wp_cs1_the_readouts_uptime_stands_in_for_the_core_voltage_status() {
         "The device restarted while away (the supply dipped); up 5 s"
     );
 }
+
+// -- WP FIN015 -- (REVF D2)
+/// The first event of a connection says how it came in words: "over USB",
+/// "through a hub", "to the demo", never the transport's id ("over fake");
+/// the record's `source` keeps the id.
+#[test]
+fn wp_fin015_a_connection_says_its_transport_in_words() {
+    let d = dir("fin015-over");
+    let core = DspiCore::new();
+    core.event_log_set_dir(d.to_string_lossy().into_owned())
+        .unwrap();
+    for (transport, fw, line) in [
+        ("usb", Some("1.1.6"), "Connected over USB (firmware 1.1.6)"),
+        ("midi", None, "Connected over USB MIDI"),
+        (
+            "link",
+            Some("1.2.0"),
+            "Connected through a hub (firmware 1.2.0)",
+        ),
+        (
+            "fake",
+            Some("1.1.6"),
+            "Connected to the demo (firmware 1.1.6)",
+        ),
+    ] {
+        core.events.connected(Opened {
+            serial: "FIN015".into(),
+            transport: transport.into(),
+            fw: fw.map(Into::into),
+            inputs: 2,
+            platform_id: 1,
+            uptime: None,
+            reset: None,
+        });
+        let last = entries(&core, "connected").pop().unwrap();
+        assert_eq!(last.text, line);
+        assert_eq!(last.source, transport);
+        core.events.disconnected("FIN015", "closed");
+    }
+}

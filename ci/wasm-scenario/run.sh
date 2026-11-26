@@ -11,7 +11,9 @@ root=$(cd "$(dirname "$0")/../.." && pwd)
 . "$root/ci/container/images.conf"
 B=${DSPI_BUILD_CACHE:-$HOME/.cache/dspi-build}
 branch=$(git -C "$root" rev-parse --abbrev-ref HEAD 2>/dev/null || echo detached)
-out=$B/target/${branch//\//-}-cross/wasm32-unknown-unknown/release
+# -- WP SHOWFIX -- a detached worktree is named by its short commit, not "HEAD"
+if [ "$branch" = HEAD ]; then branch=$(git -C "$root" rev-parse --short HEAD); fi
+out=$B/target/${DSPI_TARGET_KEY:-${branch//\//-}}-cross/wasm32-unknown-unknown/release
 DSPI_PROFILE=cross "$root/ci/run.sh" \
   'cargo build -p dspi-wasm-scenario --release --target wasm32-unknown-unknown --locked'
 wasm=$out/dspi_wasm_scenario.wasm

@@ -8,7 +8,6 @@
 
 #include "ChannelController.h"
 #include "Core.h"
-#include "DashboardController.h"
 #include "DeviceModel.h"
 #include "DeviceRegistry.h"
 #include "DevicesController.h"
@@ -331,14 +330,12 @@ void overviewPart(Pages &p) {
     QTest::keyClick(p.main, Qt::Key_Space);
     p.settle();
     p.check("by the keyboard too", p.at() == QLatin1String("equaliser/peq") && p.sc->selectedChannel() == out);
-    // Cards per row
+    // -- WP DL6 -- No cards-per-row choice: the channel cards fit the width
     p.go(QStringLiteral("overview"));
-    auto *dash = Registrar::instance<DashboardController>();
-    const int was = dash ? dash->property("cardsPerRow").toInt() : -1;
-    p.check("one card per row", p.click("OverviewTools.perRow.1") && dash && dash->property("cardsPerRow").toInt() == 1
-                && p.shown("Dashboard.grid") && p.shown("Dashboard.grid")->property("columns").toInt() == 1);
-    p.check("Auto", p.click("OverviewTools.perRow.0") && dash->property("cardsPerRow").toInt() == 0);
-    if (dash) dash->setProperty("cardsPerRow", was);
+    p.check("no cards-per-row choice", !p.shown("OverviewTools") && !p.shown("OverviewTools.perRow"));
+    p.check("a card per output, with its name and its feeds chip",
+            p.shown(QStringLiteral("OverviewChannelCard.name.%1").arg(out)) != nullptr
+                && p.shown(QStringLiteral("OverviewChannelCard.chip.%1.feeds").arg(out)) != nullptr);
     QQuickItem *gear = p.d.item(QStringLiteral("Dashboard.gear"));
     QTest::mouseMove(p.main, Pages::centre(p.shown(QStringLiteral("Dashboard.open.%1").arg(out))));
     p.d.spin(300);
@@ -469,7 +466,7 @@ void devicesPart(Pages &p) {
     p.check("without a device there are no dots and no chain", !dots && !p.shown("EffectsChain.crossfeed"));
     p.go(QStringLiteral("overview"));
     p.check("the Overview has no facts then", !p.shown("OverviewTools"));
-    p.check("and a way to a device", p.click("OverviewSection.devices") && p.at() == QLatin1String("devices/devices"));
+    p.check("and a way to a device", p.click("OverviewSection.empty.action") && p.at() == QLatin1String("devices/devices"));   // -- WP DL6 --
     p.d.app().device->openDemo();
     p.check("the demo again", p.d.waitFor(10000, [&] { return p.d.app().device->connected(); }));
     p.settle();

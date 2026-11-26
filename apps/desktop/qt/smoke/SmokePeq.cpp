@@ -230,6 +230,7 @@ void hoverAndCreate(Peqs &p) {
     d.check(QStringLiteral("qp4: Tab moves on to the gain"), gainInput && gainInput->property("activeFocus").toBool());
     if (gainInput) {
         gainInput->setProperty("text", QStringLiteral("-3.5 dB"));
+        QMetaObject::invokeMethod(gainInput, "textEdited"); // -- WP INTE -- (REVE C1) as typed: Enter writes only typed text
         QTest::keyClick(p.w, Qt::Key_Return);
         p.settle();
     }

@@ -1,0 +1,127 @@
+/* -- WP WEB4 -- The Measure pages in the Modern design (DL2 on the web; docs/DESIGN-LANGUAGE.md):
+   sections without boxes in the 760 px column, captions small and muted, numbers in mono fields,
+   the blocking condition as a notice row, the graph in a frame with its labels inside. */
+.dspi-web .measure-screen { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.dspi-web .measure-column { display: flex; flex-direction: column; gap: 12px; max-width: var(--content-max); min-width: 0; }
+.dspi-web .measure-stopbar { position: sticky; top: 0; z-index: 2; }
+.dspi-web .measure-results, .dspi-web .measure-live { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+
+/* Sections (§8): the caps label, 24 px apart, no box; a fieldset is one too */
+.dspi-web .m-sec { display: flex; flex-direction: column; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.dspi-web .measure-column > .m-sec + .m-sec, .dspi-web .measure-column > fieldset.m-sec { margin-top: 12px; }
+.dspi-web fieldset.m-sec > legend { float: left; width: 100%; padding: 0; margin: 0 0 8px; }
+.dspi-web fieldset.m-sec > legend + * { clear: both; }
+.dspi-web .m-caption { margin: 0; font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+.dspi-web .m-title { font-size: 15px; font-weight: 600; }
+.dspi-web .m-head { display: flex; flex-direction: column; gap: 2px; }
+.dspi-web .measure-run > p { margin: 0; }
+
+/* Rows of controls: inline, the label before the control, wrapping */
+.dspi-web .m-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.dspi-web .m-spread { justify-content: space-between; }
+.dspi-web .m-inline { display: inline-flex; align-items: center; gap: 6px; }
+.dspi-web .m-grow { flex: 1 1 12rem; }
+.dspi-web .m-grow > input { flex: 1; min-width: 0; }
+.dspi-web .m-unit { font-size: 11px; color: var(--muted); }
+.dspi-web .m-num { width: 72px; font-family: var(--mono); font-size: 12px; text-align: right; }
+.dspi-web .m-freq { width: 88px; }
+.dspi-web .m-speaker { width: 88px; }
+.dspi-web .m-check { display: inline-flex; align-items: center; gap: 6px; }
+.dspi-web .m-checks { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.dspi-web .m-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.dspi-web .m-toolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; }
+.dspi-web .m-choices select { max-width: 14rem; }
+
+/* The placement chips: picked like a radio, the chosen one in the selection tone */
+.dspi-web .measure-screen .chip[aria-checked="true"], .dspi-web .measure-screen .segments > button[aria-checked="true"] { background: var(--selection); color: var(--accent-text); font-weight: 600; }
+
+/* Tables and lists (§9): 28 px rows, a stripe on every second, no rules */
+.dspi-web .m-scroll { overflow-x: auto; min-width: 0; }
+.dspi-web .m-rows { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+.dspi-web .m-rows th { height: 24px; padding: 0 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); text-align: left; border-bottom: 1px solid var(--separator); }
+.dspi-web .m-rows td { height: 32px; padding: 2px 8px; border: 0; }
+.dspi-web .m-rows tbody tr:nth-child(even) td { background: var(--stripe); }
+.dspi-web .m-rows tr.off td:not(:first-child) { opacity: 0.6; }
+.dspi-web .m-rowlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; font-size: 12.5px; }
+.dspi-web .m-rowlist > li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-height: 28px; padding: 4px 8px; border-radius: 4px; }
+.dspi-web .m-rowlist > li:nth-child(even) { background: var(--stripe); }
+.dspi-web .m-rowlist > li:hover { background: var(--control-hover); }
+.dspi-web .m-docs > li.doc-row { flex-direction: column; align-items: stretch; gap: 4px; padding: 6px 8px; }
+.dspi-web .m-rowactions > button, .dspi-web .m-rowactions select { min-height: 24px; padding: 0.1rem 0.55rem; font-size: 12px; }
+.dspi-web .danger-text { color: var(--bad); }
+
+/* Lines with a state icon (preflight, timing, the summed check): words in the text's colour */
+.dspi-web .m-lines { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.dspi-web .m-lines > li, .dspi-web .m-iconline { display: flex; align-items: flex-start; gap: 8px; margin: 0; color: var(--text); }
+.dspi-web .m-line-icon { flex: none; width: 16px; height: 16px; margin-top: 1px; color: var(--muted); }
+.dspi-web .m-ok .m-line-icon { color: var(--ok); }
+.dspi-web .m-bad .m-line-icon { color: var(--bad); }
+.dspi-web .m-note .m-line-icon { color: var(--accent-text); }
+.dspi-web .m-verify { display: flex; flex-direction: column; gap: 4px; }
+.dspi-web .m-question { flex-direction: column; align-items: stretch; padding: 10px 12px; }
+
+/* The run's progress: a 4 px track in the control tone, the done part in the accent */
+.dspi-web .m-progress { height: 4px; border-radius: 2px; background: var(--control-pressed); overflow: hidden; }
+.dspi-web .m-progress > div { height: 100%; background: var(--accent-fill); }
+
+/* The auto-tune's steps */
+.dspi-web .step-dots { display: flex; gap: 0; list-style: none; margin: 0 0 4px; padding: 0; }
+.dspi-web .step-dots > li { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 120px; font-size: 11px; color: var(--muted); }
+.dspi-web .step-dots > li + li::before { content: ""; position: absolute; top: 5px; right: calc(50% + 8px); width: calc(100% - 16px); height: 1px; background: var(--border); }
+.dspi-web .step-dot { width: 10px; height: 10px; border-radius: 5px; box-shadow: inset 0 0 0 1.5px var(--border); }
+.dspi-web .step-dots > li.done .step-dot, .dspi-web .step-dots > li.now .step-dot { background: var(--accent-fill); box-shadow: none; }
+.dspi-web .step-dots > li.now { color: var(--text); }
+
+/* The graph frame (§12): no box, labels inside, the grid in the graph grid's tone */
+.dspi-web .measure-graph { margin: 0; min-width: 0; }
+.dspi-web .mg-plot { width: 100%; min-width: 0; overflow: hidden; border-radius: 8px; background: var(--panel); --mg-grid: #d3d3d3; }
+.dspi-web .mg-plot > svg { display: block; }
+.dspi-web .mg-grid { stroke: var(--mg-grid); stroke-width: 1; }
+.dspi-web .mg-label { font-size: 10px; fill: var(--muted); }
+.dspi-web .mg-empty { font-size: 13px; fill: var(--muted); }
+.dspi-web .mg-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 4px; font-size: 11px; color: var(--muted); opacity: 0.92; }
+@media (prefers-color-scheme: dark) {
+  .dspi-web:not([data-theme="light"]) .mg-plot { --mg-grid: #3a3a3a; }
+}
+.dspi-web[data-theme="dark"] .mg-plot { --mg-grid: #3a3a3a; }
+
+@media (max-width: 520px) {
+  .dspi-web .m-rows td { padding: 2px 4px; }
+  .dspi-web .m-rows select { max-width: 8rem; }
+  .dspi-web .m-num { width: 56px; }
+  .dspi-web .m-choices select { max-width: 100%; }
+}
+
+/* -- WP WEB7 -- Qt's MeasureSetupTab: combos at Qt's widths, the output rows as Qt's columns
+   (label 200, Way 150, Speaker 60, Group stepper 90), the AppSpinBox stepper on the control tone */
+.dspi-web .m-combo { width: 240px; max-width: 100%; }
+.dspi-web .m-combo-wide { width: 300px; }
+.dspi-web .m-combo-coupler { width: 260px; }
+.dspi-web .m-outrows > li { flex-wrap: nowrap; gap: 8px; padding: 2px 8px; min-height: 32px; }
+.dspi-web .m-outrows .m-outname { width: 200px; flex: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dspi-web .m-outrows .m-way { width: 150px; flex: none; }
+.dspi-web .m-outrows .m-speaker { width: 60px; flex: none; }
+.dspi-web .m-outrows > li.off .m-outname { color: var(--muted); }
+.dspi-web .m-stepper { display: inline-flex; align-items: center; height: 24px; width: 90px; flex: none; border-radius: var(--radius-control, 6px); background: var(--control); overflow: hidden; }
+.dspi-web .m-stepper-wide { width: 120px; }
+.dspi-web .m-stepper > input { flex: 1 1 auto; min-width: 0; width: 100%; height: 24px; padding: 0 2px; border: 0; background: transparent; box-shadow: none; font: 12px var(--mono); text-align: center; color: var(--text); }
+.dspi-web .m-stepper > input:focus-visible { outline: 2px solid var(--focus, var(--accent)); outline-offset: -2px; }
+.dspi-web .m-stepper .m-step { flex: none; width: 24px; height: 24px; min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--text); font-size: 14px; line-height: 1; }
+.dspi-web .m-stepper .m-step:hover:not(:disabled) { background: var(--control-hover); }
+.dspi-web .m-stepper .m-step:disabled { color: var(--muted); opacity: 0.5; }
+.dspi-web .m-step-unit { flex: none; padding-right: 4px; font: 11px var(--mono); color: var(--muted); }
+.dspi-web .m-stepper.disabled { opacity: 0.6; }
+@media (max-width: 520px) {
+  .dspi-web .m-outrows > li { flex-wrap: wrap; }
+  .dspi-web .m-outrows .m-outname { width: 100%; }
+  .dspi-web .m-combo, .dspi-web .m-combo-wide, .dspi-web .m-combo-coupler { width: 100%; }
+}
+
+/* -- WP WEB7 -- Documents (§9): a row's actions show on hover and while it has the focus (keyboard),
+   always where nothing hovers (touch); opacity, so they keep their place and stay reachable */
+.dspi-web .m-docs > li .m-rowactions { opacity: 0; transition: opacity 0.12s; }
+.dspi-web .m-docs > li:hover .m-rowactions, .dspi-web .m-docs > li:focus-within .m-rowactions { opacity: 1; }
+@media (hover: none) {
+  .dspi-web .m-docs > li .m-rowactions { opacity: 1; }
+}
+.dspi-web .m-feed { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

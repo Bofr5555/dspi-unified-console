@@ -9,6 +9,9 @@ import UConsole
 // parameter: the transfer curve with the harmonics at full scale, the stage
 // and the outputs on the left; the character and the output stage on the
 // right. The choice is remembered. Firmware before wire V31 gets a note.
+// -- WP DL1 -- Modern: the tube types and the outputs as option chips (the
+// chosen one grey with accent text), the transfer curve in a GraphFrame, the
+// showcase a card without an outline, no lines between the parts.
 // -- WP LAY1a -- A panel (Panel.qml): PanelTable's row for
 // tools.tube gives its window's title and sizes.
 Panel {
@@ -96,9 +99,8 @@ Panel {
                 }
             }
         }
-        RowLayout {
+        EffectChipRow {   // -- WP DL1 --
             Layout.fillWidth: true
-            spacing: 6
             HoverHandler { id: outputsHover }
             HelpTip {
                 visible: outputsHover.hovered
@@ -169,9 +171,9 @@ Panel {
                     objectName: "TubeWindow.showcase"
                     Layout.fillWidth: true
                     Layout.preferredHeight: Math.max(420, basicRight.implicitHeight)
-                    radius: 10
-                    color: Theme.control
-                    border.width: 1
+                    radius: LayoutController.modern ? Theme.radius : 10   // -- WP DL1 -- a card in Modern
+                    color: LayoutController.modern ? Theme.panel : Theme.control
+                    border.width: Theme.lineWidth
                     border.color: Theme.separator
 
                     // A warm pool of light behind the glass while the stage is on
@@ -286,11 +288,9 @@ Panel {
                                     font: Theme.fontCaption
                                     color: Theme.textMuted
                                 }
-                                GridLayout {
+                                EffectChipRow {   // -- WP DL1 --
                                     Layout.fillWidth: true
-                                    columns: 4
-                                    columnSpacing: 6
-                                    rowSpacing: 6
+                                    classicColumns: 4
                                     Repeater {
                                         model: group.modelData.to - group.modelData.from + 1
                                         EffectChip {
@@ -298,7 +298,7 @@ Panel {
                                             readonly property int tubeType: group.modelData.from + index
                                             readonly property var tubeRow: ToolsController.tubeTypes[tubeType]
                                             objectName: "TubeWindow.type." + tubeType
-                                            Layout.preferredWidth: 1
+                                            Layout.preferredWidth: LayoutController.modern ? rowWidest : 1
                                             enabled: panel.writable
                                             on: panel.type === tubeType
                                             text: tubeRow.shortName

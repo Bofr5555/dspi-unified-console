@@ -2,18 +2,18 @@
 // unit's state (connected, the audio link's lock, alarms), and the topology:
 // the sender, fan-outs, units, the alinks between them and the audio link channels
 // each unit takes. A device the console holds itself is a system of one unit.
-// The Installer mode adds the "Clock and audio links" panel (AlinkClock.tsx).
-// -- WP WB6d -- and, for the session's own device, its signal chain (SignalChain.tsx):
-// read only, a block opens the screen that edits it.
+// -- WP WEB7 -- This is Qt's Units tab; Clock and Links, Installation and the signal chain
+// are pages of their own (pages.tsx).
+// (WB6d's signal chain, read only, a block opening the screen that edits it, is the
+// section's Signal Chain tab.)
 
 import { useEffect, useState } from "preact/hooks";
 import type { ScreenProps } from "../../ui/screens";
-import { AlinkClock } from "./AlinkClock";
-import { SignalChain } from "./SignalChain"; // -- WP WB6D --
-import { InstallationTab } from "./installation/InstallationTab"; // -- WP INSTW --
 import { ZoneVolume } from "./ZoneVolume"; // -- WP FEATUI --
 import type { Session } from "../../ui/session";
-import type { ComponentChildren } from "preact";
+import { NoticeRow } from "../../ui/design"; // -- WP WEB7 --
+import { Group } from "../../ui/Group"; // -- WP WEB7 --
+import { NotOnHub } from "./pages"; // -- WP WEB7 --
 import type { FeedState, SystemFeed } from "./feed";
 import { NO_ALINK, NO_USB_DIRECT, alinkRoleWord, lockWord, roomsView, slotWord, topology, type TopoNode, type UnitView } from "./model";
 
@@ -30,39 +30,14 @@ export function useFeed(feed: SystemFeed): FeedState {
 
 export function SystemScreen(props: ScreenProps) {
   const feed = props.system;
-  const [tab, setTab] = useState<"overview" | "installation">("overview"); // -- WP INSTW --
   if (!feed) return null;
-  // -- WP INSTW -- on a hub, the Installer mode sets the installation up in its own tab
-  // -- WP WEBM3 -- (review RB C-2) in Advanced too, as Qt's INSTQ panel: saving stays the hub's Admin's (`mayEdit`); the owner may narrow it
-  const tabs = (props.mode === "installer" || props.mode === "advanced") && feed.onHub;
-  if (tabs && tab === "installation") return <SystemTabs tab={tab} show={setTab}><InstallationTab feed={feed} session={props.session} ask={props.ask} /></SystemTabs>;
-  // -- WP WB6D -- the device's signal chain, whatever the system's state
-  const overview = (
-    <>
-      <SystemView feed={feed} installer={props.mode === "installer"} ask={props.ask} session={props.session} />
-      <SignalChain session={props.session} open={props.open} />
-    </>
-  );
-  return tabs ? <SystemTabs tab={tab} show={setTab}>{overview}</SystemTabs> : overview;
+  // -- WP WEB7 -- Qt's Units tab: on a device this console holds itself, Qt's empty state with the
+  // way to the hubs; Clock and Links, Installation and the signal chain are tabs of their own (pages.tsx)
+  if (!feed.onHub) return <NotOnHub go={props.go} />;
+  return <SystemView feed={feed} ask={props.ask} session={props.session} />;
 }
 
-// -- WP INSTW --
-function SystemTabs(props: { tab: "overview" | "installation"; show: (t: "overview" | "installation") => void; children: ComponentChildren }) {
-  return (
-    <>
-      <div class="screen-tabs" role="tablist" aria-label="System">
-        {(["overview", "installation"] as const).map((t) => (
-          <button type="button" role="tab" key={t} aria-selected={props.tab === t} onClick={() => props.show(t)}>
-            {t === "overview" ? "Status" : "Installation"}
-          </button>
-        ))}
-      </div>
-      {props.children}
-    </>
-  );
-}
-
-function SystemView(props: { feed: SystemFeed; installer: boolean; ask: ScreenProps["ask"]; session: Session /* -- WP FEATUI -- */ }) {
+function SystemView(props: { feed: SystemFeed; ask: ScreenProps["ask"]; session: Session /* -- WP FEATUI -- */ }) {
   const st = useFeed(props.feed);
   useEffect(() => props.feed.show(), [props.feed]);
   const { model, status } = st;
@@ -70,59 +45,46 @@ function SystemView(props: { feed: SystemFeed; installer: boolean; ask: ScreenPr
   const single = st.kind === "single";
   const unit = model.units[0];
   const observed = unit ? status?.observed[unit.serial] : undefined;
+  // -- WP WEB7 -- Qt's look: the error a notice row, each part a group with its icon and title outside the panel
   return (
-    <section class="sys" aria-label="System">
-      {st.error ? (
-        <p class="error" role="alert">
-          {st.error}
-        </p>
-      ) : null}
+    <section class="sys sys-page" aria-label="System">
+      {st.error ? <NoticeRow kind="warning" role="alert">{st.error}</NoticeRow> : null}
       {single && unit ? (
-        <>
-          <h3>This device</h3>
-          <p class="sys-note">
-            {props.feed.onHub ? "This hub has no audio link installation: the device is shown as a single unit." : "One device, shown as a single unit."}
-          </p>
-          <div class="sys-rooms">
-            <section class="sys-room" aria-label="This device">
-              <UnitRow u={singleRow(st)} role={alinkRoleWord(observed?.role)} />
-            </section>
-          </div>
-        </>
+        <Group title="This Device" icon="cpu" footer="This hub has no audio link installation: the device is shown as a single unit.">
+          <section class="sys-room" aria-label="This device">
+            <UnitRow u={singleRow(st)} role={alinkRoleWord(observed?.role)} />
+          </section>
+        </Group>
       ) : (
         <>
-          <h3>Rooms and zones</h3>
-          <div class="sys-rooms">
-            {roomsView(model, status).map((r) => (
-              <section class="sys-room" key={r.id || "none"} aria-label={`Room ${r.name}`}>
-                <header>
-                  <strong>{r.name}</strong>
-                  {r.zones.map((z) => (
-                    <span class="sys-chip" key={z} title="Zone">
-                      {z}
-                    </span>
-                  ))}
-                </header>
-                {r.units.length ? r.units.map((u) => <UnitRow key={u.id} u={u} />) : <p class="sys-note">No units</p>}
-              </section>
-            ))}
-          </div>
           {/* -- WP FEATUI -- a room's or zone's volume (FEAT2): Control or Admin on a hub */}
-          {props.feed.onHub && !props.feed.readOnly && (st.role === "admin" || st.role === "control") ? (
-            <ZoneVolume model={model} session={props.session} ask={props.ask} />
-          ) : null}
-          <h3>Topology</h3>
-          <ul class="sys-topo" aria-label="Topology">
-            {topology(model, status).map((n) => (
-              <TopoItem key={n.id} n={n} />
-            ))}
-          </ul>
+          {!props.feed.readOnly && (st.role === "admin" || st.role === "control") ? <ZoneVolume model={model} session={props.session} ask={props.ask} /> : null}
+          <Group title="Units" icon="network" flat>
+            <div class="sys-rooms">
+              {roomsView(model, status).map((r) => (
+                <section class="sys-room" key={r.id || "none"} aria-label={`Room ${r.name}`}>
+                  <header>
+                    <strong>{r.name}</strong>
+                    {r.zones.map((z) => (
+                      <span class="sys-chip" key={z} title="Zone">
+                        {z}
+                      </span>
+                    ))}
+                  </header>
+                  {r.units.length ? r.units.map((u) => <UnitRow key={u.id} u={u} />) : <p class="sys-note">No units</p>}
+                </section>
+              ))}
+            </div>
+          </Group>
+          <Group title="Topology" icon="link">
+            <ul class="sys-topo" aria-label="Topology">
+              {topology(model, status).map((n) => (
+                <TopoItem key={n.id} n={n} />
+              ))}
+            </ul>
+          </Group>
         </>
       )}
-      {props.installer && !single ? <AlinkClock feed={props.feed} ask={props.ask} /> : null}
-      {props.installer && single ? (
-        <p class="sys-note">Clock and audio links: the audio link's alignment is set by a hub with an installation.</p>
-      ) : null}
     </section>
   );
 }

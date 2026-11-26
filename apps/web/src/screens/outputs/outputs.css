@@ -1,0 +1,44 @@
+/* -- WP WEB3 -- (DL8 on the web) Qt's channel strip atop the Equaliser's PEQ page: one row on the panel
+   tone (the channel's pill and name, then its controls with caps labels), not a card of boxes. An
+   output's: MIX (each input's dot, level and ø), GAIN (field and slider), DELAY, mute, the limiter;
+   an input's: the pair's link and the trim (inputs.css). */
+
+.dspi-web .ch-strip {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; min-height: 40px; padding: 6px 12px;
+  background: var(--panel); border-radius: 8px; grid-template-columns: none;
+}
+.dspi-web .strip-who { display: inline-flex; align-items: center; gap: 8px; min-width: 0; margin-right: 6px; }
+.dspi-web .strip-name { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 14rem; }
+.dspi-web .strip-label, .dspi-web .ch-strip .level-caption { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.dspi-web .strip-label { margin-right: -10px; }
+
+.dspi-web .ch-strip .output-routes { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.dspi-web .ch-strip .route { display: inline-flex; align-items: center; gap: 4px; height: 24px; grid-template-columns: none; }
+.dspi-web .ch-strip .route-pick { height: 24px; gap: 6px; padding: 0 2px; }
+.dspi-web .ch-strip .route-level { width: 4.2rem; }
+.dspi-web .ch-strip .route-level input, .dspi-web .ch-strip .level-field input { height: 24px; font-family: var(--mono); font-size: 12px; text-align: right; }
+.dspi-web .ch-strip .route-inv { min-width: 24px; font-size: 13px; }
+
+.dspi-web .ch-strip .level { display: inline-flex; align-items: center; gap: 8px; }
+.dspi-web .ch-strip .level-head { gap: 8px; }
+.dspi-web .ch-strip .level-field { width: 5.5rem; }
+.dspi-web .ch-strip .level-slider { margin: 0; }
+.dspi-web .ch-strip .output-gain .level-slider { width: 120px; }
+.dspi-web .ch-strip .output-delay .level-slider { width: 80px; }
+.dspi-web .ch-strip .output-switches { flex-direction: row; align-items: center; gap: 6px; margin-left: auto; }
+.dspi-web .ch-strip .output-switches > * { flex: none; }
+.dspi-web .ch-strip .limiter-toggle, .dspi-web .ch-strip .limiter-more { min-height: 24px; border: 0; background: var(--control); font-size: 12px; }
+.dspi-web .ch-strip .limiter-toggle[aria-pressed="true"] { background: var(--selection); color: var(--accent-text); }
+.dspi-web .ch-strip .limiter-more { border-left: 1px solid var(--bg); }
+
+/* Narrow (a phone, a console beside another): each control on its own line, the sliders the line's width */
+.dspi-web .ch-strip { container-type: inline-size; }
+@container (max-width: 640px) {
+  .dspi-web .ch-strip > .level, .dspi-web .ch-strip > .output-routes, .dspi-web .ch-strip > .input-trim { flex: 1 1 100%; }
+  .dspi-web .ch-strip .level { flex-wrap: wrap; }
+  .dspi-web .ch-strip .level .level-head { flex: 1 1 auto; justify-content: space-between; }
+  .dspi-web .ch-strip .level .level-slider { flex: 1 1 100%; width: auto; min-width: 0; }
+  .dspi-web .ch-strip .input-trim { flex-wrap: wrap; }
+  .dspi-web .ch-strip .input-trim .ch-gain { flex: 1 1 100%; width: auto; min-width: 0; order: 2; }
+  .dspi-web .ch-strip .output-switches { margin-left: 0; }
+}

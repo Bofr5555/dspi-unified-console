@@ -86,21 +86,73 @@ pub(crate) fn object_schema() -> Value {
     json!({"type": "object"})
 }
 
+// -- WP SHOWFIX -- (SHOW2 finding 9) every number an agent reads or gives
+// counts from 1, as the screen does: output 1 is Out 1, preset 1 the screen's
+// preset 1. The wire counts from 0: the tools convert at their edge.
+
+/// A wire index (from 0) as the agent and the screen count it, from 1.
+pub(crate) fn shown(i: impl Into<usize>) -> usize {
+    i.into().saturating_add(1)
+}
+
+// -- WP FIN015 -- (REVF S9)
+/// A preset slot the device names (the active one, the start-up one) as the
+/// agent counts it, from 1; `None` for one past the last (the device's 255:
+/// none known), never "preset 256".
+pub(crate) fn shown_slot(slot: u8) -> Option<usize> {
+    (usize::from(slot) < MAX_PRESETS).then(|| shown(slot))
+}
+
+/// A list of wire indices as the agent counts them, from 1.
+pub(crate) fn shown_all<T: Copy + Into<usize>>(v: &[T]) -> Vec<usize> {
+    v.iter().map(|i| shown(*i)).collect()
+}
+
+/// A number the agent gave (from 1) as the wire's index (from 0); `None`
+/// for 0 or one too large to be an index.
+pub(crate) fn from_shown(n: u64) -> Option<usize> {
+    usize::try_from(n).ok().and_then(|n| n.checked_sub(1))
+}
+
+/// `args[key]`, a number from 1, as the wire's index from 0: `None` when it
+/// is not there or not a whole number; `Some(usize::MAX)` for 0, so that a
+/// range check refuses it.
+pub(crate) fn index_arg(args: &Map<String, Value>, key: &str) -> Option<usize> {
+    args.get(key)
+        .and_then(Value::as_u64)
+        .map(|n| from_shown(n).unwrap_or(usize::MAX))
+}
+
+/// The refusal of `what` number `given` on a device with `n` of them: "no
+/// output 0; this device has outputs 1..4 (counted from 1, as on the
+/// screen)".
+pub(crate) fn no_such(what: &str, given: &Value, n: usize) -> ToolError {
+    let range = if n == 0 {
+        "none".to_owned()
+    } else {
+        format!("{what}s 1..{n}")
+    };
+    ToolError::new(format!(
+        "no {what} {given}; this device has {range} (counted from 1, as on the screen)"
+    ))
+}
+
 /// The `output` / `input` / `channel` choice, for a channel tool's schema.
 pub(crate) fn target_props() -> Map<String, Value> {
     let mut m = Map::new();
     m.insert(
         "output".into(),
-        json!({"type": "integer", "minimum": 0, "description": "An output, from 0"}),
+        json!({"type": "integer", "minimum": 1, "description": "An output, from 1: 1 is Out 1"}),
     );
     m.insert(
         "input".into(),
-        json!({"type": "integer", "minimum": 0, "description": "An input, from 0"}),
+        json!({"type": "integer", "minimum": 1, "description": "An input, from 1: 1 is In 1"}),
     );
     m.insert(
         "channel".into(),
-        json!({"type": "integer", "minimum": 0,
-               "description": "A wire channel (inputs first); prefer output or input"}),
+        json!({"type": "integer", "minimum": 1,
+               "description": "A wire channel, from 1, inputs first (with 2 inputs channel 1 is \
+                               In 1 and channel 3 is Out 1); prefer output or input"}),
     );
     m
 }
@@ -129,11 +181,6 @@ pub(crate) struct Target {
 pub(crate) fn target(st: &DspState, args: &Map<String, Value>) -> Result<Target, ToolError> {
     let n_in = usize::from(st.num_input_channels);
     let n_out = usize::from(st.num_output_channels);
-    let get = |k: &str| {
-        args.get(k)
-            .and_then(Value::as_u64)
-            .map(|v| usize::try_from(v).unwrap_or(usize::MAX))
-    };
     let given = ["output", "input", "channel"]
         .iter()
         .filter(|k| args.contains_key(**k))
@@ -141,12 +188,13 @@ pub(crate) fn target(st: &DspState, args: &Map<String, Value>) -> Result<Target,
     if given != 1 {
         return Err(ToolError::new("name one of `output`, `input` or `channel`"));
     }
-    if let Some(o) = get("output") {
+    // -- WP SHOWFIX -- the agent's numbers count from 1
+    let get = |k: &str| index_arg(args, k).unwrap_or(usize::MAX);
+    let raw = |k: &str| args.get(k).cloned().unwrap_or(Value::Null);
+    if args.contains_key("output") {
+        let o = get("output");
         if o >= n_out {
-            return Err(ToolError::new(format!(
-                "no output {o}; this device has outputs 0..{}",
-                n_out.saturating_sub(1)
-            )));
+            return Err(no_such("output", &raw("output"), n_out));
         }
         return Ok(Target {
             channel: n_in.saturating_add(o),
@@ -154,12 +202,10 @@ pub(crate) fn target(st: &DspState, args: &Map<String, Value>) -> Result<Target,
             index: o,
         });
     }
-    if let Some(i) = get("input") {
+    if args.contains_key("input") {
+        let i = get("input");
         if i >= n_in {
-            return Err(ToolError::new(format!(
-                "no input {i}; this device has inputs 0..{}",
-                n_in.saturating_sub(1)
-            )));
+            return Err(no_such("input", &raw("input"), n_in));
         }
         return Ok(Target {
             channel: i,
@@ -167,12 +213,13 @@ pub(crate) fn target(st: &DspState, args: &Map<String, Value>) -> Result<Target,
             index: i,
         });
     }
-    let c = get("channel").unwrap_or(usize::MAX);
+    let c = get("channel");
     if c >= n_in.saturating_add(n_out) {
-        return Err(ToolError::new(format!(
-            "no wire channel {c}; this device has 0..{}",
-            n_in.saturating_add(n_out).saturating_sub(1)
-        )));
+        return Err(no_such(
+            "wire channel",
+            &raw("channel"),
+            n_in.saturating_add(n_out),
+        ));
     }
     Ok(match c.checked_sub(n_in) {
         Some(o) => Target {
@@ -203,10 +250,10 @@ fn name_at(v: &[String], i: usize) -> String {
     v.get(i).map(|s| untrusted::name(s)).unwrap_or_default()
 }
 
-/// One PEQ slot.
+/// One PEQ slot (`slot` from 0; the agent reads it from 1).
 pub(crate) fn band_json(slot: usize, f: &FilterParams) -> Value {
     let mut b = json!({
-        "slot": slot,
+        "slot": shown(slot),
         "type": type_word(f.filter_type),
         "type_label": filter_type_name(f.filter_type),
         "free": f.filter_type == 0,
@@ -224,11 +271,12 @@ pub(crate) fn band_json(slot: usize, f: &FilterParams) -> Value {
     b
 }
 
-/// One crossover slot, decoded.
+/// One crossover slot, decoded (`slot` from 0; the agent reads it from 1).
 pub(crate) fn xover_json(slot: usize, f: &FilterParams) -> Option<Value> {
     if f.filter_type == 0 {
         return None;
     }
+    let slot = shown(slot);
     Some(match xover::meta(f.filter_type) {
         Some(m) => json!({
             "slot": slot,
@@ -381,6 +429,7 @@ fn detected_fields(layout: Option<&dspi_core::SpeakerLayout>, o: u8) -> Value {
         RoleSource::User => "user",
         RoleSource::Detected => "detected",
         RoleSource::Suggested => "suggested",
+        RoleSource::Stated => "stated", // -- WP ROLES --
     });
     let reaches = match found.map(|d| d.class) {
         Some(DetectClass::Nothing) if row.is_none() => "nothing",
@@ -400,14 +449,32 @@ fn detected_fields(layout: Option<&dspi_core::SpeakerLayout>, o: u8) -> Value {
             .map(|d| super::measure::confidence_word(d.confidence)),
         "reaches": reaches,
         "detected_at_ms": found.map(|d| d.probed_ms).filter(|ms| *ms > 0),
+        // -- WP ROLES -- a stated role's top-fall check, and an output the
+        // safety rules take for a tweeter whatever the row says (one a
+        // statement leaves out, a stated row whose check found a tweeter's
+        // top, the user's own tweeter a statement replaced)
+        "role_check": layout
+            .filter(|_| row.is_some_and(|r| r.source == RoleSource::Stated))
+            .and_then(|l| l.check_of(o))
+            .map(|c| super::measure::check_verdict_word(c.verdict)),
+        "treated_as_tweeter": layout.is_some_and(|l| {
+            l.state() == dspi_core::LayoutState::Stated
+                && (row.is_none()
+                    || l.check_of(o)
+                        .is_some_and(|c| c.verdict == dspi_core::RoleCheckVerdict::TopHolds)
+                    // -- WP REVDFIX -- B1: and the user's own tweeter it replaced
+                    || l.user_tweeter_held(o))
+        }),
     })
 }
 
 static GET_OVERVIEW: Tool = Tool {
     name: "dspi_get_overview",
     title: "Device overview",
-    description: "Inputs and outputs with their numbers and wire channels, each output's role \
-                  from the user's speaker setup (read-only: only the user sets roles), \
+    description: "Inputs and outputs with their numbers and wire channels (from 1, as the app \
+                  shows them: output 1 is Out 1), each output's role \
+                  from the speaker setup (roles_from: confirmed by the user, auto-detected, or \
+                  stated: set by an agent from the user's words, dspi_set_speaker_roles), \
                   enabled, mute, gain, delay and routing; volume, the installer lock, the \
                   limits profile, the preset and what an agent may do; and `programme`: the \
                   DSPi has no player, it plays what its input source receives, which source \
@@ -431,8 +498,8 @@ static GET_OVERVIEW: Tool = Tool {
         let inputs: Vec<Value> = (0..n_in)
             .map(|i| {
                 json!({
-                    "input": i,
-                    "channel": i,
+                    "input": shown(i),
+                    "channel": shown(i),
                     "input_name": name_at(&st.channel_names, i),
                     "preamp_db": num(at(&st.input_preamp_db, i)),
                 })
@@ -446,7 +513,7 @@ static GET_OVERVIEW: Tool = Tool {
                     .filter(|&i| st.matrix_routing.get(i).is_some_and(|r| at(r, o)))
                     .map(|i| {
                         json!({
-                            "input": i,
+                            "input": shown(i),
                             "gain_db": num(st.matrix_gain.get(i).map_or(0.0, |r| at(r, o))),
                             "invert": st.matrix_invert.get(i).is_some_and(|r| at(r, o)),
                         })
@@ -455,8 +522,8 @@ static GET_OVERVIEW: Tool = Tool {
                 let role = roles.get(o).cloned().flatten();
                 let found = detected_fields(layout.as_ref(), u8::try_from(o).unwrap_or(u8::MAX)); // -- WP ADET1 --
                 let mut row = json!({
-                    "output": o,
-                    "channel": ch,
+                    "output": shown(o),
+                    "channel": shown(ch),
                     "output_name": label.filter(|l| l.user_named).map(|l| untrusted::name(&l.label)),
                     "slot_name": label.map(|l| untrusted::name(&l.slot_name)),
                     "band_guess": label.map(|l| l.band.to_lowercase()),
@@ -479,7 +546,10 @@ static GET_OVERVIEW: Tool = Tool {
             .collect();
         let lock = core.installer_lock_state();
         let limits = core.limits_status();
-        let preset = core.get_preset_directory().ok().map(|d| d.last_active);
+        let preset = core
+            .get_preset_directory()
+            .ok()
+            .and_then(|d| shown_slot(d.last_active)); // -- WP FIN015 --
         Ok(json!({
             "device": call.device_text(),
             "inputs": inputs,
@@ -489,6 +559,8 @@ static GET_OVERVIEW: Tool = Tool {
                 Some(dspi_core::LayoutState::Confirmed) => "speaker_setup_confirmed",
                 // -- WP ADET1 -- trusted as a confirmed one's until the user confirms
                 Some(dspi_core::LayoutState::AutoDetected) => "speaker_setup_auto_detected",
+                // -- WP ROLES -- set by an agent from the user's words, not checked
+                Some(dspi_core::LayoutState::Stated) => "speaker_setup_stated",
                 _ => "speaker_setup_unconfirmed",
             },
             "volume": {
@@ -589,9 +661,9 @@ static GET_CHANNEL: Tool = Tool {
             .collect();
         let mut out = json!({
             "device": call.device_text(),
-            "channel": t.channel,
+            "channel": shown(t.channel),
             "kind": if t.output { "output" } else { "input" },
-            "index": t.index,
+            "index": shown(t.index),
             "channel_name": name_at(&st.channel_names, t.channel),
             "peq": peq,
         });
@@ -657,14 +729,14 @@ static GET_ROUTING: Tool = Tool {
                 let cells: Vec<Value> = (0..n_out)
                     .map(|o| {
                         json!({
-                            "output": o,
+                            "output": shown(o),
                             "on": row(&st.matrix_routing, o),
                             "gain_db": num(st.matrix_gain.get(i).map_or(0.0, |r| at(r, o))),
                             "invert": row(&st.matrix_invert, o),
                         })
                     })
                     .collect();
-                json!({"input": i, "outputs": cells})
+                json!({"input": shown(i), "outputs": cells})
             })
             .collect();
         Ok(json!({"device": call.device_text(), "matrix": matrix}))
@@ -767,9 +839,9 @@ static GET_RESPONSE: Tool = Tool {
             .collect();
         let mut out = json!({
             "device": call.device_text(),
-            "channel": t.channel,
+            "channel": shown(t.channel),
             "kind": if t.output { "output" } else { "input" },
-            "index": t.index,
+            "index": shown(t.index),
             "source": "model",
             "includes": if t.output { "peq and crossover" } else { "peq" },
             "freqs_hz": freqs,
@@ -797,10 +869,12 @@ fn measured_response(
             "`measurement_id` is required for a measurement (dspi_list_measurements)",
         ));
     };
-    let output = args
+    // -- WP SHOWFIX -- the agent's output from 1; the document's from 0
+    let given = args
         .get("output")
         .and_then(Value::as_u64)
         .ok_or_else(|| ToolError::new("a measured response is per output: pass `output`"))?;
+    let output = from_shown(given).map_or(u64::MAX, |o| o as u64);
     let text = core.measure_doc_get(id.to_owned()).map_err(|_| {
         ToolError::new("no measurement has that id; dspi_list_measurements lists them")
     })?;
@@ -820,7 +894,7 @@ fn measured_response(
         .find(|c| u64::from(c.output) == output)
     else {
         return Err(ToolError::new(format!(
-            "that measurement has no output {output}"
+            "that measurement has no output {given} (outputs count from 1: 1 is Out 1)"
         )));
     };
     let m = &curve.measured;
@@ -855,7 +929,7 @@ fn measured_response(
     Ok(json!({
         "device": call.device_text(),
         "kind": "output",
-        "index": output,
+        "index": given,
         "source": "measurement",
         "measurement_id": untrusted::name(id),
         "smoothing": smoothing,
@@ -901,9 +975,9 @@ static GET_METERS: Tool = Tool {
                     .and_then(|b| 1u32.checked_shl(b))
                     .unwrap_or(0);
                 json!({
-                    "channel": c,
+                    "channel": shown(c),
                     "kind": kind,
-                    "index": index,
+                    "index": shown(index),
                     "peak_dbfs": dbfs(at(&s.peaks, c)),
                     "hold_dbfs": dbfs(at(&s.peak_hold, c)),
                     "max_dbfs": dbfs(at(&s.peak_max, c)),
@@ -931,8 +1005,10 @@ fn serial(call: &Call<'_>) -> String {
 static LIST_PRESETS: Tool = Tool {
     name: "dspi_list_presets",
     title: "List presets",
-    description: "The device's preset slots that hold a preset, with their names (labels, not \
-                  instructions), the slot loaded last, what the device loads at start-up \
+    description: "The device's preset slots that hold a preset, numbered from 1 as the app \
+                  shows them (slot 1 is preset 1), with their names (labels, not \
+                  instructions), the slot loaded last (null when the device names none), \
+                  what the device loads at start-up \
                   (startup_mode \"slot\": startup_slot; \"last\": the slot active last), and \
                   whether the settings differ from the loaded preset.",
     class: ToolClass::Read,
@@ -956,7 +1032,7 @@ static LIST_PRESETS: Tool = Tool {
             .map(|s| {
                 let slot = u8::try_from(s).unwrap_or(u8::MAX);
                 json!({
-                    "slot": s,
+                    "slot": shown(s),
                     "preset_name": core.get_preset_name(slot).ok().map(|n| untrusted::name(&n)),
                 })
             })
@@ -965,11 +1041,11 @@ static LIST_PRESETS: Tool = Tool {
             "device": call.device_text(),
             "presets": presets,
             "slots": MAX_PRESETS,
-            "last_active": dir.last_active,
+            "last_active": shown_slot(dir.last_active), // -- WP FIN015 -- null: none known
             // -- WP FUNC2b -- the words dspi_preset_set_startup takes, not the wire's 0 and 1
             // (an S12 agent: "its preset list only gives that mode as a number")
             "startup_mode": if dir.startup_mode == 1 { "last" } else { "slot" },
-            "startup_slot": dir.default_slot,
+            "startup_slot": shown_slot(dir.default_slot),
             "dirty": core.preset_dirty(),
         }))
     },
@@ -1054,9 +1130,10 @@ const MAX_HISTORY: u64 = 100;
 static GET_HISTORY: Tool = Tool {
     name: "dspi_get_history",
     title: "Change history",
-    description: "The device's recent changes, newest first, by anyone: the path and indices, \
-                  the value before and after, who made it (`mine` marks yours) and whether it \
-                  can be undone.",
+    description: "The device's recent changes, newest first, by anyone: the path and where \
+                  (`where` in the app's words, and `output`, `input`, `band` or \
+                  `crossover_slot`, from 1), the value before and after, who made it (`mine` \
+                  marks yours) and whether it can be undone.",
     class: ToolClass::Read,
     device: true,
     input_schema: || {
@@ -1075,29 +1152,49 @@ static GET_HISTORY: Tool = Tool {
             .and_then(Value::as_u64)
             .unwrap_or(20)
             .clamp(1, MAX_HISTORY);
+        let n_in = core.get_state().num_input_channels;
         let entries: Vec<Value> = core
             .history(u32::try_from(n).unwrap_or(20))
             .iter()
             .map(|e| {
-                json!({
-                    "id": e.id,
-                    "path": e.path,
-                    "indices": e.indices,
-                    "before": e.before.as_ref().map(param_json),
-                    "after": param_json(&e.after),
-                    "source": e.source,
-                    "at_ms": e.at_ms,
-                    "undoable": e.undoable,
-                    "group_name": e.label.as_deref().map(untrusted::note),
-                    "actor": e.actor,
-                    "actor_name": e.actor_label.as_deref().map(untrusted::note),
-                    "mine": e.actor == call.actor,
-                })
+                let mut row = where_json(&e.path, &e.indices, n_in);
+                row.extend(
+                    json!({
+                        "id": e.id,
+                        "path": e.path,
+                        "before": e.before.as_ref().map(param_json),
+                        "after": param_json(&e.after),
+                        "source": e.source,
+                        "at_ms": e.at_ms,
+                        "undoable": e.undoable,
+                        "group_name": e.label.as_deref().map(untrusted::note),
+                        "actor": e.actor,
+                        "actor_name": e.actor_label.as_deref().map(untrusted::note),
+                        "mine": e.actor == call.actor,
+                    })
+                    .as_object()
+                    .cloned()
+                    .unwrap_or_default(),
+                );
+                Value::Object(row)
             })
             .collect();
         Ok(json!({"device": call.device_text(), "entries": entries}))
     },
 };
+
+// -- WP SHOWFIX --
+/// Where a journal entry's `indices` point, as the agent counts: `where` in
+/// the app's words ("Out 2 band 3") and `output`, `input`, `band` or
+/// `crossover_slot` (another path: `indices`), each from 1.
+fn where_json(path: &str, ix: &[u8], n_in: u8) -> Map<String, Value> {
+    let mut m = Map::new();
+    let words = crate::user::place(path, ix, n_in, &mut m);
+    if !words.is_empty() {
+        m.insert("where".into(), json!(words));
+    }
+    m
+}
 
 /// The most activity entries one call gives.
 const MAX_ACTIVITY: u64 = 200;
@@ -1106,7 +1203,8 @@ static GET_ACTIVITY: Tool = Tool {
     name: "dspi_get_activity",
     title: "Your recent calls",
     description: "Your own recent tool calls on this server, oldest first: tool, device, \
-                  outcome and the ids of the changes each made.",
+                  outcome, the ids of the changes each made and what it touched (path and \
+                  where, numbers from 1 as the app shows them).",
     class: ToolClass::Read,
     device: false,
     input_schema: || {
@@ -1124,11 +1222,36 @@ static GET_ACTIVITY: Tool = Tool {
             .and_then(Value::as_u64)
             .unwrap_or(20)
             .clamp(1, MAX_ACTIVITY);
+        // -- WP SHOWFIX -- what each call touched, as the agent counts
+        let inputs = |device: Option<&str>| -> Option<u8> {
+            let id = dspi_core::DeviceId::parse(device?)?;
+            Some(call.set?.core(&id)?.get_state().num_input_channels)
+        };
         let entries: Vec<Value> = call
             .activity
             .recent(usize::try_from(n).unwrap_or(20), Some(call.client))
             .iter()
-            .map(|e| e.to_json())
+            .map(|e| {
+                let mut v = e.to_json();
+                let n_in = inputs(e.device.as_deref());
+                let touched: Vec<Value> = e
+                    .touched
+                    .iter()
+                    .map(|(p, ix)| {
+                        let mut m = match n_in {
+                            Some(n) => where_json(p, ix, n),
+                            None => Map::new(),
+                        };
+                        if m.is_empty() && !ix.is_empty() {
+                            m.insert("indices".into(), json!(shown_all(ix)));
+                        }
+                        m.insert("path".into(), json!(p));
+                        Value::Object(m)
+                    })
+                    .collect();
+                put(&mut v, "touched", json!(touched));
+                v
+            })
             .collect();
         Ok(json!({"entries": entries}))
     },

@@ -2,7 +2,9 @@
 
 #include "Snapshot.h"
 
+#include <QJsonArray>
 #include <QJsonObject>
+#include <QRegularExpression>
 
 int ChannelListModel::rowCount(const QModelIndex &parent) const { return parent.isValid() ? 0 : int(m_rows.size()); }
 
@@ -27,6 +29,10 @@ QVariant ChannelListModel::data(const QModelIndex &index, int role) const {
     case EnabledRole: return r.enabled;
     case UserNamedRole: return r.userNamed;
     case PdmRole: return r.pdm;
+    case DisplayNameRole: return r.displayName; // -- WP SHOWFIX --
+    case ShortNameRole: return r.shortName;
+    case UnusedRole: return r.unused; // -- WP INTE --
+    case HiddenRole: return r.hidden; // -- WP FIN015 --
     default: return QVariant();
     }
 }
@@ -36,6 +42,9 @@ QHash<int, QByteArray> ChannelListModel::roleNames() const {
         { KindRole, "kind" },         { IndexRole, "number" },     { ChannelRole, "channel" },
         { NameRole, "name" },         { LabelRole, "label" },     { DescriptorRole, "descriptor" },
         { EnabledRole, "outputEnabled" },   { UserNamedRole, "userNamed" }, { PdmRole, "pdm" },
+        { DisplayNameRole, "displayName" }, { ShortNameRole, "shortName" }, // -- WP SHOWFIX --
+        { UnusedRole, "unused" },                                           // -- WP INTE --
+        { HiddenRole, "hidden" },                                           // -- WP FIN015 --
     };
 }
 
@@ -51,6 +60,35 @@ QVariant ChannelListModel::get(int row, const QString &role) const {
     for (auto it = roles.cbegin(); it != roles.cend(); ++it)
         if (it.value() == name) return data(index(row), it.key());
     return QVariant();
+}
+
+// -- WP FIN015 -- (REVF D1)
+QString ChannelListModel::outputName(int output) const {
+    for (const Row &r : m_rows) {
+        if (!r.output || r.index != output) continue;
+        // "Out 1", "Out 1 · R · Low": the number's own word says it already
+        static const QRegularExpression own(QStringLiteral("^Out (\\d+)(?!\\d)"));
+        const QRegularExpressionMatch m = own.match(r.displayName);
+        if (r.displayName.isEmpty() || (m.hasMatch() && m.captured(1).toInt() == output + 1)) return {};
+        return r.displayName;
+    }
+    return {};
+}
+
+QString ChannelListModel::withNames(const QString &text) const {
+    // "Out N" as the core's words say it, not one already followed by its name
+    static const QRegularExpression word(QStringLiteral("\\bOut (\\d+)(?!\\d)(?! \\()"));
+    QString out;
+    qsizetype at = 0;
+    QRegularExpressionMatchIterator it = word.globalMatch(text);
+    while (it.hasNext()) {
+        const QRegularExpressionMatch m = it.next();
+        out += text.mid(at, m.capturedEnd() - at);
+        const QString name = outputName(m.captured(1).toInt() - 1);
+        if (!name.isEmpty()) out += QStringLiteral(" (%1)").arg(name);
+        at = m.capturedEnd();
+    }
+    return out + text.mid(at);
 }
 
 // -- WP QPI2 -- The input strips the source feeds (the Mac's
@@ -75,6 +113,8 @@ int ChannelListModel::effectiveInputs(const DspState &s) {
 void ChannelListModel::update(const DeviceSnapshot &snap, const QString &platform) {
     QVector<Row> rows;
     if (const DspState *s = snap.state.get()) {
+        const QJsonObject &words = snap.channelWords;                                  // -- WP SHOWFIX --
+        const QJsonArray fromLayout = words.value(QLatin1String("fromLayout")).toArray(); // -- WP SHOWFIX --
         const int inputs = effectiveInputs(*s);
         for (int i = 0; i < inputs && i < MAX_CHANNELS; ++i) {
             Row r;
@@ -82,6 +122,9 @@ void ChannelListModel::update(const DeviceSnapshot &snap, const QString &platfor
             r.channel = i;
             r.name = fieldText(s->channel_names[i], CHANNEL_NAME_LEN);
             r.label = r.name.isEmpty() ? tr("USB %1").arg(i + 1) : r.name;
+            // -- WP SHOWFIX -- the core's word for it ("LFE", "In 7")
+            r.displayName = r.label;
+            r.shortName = words.value(QLatin1String("inputs")).toArray().at(i).toString(r.label);
             rows.append(r);
         }
         // The PDM subwoofer's output number, as the Mac app places it
@@ -99,6 +142,17 @@ void ChannelListModel::update(const DeviceSnapshot &snap, const QString &platfor
                                                                 : QString();
             r.enabled = r.index >= 0 && r.index < MAX_OUTPUTS ? s->output_enabled[r.index] : false;
             r.pdm = r.index == pdmOutput;
+            // -- WP INTE -- (owner 2026-11-24) nothing routed to it: the dock's
+            // meters leave it out, the sidebar (an edit view) keeps it
+            r.unused = o.value(QLatin1String("unused")).toBool();
+            // -- WP FIN015 -- (REVF R1) unless the generator plays on it: the
+            // generator writes after the matrix, so it is loud
+            r.hidden = o.value(QLatin1String("hidden")).toBool();
+            // -- WP SHOWFIX -- the speaker layout's name where the core has one
+            // ("Centre woofer"), as the Overview's card names it
+            const QString word = words.value(QLatin1String("outputs")).toArray().at(r.index).toString();
+            r.displayName = fromLayout.contains(QJsonValue(r.index)) && !word.isEmpty() ? word : r.label;
+            r.shortName = word.isEmpty() ? r.label : word;
             rows.append(r);
         }
     }

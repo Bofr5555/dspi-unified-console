@@ -247,7 +247,7 @@ fn wp_mcp5_the_demo_simulation_end_to_end() {
     let mut s = server(&set, ConfirmMode::AskRisky, true);
     let c = s.connect();
     let mut now = 1_000;
-    let outs = json!({"outputs": [0, 1, 2], "sweep_ms": 1000, "passes": 2});
+    let outs = json!({"outputs": [1, 2, 3], "sweep_ms": 1000, "passes": 2});
 
     // Preflight: the roles read-only from the user's layout.
     let p = ok_at(&mut s, c, now, "dspi_measure_preflight", outs.clone());
@@ -406,7 +406,7 @@ fn wp_mcp5_a_keep_after_a_failed_verify_is_the_users() {
         c,
         now,
         "dspi_measure_start",
-        json!({"outputs": [0, 1, 2], "sweep_ms": 1000, "passes": 2}),
+        json!({"outputs": [1, 2, 3], "sweep_ms": 1000, "passes": 2}),
     );
     app_takes(&mut s, &core);
     app_drives(&core, "session", 240);
@@ -492,7 +492,7 @@ fn wp_mcp5_the_low_end_search_on_a_tweeter() {
         c,
         now,
         "dspi_measure_rolloff_start",
-        json!({"output": 2}),
+        json!({"output": 3}),
     );
     assert_eq!(r["status"], json!("waiting_for_app"), "{r}");
     let started = app_takes(&mut s, &core);
@@ -556,7 +556,7 @@ fn wp_mcp5_the_low_end_search_of_a_midrange_labelled_tweeter_stops_at_the_floor(
         c,
         0,
         "dspi_measure_rolloff_start",
-        json!({"output": 1}),
+        json!({"output": 2}),
     );
     let started = app_takes(&mut s, &core);
     assert_eq!(started[0]["state"]["floorHz"], json!(1000.0), "{started:?}");
@@ -581,8 +581,8 @@ fn wp_mcp5_an_unconfirmed_layout_is_refused() {
     let c = s.connect();
     let calls = [
         ("dspi_measure_preflight", json!({})),
-        ("dspi_measure_start", json!({"outputs": [0]})),
-        ("dspi_measure_rolloff_start", json!({"output": 2})),
+        ("dspi_measure_start", json!({"outputs": [1]})),
+        ("dspi_measure_rolloff_start", json!({"output": 3})),
         ("dspi_tune_propose", json!({"measurement": "x"})),
         (
             "dspi_system_measure_preflight",
@@ -607,7 +607,7 @@ fn wp_mcp5_an_unconfirmed_layout_is_refused() {
     assert!(!core.measure_state().active);
     // Asked for while it was confirmed, not confirmed any more.
     layout(&core, true);
-    ok_at(&mut s, c, 0, "dspi_measure_start", json!({"outputs": [0]}));
+    ok_at(&mut s, c, 0, "dspi_measure_start", json!({"outputs": [1]}));
     let req = s.measure_requests()[0]["request_id"].as_u64().unwrap();
     let ticket = s.measure_take(req).unwrap();
     layout(&core, false);
@@ -641,12 +641,12 @@ fn wp_mcp5_a_role_argument_is_rejected_by_the_schema() {
     for (tool, args) in [
         (
             "dspi_measure_start",
-            json!({"outputs": [2], "role": "full"}),
+            json!({"outputs": [3], "role": "full"}),
         ),
         ("dspi_measure_preflight", json!({"roles": ["full"]})),
         (
             "dspi_measure_rolloff_start",
-            json!({"output": 2, "role": "mid"}),
+            json!({"output": 3, "role": "mid"}),
         ),
         ("dspi_tune_propose", json!({"roles_from_layout": false})),
     ] {
@@ -659,7 +659,7 @@ fn wp_mcp5_a_role_argument_is_rejected_by_the_schema() {
         c,
         0,
         "dspi_measure_start",
-        json!({"outputs": [{"output": 2, "role": "full"}]}),
+        json!({"outputs": [{"output": 3, "role": "full"}]}),
     );
     assert!(e.contains("never from an agent"), "{e}");
     let e = err_at(
@@ -667,7 +667,7 @@ fn wp_mcp5_a_role_argument_is_rejected_by_the_schema() {
         c,
         0,
         "dspi_system_measure_start",
-        json!({"units": [{"device": id.as_str(), "outputs": [0], "role": "full"}]}),
+        json!({"units": [{"device": id.as_str(), "outputs": [1], "role": "full"}]}),
     );
     assert!(e.contains("never from an agent"), "{e}");
     assert!(
@@ -705,6 +705,9 @@ fn wp_mcp5_a_role_argument_is_rejected_by_the_schema() {
         !names
             .iter()
             .filter(|n| **n != "dspi_detect_speakers")
+            // -- WP ROLES -- the owner's reversal (2026-11-23): roles from the
+            // user's words, still no `speaker_layout` in a name (AGENT_PROOF)
+            .filter(|n| **n != crate::tools::roles::SET_ROLES_NAME)
             .any(|n| n.contains("layout") || n.contains("speaker"))
     );
 }
@@ -713,7 +716,7 @@ fn wp_mcp5_a_role_argument_is_rejected_by_the_schema() {
 fn wp_mcp5_test_signals_follow_the_setting_and_the_hard_rules_stay() {
     let (set, _id, core) = demo();
     layout(&core, true);
-    let args = json!({"outputs": [0]});
+    let args = json!({"outputs": [1]});
     // Ask everything and ask risky: asked. Never ask: not asked.
     for mode in [ConfirmMode::AskEverything, ConfirmMode::AskRisky] {
         let mut s = server(&set, mode, true);
@@ -779,12 +782,12 @@ fn wp_mcp5_without_a_measure_view_measuring_is_not_available() {
         c,
         0,
         "dspi_measure_preflight",
-        json!({"outputs": [0]}),
+        json!({"outputs": [1]}),
     );
     assert_eq!(p["measuring_available"], json!(false));
     for (tool, args) in [
-        ("dspi_measure_start", json!({"outputs": [0]})),
-        ("dspi_measure_rolloff_start", json!({"output": 2})),
+        ("dspi_measure_start", json!({"outputs": [1]})),
+        ("dspi_measure_rolloff_start", json!({"output": 3})),
         ("dspi_tune_verify", json!({})),
     ] {
         let e = err_at(&mut s, c, 0, tool, args);
@@ -804,7 +807,7 @@ fn wp_func1_a_proposal_takes_the_layouts_outputs_routed_or_not() {
     }
     let mut s = server(&set, ConfirmMode::NeverAsk, true);
     let c = s.connect();
-    let args = json!({"outputs": [0], "sweep_ms": 1000, "passes": 2});
+    let args = json!({"outputs": [1], "sweep_ms": 1000, "passes": 2});
     ok_at(&mut s, c, 1_000, "dspi_measure_start", args);
     app_takes(&mut s, &core);
     app_drives(&core, "session", 240);
@@ -832,7 +835,7 @@ fn wp_mcp5_requests_lapse_are_declined_stopped_and_withdrawn() {
     layout(&core, true);
     let mut s = server(&set, ConfirmMode::NeverAsk, true);
     let c = s.connect();
-    let args = json!({"outputs": [0], "sweep_ms": 1000});
+    let args = json!({"outputs": [1], "sweep_ms": 1000});
     let mut now = 1_000;
 
     // Nobody takes it: it lapses, nothing played.
@@ -956,7 +959,7 @@ fn wp_mcp5_the_measurement_list_and_read() {
         c,
         0,
         "dspi_measure_start",
-        json!({"outputs": [0], "sweep_ms": 1000, "passes": 2}),
+        json!({"outputs": [1], "sweep_ms": 1000, "passes": 2}),
     );
     app_takes(&mut s, &core);
     app_drives(&core, "session", 120);
@@ -981,7 +984,7 @@ fn wp_mcp5_the_measurement_list_and_read() {
         c,
         1_000,
         "dspi_get_response",
-        json!({"output": 0, "source": "measurement", "measurement_id": filed}),
+        json!({"output": 1, "source": "measurement", "measurement_id": filed}),
     );
     assert!(!m["freqs_hz"].as_array().unwrap().is_empty(), "{m}");
     // A tune proposed from the filed id.
@@ -1005,7 +1008,7 @@ fn wp_rcfix_the_users_search_is_not_the_agents() {
     layout(&core, true);
     let mut s = server(&set, ConfirmMode::NeverAsk, true);
     let c = s.connect();
-    let args = json!({"output": 2, "start_hz": 4000});
+    let args = json!({"output": 3, "start_hz": 4000});
     let r = ok_at(&mut s, c, 0, "dspi_measure_rolloff_start", args);
     assert_eq!(r["status"], json!("waiting_for_app"), "{r}");
     let id = r["request_id"].as_u64().unwrap();
@@ -1068,7 +1071,7 @@ fn wp_ffix_the_status_mark_changes_when_the_app_takes_the_request() {
         st.get("tune").is_none() && st.get("rolloff").is_none(),
         "{st}"
     );
-    let outs = json!({"outputs": [0, 1, 2], "sweep_ms": 1000, "passes": 2});
+    let outs = json!({"outputs": [1, 2, 3], "sweep_ms": 1000, "passes": 2});
     ok_at(&mut s, c, 1_000, "dspi_measure_start", outs);
     let m0 = s.status_mark(c, 1_000, &poll).unwrap();
     assert_eq!(
@@ -1094,7 +1097,7 @@ fn wp_ffix_a_second_measurement_on_another_device_is_busy() {
     layout(&core2, true);
     let mut s = server(&set, ConfirmMode::NeverAsk, true);
     let c = s.connect();
-    let outs = json!({"outputs": [0], "sweep_ms": 1000, "passes": 2, "device": id1.as_str()});
+    let outs = json!({"outputs": [1], "sweep_ms": 1000, "passes": 2, "device": id1.as_str()});
     ok_at(&mut s, c, 1_000, "dspi_measure_start", outs.clone());
     let mut on2 = outs.clone();
     on2["device"] = json!(id2.as_str());
@@ -1107,7 +1110,7 @@ fn wp_ffix_a_second_measurement_on_another_device_is_busy() {
     app_takes(&mut s, &core);
     let e = err_at(&mut s, c, 1_000, "dspi_measure_start", on2.clone());
     assert!(e.contains("a measurement is running on demo:1"), "{e}");
-    let mut search = json!({"output": 0, "device": id2.as_str()});
+    let mut search = json!({"output": 1, "device": id2.as_str()});
     search["start_hz"] = json!(4000);
     let e = err_at(&mut s, c, 1_000, "dspi_measure_rolloff_start", search);
     assert!(e.contains("one microphone"), "{e}");
@@ -1137,7 +1140,7 @@ fn wp_ffix_one_run_gives_arrivals_and_the_alignment_across_speakers() {
     .unwrap();
     let mut s = server(&set, ConfirmMode::NeverAsk, true);
     let c = s.connect();
-    let args = json!({"outputs": [0, 1], "sweep_ms": 2000, "passes": 3, "one_run": true});
+    let args = json!({"outputs": [1, 2], "sweep_ms": 2000, "passes": 3, "one_run": true});
     let p = ok_at(&mut s, c, 1_000, "dspi_measure_preflight", args.clone());
     assert_eq!(p["preflight"]["clear"], json!(true), "{p}");
     ok_at(&mut s, c, 1_000, "dspi_measure_start", args);
@@ -1171,7 +1174,7 @@ fn wp_ffix_one_run_gives_arrivals_and_the_alignment_across_speakers() {
             c,
             6_000,
             "dspi_get_response",
-            json!({"source": "measurement", "measurement_id": doc_id, "output": 1}),
+            json!({"source": "measurement", "measurement_id": doc_id, "output": 2}),
         );
         assert!(r["arrival_ms"].is_number(), "{r}");
         assert!(
@@ -1194,7 +1197,7 @@ fn wp_ffix_one_run_gives_arrivals_and_the_alignment_across_speakers() {
         c,
         7_000,
         "dspi_measure_start",
-        json!({"outputs": [0, 1], "sweep_ms": 1000, "passes": 2}),
+        json!({"outputs": [1, 2], "sweep_ms": 1000, "passes": 2}),
     );
     app_takes(&mut s, &core);
     assert_eq!(core.measure_state().runs, 2);

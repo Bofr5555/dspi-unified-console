@@ -1,0 +1,2 @@
+# -- WP DL0 -- The design language's components (see ../manifest.txt for the format)
+circle-dashed       EmptyState: the default icon

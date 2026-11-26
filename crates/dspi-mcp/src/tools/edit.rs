@@ -21,7 +21,8 @@ use serde_json::{Map, Value, json};
 use crate::policy::{self, WriteKey};
 use crate::registry::{Call, Tool, ToolClass, ToolError, ToolResult};
 use crate::tools::read::{
-    band_json, num, object_schema, state, target, target_props, type_word, xover_json,
+    band_json, index_arg, no_such, num, object_schema, shown, state, target, target_props,
+    type_word, xover_json,
 };
 
 /// The edit tools, in `tools/list` order.
@@ -244,7 +245,7 @@ impl Op {
                     policy::band_of(st, ch, band)
                         .map_or(Value::Null, |f| band_json(usize::from(band), f))
                 };
-                json!({"what": "peq_band", "channel": ch, "slot": band,
+                json!({"what": "peq_band", "channel": shown(ch), "slot": shown(band),
                        "before": b(before), "after": b(after)})
             }
             Op::Xover { ch, .. } | Op::BandBypass { ch, .. } | Op::Peq { ch, .. } => {
@@ -258,23 +259,23 @@ impl Op {
                         )
                     })
                 };
-                json!({"what": "crossover", "output": ch.saturating_sub(n_in),
+                json!({"what": "crossover", "output": shown(ch.saturating_sub(n_in)),
                        "before": x(before), "after": x(after)})
             }
             Op::EqBypass(_) => {
                 json!({"what": "eq_bypass", "before": before.bypass, "after": after.bypass})
             }
-            Op::OutGain { o, .. } => json!({"what": "output_gain_db", "output": o,
+            Op::OutGain { o, .. } => json!({"what": "output_gain_db", "output": shown(o),
                 "before": at(&before.output_gain_db, o), "after": at(&after.output_gain_db, o)}),
-            Op::InTrim { i, .. } => json!({"what": "input_gain_db", "input": i,
+            Op::InTrim { i, .. } => json!({"what": "input_gain_db", "input": shown(i),
                 "before": at(&before.input_preamp_db, i), "after": at(&after.input_preamp_db, i)}),
-            Op::OutDelay { o, .. } => json!({"what": "output_delay_ms", "output": o,
+            Op::OutDelay { o, .. } => json!({"what": "output_delay_ms", "output": shown(o),
                 "before": at(&before.output_delay_ms, o), "after": at(&after.output_delay_ms, o)}),
-            Op::InDelay { ch, .. } => json!({"what": "input_delay_ms", "input": ch,
+            Op::InDelay { ch, .. } => json!({"what": "input_delay_ms", "input": shown(ch),
                 "before": at(&before.channel_delays, ch), "after": at(&after.channel_delays, ch)}),
-            Op::OutMute { o, .. } => json!({"what": "output_muted", "output": o,
+            Op::OutMute { o, .. } => json!({"what": "output_muted", "output": shown(o),
                 "before": flag(&before.output_muted, o), "after": flag(&after.output_muted, o)}),
-            Op::OutEnable { o, .. } => json!({"what": "output_enabled", "output": o,
+            Op::OutEnable { o, .. } => json!({"what": "output_enabled", "output": shown(o),
                 "before": flag(&before.output_enabled, o), "after": flag(&after.output_enabled, o)}),
             Op::Route { i, o, .. } => {
                 let r = |st: &DspState| {
@@ -289,7 +290,7 @@ impl Op {
                                 .and_then(|r| r.get(usize::from(o))).copied().unwrap_or(0.0)),
                            "invert": row(&st.matrix_invert)})
                 };
-                json!({"what": "route", "input": i, "output": o,
+                json!({"what": "route", "input": shown(i), "output": shown(o),
                        "before": r(before), "after": r(after)})
             }
             Op::UserVolume(_) => json!({"what": "user_volume_db",
@@ -467,26 +468,33 @@ pub(crate) fn channel(
     Ok((ch, t.output, index))
 }
 
+// -- WP SHOWFIX -- the agent's numbers count from 1, the wire's from 0
+/// `args[key]`, an output or input from 1, as the wire's index on a device
+/// with `n` of them.
+fn numbered(args: &Map<String, Value>, key: &str, n: u8) -> Result<u8, ToolError> {
+    let i = need(index_arg(args, key), key)?;
+    u8::try_from(i)
+        .ok()
+        .filter(|i| *i < n)
+        .ok_or_else(|| no_such(key, args.get(key).unwrap_or(&Value::Null), usize::from(n)))
+}
+
 fn output(st: &DspState, args: &Map<String, Value>) -> Result<u8, ToolError> {
-    let o = need(u8_arg(args, "output"), "output")?;
-    if o >= st.num_output_channels {
-        return Err(ToolError::new(format!(
-            "no output {o}; this device has outputs 0..{}",
-            st.num_output_channels.saturating_sub(1)
-        )));
-    }
-    Ok(o)
+    numbered(args, "output", st.num_output_channels)
 }
 
 fn input(st: &DspState, args: &Map<String, Value>) -> Result<u8, ToolError> {
-    let i = need(u8_arg(args, "input"), "input")?;
-    if i >= st.num_input_channels {
-        return Err(ToolError::new(format!(
-            "no input {i}; this device has inputs 0..{}",
-            st.num_input_channels.saturating_sub(1)
-        )));
-    }
-    Ok(i)
+    numbered(args, "input", st.num_input_channels)
+}
+
+/// An output's schema: from 1, as the app shows it.
+pub(crate) fn output_prop() -> Value {
+    json!({"type": "integer", "minimum": 1, "description": "An output, from 1: 1 is Out 1"})
+}
+
+/// An input's schema: from 1, as the app shows it.
+pub(crate) fn input_prop() -> Value {
+    json!({"type": "integer", "minimum": 1, "description": "An input, from 1: 1 is In 1"})
 }
 
 /// The PEQ type words the tools take, by code.
@@ -517,15 +525,17 @@ fn slot(st: &DspState, ch: u8, args: &Map<String, Value>, free_ok: bool) -> Resu
                     "no PEQ slot is free on this channel; clear one or pass a slot number",
                 )
             }),
+        // -- WP SHOWFIX -- band 1..10, as the app shows them
         Some(v) => v
             .as_u64()
+            .and_then(crate::tools::read::from_shown)
+            .filter(|n| *n < BANDS_PER_CHANNEL)
             .and_then(|n| u8::try_from(n).ok())
-            .filter(|n| usize::from(*n) < BANDS_PER_CHANNEL)
             .ok_or_else(|| {
                 ToolError::new(if free_ok {
-                    "`slot` is a PEQ slot 0..9, or \"free\""
+                    "`slot` is a PEQ band 1..10 (as the app shows them), or \"free\""
                 } else {
-                    "`slot` is a PEQ slot 0..9"
+                    "`slot` is a PEQ band 1..10 (as the app shows them)"
                 })
             }),
         None => Err(ToolError::new("`slot` is required")),
@@ -534,10 +544,12 @@ fn slot(st: &DspState, ch: u8, args: &Map<String, Value>, free_ok: bool) -> Resu
 
 fn slot_schema(free_ok: bool) -> Value {
     if free_ok {
-        json!({"description": "A PEQ slot 0..9, or \"free\" for the first flat one",
-               "oneOf": [{"type": "integer", "minimum": 0, "maximum": 9}, {"const": "free"}]})
+        json!({"description": "A PEQ band 1..10 (band 1 is the app's band 1), or \"free\" for \
+                               the first flat one",
+               "oneOf": [{"type": "integer", "minimum": 1, "maximum": 10}, {"const": "free"}]})
     } else {
-        json!({"type": "integer", "minimum": 0, "maximum": 9, "description": "A PEQ slot 0..9"})
+        json!({"type": "integer", "minimum": 1, "maximum": 10,
+               "description": "A PEQ band 1..10 (band 1 is the app's band 1)"})
     }
 }
 
@@ -596,8 +608,8 @@ edit_tool!(
     SET_PEQ_BAND,
     "dspi_set_peq_band",
     "Set a PEQ band",
-    "Set one PEQ slot of a channel (by `output`, `input` or wire `channel`): `slot` 0..9 or \
-     \"free\" (the first flat slot), `type`, `freq_hz`, `gain_db` (cut or boost), `q`. A \
+    "Set one PEQ slot of a channel (by `output`, `input` or wire `channel`, from 1): `slot` \
+     1..10 (the app's band numbers) or \"free\" (the first flat slot), `type`, `freq_hz`, `gain_db` (cut or boost), `q`. A \
      linkwitz_transform takes `fp_hz` and `qp` too. A narrow boost or cut is a peaking band; a \
      bandpass is the output's crossover (dspi_set_crossover). Louder changes and boosts above \
      +6 dB may be held for the user's confirmation in the app.",
@@ -737,10 +749,7 @@ edit_tool!(
          \"never ask\").",
     || {
         let mut m = Map::new();
-        m.insert(
-            "output".into(),
-            json!({"type": "integer", "minimum": 0, "description": "An output, from 0"}),
-        );
+        m.insert("output".into(), output_prop());
         m.insert("high_pass".into(), side_schema());
         m.insert("low_pass".into(), side_schema());
         schema(m, &["output"])
@@ -853,14 +862,8 @@ fn plan_crossover(plan: &mut Plan, args: &Map<String, Value>) -> Result<(), Tool
 
 fn out_or_in_schema(key: &str, spec: Value) -> Value {
     let mut m = Map::new();
-    m.insert(
-        "output".into(),
-        json!({"type": "integer", "minimum": 0, "description": "An output, from 0"}),
-    );
-    m.insert(
-        "input".into(),
-        json!({"type": "integer", "minimum": 0, "description": "An input, from 0"}),
-    );
+    m.insert("output".into(), output_prop());
+    m.insert("input".into(), input_prop());
     m.insert(key.into(), spec);
     schema(m, &[key])
 }
@@ -927,10 +930,7 @@ fn plan_gain(plan: &mut Plan, args: &Map<String, Value>) -> Result<(), ToolError
 
 fn output_flag_schema(key: &str) -> Value {
     let mut m = Map::new();
-    m.insert(
-        "output".into(),
-        json!({"type": "integer", "minimum": 0, "description": "An output, from 0"}),
-    );
+    m.insert("output".into(), output_prop());
     m.insert(key.into(), json!({"type": "boolean"}));
     schema(m, &["output", key])
 }
@@ -970,7 +970,8 @@ fn plan_polarity(plan: &mut Plan, args: &Map<String, Value>) -> Result<(), ToolE
         .collect();
     if routes.is_empty() {
         return Err(ToolError::new(format!(
-            "no input feeds output {o}; route one to it first (dspi_set_route)"
+            "no input feeds Out {}; route one to it first (dspi_set_route)",
+            shown(o)
         )));
     }
     for (i, gain) in routes {
@@ -1030,8 +1031,8 @@ edit_tool!(
      the user's confirmation.",
     || {
         let mut m = Map::new();
-        m.insert("input".into(), json!({"type": "integer", "minimum": 0}));
-        m.insert("output".into(), json!({"type": "integer", "minimum": 0}));
+        m.insert("input".into(), input_prop());
+        m.insert("output".into(), output_prop());
         m.insert("on".into(), json!({"type": "boolean"}));
         m.insert(
             "gain_db".into(),

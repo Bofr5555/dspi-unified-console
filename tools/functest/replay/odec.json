@@ -3,12 +3,12 @@
   ["mcp_read_all", {}, "ok"],
   ["dspi_get_host_audio", {}, "ok", "the host audio names the simulation", "(?i)(?<!ear )simulat"],
   ["dspi_get_measure_options", {"device": "demo:1"}, "ok", "the measurement options name the simulation", "(?i)(?<!ear )simulat"],
-  ["dspi_measure_preflight", {"device": "demo:1", "outputs": [0, 1]}, "ok", "the preflight names the simulation", "(?i)(?<!ear )simulat"]],
+  ["dspi_measure_preflight", {"device": "demo:1", "outputs": [1, 2]}, "ok", "the preflight names the simulation", "(?i)(?<!ear )simulat"]],
  "grant": [
-  ["dspi_measure_start", {"device": "demo:1", "outputs": [0], "sweep_ms": 2000, "passes": 2}, "ok"],
+  ["dspi_measure_start", {"device": "demo:1", "outputs": [1], "sweep_ms": 2000, "passes": 2}, "ok"],
   ["wait", {"device": "demo:1"}],
   ["dspi_measure_status", {"device": "demo:1"}, "ok", "a finished measurement names the simulation", "(?i)(?<!ear )simulat"],
-  ["dspi_measure_start", {"device": "demo:1", "outputs": [0, 1], "sweep_ms": 2000, "passes": 3}, "ok"],
+  ["dspi_measure_start", {"device": "demo:1", "outputs": [1, 2], "sweep_ms": 2000, "passes": 3}, "ok"],
   ["wait", {"device": "demo:1"}]],
  "keep-unverified": [
   ["dspi_tune_propose", {"device": "demo:1", "keep_crossover": true, "keep_eq": true, "keep_levels": true}, "ok"],

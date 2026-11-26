@@ -30,7 +30,7 @@ use serde_json::{Map, Value, json};
 
 use crate::policy::{self, ConfirmMode, Judging, RiskKind, Verdict};
 use crate::registry::{Call, Tool, ToolClass, ToolError};
-use crate::tools::edit::{schema, u8_arg};
+use crate::tools::edit::schema;
 use crate::tools::read::{empty_schema, object_schema, state};
 use crate::untrusted;
 
@@ -101,6 +101,7 @@ fn tweeter_lost(roles: &Judging, before: &DspState, after: &DspState) -> Option<
         mode: Some(ConfirmMode::AskRisky),
         roles: roles.roles.clone(),
         floors: roles.floors.clone(),
+        own: roles.own.clone(), // -- WP REVDFIX --
         ..Judging::default()
     };
     match policy::judge(before, &writes, &j) {
@@ -351,6 +352,7 @@ pub(crate) fn scene_loads_guard(
         let roles = Judging {
             roles: policy::trusted_roles(&core), // -- WP ADET1 --
             floors: policy::profile_floors(&core),
+            own: policy::own_outputs(&core), // -- WP REVDFIX --
             ..Judging::default()
         };
         let hard = roles.roles.iter().any(|r| {
@@ -499,24 +501,38 @@ fn before_json(snap: &Before) -> Value {
 
 // --------------------------------------------------------------- presets
 
+// -- WP SHOWFIX -- (SHOW2 finding 9: "saved to slot 0" while the screen said
+// preset 1) a preset slot counts from 1, as the app shows it; the wire's from 0
+/// The preset slot `args[key]` names (from 1), as the wire's slot (from 0).
 fn slot_arg(args: &Map<String, Value>, key: &str) -> Result<u8, ToolError> {
-    u8_arg(args, key)
-        .filter(|s| usize::from(*s) < MAX_PRESETS)
-        .ok_or_else(|| ToolError::new(format!("`{key}` is a preset slot 0..{}", MAX_PRESETS - 1)))
+    args.get(key)
+        .and_then(Value::as_u64)
+        .and_then(crate::tools::read::from_shown)
+        .filter(|s| *s < MAX_PRESETS)
+        .and_then(|s| u8::try_from(s).ok())
+        .ok_or_else(|| {
+            ToolError::new(format!(
+                "`{key}` is a preset slot 1..{MAX_PRESETS} (preset 1 is the app's preset 1)"
+            ))
+        })
+}
+
+/// A preset slot's schema: from 1.
+pub(crate) fn slot_prop() -> Value {
+    json!({"type": "integer", "minimum": 1, "maximum": MAX_PRESETS,
+           "description": "A preset slot, from 1 as the app shows it: 1 is preset 1 \
+                           (dspi_list_presets)"})
 }
 
 fn slot_schema(keys: &[&str]) -> Value {
     let mut m = Map::new();
     for k in keys {
-        m.insert(
-            (*k).into(),
-            json!({"type": "integer", "minimum": 0, "maximum": MAX_PRESETS - 1,
-                   "description": "A preset slot, from 0 (dspi_list_presets)"}),
-        );
+        m.insert((*k).into(), slot_prop());
     }
     schema(m, keys)
 }
 
+/// A wire slot (from 0) as the agent and the app count it, from 1.
 fn slot_word(slot: u8) -> u16 {
     u16::from(slot).saturating_add(1)
 }
@@ -539,7 +555,7 @@ static PRESET_LOAD: Tool = Tool {
         let slot = slot_arg(args, "slot")?;
         let what = format!("Load preset {} (every setting replaced)", slot_word(slot));
         let ((), snap) = wholesale_with(call, &what, &[slot], true, |c| c.load_preset(slot))?;
-        let mut r = json!({"ok": true, "device": call.device_text(), "slot": slot});
+        let mut r = json!({"ok": true, "device": call.device_text(), "slot": slot_word(slot)});
         merge(&mut r, before_json(&snap));
         // -- WP FUNC2c -- (FSTORY S7) the profile's hold after the load: an
         // agent said "Lunch is loaded" while the profile had moved its tweeters
@@ -609,11 +625,7 @@ static PRESET_SAVE: Tool = Tool {
     input_schema: || {
         // -- WP INTI -- (owner 2026-11-23, FUNC2b/c answer 3) one question per save
         let mut m = Map::new();
-        m.insert(
-            "slot".into(),
-            json!({"type": "integer", "minimum": 0, "maximum": MAX_PRESETS - 1,
-                   "description": "A preset slot, from 0 (dspi_list_presets)"}),
-        );
+        m.insert("slot".into(), slot_prop());
         m.insert(
             "name".into(),
             json!({"type": "string", "description": "The preset's name (cut to 31 bytes)"}),
@@ -687,7 +699,7 @@ static PRESET_SAVE: Tool = Tool {
                         .map_or(why.clone(), |(_, w)| w.to_owned()),
                 ));
             }
-            let mut r = json!({"ok": true, "device": call.device_text(), "slot": slot});
+            let mut r = json!({"ok": true, "device": call.device_text(), "slot": slot_word(slot)});
             if let Some(n) = &name {
                 merge(&mut r, json!({"preset_name": n}));
             }
@@ -700,7 +712,7 @@ static PRESET_SAVE: Tool = Tool {
             )));
         }
         Ok(
-            json!({"ok": failed.is_empty(), "device": call.device_text(), "slot": slot,
+            json!({"ok": failed.is_empty(), "device": call.device_text(), "slot": slot_word(slot),
                   "preset_name": name, "devices": rows}),
         )
     },
@@ -773,9 +785,12 @@ fn save_targets(call: &Call<'_>, args: &Map<String, Value>) -> Result<Vec<SaveTa
 static PRESET_COPY: Tool = Tool {
     name: "dspi_preset_copy",
     title: "Copy a preset",
-    description: "Copy the device's settings to preset `dest` and save them to `source` again, \
-                  so `source` stays active (flash writes). It may be held for the user's \
-                  confirmation.",
+    // -- INTE -- (REVE B1) the source is the active preset; the core refuses any other
+    description: "Copy the device's current settings to preset `dest` and save them to the \
+                  active preset again, so it stays active (flash writes). `source` must be the \
+                  active preset (dspi_list_presets' last_active): the core refuses any other \
+                  slot, as a copy from it would overwrite that slot. It may be held for the \
+                  user's confirmation.",
     class: ToolClass::Write,
     device: true,
     input_schema: || slot_schema(&["source", "dest"]),
@@ -792,7 +807,11 @@ static PRESET_COPY: Tool = Tool {
         call.core()?
             .copy_preset_confirmed(source, dest, Some(token))
             .map_err(|e| policy::core_error(&call.judging, e))?;
-        Ok(json!({"ok": true, "device": call.device_text(), "source": source, "dest": dest}))
+        // -- WP FIN015 -- (REVF S3) both from 1, as the agent named them
+        Ok(
+            json!({"ok": true, "device": call.device_text(), "source": slot_word(source),
+                  "dest": slot_word(dest)}),
+        )
     },
 };
 
@@ -806,10 +825,7 @@ static PRESET_RENAME: Tool = Tool {
     device: true,
     input_schema: || {
         let mut m = Map::new();
-        m.insert(
-            "slot".into(),
-            json!({"type": "integer", "minimum": 0, "maximum": MAX_PRESETS - 1}),
-        );
+        m.insert("slot".into(), slot_prop());
         m.insert("name".into(), json!({"type": "string"}));
         schema(m, &["slot", "name"])
     },
@@ -828,7 +844,9 @@ static PRESET_RENAME: Tool = Tool {
             .preset_names
             .get(usize::from(slot))
             .map(|n| untrusted::name(n));
-        Ok(json!({"ok": true, "device": call.device_text(), "slot": slot, "preset_name": kept}))
+        Ok(
+            json!({"ok": true, "device": call.device_text(), "slot": slot_word(slot), "preset_name": kept}),
+        )
     },
 };
 
@@ -843,10 +861,7 @@ static PRESET_SET_STARTUP: Tool = Tool {
     input_schema: || {
         let mut m = Map::new();
         m.insert("mode".into(), json!({"enum": ["slot", "last"]}));
-        m.insert(
-            "slot".into(),
-            json!({"type": "integer", "minimum": 0, "maximum": MAX_PRESETS - 1}),
-        );
+        m.insert("slot".into(), slot_prop());
         schema(m, &["mode"])
     },
     output_schema: object_schema,
@@ -873,7 +888,7 @@ static PRESET_SET_STARTUP: Tool = Tool {
             .set_preset_startup(u8::from(last), slot)
             .map_err(|e| policy::core_error(&call.judging, e))?;
         Ok(json!({"ok": true, "device": call.device_text(),
-                  "mode": if last { "last" } else { "slot" }, "slot": slot}))
+                  "mode": if last { "last" } else { "slot" }, "slot": slot_word(slot)}))
     },
 };
 
@@ -896,7 +911,9 @@ static COMMIT: Tool = Tool {
         call.core()?
             .save_params_confirmed(Some(token))
             .map_err(|e| policy::core_error(&call.judging, e))?;
-        Ok(json!({"ok": true, "device": call.device_text(), "slot": st.active_preset_slot}))
+        Ok(
+            json!({"ok": true, "device": call.device_text(), "slot": slot_word(st.active_preset_slot)}),
+        )
     },
 };
 

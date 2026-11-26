@@ -17,25 +17,25 @@
      "changes": [
       {
        "op": "set_crossover",
+       "output": 2,
+       "high_pass": {
+        "family": "linkwitz_riley",
+        "order": 4,
+        "freq_hz": 1800
+       }
+      },
+      {
+       "op": "set_crossover",
+       "output": 4,
+       "high_pass": {
+        "family": "linkwitz_riley",
+        "order": 4,
+        "freq_hz": 1800
+       }
+      },
+      {
+       "op": "set_crossover",
        "output": 1,
-       "high_pass": {
-        "family": "linkwitz_riley",
-        "order": 4,
-        "freq_hz": 1800
-       }
-      },
-      {
-       "op": "set_crossover",
-       "output": 3,
-       "high_pass": {
-        "family": "linkwitz_riley",
-        "order": 4,
-        "freq_hz": 1800
-       }
-      },
-      {
-       "op": "set_crossover",
-       "output": 0,
        "low_pass": {
         "family": "linkwitz_riley",
         "order": 4,
@@ -44,7 +44,7 @@
       },
       {
        "op": "set_crossover",
-       "output": 2,
+       "output": 3,
        "low_pass": {
         "family": "linkwitz_riley",
         "order": 4,
@@ -59,7 +59,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:1",
-     "output": 1,
+     "output": 2,
      "high_pass": {
       "family": "linkwitz_riley",
       "order": 4,
@@ -75,7 +75,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:1",
-     "output": 1,
+     "output": 2,
      "high_pass": null
     },
     "error",
@@ -85,7 +85,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:2",
-     "output": 1,
+     "output": 2,
      "high_pass": null
     },
     "error",
@@ -100,14 +100,14 @@
      "changes": [
       {
        "op": "set_peq_band",
-       "output": 1,
-       "slot": 0,
+       "output": 2,
+       "slot": 1,
        "type": "high_pass",
        "freq_hz": 500
       },
       {
        "op": "set_crossover",
-       "output": 1,
+       "output": 2,
        "high_pass": null
       }
      ]
@@ -119,8 +119,8 @@
     "dspi_set_peq_band",
     {
      "device": "demo:1",
-     "output": 1,
-     "slot": 0,
+     "output": 2,
+     "slot": 1,
      "type": "high_pass",
      "freq_hz": 500
     },
@@ -131,7 +131,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:1",
-     "output": 1,
+     "output": 2,
      "high_pass": null
     },
     "error",
@@ -141,8 +141,8 @@
     "dspi_clear_peq_band",
     {
      "device": "demo:1",
-     "output": 1,
-     "slot": 0
+     "output": 2,
+     "slot": 1
     },
     "ok"
    ]
@@ -159,7 +159,7 @@
     "dspi_set_gain",
     {
      "device": "demo:1",
-     "output": 1,
+     "output": 2,
      "gain_db": -2
     },
     "ok"
@@ -168,7 +168,7 @@
     "dspi_set_gain",
     {
      "device": "demo:1",
-     "output": 3,
+     "output": 4,
      "gain_db": -2
     },
     "ok",
@@ -178,7 +178,7 @@
     "dspi_set_gain",
     {
      "device": "demo:1",
-     "output": 3,
+     "output": 4,
      "gain_db": -2
     },
     "ok"
@@ -189,7 +189,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:2",
-     "output": 2,
+     "output": 3,
      "high_pass": {
       "family": "linkwitz_riley",
       "order": 4,
@@ -203,7 +203,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:2",
-     "output": 2,
+     "output": 3,
      "high_pass": {
       "family": "linkwitz_riley",
       "order": 4,
@@ -216,7 +216,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:2",
-     "output": 0,
+     "output": 1,
      "low_pass": {
       "family": "linkwitz_riley",
       "order": 4,
@@ -231,7 +231,7 @@
     "dspi_get_channel",
     {
      "device": "demo:1",
-     "output": 1
+     "output": 2
     },
     "ok"
    ],
@@ -239,7 +239,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:1",
-     "output": 0,
+     "output": 1,
      "low_pass": {
       "family": "linkwitz_riley",
       "order": 4,
@@ -252,7 +252,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:1",
-     "output": 2,
+     "output": 3,
      "low_pass": {
       "family": "linkwitz_riley",
       "order": 4,

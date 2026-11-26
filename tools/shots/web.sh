@@ -3,6 +3,7 @@
 # device and on `uconsole --demo hub --alink`: dark and light, 1366 px and 375 px.
 #
 #   tools/shots/web.sh <out dir>          PNGs into <out dir>
+#   SHOTS_ONLY=<regex> PW_ARGS=<spec…>     only the pictures whose name matches (the specs that read it)
 #
 # The builds are apps/web/tools/ci.sh's (`--no-e2e`: the core, the fake hub, `uconsole`, the
 # page); then the tour alone, in the same Playwright image and mounts. The steps that make a
@@ -15,6 +16,8 @@ root=$(cd "$(dirname "$0")/../.." && pwd)
 . "$root/ci/container/images.conf"
 B=${DSPI_BUILD_CACHE:-$HOME/.cache/dspi-build}
 branch=$(git -C "$root" rev-parse --abbrev-ref HEAD 2>/dev/null || echo detached)
+# -- WP SHOWFIX -- a detached worktree is named by its short commit, not "HEAD"
+if [ "$branch" = HEAD ]; then branch=$(git -C "$root" rev-parse --short HEAD); fi
 work=$B/work/web/${branch//\//-}
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
@@ -45,5 +48,5 @@ podman run --rm --init --userns=keep-id --user "$(id -u):$(id -g)" --ipc=private
   -v "$work/hub":/hub:ro,z -e DSPI_TERM="/hub/$cmd" \
   -v "$out":/shots:z -e SHOTS_DIR=/shots "${link[@]}" \
   -v "$work/home":/home/web:z -v "$work/tmp":/wtmp:z -e HOME=/home/web -e TMPDIR=/wtmp \
-  -e CI=1 -w /src/apps/web "$PLAYWRIGHT" \
+  -e SHOTS_ONLY="${SHOTS_ONLY:-}" -e CI=1 -w /src/apps/web "$PLAYWRIGHT" \
   npx playwright test --config playwright.shots.config.ts ${PW_ARGS:-}

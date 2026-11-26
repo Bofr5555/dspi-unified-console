@@ -5,7 +5,8 @@ import UConsole
 // -- WP LAY4 -- An output's high pass or low pass: the family with its slope,
 // or Off, and the frequency. An output has four crossover bands; this is the
 // first of its kind, and a new one takes the first that is off. The page's
-// list of all four is under the table (EqualiserCrossover).
+// list of all four is under the table (EqualiserCrossover). -- WP DL8 -- That
+// list shows when this cannot say it all; "+1" is muted (a count, not a warning).
 RowLayout {
     id: side
     property int channel: -1
@@ -90,7 +91,7 @@ RowLayout {
         //: More bands of the same kind than the one shown
         text: qsTr("+%1").arg(side.more)
         font: Theme.fontSmall
-        color: Theme.warning
+        color: Theme.textMuted   // -- WP DL8 -- never warning text
         Accessible.name: side.highPass ? qsTr("%1 more high passes").arg(side.more) : qsTr("%1 more low passes").arg(side.more)
     }
 }

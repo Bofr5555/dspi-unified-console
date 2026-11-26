@@ -243,7 +243,7 @@ fn cgswsa_enum_value_labels_are_the_shared_words() {
     assert_eq!(words("lev.speed"), ["Slow", "Medium", "Fast"]);
     assert_eq!(
         words("cf.preset"),
-        ["Default", "Chu Moy", "Meier", "Custom"]
+        ["Default", "Chu Moy", "Jan Meier", "Custom"]
     );
     assert_eq!(words("in.source")[0], "USB");
     assert_eq!(

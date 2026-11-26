@@ -57,6 +57,7 @@ void type(SmokeDriver &d, QObject *scope, const QString &field, const QString &t
     d.check(QStringLiteral("lay2: %1 is found in the inspector").arg(field), o != nullptr);
     if (!o) return;
     o->setProperty("text", text);
+    QMetaObject::invokeMethod(o, "textEdited"); // -- WP INTE -- (REVE C1) as typed: Enter writes only typed text
     QMetaObject::invokeMethod(o, "accepted");
     d.waitIdle();
 }

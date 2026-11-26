@@ -323,6 +323,18 @@ impl Kind {
         }
     }
 
+    // -- WP SHOWFIX -- (finding 2)
+    /// `bytes` as a number, for a number or a flag.
+    fn number(self, bytes: &[u8]) -> Option<f64> {
+        Some(match self {
+            Kind::Float(_) | Kind::Volume => f64::from(f32_le(bytes, 0)?),
+            Kind::Flag | Kind::Byte => f64::from(*bytes.first()?),
+            Kind::Signed => f64::from(i8::from_le_bytes([*bytes.first()?])),
+            Kind::Word => f64::from(u16_le(bytes, 0)?),
+            Kind::Mask8 | Kind::Mask16 | Kind::Text(_) => return None,
+        })
+    }
+
     /// `bytes` read as this kind, when they have its size.
     fn show(self, bytes: &[u8]) -> Option<String> {
         if let Kind::Text(n) = self {
@@ -698,16 +710,68 @@ fn layout(section: &str) -> Option<&'static Layout> {
 
 /// The field a `PARAM_CHANGED` at `offset` touched, and its new value.
 fn param(offset: usize, bytes: &[u8]) -> (String, String) {
+    match locate(offset, bytes) {
+        Ok(at) => (at.path(), at.shown),
+        Err(fallback) => fallback,
+    }
+}
+
+// -- WP SHOWFIX -- (finding 2) the same lookup, in parts, for the event log's
+// plain words (`crate::events::words`)
+/// Where a `PARAM_CHANGED` landed: the section, the record's indices, the
+/// field and its element, and the new value.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ParamAt {
+    /// The section's name in bulk_params.h (`user_volume`, `eq`).
+    pub(crate) section: &'static str,
+    /// The record's indices, outermost first (`eq`: channel, band).
+    pub(crate) index: Vec<usize>,
+    /// The field (empty: the record itself, or the whole record).
+    pub(crate) field: &'static str,
+    /// The element of an array field (`preamp_db[2]`).
+    pub(crate) element: Option<usize>,
+    /// The packet carried the whole record (a band, a crosspoint).
+    pub(crate) whole: bool,
+    /// The value as the monitor shows it ("-20.00 dB", "on").
+    pub(crate) shown: String,
+    /// The value as a number, for a number or a flag (1 on, 0 off).
+    pub(crate) number: Option<f64>,
+}
+
+impl ParamAt {
+    /// `section[i][j].field[k]`, as the monitor names it.
+    fn path(&self) -> String {
+        let mut path = self.section.to_string();
+        for i in &self.index {
+            let _ = write!(path, "[{i}]");
+        }
+        if !self.field.is_empty() {
+            let _ = write!(path, ".{}", self.field);
+        }
+        if let Some(e) = self.element {
+            let _ = write!(path, "[{e}]");
+        }
+        path
+    }
+}
+
+/// The parts of a `PARAM_CHANGED` at `offset`, or the monitor's fallback
+/// words (name, value) where they cannot be told.
+pub(crate) fn param_at(offset: usize, bytes: &[u8]) -> Option<ParamAt> {
+    locate(offset, bytes).ok()
+}
+
+fn locate(offset: usize, bytes: &[u8]) -> std::result::Result<ParamAt, (String, String)> {
     let raw = || hex(bytes);
     let Some(&(section, base, len)) = SECTIONS
         .iter()
         .find(|(_, start, len)| offset >= *start && offset < start.saturating_add(*len))
     else {
-        return (format!("offset=0x{offset:04X}"), raw());
+        return Err((format!("offset=0x{offset:04X}"), raw()));
     };
     let rel = offset.saturating_sub(base);
     let Some(shape) = layout(section) else {
-        return (format!("{section}+0x{rel:X}"), raw());
+        return Err((format!("{section}+0x{rel:X}"), raw()));
     };
     // One record unless the section is an array of them.
     let stride = if shape.dims.is_empty() {
@@ -717,38 +781,43 @@ fn param(offset: usize, bytes: &[u8]) -> (String, String) {
     };
     let record = rel.checked_div(stride).unwrap_or(0);
     let inside = rel.checked_rem(stride).unwrap_or(rel);
-
-    let mut path = section.to_string();
-    for i in indices(record, shape.dims) {
-        let _ = write!(path, "[{i}]");
-    }
+    let mut at = ParamAt {
+        section,
+        index: indices(record, shape.dims),
+        field: "",
+        element: None,
+        whole: false,
+        shown: String::new(),
+        number: None,
+    };
     if inside == 0
         && bytes.len() == stride
         && let Some(whole) = shape.whole
         && let Some(value) = show_whole(whole, bytes)
     {
-        return (path, value);
+        at.whole = true;
+        at.shown = value;
+        return Ok(at);
     }
     let Some(field) = shape.fields.iter().find(|f| {
         let end = f.at.saturating_add(f.kind.size().saturating_mul(f.count));
         inside >= f.at && inside < end
     }) else {
-        return (format!("{path}+0x{inside:X}"), raw());
+        return Err((format!("{}+0x{inside:X}", at.path()), raw()));
     };
-    if !field.name.is_empty() {
-        let _ = write!(path, ".{}", field.name);
-    }
+    at.field = field.name;
     let into = inside.saturating_sub(field.at);
     let size = field.kind.size();
     if field.count > 1 {
-        let _ = write!(path, "[{}]", into.checked_div(size).unwrap_or(0));
+        at.element = Some(into.checked_div(size).unwrap_or(0));
     }
     let within = into.checked_rem(size).unwrap_or(0);
     if within != 0 {
-        return (format!("{path}+0x{within:X}"), raw());
+        return Err((format!("{}+0x{within:X}", at.path()), raw()));
     }
-    let value = field.kind.show(bytes).unwrap_or_else(raw);
-    (path, value)
+    at.shown = field.kind.show(bytes).unwrap_or_else(raw);
+    at.number = field.kind.number(bytes);
+    Ok(at)
 }
 
 /// `record` as one index per dimension, outermost first.

@@ -144,6 +144,25 @@ static QJsonObject dataFolders() {
     };
 }
 
+// -- INTC (DESREV FD) -- The file dialogs (FilesController's QFileDialog) are the
+// desktop's when Qt has a platform theme for it: GTK's on GNOME and its kin
+// (Qt's gtk3 theme), KDE's on Plasma. On any other desktop with a session bus
+// (sway, Hyprland, i3, LXQt, ...) Qt's generic theme would draw its own
+// widgets dialog: there the XDG desktop portal's dialog is the desktop's, as
+// the AppImage's AppRun hook (packaging/linux/apprun-hook.sh) already chooses.
+// The portal theme falls back to the generic dialogs when no FileChooser portal
+// answers, and a user's own QT_QPA_PLATFORMTHEME stays.
+static void choosePortalDialogs() {
+#if defined(Q_OS_LINUX)
+    if (qEnvironmentVariableIsSet("QT_QPA_PLATFORMTHEME") || !qEnvironmentVariableIsSet("DBUS_SESSION_BUS_ADDRESS")) return;
+    const QString desktops = qEnvironmentVariable("XDG_CURRENT_DESKTOP").toUpper();
+    static const char *const themed[] = { "GNOME", "UNITY", "X-CINNAMON", "MATE", "XFCE", "LXDE", "BUDGIE", "PANTHEON", "KDE" };
+    for (const char *d : themed)
+        if (desktops.split(QLatin1Char(':')).contains(QLatin1String(d))) return;
+    qputenv("QT_QPA_PLATFORMTHEME", "xdgdesktopportal");
+#endif
+}
+
 int main(int argc, char *argv[]) {
     // -- WP SWAPFIX -- The settings are an INI file on every system (owner,
     // 2026-11-13): on Windows %APPDATA%\uconsole-for-dspi\uconsole-for-dspi.ini,
@@ -160,6 +179,7 @@ int main(int argc, char *argv[]) {
     if (const int answered = answerInformational(argc, argv); answered >= 0) return answered;
     // -- WP MCP3 -- the agents' stdio relay: no window, no core
     if (const int relayed = relayIfAsked(argc, argv); relayed >= 0) return relayed;
+    choosePortalDialogs();   // -- INTC --
     QApplication app(argc, argv);
     QApplication::setApplicationDisplayName(AppIdentity::displayName());
     // The desktop entry (packaging/linux/uconsole-for-dspi.desktop): Wayland's app id

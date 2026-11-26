@@ -119,7 +119,7 @@ fn wp_mcp5_a_measurement_request_through_c() {
         .as_str()
         .unwrap()
         .to_owned();
-    let r = call(port, &token, "dspi_measure_start", json!({"outputs": [0]}));
+    let r = call(port, &token, "dspi_measure_start", json!({"outputs": [1]}));
     assert_eq!(r["isError"], json!(true), "{r}");
     assert!(
         r["content"][0]["text"]
@@ -144,7 +144,7 @@ fn wp_mcp5_a_measurement_request_through_c() {
         port,
         &token,
         "dspi_measure_start",
-        json!({"outputs": [0], "sweep_ms": 1000}),
+        json!({"outputs": [1], "sweep_ms": 1000}),
     );
     assert_eq!(r["isError"], json!(false), "{r}");
     assert_eq!(r["structuredContent"]["status"], json!("waiting_for_app"));

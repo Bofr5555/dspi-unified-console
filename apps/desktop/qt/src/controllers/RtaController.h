@@ -237,7 +237,10 @@ private:
     void storeDashboard(const Selection &s);
     Selection restricted(const Selection &s) const;
     Selection dashboardSelection() const;
-    QList<int> available(int tap) const;
+    // The channels at `tap` the analyser may take (outputs: enabled ones).
+    // -- WP INTE -- (owner 2026-11-24) `hideUnused`: also leave out an output
+    // nothing is routed to, except the channels in `keep` (being analysed)
+    QList<int> available(int tap, bool hideUnused = false, const QList<int> &keep = {}) const;
     void push();
     void startAnalyser();
 public:

@@ -29,6 +29,16 @@ public:
         EnabledRole,                 // outputs: enabled in the matrix; inputs: true
         UserNamedRole,               // the user named it
         PdmRole,                     // the PDM subwoofer output
+        // -- WP SHOWFIX -- the names a person knows the channel by (dspi_channel_words)
+        DisplayNameRole,             // what a list of channels shows: the speaker layout's
+                                     // "Centre woofer", else the label (the Overview's name)
+        ShortNameRole,               // what a sentence names it by: "Centre woofer", "LFE", "Out 3"
+        // -- WP INTE -- (owner 2026-11-24) outputs: nothing is routed to it
+        // (dspi_output_labels' `unused`); a view that only shows leaves it out
+        UnusedRole,
+        // -- WP FIN015 -- (REVF R1) unused, and no test signal plays on it
+        // (dspi_output_labels' `hidden`): what a view that only shows leaves out
+        HiddenRole,
     };
     Q_ENUM(Role)
 
@@ -49,6 +59,13 @@ public:
     Q_INVOKABLE int rowOfChannel(int channel) const;
     // A row's role by name, for QML code outside a delegate ("label", "channel", ...)
     Q_INVOKABLE QVariant get(int row, const QString &role) const;
+    // -- WP FIN015 -- (REVF D1) one channel, one name on a page. An output's
+    // name where it is not "Out N" ("Centre woofer"), else "" (output from 0)
+    Q_INVOKABLE QString outputName(int output) const;
+    // The core's words as a person reads them beside the pages: each "Out N"
+    // followed by the output's name, "Out 1 (Centre woofer)". For the shown
+    // text only (Events, the AI question sheet); an agent gets the core's.
+    Q_INVOKABLE QString withNames(const QString &text) const;
 
     void update(const DeviceSnapshot &snap, const QString &platform);
 
@@ -65,9 +82,15 @@ private:
         bool enabled = true;
         bool userNamed = false;
         bool pdm = false;
+        QString displayName; // -- WP SHOWFIX --
+        QString shortName;   // -- WP SHOWFIX --
+        bool unused = false; // -- WP INTE --
+        bool hidden = false; // -- WP FIN015 --
         bool operator==(const Row &o) const {
             return output == o.output && index == o.index && channel == o.channel && name == o.name &&
-                   label == o.label && enabled == o.enabled && userNamed == o.userNamed && pdm == o.pdm;
+                   label == o.label && enabled == o.enabled && userNamed == o.userNamed && pdm == o.pdm &&
+                   displayName == o.displayName && shortName == o.shortName && unused == o.unused &&
+                   hidden == o.hidden;
         }
     };
     QVector<Row> m_rows;

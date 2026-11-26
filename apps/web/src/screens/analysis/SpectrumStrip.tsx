@@ -13,6 +13,8 @@ import { analyserFor, barsOf, channelName, channelsOf, columnsFor, followingText
 export interface TapNames {
   inputs: string[];
   outputs: string[];
+  /** -- WP INTE -- the outputs nothing is routed to (owner 2026-11-24), by channel; -- WP FIN015 -- and no test signal plays on */
+  unused?: boolean[];
 }
 
 /** Re-render on every change of the session's analyser. */
@@ -128,9 +130,10 @@ function Following(props: { a: Analyser; names: TapNames; readOnly: boolean }) {
  * The bar strip. On the main screen (`want` absent) it shows the strip's own choice of tap and
  * channels, with the chooser; on a channel page, `want` (that channel).
  */
-export function SpectrumStrip(props: { session: Session; names: TapNames; want?: ViewWant; title?: string }) {
+export function SpectrumStrip(props: { session: Session; names: TapNames; want?: ViewWant; title?: string; always?: boolean }) {
   const a = useAnalyser(props.session);
-  const on = a.choice.bars;
+  // -- WP WEB2 -- (REVD W4) `always`: the bars shown, no Show/Hide (the Analyser page is the bars)
+  const on = props.always === true || a.choice.bars;
   const own: ViewWant = props.want ?? { tap: a.choice.tap, mask: a.choice.mask };
   useAnalyserView(a, on && own.mask ? own : null);
   const ro = props.session.readOnlyReason !== "";
@@ -143,13 +146,16 @@ export function SpectrumStrip(props: { session: Session; names: TapNames; want?:
   const list = shownTap === TAP_OUTPUT ? props.names.outputs : props.names.inputs;
   const count = props.want ? 1 : shownTap === TAP_OUTPUT ? (v?.caps.outputChannels ?? props.names.outputs.length) : (v?.caps.inputChannels ?? props.names.inputs.length);
   return (
-    <section class="card rta-strip" aria-label="Spectrum">
-      <div class="card-head">
-        <h3>{props.title ?? "Spectrum"}</h3>
-        <button type="button" class="toggle" aria-pressed={on} onClick={() => a.setChoice({ bars: !on })}>
-          {on ? "Hide Bars" : "Show Bars"}
-        </button>
-      </div>
+    // -- WP WEB4 -- on the Analyser page (`always`) the bars are the page: no card around them
+    <section class={props.always ? "rta-strip rta-page" : "card rta-strip"} aria-label="Spectrum">
+      {props.always ? null : (
+        <div class="card-head">
+          <h3>{props.title ?? "Spectrum"}</h3>
+          <button type="button" class="toggle" aria-pressed={on} onClick={() => a.setChoice({ bars: !on })}>
+            {on ? "Hide Bars" : "Show Bars"}
+          </button>
+        </div>
+      )}
       {on && !props.want ? (
         <div class="rta-chooser">
           <div class="seg" role="group" aria-label="Analyse">
@@ -164,6 +170,8 @@ export function SpectrumStrip(props: { session: Session; names: TapNames; want?:
             {Array.from({ length: Math.min(16, count) }, (_, ch) => {
               const name = channelName(a.choice.tap, ch, a.choice.tap === TAP_OUTPUT ? props.names.outputs : props.names.inputs);
               const pressed = (a.choice.mask & (1 << ch)) !== 0;
+              // -- WP INTE -- an unused output is left out of this view, unless it is being analysed (as SpectrumPage)
+              if (a.choice.tap === TAP_OUTPUT && props.names.unused?.[ch] === true && !pressed) return null;
               return (
                 <button key={ch} type="button" aria-pressed={pressed} onClick={() => a.setChoice({ mask: a.choice.mask ^ (1 << ch) })}>
                   {name}
@@ -236,5 +244,6 @@ export function tapNames(s: DspState, labels?: OutputLabel[]): TapNames {
   for (const r of inputRows(s, s.numInputChannels || 2)) inputs[r.index] = `${r.descriptor} ${r.name}`;
   const outputs: string[] = [];
   for (const r of outputRows(s, labels)) outputs[r.index] = `${r.descriptor} ${r.name}`;
-  return { inputs, outputs };
+  const unused = (labels ?? []).map((l) => l.hidden === true); // -- WP INTE -- -- WP FIN015 -- `hidden` (REVF R1)
+  return { inputs, outputs, unused };
 }

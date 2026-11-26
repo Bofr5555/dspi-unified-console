@@ -30,7 +30,11 @@ ColumnLayout {
             spacing: Theme.spacingSmall
             AppCheckBox {
                 objectName: "Speakers.included." + row.modelData.output
-                text: row.modelData.label
+                // -- WP FIN015 -- (REVF D1) the output, and the name the other pages give it:
+                // "Out 1 (Centre woofer)"
+                readonly property string name: DeviceModel.revision < 0 ? "" : DeviceModel.channels.outputName(row.modelData.output)
+                //: An output in the speaker layout: %1 its label ("Out 1"), %2 the name the pages give it ("Centre woofer")
+                text: name.length && name !== row.modelData.label ? qsTr("%1 (%2)").arg(row.modelData.label).arg(name) : row.modelData.label
                 Layout.preferredWidth: 170   // -- WP ADETQ -- (190) room for the pill
                 enabled: table.editable
                 checked: row.modelData.included
@@ -89,7 +93,8 @@ ColumnLayout {
                 label: qsTr("Speaker of %1").arg(row.modelData.label)
                 Layout.preferredWidth: 72
                 enabled: table.editable && row.modelData.included
-                placeholderText: qsTr("Speaker")
+                //: A speaker field with no speaker named (Measure and Settings › Speakers)
+                placeholderText: qsTr("Not set")   // -- INTC (DL7 fold) -- Measure's placeholder (was "Speaker")
                 text: row.modelData.speaker
                 onCommitted: t => table.sc.setSpeaker(row.modelData.output, t)
             }

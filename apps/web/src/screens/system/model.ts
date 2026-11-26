@@ -960,6 +960,18 @@ export function railAlarms(alarms: Alarm[], cleared = 3): Alarm[] {
   return [...on, ...off.slice(0, cleared)];
 }
 
+// -- WP WEB7 -- (REVE D5)
+/**
+ * The rail's alarm word. On an audio link installation, the installation's alarms still on; else the
+ * hub's own device alarms waiting to be acknowledged (the banner's count: never "No hub alarms" under
+ * a banner saying the hub has some). `hubRaised` is null when the session is not on a hub with alarms.
+ */
+export function railAlarmWord(installation: boolean, on: number, hubRaised: number | null): string {
+  if (installation) return on ? `${on} ${on === 1 ? "alarm" : "alarms"}` : "No alarms";
+  if (hubRaised) return `${hubRaised} ${hubRaised === 1 ? "hub alarm" : "hub alarms"}`;
+  return "No hub alarms";
+}
+
 /** The element's name for an alarm's subject (a unit's or fan-out's id). */
 export function subjectName(model: SystemModel | null, subject: string): string {
   if (!model) return subject;

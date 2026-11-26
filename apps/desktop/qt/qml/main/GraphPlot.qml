@@ -21,6 +21,11 @@ import UConsole
 // - popOut, following, onDashboard, activeChannel, channels (wire channels
 //   whose curves show) and channelColors (a colour per wire channel);
 // - the scale itself: GraphController.minFreq, maxFreq, dbTop, dbBottom.
+//
+// -- WP DL0 -- Modern (DESIGN-LANGUAGE §12): no outline, and the axis labels
+// drawn by AxisLabels 6 px inside the plot, so the top and bottom dB labels
+// and the last frequency label are whole (BodePlot's own labels layer cut
+// them at the edges; Classic keeps it).
 Rectangle {
     id: plot
     // The pop-out follows the page unless switched off in its setup page
@@ -39,7 +44,7 @@ Rectangle {
     objectName: popOut ? "GraphWindow.plot" : "GraphHost.plot"
     color: Theme.panel
     radius: Theme.radius
-    border { color: Theme.separator; width: 1 }
+    border { color: Theme.separator; width: Theme.lineWidth }   // -- WP DL0 --
     clip: true
 
     Accessible.role: Accessible.Graphic
@@ -102,12 +107,29 @@ Rectangle {
 
     BodePlot {
         objectName: plot.objectName + ".labels"
+        visible: !LayoutController.modern   // -- WP DL0 -- Modern: axisLabels below
         anchors.fill: parent
         graph: GraphController
         layers: BodePlot.Labels
         labelColor: Theme.textMuted
         phaseColor: Theme.text
         labelFont: Theme.fontCaption
+    }
+
+    // -- WP DL0 -- The same labels as BodePlot's layer (its frequencies, its dB
+    // step, the phase scale), kept inside the plot
+    AxisLabels {
+        id: axisLabels
+        objectName: plot.objectName + ".axisLabels"
+        visible: LayoutController.modern
+        anchors.fill: parent
+        color: Theme.textMuted
+        rightColor: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.55)
+        font: Theme.fontCaption
+        // -- INTC (DL8 fold) -- the ticks every Bode graph shares
+        xTicks: visible ? BodeTicks.frequency(GraphController.minFreq, GraphController.maxFreq, GraphController.showFrequencyLabels) : []
+        yTicks: visible ? BodeTicks.db(GraphController.dbTop, GraphController.dbBottom, GraphController.dbRange, GraphController.showDBLabels) : []
+        rightTicks: visible ? BodeTicks.phase(GraphController.phaseTop, GraphController.showPhase) : []
     }
 
     SlotLoader {

@@ -53,6 +53,10 @@ pub struct CallError {
     /// The core error's notice key, for `noticeFor`; `None` for the binding's
     /// own refusals.
     pub notice_key: Option<String>,
+    // -- WP INTE -- (SHOWFIX finding 1) the core's words for the person
+    /// `DspiError::user_text`, the reply's `text`; `None` for the binding's
+    /// own refusals.
+    pub text: Option<String>,
 }
 
 impl CallError {
@@ -62,6 +66,7 @@ impl CallError {
             message: message.into(),
             // -- WP P1NT --
             notice_key: None,
+            text: None,
         }
     }
 }
@@ -98,6 +103,7 @@ impl From<DspiError> for CallError {
         let notice_key = Some(e.notice_key());
         Self {
             notice_key,
+            text: Some(e.user_text()), // -- WP INTE --
             ..Self::new(code, e.to_string())
         }
     }
@@ -165,6 +171,10 @@ fn reply(r: CallResult) -> Vec<u8> {
             // -- WP P1NT -- the core error's notice key, for `noticeFor`
             if let (Some(key), Some(fields)) = (e.notice_key, v.as_object_mut()) {
                 fields.insert("noticeKey".to_owned(), Value::String(key));
+            }
+            // -- WP INTE -- (SHOWFIX finding 1) the core's words for the person
+            if let (Some(text), Some(fields)) = (e.text, v.as_object_mut()) {
+                fields.insert("text".to_owned(), Value::String(text));
             }
             v
         }
@@ -564,6 +574,22 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         // -- WP WB6H -- the effect screens: the probe's feature names, the choices' words
         "features" => crate::effects::features(&core, params(req.params)?),
         "effectChoices" => Ok(crate::effects::effect_choices()),
+        // -- WP WEB6 -- the effect pages' drawings and starting points (dspi_core::effect_curves),
+        // the subharmonic's headroom cost (`fetch_subharm_headroom`, as C's)
+        "effectGraph" => crate::effects::effect_graph(params(req.params)?),
+        "effectStartingPoints" => crate::effects::starting_points(&core, params(req.params)?),
+        "tubeFamily" => Ok(crate::effects::tube_family(params(req.params)?)),
+        // -- WP WEB6 -- the upmixer's live status (`fetch_upmix_status`, as Qt's Status section polls it)
+        "upmixStatus" => {
+            need_open(&core)?;
+            core.link_service();
+            Ok(crate::effects::upmix_status(&core.fetch_upmix_status()?))
+        }
+        "subharmHeadroom" => {
+            need_open(&core)?;
+            core.link_service();
+            Ok(tidy(&core.fetch_subharm_headroom()?))
+        }
         // -- WP PAIRBAND -- a linked input pair's band, one undo step
         "inputPairFilter" => crate::band::input_pair_filter(&core, params(req.params)?),
         "inputPairBandBypass" => crate::band::input_pair_band_bypass(&core, params(req.params)?),
@@ -1082,6 +1108,24 @@ mod tests {
         session_free(h).unwrap();
     }
 
+    // -- WP INTE -- (SHOWFIX finding 1) a core failure's reply carries the core's
+    // words for the person; the binding's own refusals do not
+    #[test]
+    fn wp_inte_a_core_failure_carries_the_user_text() {
+        let h = session_new().unwrap();
+        let r = run(h, "undo", Value::Null);
+        assert_eq!(code(&r), "not_open");
+        assert_eq!(
+            r["text"].as_str(),
+            Some(DspiError::Disconnected.user_text().as_str()),
+            "{r}"
+        );
+        let r = run(h, "setDragging", Value::Null);
+        assert_eq!(code(&r), "invalid");
+        assert!(r.get("text").is_none(), "{r}");
+        session_free(h).unwrap();
+    }
+
     // -- WP QTGAP1 --
     #[test]
     fn wp_qtgap1_only_a_marked_drag_joins_one_step() {
@@ -1551,7 +1595,7 @@ mod tests {
         let n = snap["state"]["numOutputChannels"].as_u64().unwrap() as usize;
         assert_eq!(snap["outputLabels"].as_array().unwrap().len(), n);
         assert_eq!(
-            snap["outputLabels"][0]["label"], "Out 1 · L · Full",
+            snap["outputLabels"][0]["label"], "Out 1 · L",
             "{}",
             snap["outputLabels"]
         );

@@ -26,6 +26,8 @@ import {
   OUTPUT_FIELDS,
   STORAGE_CHOICES,
   fieldRange,
+  hasLimits,
+  limitDefault,
   limitText,
   limitValue,
   lockLine,
@@ -34,6 +36,7 @@ import {
   profileDocument,
   saveProfile,
   startupBytes,
+  stepLimit,
   withField,
   withOutputLimit,
   type LimitsProfile,
@@ -43,6 +46,9 @@ import { UnlockDialog, scopeLine } from "./Unlock";
 import type { HubAdminStateRecord } from "../../core/protocol";
 import { CopyNotice, HubModesPanel, HubPinPanel, failure, useHubAdmin, type HubAdmin } from "./HubAdmin";
 import { editsHubCopy, withLockedPage } from "./model";
+// -- WP WEB5 -- the page in the Modern design (Qt's Settings › Installer): its own stylesheet, notice rows
+import { Glyph } from "../../ui/design";
+import "./installer.css";
 
 const PRESET_SLOTS = 10;
 
@@ -269,75 +275,144 @@ function LimitsPanel(props: { session: Session; s: DspState; serial: string; dis
   };
 
   const outputs = Array.from({ length: s.numOutputChannels }, (_, o) => o);
-  const names = new Map(outputRows({ ...s, outputEnabled: s.outputEnabled.map(() => true) }, props.labels).map((r) => [r.index, `${r.descriptor} ${r.name}`]));
+  // -- WP WEB5 -- the output's number and its label apart (the number muted before the label, as the matrix's pills)
+  const rows = new Map(outputRows({ ...s, outputEnabled: s.outputEnabled.map(() => true) }, props.labels).map((r) => [r.index, r]));
   const forOutput = (o: number) => profile.outputs?.find((x) => x.output === o);
   // -- WP P1EFIX -- each field's range and unit from the core's one table (`fieldRange`)
+  // -- WP REVEFIX -- (REVE §3.1, Qt's Installer) a limit is a row: its check box and words at the left (on: limited),
+  // its stepper at the right (− value unit +), off and showing Qt's default while not limited. Typed text that is no
+  // value is refused and the shown value stays (REVE G4: it used to remove the limit).
   const field = (label: string, key: string, value: number | undefined, onSet: (v: number | undefined) => void) => {
     const r = fieldRange(key);
+    const on = value !== undefined;
+    const shown = value ?? limitDefault(key, r);
+    const step = (by: number) => onSet(stepLimit(shown, by, r));
     return (
-      <label class="limit-field" key={key}>
-        <span>{r ? `${label} (${r.unit})` : label}</span>
-        <input
-          type="number"
-          inputMode="decimal"
-          min={r?.min}
-          max={r?.max}
-          step={r?.step ?? "any"}
-          placeholder="none"
-          value={limitText(value)}
-          disabled={disabled}
-          onChange={(e) => onSet(limitValue((e.target as HTMLInputElement).value, r))}
-        />
-      </label>
+      <div class={`limit-row${on ? " on" : ""}`} key={key}>
+        <label class="limit-check">
+          <input type="checkbox" checked={on} disabled={disabled} onChange={(e) => onSet((e.target as HTMLInputElement).checked ? shown : undefined)} />
+          <span>{label}</span>
+        </label>
+        <span class="limit-input">
+          <button type="button" class="limit-step" aria-label={`${label}: less`} disabled={disabled || !on} onClick={() => step(-1)}>
+            −
+          </button>
+          {/* -- WP WEB -- text, so "−2,5 dB" is read as Qt's fields read it (limitValue) */}
+          <input
+            type="text"
+            inputMode="decimal"
+            autoComplete="off"
+            aria-label={r ? `${label} (${r.unit})` : label}
+            data-min={r?.min}
+            data-max={r?.max}
+            title={r ? `${r.min} to ${r.max} ${r.unit}` : undefined}
+            value={limitText(shown)}
+            disabled={disabled || !on}
+            onChange={(e) => {
+              const el = e.target as HTMLInputElement;
+              const v = limitValue(el.value, r);
+              if (v === undefined) el.value = limitText(shown);
+              else onSet(v);
+            }}
+          />
+          <span class="limit-unit">{r?.unit ?? ""}</span>
+          <button type="button" class="limit-step" aria-label={`${label}: more`} disabled={disabled || !on} onClick={() => step(1)}>
+            +
+          </button>
+        </span>
+      </div>
     );
   };
+  const scope = noticeRow("limits.scope");
 
   return (
-    <section class="card installer-limits" aria-label="Limits">
-      <h3>Limits</h3>
-      <p class="note">
-        A change applies at once and holds the DSPi to it. A field left empty is not limited. A limit the firmware does not know can be crossed from a
-        control surface, the UART or another console that does not have this profile.
-      </p>
-      {status ? (
-        <p class="error" role="alert">
-          {status}
+    // -- WP REVEFIX -- (REVE §3.1, owner default 2026-11-24) Qt's cards: Limits for the device, then one per output, each
+    // titled outside its card (§8); the output by the core's label alone (REVE D2)
+    <section class="installer-limits" aria-label="Limits">
+      <div class="card limits-card">
+        <h3>Limits</h3>
+        <p class="limits-intro">
+          {hub
+            ? "Limits narrow what this DSPi may be set to from any console on the hub. A change applies at once; settings already outside a new limit are brought inside it, and what changed is shown."
+            : "Limits narrow what this DSPi may be set to from this console. A change applies at once; settings already outside a new limit are brought inside it, and what changed is shown."}
         </p>
-      ) : null}
-      {bare.length ? (
-        <div class="limits-warning" role="status" aria-label="Outputs without a limiter">
-          <span>
-            {bare.length === 1 ? "An output above -10 dB gain has no limiter: " : "Outputs above -10 dB gain have no limiter: "}
-            {bare.map((o) => names.get(o) ?? `OUT${o + 1}`).join(", ")}
-          </span>
-          <button type="button" disabled={!!session.readOnlyReason} onClick={() => void session.change("protectAllOutputs", undefined)}>
-            Protect all outputs
+        {status ? (
+          <p class="error" role="alert">
+            {status}
+          </p>
+        ) : null}
+        <div class="limits-device">
+          {field("Master volume at most", "masterVolumeMaxDb", profile.masterVolumeMaxDb, (v) => void apply(withField(profile, "masterVolumeMaxDb", v)))}
+          {field("EQ boost at most, every band", "maxPeqBoostDb", profile.maxPeqBoostDb, (v) => void apply(withField(profile, "maxPeqBoostDb", v)))}
+        </div>
+        {/* -- WP WEB5 -- a notice row (§14) in Qt's words (ToolsController::unprotectedText) */}
+        {bare.length ? (
+          <div class="limits-warning notice-row notice-row-warning" role="status" aria-label="Outputs without a limiter">
+            <Glyph name="warning" class="notice-icon" />
+            <span class="notice-text">No limiter on {bare.map((o) => rows.get(o)?.name ?? `Out ${o + 1}`).join(", ")}, above -10 dB of gain.</span>
+            <button
+              type="button"
+              title="Every limiter on at -1 dBFS, the stereo pairs linked"
+              disabled={!!session.readOnlyReason}
+              onClick={() => void session.change("protectAllOutputs", undefined)}
+            >
+              Protect all outputs
+            </button>
+          </div>
+        ) : null}
+        <div class="installer-buttons limits-remove">
+          {/* -- REVE §6 S1 -- off with nothing to remove, as Qt's */}
+          <button type="button" class="danger" disabled={disabled || !hasLimits(profile)} onClick={() => void clear()}>
+            Remove All Limits
           </button>
         </div>
-      ) : null}
-      <div class="limits-device">
-        {field("Highest PEQ boost", "maxPeqBoostDb", profile.maxPeqBoostDb, (v) => void apply(withField(profile, "maxPeqBoostDb", v)))}
-        {field("Highest master volume", "masterVolumeMaxDb", profile.masterVolumeMaxDb, (v) => void apply(withField(profile, "masterVolumeMaxDb", v)))}
       </div>
-      <div class="limits-outputs">
-        {outputs.map((o) => (
-          <fieldset key={o} class="limits-output" disabled={disabled}>
-            <legend>{names.get(o) ?? `OUT${o + 1}`}</legend>
-            {OUTPUT_FIELDS.map((f) =>
-              field(f.label, f.key, forOutput(o)?.[f.key], (v) => void apply(withOutputLimit(profile, o, f.key, v))),
-            )}
-          </fieldset>
-        ))}
-      </div>
-      <div class="limits-hand-over">
+      {hub ? null : (
+        <p class="note limits-scope">
+          {scope
+            ? `${scope.title}: ${scope.reason}`
+            : "A limit the firmware does not know can be crossed from a control surface, the UART or another console that does not have this profile."}
+        </p>
+      )}
+      {outputs.map((o) => {
+        const name = rows.get(o)?.name ?? `Out ${o + 1}`;
+        return (
+          <div key={o} class="card limits-out">
+            <h3>{name}</h3>
+            <fieldset class="limits-output" aria-label={name} disabled={disabled}>
+              {OUTPUT_FIELDS.map((f) =>
+                field(f.label, f.key, forOutput(o)?.[f.key], (v) => void apply(withOutputLimit(profile, o, f.key, v))),
+              )}
+            </fieldset>
+          </div>
+        );
+      })}
+      {/* -- WP WEB5 -- Qt's "Installer's note" group; -- WP REVEFIX -- a card of its own */}
+      <div class="card limits-note">
+        <h3>Installer's note</h3>
+      <fieldset class="limits-output limits-hand-over" aria-label="Installer's note">
         <label class="limit-text">
-          <span>Note for whoever looks after the system</span>
-          <textarea rows={2} value={profile.note ?? ""} disabled={disabled} onChange={(e) => void apply(withField(profile, "note", (e.target as HTMLTextAreaElement).value))} />
+          <span>Note</span>
+          <textarea
+            rows={2}
+            placeholder="What this system is set up for"
+            value={profile.note ?? ""}
+            disabled={disabled}
+            onChange={(e) => void apply(withField(profile, "note", (e.target as HTMLTextAreaElement).value))}
+          />
         </label>
         <label class="limit-text">
-          <span>How to reach the installer</span>
-          <input type="text" value={profile.contact ?? ""} disabled={disabled} onChange={(e) => void apply(withField(profile, "contact", (e.target as HTMLInputElement).value))} />
+          <span>Contact</span>
+          <input
+            type="text"
+            placeholder="How to reach the installer"
+            value={profile.contact ?? ""}
+            disabled={disabled}
+            onChange={(e) => void apply(withField(profile, "contact", (e.target as HTMLInputElement).value))}
+          />
         </label>
+        <p class="note">Shown to the people who use this system while it is locked.</p>
+      </fieldset>
       </div>
       {report ? (
         <div class={`limits-report ${report.tone}`} role={report.tone === "error" ? "alert" : "status"} aria-label="Limits report">
@@ -357,9 +432,6 @@ function LimitsPanel(props: { session: Session; s: DspState; serial: string; dis
           Load Profile…
         </button>
         <input ref={file} type="file" hidden accept=".dspipreset,.json,application/json" aria-label="Limits profile to load" onChange={(e) => void load(e.target as HTMLInputElement)} />
-        <button type="button" class="danger" disabled={disabled} onClick={() => void clear()}>
-          Clear Profile
-        </button>
       </div>
     </section>
   );

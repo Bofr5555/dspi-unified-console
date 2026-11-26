@@ -6,7 +6,8 @@ import UConsole
 // -- WP LAY3 -- Devices. -- WP LAY5b -- This Computer: the open devices, those on
 // USB and the demo (DevicesLocal), and what is done to the active one. The hubs
 // are the next tab's (DevicesHubs). ModernShell keeps the lists live while one
-// of the two shows.
+// of the two shows. -- WP DL3b -- A 760 px column at the left
+// (DESIGN-LANGUAGE §3), the devices as ListRows, sections 24 apart.
 Item {
     id: page
     objectName: "DevicesSection"
@@ -22,25 +23,18 @@ Item {
 
         ColumnLayout {
             id: column
-            x: (parent.width - width) / 2
-            y: Theme.spacingLarge
-            width: Math.min(640, parent.width - 2 * Theme.spacingLarge)
-            spacing: Theme.spacing
+            x: Theme.spacing
+            y: Theme.spacing
+            width: Math.min(Theme.contentMaxWidth, parent.width - 2 * Theme.spacing)
+            spacing: Theme.spacingSmall
 
-            DevicesLocal { Layout.fillWidth: true }
-            // -- WP QPI3 -- a DSPi the app sees but cannot open
-            RowLayout {
+            // -- WP QPI3 -- a DSPi the app sees but cannot open (-- WP DL3b -- a notice, on top)
+            NoticeRow {
                 objectName: "DevicesSection.access"
                 Layout.fillWidth: true
                 visible: DeviceAccess.count > 0
-                spacing: Theme.spacingSmall
-                Text {
-                    Layout.fillWidth: true
-                    text: qsTr("A DSPi on USB was found that cannot be opened.")
-                    font: Theme.fontSmall
-                    color: Theme.warning
-                    wrapMode: Text.Wrap
-                }
+                kind: "warning"
+                text: qsTr("A DSPi on USB was found that cannot be opened.")
                 AppButton {
                     objectName: "DevicesSection.accessHelp"
                     text: qsTr("Help…")
@@ -48,14 +42,19 @@ Item {
                     onClicked: DeviceAccess.offer()
                 }
             }
+            DevicesLocal {
+                Layout.fillWidth: true
+                listRows: true   // -- WP DL3b --
+            }
             SectionHeading {
                 Layout.fillWidth: true
-                Layout.topMargin: Theme.spacingSmall
+                Layout.topMargin: Theme.spacingSection - Theme.spacingSmall   // -- WP DL3b --
                 visible: DeviceModel.connected
                 text: qsTr("The device shown")
             }
             Flow {
                 Layout.fillWidth: true
+                visible: DeviceModel.connected   // -- WP REVDFIX -- (REVD D8) as its heading
                 spacing: Theme.spacingSmall
                 // -- WP LAY3b -- MenuTable's place device, as the switcher
                 Repeater {
@@ -73,7 +72,7 @@ Item {
             }
             SectionHeading {
                 Layout.fillWidth: true
-                Layout.topMargin: Theme.spacingSmall
+                Layout.topMargin: Theme.spacingSection - Theme.spacingSmall   // -- WP DL3b --
                 text: qsTr("On the network")
             }
             AppButton {

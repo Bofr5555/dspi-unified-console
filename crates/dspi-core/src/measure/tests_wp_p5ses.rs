@@ -877,6 +877,22 @@ fn wp_p5ses_an_overrun_aborts() {
     assert_aborted(&s, &dev, 1, "measure.abort.overrun");
 }
 
+// -- INTC -- the product's budget is 5 s past the plan, to the millisecond;
+// only the core's own wall-clock tests (measure_start under cfg(test)) get
+// the lease's 30 s
+#[test]
+fn intc_an_overrun_is_five_seconds_past_the_plan() {
+    let (mut s, mut dev, _room) = ramping();
+    let (budget, deadline) = s.overrun_budget();
+    assert_eq!(budget, Duration::from_secs(5));
+    dev.playing = Some((dev.starts[0].clone(), u64::MAX));
+    s.tick(&mut dev, deadline.unwrap() + Duration::from_millis(1));
+    assert_aborted(&s, &dev, 1, "measure.abort.overrun");
+    let mut s = session(&setup(MeasureRunKind::Walked, &[0]), &[0]);
+    s.wall_clock_tests();
+    assert_eq!(s.overrun_budget().0, super::session::LEASE);
+}
+
 #[test]
 fn wp_p5ses_a_cycle_identity_mismatch_aborts() {
     let st = setup(MeasureRunKind::Walked, &[0, 1, 2]);

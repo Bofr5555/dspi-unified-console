@@ -45,6 +45,14 @@ const POLL_EVERY: Duration = Duration::from_millis(250);
 const RAMP_TAIL_MS: u32 = 600;
 /// A run or a step this much later than planned aborts (S5).
 const OVERRUN: Duration = Duration::from_secs(5);
+// -- INTC -- The core's own tests drive whole sessions through the demo's
+// simulated microphone on the wall clock (`DspiCore::measure_tick`), and a
+// starved CPU (the full CI's lanes) delays a tick or a run's render past
+// 5 s with nothing wrong. Their sessions get the lease's length instead
+// (a client stalled longer loses its lock anyway); the guard itself is
+// tested on driven time with the product's 5 s (tests_wp_p5ses).
+#[cfg(test)]
+const OVERRUN_WALL_CLOCK_TESTS: Duration = LEASE;
 /// How far a status poll may be from the capture's time, ms.
 const STATUS_SLACK_MS: f64 = 250.0;
 /// Failed polls in a row before the session gives up.
@@ -144,6 +152,8 @@ pub(crate) struct Session {
     spl: Option<SplMeter>,
     generator: GenView,
     playing: Option<Playing>,
+    // -- INTC -- how much later than planned a run may end (S5)
+    overrun: Duration,
     schedule: Option<WalkSchedule>,
     starts: u32,
     start_frame: Option<u64>,
@@ -237,6 +247,7 @@ impl Session {
             ramp_steps: Vec::new(),
             generator: GenView::default(),
             playing: None,
+            overrun: OVERRUN, // -- INTC --
             schedule: None,
             starts: 0,
             start_frame: None,
@@ -361,6 +372,20 @@ impl Session {
     /// Who started the session (shown in its state).
     pub(crate) fn set_actor(&mut self, actor: crate::actor::ActorId) {
         self.actor = actor;
+    }
+
+    // -- INTC --
+    /// The core's own wall-clock tests: the overrun budget is the lease's,
+    /// not 5 s ([`OVERRUN_WALL_CLOCK_TESTS`]).
+    #[cfg(test)]
+    pub(crate) fn wall_clock_tests(&mut self) {
+        self.overrun = OVERRUN_WALL_CLOCK_TESTS;
+    }
+
+    /// The overrun budget and the run in flight's deadline (tests).
+    #[cfg(test)]
+    pub(crate) fn overrun_budget(&self) -> (Duration, Option<Instant>) {
+        (self.overrun, self.playing.map(|p| p.deadline))
     }
 
     // ── Ending ─────────────────────────────────────────────────────────
@@ -807,7 +832,7 @@ impl Session {
             start,
             end: start.saturating_add(frames),
             deadline: now
-                .checked_add(planned.saturating_add(OVERRUN))
+                .checked_add(planned.saturating_add(self.overrun))
                 .unwrap_or(now),
             ended: false,
             walked,

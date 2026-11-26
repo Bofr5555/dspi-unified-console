@@ -280,7 +280,7 @@ export class SystemDesk {
 
   private ownOutputs(): { index: number; name: string }[] {
     const snap = this.session.state.snapshot;
-    return snap ? outputRows(snap.state, snap.outputLabels).map((r) => ({ index: r.index, name: `${r.descriptor} ${r.name}` })) : [];
+    return snap ? outputRows(snap.state, snap.outputLabels).map((r) => ({ index: r.index, name: r.name })) : []; // -- WP WEB7 -- (REVE D2) the core's label alone
   }
 
   // ---- the form ----
@@ -324,7 +324,7 @@ export class SystemDesk {
       if (held.state.status === "open" && held.state.snapshot) {
         this.borrowed.set(serial, held.core);
         u.tab = held.transport;
-        u.outputs = outputRows(held.state.snapshot.state, held.state.snapshot.outputLabels).map((r) => ({ index: r.index, name: `${r.descriptor} ${r.name}` }));
+        u.outputs = outputRows(held.state.snapshot.state, held.state.snapshot.outputLabels).map((r) => ({ index: r.index, name: r.name })); // -- WP WEB7 -- (REVE D2) the core's label alone
       } else u.error = `${serial}: it is being opened in another tab; choose it again once that tab has it`;
       u.opening = false;
       this.changed();
@@ -348,7 +348,7 @@ export class SystemDesk {
         return;
       }
       this.cores.set(serial, core);
-      u.outputs = outputRows(snap.state, snap.outputLabels).map((r) => ({ index: r.index, name: `${r.descriptor} ${r.name}` }));
+      u.outputs = outputRows(snap.state, snap.outputLabels).map((r) => ({ index: r.index, name: r.name })); // -- WP WEB7 -- (REVE D2) the core's label alone
     } catch (e) {
       await core?.dispose().catch(() => undefined);
       u.error = `${serial}: ${refusalWords(e).text}`;

@@ -347,6 +347,20 @@ interface DspiBridge {
      */
     fun outputCards(): List<OutputCard>
 
+    /**
+     * -- WP REVEFIX -- No input is routed to output [output] (`OutputLabel.unused`, owner 2026-11-24): a view that
+     * only shows (the Home's cards) leaves it out; one that edits it shows its label, "3 · None". False with no labels.
+     */
+    fun outputUnused(output: Int): Boolean = false
+
+    /**
+     * -- WP FIN015 -- (REVF R1) [outputUnused], and no test signal plays on it (`OutputLabel.hidden`: the
+     * generator, a measurement, Identify): what a view that only shows levels (the Home's meters, the Spectrum
+     * chips, Stats) leaves out. The generator writes after the matrix, so an unused output it plays on is loud
+     * and keeps its meter. False with no labels.
+     */
+    fun outputHidden(output: Int): Boolean = false
+
     /** Hex colour from the channel palette (ChannelPalette). */
     fun channelColor(ch: Int): String
 

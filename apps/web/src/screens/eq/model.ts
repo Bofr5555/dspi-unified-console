@@ -7,6 +7,7 @@
 // crates/dspi-wasm/src/curves.rs). The unit tests reach all of it.
 
 import type { BandCurve, DspState, FilterParams } from "../../core/protocol";
+import { plainNumber } from "../../ui/number";
 
 /** The firmware's filter types the PEQ uses (config.h `enum FilterType`). */
 export const T = {
@@ -425,12 +426,26 @@ export function qText(q: number): string {
   return q.toFixed(3);
 }
 
+// -- WP WEB6 -- the band table's values without their units, which stand after the fields (Qt's):
+// "63.0", "2500.0" (Hz); "-4.0", "+2.5" (dB). Typed text still takes "2k" or "A4".
+export function bareFreq(hz: number): string {
+  return hz.toFixed(hz >= 100 ? 1 : 2);
+}
+export function bareGain(db: number): string {
+  const v = Math.abs(db) < 0.005 ? 0 : db;
+  return `${v > 0 ? "+" : ""}${v.toFixed(2)}`;
+}
+/** -- WP WEB6 -- A Q as the bandwidth it spans, in octaves (Qt's inspector caption). */
+export function bandwidthOct(q: number): number {
+  return (2 / Math.LN2) * Math.asinh(1 / (2 * q));
+}
+
 /** A typed frequency: "2k", "2 kHz", "440", or a note, "A4", "C#2+13" (cents). */
 export function parseFreq(text: string): number | null {
-  let s = text.trim().toLowerCase();
-  const note = parseNote(s);
+  const note = parseNote(text.trim().toLowerCase());
   if (note !== null) return note;
-  s = s.replace(/\s+/g, "");
+  // -- WP WEB -- "2,5 kHz", "1 000 Hz" as Qt's fields take them (USR1)
+  let s = plainNumber(text).toLowerCase();
   let scale = 1;
   if (s.endsWith("khz")) {
     scale = 1000;
@@ -445,8 +460,8 @@ export function parseFreq(text: string): number | null {
 
 /** A typed number, its unit ("dB") and a leading "q" or "+" allowed. */
 export function parseNumber(text: string, unit: string): number | null {
-  let s = text.trim().toLowerCase().replace(/\s+/g, "");
-  if (unit && s.endsWith(unit)) s = s.slice(0, -unit.length);
+  // -- WP WEB -- a decimal comma, U+2212 and the unit after the number (USR1)
+  let s = plainNumber(text, unit ? [unit] : []).toLowerCase();
   if (s.startsWith("q")) s = s.slice(1);
   if (s.startsWith("+")) s = s.slice(1);
   return finite(s, 1);
@@ -502,11 +517,31 @@ export function bandColour(b: number): string {
   return BAND_COLOURS[((b % BAND_COLOURS.length) + BAND_COLOURS.length) % BAND_COLOURS.length]!;
 }
 
-/** One hue per channel on the graph. */
-export const CHANNEL_COLOURS = ["#5ac8fa", "#ff9f0a", "#30d158", "#ff375f", "#bf5af2", "#ffd60a", "#64d2ff", "#ff6961", "#a2845e", "#8e8e93"];
+/**
+ * -- WP WEB2 -- (REVD W2) One colour per channel, Qt's `ChannelPalette` (the Mac console's): eight input
+ * colours (the stereo pair's blue and red first), eight output colours (the four pairs), and the PDM
+ * output's violet; the accent past the eighth. Keyed by the input's or output's own number, so a
+ * channel has the same colour on the web and on the desktop.
+ */
+export const INPUT_COLOURS = ["#4a8fe3", "#f57373", "#73c78c", "#edb24c", "#998ceb", "#e68cc7", "#66c7d1", "#ccb86b"];
+export const OUTPUT_COLOURS = ["#45c2a3", "#59d180", "#f0c459", "#f2a64c", "#598cf2", "#8cb2f2", "#d9738c", "#f299a6"];
+export const PDM_COLOUR = "#ba87f2";
+const PAST_PALETTE = "#2563eb";
 
-export function channelColour(i: number): string {
-  return CHANNEL_COLOURS[((i % CHANNEL_COLOURS.length) + CHANNEL_COLOURS.length) % CHANNEL_COLOURS.length]!;
+/** An input's colour by its number. */
+export function inputColour(i: number): string {
+  return INPUT_COLOURS[i] ?? PAST_PALETTE;
+}
+
+/** An output's colour by its number; the PDM output (the last of an odd count: 9 on the RP2350, 5 on the RP2040) its own. */
+export function outputColour(s: Pick<DspState, "numOutputChannels">, o: number): string {
+  if (s.numOutputChannels % 2 === 1 && o === s.numOutputChannels - 1) return PDM_COLOUR;
+  return OUTPUT_COLOURS[o] ?? PAST_PALETTE;
+}
+
+/** A wire channel's colour: inputs are wires 0..numInputChannels, outputs follow. */
+export function channelColour(s: Pick<DspState, "numInputChannels" | "numOutputChannels">, wire: number): string {
+  return wire < s.numInputChannels ? inputColour(wire) : outputColour(s, wire - s.numInputChannels);
 }
 
 // ---------------------------------------------------------------- rounding

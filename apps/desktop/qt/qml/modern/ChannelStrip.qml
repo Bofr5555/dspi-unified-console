@@ -102,7 +102,9 @@ Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 width: Math.min(implicitWidth, 170)
                 textFormat: Text.PlainText
-                text: info.label
+                // -- WP INTE -- (SHOWFIX leftover) named as the list beside it names
+                // it: the speaker layout's "Centre woofer", else the label
+                text: info.displayName || info.label
                 font: Theme.fontTitle
                 color: Theme.text
                 elide: Text.ElideRight

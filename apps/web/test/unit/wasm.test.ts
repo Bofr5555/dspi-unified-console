@@ -187,8 +187,8 @@ test("BUG1: the core's snapshot carries each output's label and the dashboard's 
   const labels = snap.outputLabels ?? [];
   assert.equal(labels.length, snap.state.numOutputChannels);
   // The demo routes USB 1 to output 1 and USB 2 to output 2, unfiltered, under the slots' default names
-  assert.equal(labels[0]?.label, "Out 1 · L · Full");
-  assert.equal(labels[1]?.label, "Out 2 · R · Full");
+  assert.equal(labels[0]?.label, "Out 1 · L");
+  assert.equal(labels[1]?.label, "Out 2 · R");
   assert.equal(labels[0]?.slotName, "SPDIF 1 L");
   assert.ok(Array.isArray(snap.outputCards));
   // A rename wins, in the next snapshot

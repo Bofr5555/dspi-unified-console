@@ -331,6 +331,59 @@ test("P2WB1: a Control session reads no statistics; a hub without the families s
   assert.deepEqual(off.calls.map((c) => c.method), ["hubCaps"]);
 });
 
+test("WEB5: while the link reconnects the hub's last view stays; once it is closed the view goes", async () => {
+  const s = fakeSession();
+  const f = feedOn(s);
+  f.start();
+  await f.tick();
+  assert.ok(hubScreenShown(f.view.caps));
+  s.state.link.phase = "reconnecting";
+  s.answers.hubCaps = new CoreCallError("disconnected", "no hub");
+  await f.tick();
+  assert.ok(hubScreenShown(f.view.caps), "the hub page stays while reconnecting");
+  assert.equal(f.view.devices.length, 2);
+  s.state.link.phase = "closed";
+  await f.tick();
+  assert.equal(hubScreenShown(f.view.caps), false);
+  assert.equal(f.view.devices.length, 0);
+});
+
+// -- WP REVEFIX -- (REVE C4)
+test("REVEFIX C4: the page is stale only when the hub does not answer while the link reconnects; then no alarm is offered", async () => {
+  const s = fakeSession();
+  const f = feedOn(s);
+  const src = f.alarmSource();
+  const seen: string[][] = [];
+  const stop = src.subscribe((on) => seen.push(on.map((c) => c.key)));
+  f.start();
+  await f.tick();
+  assert.equal(f.view.stale, false);
+  // A device-only reconnect, or choosing a device: the hub answers, nothing is stale
+  for (const phase of ["reconnecting", "choose_device", "no_device"]) {
+    s.state.link.phase = phase;
+    await f.tick();
+    assert.equal(f.view.stale, false, phase);
+  }
+  assert.deepEqual(seen.at(-1), ["hub:device:1"]);
+  // The hub itself does not answer: its last word stays, stale; its alarms are not offered nor acknowledged
+  s.state.link.phase = "reconnecting";
+  const good = s.answers.hubCaps;
+  s.answers.hubCaps = new CoreCallError("disconnected", "no hub");
+  await f.tick();
+  assert.equal(f.view.stale, true);
+  assert.equal(f.view.devices.length, 2);
+  assert.deepEqual(seen.at(-1), []);
+  await src.acknowledge("hub:device:1");
+  assert.equal(s.calls.filter((c) => c.method === "hubAlarmAck").length, 0);
+  // It answers again: fresh
+  s.answers.hubCaps = good;
+  s.state.link.phase = "bound";
+  await f.tick();
+  assert.equal(f.view.stale, false);
+  assert.deepEqual(seen.at(-1), ["hub:device:1"]);
+  stop();
+});
+
 test("P2WB1: the hub's alarm.changed and inventory.changed update the view between reads", async () => {
   const s = fakeSession();
   const f = feedOn(s);

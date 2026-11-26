@@ -82,7 +82,7 @@ test("WB6h: effects are gated by the probe's feature names, not by a version; th
   const s = state();
   assert.deepEqual(availableEffects(s, {}).map((e) => e.id), ["crossfeed", "loudness", "leveller"]);
   const all = Object.fromEntries(featureNames().map((n) => [n, true]));
-  assert.deepEqual(availableEffects(s, all).map((e) => e.id), ["crossfeed", "loudness", "leveller", "psybass", "tube", "subharm", "upmix"]);
+  assert.deepEqual(availableEffects(s, all).map((e) => e.id), ["crossfeed", "loudness", "leveller", "psybass", "subharm", "tube", "upmix"]); // -- WP WEB3 -- Qt's tab order
   assert.deepEqual(availableEffects(s, { tube_preamp: true }).map((e) => e.id), ["crossfeed", "loudness", "leveller", "tube"]);
   // A mirror without an effect's fields (an image without it) has no such effect, whatever the probe says.
   assert.deepEqual(availableEffects(state({ upmix: [], tube: undefined } as Partial<DspState>), all).map((e) => e.id), ["crossfeed", "loudness", "leveller", "psybass", "subharm"]);
@@ -211,7 +211,7 @@ test("WB6h core: every path described and writable; the demo has every effect's 
   const s = session.state.snapshot!.state;
   assert.equal(availableEffects(s, f).length, 7);
   const choices = await session.core.call("effectChoices", undefined);
-  assert.equal(choices["cf.preset"]![2]!.label, "Meier");
+  assert.equal(choices["cf.preset"]![2]!.label, "Jan Meier"); // -- INTE -- the core says Qt's name
   assert.equal(choices["tube.type"]![0]!.label, "Custom");
 });
 

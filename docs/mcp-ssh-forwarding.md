@@ -1,19 +1,19 @@
-# Using DSPi Console's AI agents from another computer (SSH)
+# Using uConsole for DSPi's AI agents from another computer (SSH)
 
 *Part of the AI agents manual: [docs/manual/ai-agents.md](manual/ai-agents.md), which covers turning agents on, each
 agent's configuration, the questions and undo.* <!-- WP MCP6 -->
 
-DSPi Console serves AI agents only on its own computer: it listens on `127.0.0.1` and
+uConsole for DSPi serves AI agents only on its own computer: it listens on `127.0.0.1` and
 `::1` (port 47860 unless you changed it in Settings › AI agents) and on no network
 address, and there is no setting to change that. To use an agent on another computer,
 carry the connection over SSH. SSH encrypts it, and you sign in to the DSPi computer as
 yourself, so nothing new is opened on your network.
 
-You need an SSH server on the computer that runs DSPi Console (call it `dspi-pc`) and
+You need an SSH server on the computer that runs uConsole for DSPi (call it `dspi-pc`) and
 an SSH client on the computer that runs the agent. macOS and Linux have both. Windows 10
 and 11 have the client built in and the server as the optional feature "OpenSSH Server".
 
-DSPi Console must be running on `dspi-pc` with Settings › AI agents turned on.
+uConsole for DSPi must be running on `dspi-pc` with Settings › AI agents turned on.
 
 ## Agents that connect over HTTP (Claude Code, Cursor, VS Code)
 
@@ -53,7 +53,7 @@ installed there, and an SSH key, so that SSH does not stop to ask for a password
 }
 ```
 
-The first time, DSPi Console on `dspi-pc` asks you to allow the agent. Check that it
+The first time, uConsole for DSPi on `dspi-pc` asks you to allow the agent. Check that it
 shows the same code as the agent's log, then click **Allow**. The relay keeps its token on
 `dspi-pc`.
 
@@ -62,7 +62,7 @@ shows the same code as the agent's log, then click **Allow**. The relay keeps it
 - Everyone who can sign in to `dspi-pc` as you can reach the agents' endpoint, as on
   that computer itself. The token is what tells agents apart. Remove a token you no longer
   use in Settings › AI agents.
-- The endpoint cannot prove which program is listening on the port. If DSPi Console is not
+- The endpoint cannot prove which program is listening on the port. If uConsole for DSPi is not
   running on `dspi-pc` and another account there takes port 47860, an agent that connects
   through the tunnel hands that program its token. On a computer other people sign in to,
   pick another port in Settings › AI agents (and in `-L` above), and if you suspect this

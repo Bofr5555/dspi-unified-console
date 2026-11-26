@@ -6,7 +6,7 @@
 // the main screen's line goes.
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { openPage } from "../nav";
+import { openPage, openSetting } from "../nav";
 
 type Clients = { dspiClients: { call(m: string, p: unknown): Promise<unknown> }[] };
 
@@ -28,13 +28,13 @@ async function openDemo(page: Page): Promise<Locator> {
   const one = page.locator("#one");
   await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article").first();
-  await expect(session.getByRole("region", { name: "Presets" })).toBeVisible();
+  await expect(session.getByRole("button", { name: /^Presets: / })).toBeVisible(); // -- WP INTD -- the session bar's presets (DL5)
   return session;
 }
 
 async function speakersPage(session: Locator): Promise<Locator> {
   await openPage(session, "Settings");
-  await session.getByRole("navigation", { name: "Settings pages" }).getByRole("button", { name: "Speakers" }).click();
+  await openSetting(session, "Speakers"); // -- WP WEB7 -- its part, then its row
   const page = session.getByRole("region", { name: "Speakers" });
   await expect(page.getByRole("list", { name: "Speaker layout" })).toBeVisible();
   return page;
@@ -141,7 +141,7 @@ test("ADETW: an auto-detected layout shown on the main screen and Settings › S
     [1, "mid", "user"],
   ]);
   await openPage(session, "Main");
-  await expect(session.getByRole("region", { name: "Presets" })).toBeVisible();
+  await expect(session.getByRole("button", { name: /^Presets: / })).toBeVisible(); // -- WP INTD -- the session bar's presets (DL5)
   await expect(note).toHaveCount(0);
   expect(errors).toEqual([]);
 });

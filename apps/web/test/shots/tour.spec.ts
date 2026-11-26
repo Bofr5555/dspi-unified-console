@@ -15,7 +15,8 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { pbkdf2Sync, randomBytes } from "node:crypto";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { hasPage, openPage } from "../nav";
+import { hasPage, openDevices, openPage } from "../nav";
+import { setOutputGain } from "../presets"; // -- WP INTD --
 
 type OwnHub = { port: number; pin: string; child: ChildProcess; store: string };
 
@@ -91,7 +92,7 @@ async function openUnit(page: Page, hub: OwnHub, serial: string, pair = !!hub.pi
   }
   const entry = session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: serial.slice(-8) });
   await entry.getByRole("button", { name: "Open" }).click();
-  await expect(session.locator(".device-meta")).toContainText(serial);
+  await expect(session).toHaveAttribute("data-serial", new RegExp(serial));
   return session;
 }
 
@@ -99,7 +100,7 @@ async function openDemo(page: Page): Promise<Locator> {
   await page.goto("/");
   await picker(page).getByRole("listitem").filter({ hasText: "Demo DSPi" }).getByRole("button", { name: "Connect" }).click();
   const session = page.getByRole("article").last();
-  await expect(session.locator(".device-meta")).toBeVisible();
+  await expect(session).toHaveAttribute("data-status", "open");
   return session;
 }
 
@@ -173,15 +174,13 @@ test.describe("snapshots and files on the core's demo", () => {
     await openPage(session, "Snapshots");
     const screen = session.getByRole("region", { name: "Snapshots" });
     const capture = async (name: string, note: string) => {
+      await screen.getByRole("button", { name: "Capture…" }).click(); // -- WP INTD -- Capture is a popover
       await screen.getByLabel("Name").fill(name);
       await screen.getByLabel("Note").fill(note);
-      await Promise.all([page.waitForEvent("download"), screen.getByRole("button", { name: "Capture" }).click()]);
+      await Promise.all([page.waitForEvent("download"), screen.getByRole("button", { name: "Capture", exact: true }).click()]);
     };
     await capture("Evening", "Warm, -3 dB on the tops");
-    const gain = session.getByRole("region", { name: "Outputs" });
-    await openPage(session, "Main");
-    await gain.getByRole("slider").first().fill("-4");
-    await gain.getByRole("slider").first().dispatchEvent("change");
+    await setOutputGain(session, -4); // -- WP INTD -- on Delay & gain
     await openPage(session, "Snapshots");
     await capture("Bright", "Output 1 at -4 dB");
     await expect(screen.getByRole("list", { name: "Held snapshots" }).getByRole("listitem")).toHaveCount(2);
@@ -215,9 +214,12 @@ test.describe("snapshots and files on the core's demo", () => {
     await expect(preview.getByRole("table", { name: "What the import changes" })).toBeVisible();
     await shot(page, "demo-import-preview");
     await preview.getByRole("button", { name: "Cancel" }).click();
-    await page.getByRole("region", { name: "Files" }).first().getByLabel("File to open").setInputFiles(mac);
+    // -- WP WEB4 -- the devices page's Files (it has "File to open"), not Library › Files, which is open too;
+    // with a session open the devices page is one step away (WEBM1's shell)
+    await openDevices(page);
+    await page.getByRole("region", { name: "Files" }).filter({ has: page.getByLabel("File to open") }).first().getByLabel("File to open").setInputFiles(mac);
     const doc = page.getByRole("article").last();
-    await expect(page.locator(".device-meta").filter({ hasText: "File: mac-swift-v32.dspipreset" })).toBeVisible();
+    await expect(page.locator(`article[data-file="mac-swift-v32.dspipreset"]`)).toBeVisible(); // -- WP REVEFIX --
     await expect(doc).toBeVisible();
     await shot(page, "offline-file");
   });
@@ -399,14 +401,15 @@ test.describe("P1WB2: the Installer page, AutoEQ, the lock", () => {
     const limits = session.getByRole("region", { name: "Limits" });
     await expect(limits).toBeVisible();
     await shot(page, "demo-installer-page");
-    const out2 = limits.getByRole("group", { name: /^OUT2/ });
-    const highest = out2.getByLabel("Highest gain (dB)");
+    const out2 = limits.getByRole("group", { name: /^Out 2\b/ }); // -- WP REVEFIX -- the core's label alone (REVE D2)
+    const highest = out2.getByLabel("Gain at most (dB)");
+    await out2.getByRole("checkbox", { name: "Gain at most" }).check(); // -- WP REVEFIX -- Qt's check box per limit
     await highest.fill("-3");
     await highest.dispatchEvent("change");
     await expect(limits.getByRole("status", { name: "Limits report" })).toContainText("Held to the new limits");
     await shot(page, "demo-limits-held", { of: limits });
     await shot(page, "demo-power-on", { of: session.getByRole("region", { name: "At power-on" }) });
-    await limits.getByRole("button", { name: "Clear Profile" }).click();
+    await limits.getByRole("button", { name: "Remove All Limits" }).click();
     await openPage(session, "EQ");
     await session.getByRole("button", { name: "AutoEQ…" }).click();
     const panel = session.getByRole("region", { name: "AutoEQ" });

@@ -15,6 +15,7 @@ def ratio(a, b):
 surf = ('window', 'panel', 'sidebar', 'control', 'menu', 'selection')
 pairs = [(t, b) for t in ('text', 'textMuted', 'textDisabled') for b in surf]
 pairs += [(t, b) for t in ('accentText', 'dangerText', 'warning', 'success') for b in ('window', 'panel', 'sidebar', 'control')]
+pairs += [('accentText', 'selection')]  # -- WP DL0 -- a chosen chip or segment: accent text on the selection tone
 pairs += [(t, 'meterTrack') for t in ('meterLevel', 'meterLow', 'meterMid', 'meterHigh', 'meterHold')]  # -- WP QP18 -- graphics, 3:1
 pairs += [(t, b) for t in ('alarmRaised', 'alarmAcknowledged') for b in ('window', 'panel', 'sidebar', 'control')]
 pairs += [('textOnAccent', 'accent'), ('textOnAccent', 'danger'), ('tooltipText', 'tooltip')]
@@ -30,6 +31,19 @@ for tone, i, scheme in ((t, i, s) for t in tones for i, s in enumerate(('dark', 
         r = ratio(at[t], at[b]); ok = r >= (3.0 if t == 'textDisabled' or b == 'meterTrack' else 4.5)
         bad += not ok
         if not ok or '-v' in sys.argv: print(f'{tone:6} {scheme:5} {t:13} on {b:10} {r:5.2f} {"" if ok else "BELOW AA"}')
+# -- WP REVDFIX -- (REVD D1) Modern's controls have no outline: each control tone
+# must differ from the surface it sits on (3:1 is out of reach for these greys;
+# 1.08:1 at least). Theme.barControl, on the sidebar-tone bars, is the panel's
+# tone in light and the control's in dark (the plain control without it).
+LIFT = 1.08
+for tone, i, scheme in ((t, i, s) for t in tones if t for i, s in enumerate(('dark', 'light'))):
+    at = {name: v[i] for name, v in tok.items()} | tones[tone].get(scheme, {})
+    lift = 'property color barControl: barLift ? panel : control' in src
+    at['barControl'] = at['panel'] if lift and scheme == 'light' else at['control']
+    for c, b in (('control', 'window'), ('control', 'panel'), ('barControl', 'sidebar')):
+        r = ratio(at[c], at[b]); ok = r >= LIFT
+        bad += not ok
+        if not ok or '-v' in sys.argv: print(f'{tone:6} {scheme:5} {c:13} on {b:10} {r:5.2f} {"" if ok else "CONTROL VANISHES"}')
 pal = re.findall(r'Qt\.rgba\(([\d.]+), ([\d.]+), ([\d.]+), 1\)', open(sys.argv[2]).read()) if len(sys.argv) > 2 and sys.argv[2] != '-v' else []
 for r_, g, b in pal:
     h = '#%02x%02x%02x' % tuple(round(float(x) * 255) for x in (r_, g, b))

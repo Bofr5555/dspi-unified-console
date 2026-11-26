@@ -25,6 +25,19 @@ Item {
 
     ChannelInfo { id: info; channel: page.channel }
 
+    // -- WP INTE -- (SHOWFIX leftover) the list's names as wide as the longest
+    // ("Centre woofer" whole), at least the old 80 (104 for derived labels) and
+    // at most what leaves the meter room
+    FontMetrics { id: nameMetrics; font: Theme.fontBody }
+    readonly property int nameWidth: {
+        const most = width < 1000 ? 104 : 120
+        let widest = SidebarController.derivedLabels ? 104 : 80
+        if (DeviceModel.revision >= 0)
+            for (let r = 0; r < DeviceModel.channels.count; ++r)
+                widest = Math.max(widest, Math.ceil(nameMetrics.advanceWidth(DeviceModel.channels.get(r, "displayName") || "")) + 2)
+        return Math.min(widest, most)
+    }
+
     function selectOne() {
         if (!shown || !DeviceModel.connected || SidebarController.selectedChannel >= 0) return
         const last = lastChannel >= 0 && DeviceModel.channels.rowOfChannel(lastChannel) >= 0
@@ -128,7 +141,7 @@ Item {
                             Accessible.name: text
                         }
                         delegate: ChannelRow {
-                            nameWidth: SidebarController.derivedLabels ? 104 : 80
+                            nameWidth: page.nameWidth   // -- WP INTE --
                             renaming: page.renamingChannel === channel
                             onRenameRequested: page.renamingChannel = channel
                             onRenameFinished: if (page.renamingChannel === channel) page.renamingChannel = -1

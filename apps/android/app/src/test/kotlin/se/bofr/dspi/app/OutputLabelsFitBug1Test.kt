@@ -51,7 +51,7 @@ class OutputLabelsFitBug1Test {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var session: DemoSession? = null
 
-    private fun label(o: Int, long: String, short: String, slot: String) = OutputLabel(o, long, short, slot, false, "", "")
+    private fun label(o: Int, long: String, short: String, slot: String) = OutputLabel(o, long, short, slot, false, "", "", false, false)
 
     private val k340 =
         listOf(
@@ -66,18 +66,19 @@ class OutputLabelsFitBug1Test {
             OutputCard(3, 1, "Tweeters", "Tweeters L", "Tweeters R", "Tweeters L", "R")
         )
 
-    /** The default demo's forms, and the longest a routing gives (both inputs, another input, nothing). */
+    /** The default demo's forms, and the longest a routing gives (both inputs, another input, nothing).
+     *  -- WP INTD -- (REVD W12) the core says no "· None" and no "· Full" any more: "USB 3", "Out 3", "R". */
     private val longer =
         listOf(
             label(0, "Out 1 · L+R · High", "L+R · High", "SPDIF 1 L"),
-            label(1, "Out 2 · USB 3 · Full", "USB 3 · Full", "SPDIF 1 R"),
-            label(2, "Out 3 · None · Full", "None · Full", "SPDIF 2 L"),
-            label(3, "Out 4 · R · Full", "R · Full", "SPDIF 2 R")
+            label(1, "Out 2 · USB 3", "USB 3", "SPDIF 1 R"),
+            label(2, "Out 3", "Out 3", "SPDIF 2 L"),
+            label(3, "Out 4 · R", "R", "SPDIF 2 R")
         )
     private val longerCards =
         listOf(
-            OutputCard(0, 1, "", "Out 1 · L+R · High", "Out 2 · USB 3 · Full", "L+R · High", "USB 3 · Full"),
-            OutputCard(2, 3, "", "Out 3 · None · Full", "Out 4 · R · Full", "None · Full", "R · Full")
+            OutputCard(0, 1, "", "Out 1 · L+R · High", "Out 2 · USB 3", "L+R · High", "USB 3"),
+            OutputCard(2, 3, "", "Out 3", "Out 4 · R", "Out 3", "R")
         )
 
     /** The demo fake with the core's labels and cards (outputs 1-4 on, as the demo has them). */

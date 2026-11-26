@@ -40,10 +40,21 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
+// -- WP INTE -- REVE C1: a number field writes only text the user typed
+/**
+ * What leaving a number editor (Done, focus loss, a dialog's OK) writes:
+ * [text] when the user changed it, null when it is still the [startText] the
+ * editor was pre-filled with. Untouched, the editor just closes, so a tap and
+ * leave never writes back a re-rounded value. Compares the text only: a
+ * selection change is not typing.
+ */
+fun editedText(startText: String, text: String): String? = if (text == startText) null else text
+
 /**
  * A numeric value with a unit label, edited in place (macOS `ValueField`).
  * Tap to type (decimal keyboard); Done or leaving the field commits through
- * [onCommit] when the text is a number, otherwise the field reverts. The
+ * [onCommit] when the text was typed and is a number ([editedText]), otherwise
+ * the field reverts. The
  * caller clamps; the published value echoes back into [value].
  *
  * @param width width of the number part (the unit label is [labelWidth] beside it).
@@ -91,6 +102,7 @@ fun ValueField(
     val colors = DspiTheme.colors
     var editing by remember { mutableStateOf(false) }
     var field by remember { mutableStateOf(TextFieldValue("")) }
+    var startText by remember { mutableStateOf("") } // -- WP INTE -- REVE C1: the pre-filled text
     var hadFocus by remember { mutableStateOf(false) }
     val focus = remember { FocusRequester() }
     val shown = ValueFormat.format(value, maxDecimals, stripTrailingZeros)
@@ -99,7 +111,9 @@ fun ValueField(
         if (!editing) return
         editing = false
         hadFocus = false
-        (if (range != null) ValueFormat.parse(field.text, range) else ValueFormat.parse(field.text))?.let(onCommit)
+        // -- WP INTE -- REVE C1: untouched (only tapped or selected), leave edit mode showing the value
+        val typed = editedText(startText, field.text) ?: return
+        (if (range != null) ValueFormat.parse(typed, range) else ValueFormat.parse(typed))?.let(onCommit)
     }
 
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -117,6 +131,7 @@ fun ValueField(
                 ) {
                     val start = editText ?: shown
                     field = TextFieldValue(start, TextRange(0, start.length))
+                    startText = start // -- WP INTE -- REVE C1
                     editing = true
                 }.then(
                     // -- WP AN20 --

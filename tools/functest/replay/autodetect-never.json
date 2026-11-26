@@ -63,7 +63,7 @@
     "dspi_set_crossover",
     {
      "device": "demo:3",
-     "output": 3,
+     "output": 4,
      "high_pass": {
       "family": "linkwitz_riley",
       "order": 4,

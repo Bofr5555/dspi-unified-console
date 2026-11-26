@@ -1,0 +1,98 @@
+/* -- WP WEB4 -- The Analyse pages in the Modern design (Qt's Analyse pages as int/B has them):
+   the analyser's bars as the page, the signal generator in Qt's two columns with waveform tiles,
+   Stats for nerbs as ruled-free columns of sections, the Interrupt Monitor without a frame. */
+
+/* -- WP WEB6 -- The Spectrum page as Qt's (SpectrumPanel): the head row (tap, the channels as a legend,
+   Curves/Bars/Both at the right), the plot over the page on the panel tone with its marks inside, the
+   status line in mono at the foot. The graph tones are the Equaliser graph's. */
+.dspi-web .sp-page { --sp-grid: #dcdcdc; --sp-zero: rgba(0, 0, 0, 0.3); --sp-text: #5e5e5e; display: flex; flex-direction: column; gap: 8px; min-width: 0; height: max(24rem, calc(100vh - 14rem)); }
+@media (prefers-color-scheme: dark) {
+  .dspi-web:not([data-theme="light"]) .sp-page { --sp-grid: #3a3a3a; --sp-zero: rgba(255, 255, 255, 0.3); --sp-text: #a7a7a7; }
+}
+.dspi-web[data-theme="dark"] .sp-page { --sp-grid: #3a3a3a; --sp-zero: rgba(255, 255, 255, 0.3); --sp-text: #a7a7a7; }
+.dspi-web .sp-head { display: flex; align-items: center; gap: 10px; min-height: 32px; min-width: 0; }
+.dspi-web .sp-head .segments button { min-height: 24px; padding: 0 10px; font-size: 12px; }
+.dspi-web .sp-rule { flex: none; width: 1px; height: 12px; background: var(--separator); }
+.dspi-web .sp-legend { display: flex; flex: 1; align-items: center; gap: 4px 6px; min-width: 0; overflow-x: auto; scrollbar-width: thin; }
+.dspi-web .sp-entry { display: inline-flex; flex: none; align-items: center; gap: 5px; min-height: 22px; padding: 0 7px; border: 0; border-radius: var(--radius-chip, 11px); background: none; color: var(--muted); font-size: 11px; white-space: nowrap; }
+.dspi-web .sp-entry:hover { background: var(--control); }
+.dspi-web .sp-entry[aria-pressed="true"] { color: var(--text); }
+.dspi-web .sp-entry[aria-pressed="false"] .sp-dot { opacity: 0.25; }
+.dspi-web .sp-entry[aria-pressed="false"] { opacity: 0.7; }
+.dspi-web .sp-tool { display: inline-flex; align-items: center; gap: 6px; }
+.dspi-web .sp-tool .shell-icon { width: 15px; height: 15px; }
+.dspi-web .sp-dot { display: inline-block; flex: none; width: 6px; height: 6px; border-radius: 3px; }
+.dspi-web .sp-plot { display: flex; flex: 1; flex-direction: column; gap: 12px; min-height: 0; padding: 12px; border-radius: 8px; background: var(--panel); }
+.dspi-web .sp-plot > .empty-state { flex: 1; }
+.dspi-web .sp-box { position: relative; flex: 1 1 0; min-height: 8rem; }
+.dspi-web .sp-box > canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+.dspi-web .sp-curves-box { min-height: 10rem; }
+.dspi-web .sp-bars { display: grid; flex: 1 1 0; gap: 12px; min-height: 9rem; }
+.dspi-web .sp-cell { display: flex; flex-direction: column; gap: 3px; min-width: 0; min-height: 0; margin: 0; }
+.dspi-web .sp-cell figcaption { display: flex; align-items: center; gap: 4px; overflow: hidden; color: var(--muted); font-size: 10px; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
+.dspi-web .sp-status { display: flex; align-items: center; gap: 14px; min-height: 24px; padding-top: 6px; box-shadow: inset 0 1px var(--separator); color: var(--muted); font: 10px var(--mono); white-space: nowrap; }
+.dspi-web .sp-run { display: inline-flex; align-items: center; gap: 4px; }
+.dspi-web .sp-run-dot { width: 6px; height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--muted) 50%, transparent); }
+.dspi-web .sp-run.on .sp-run-dot { background: var(--ok); }
+.dspi-web .sp-telemetry { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre; }
+.dspi-web .sp-warn { color: var(--warn); }
+.dspi-web .sp-following { display: inline-flex; align-items: center; gap: 6px; }
+.dspi-web .sp-following button { min-height: 22px; padding: 0 8px; font-size: 11px; }
+@media (max-width: 700px) {
+  .dspi-web .sp-head { flex-wrap: wrap; }
+  .dspi-web .sp-legend { order: 3; flex-basis: 100%; }
+  .dspi-web .sp-status { flex-wrap: wrap; white-space: normal; }
+  .dspi-web .sp-telemetry { flex-basis: 100%; order: 3; white-space: normal; }
+}
+
+/* The signal generator */
+.dspi-web .siggen { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.dspi-web .sg-intro { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+.dspi-web .sg-intro-icon { width: 20px; height: 20px; color: var(--accent-text); flex: none; }
+.dspi-web .sg-intro-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.dspi-web .sg-intro-title { font-size: 15px; font-weight: 600; }
+.dspi-web .sg-caption { margin: 0; font-size: 11px; color: var(--muted); }
+.dspi-web .sg-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0; align-items: start; }
+.dspi-web .sg-col { display: flex; flex-direction: column; min-width: 0; padding-right: 16px; }
+.dspi-web .sg-right { padding: 0 0 0 16px; box-shadow: inset 1px 0 var(--separator); }
+.dspi-web .sg-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
+.dspi-web .sg-tile { display: flex; flex-direction: column; align-items: stretch; gap: 2px; min-height: 52px; padding: 6px 6px 4px; border-radius: var(--radius-control); background: var(--control); color: var(--muted); font-size: 11px; }
+.dspi-web .sg-tile svg { width: 100%; height: 28px; }
+.dspi-web .sg-tile path { fill: none; stroke: var(--text); stroke-width: 1.4; stroke-linejoin: round; opacity: 0.75; }
+.dspi-web .siggen-types .sg-tile[aria-checked="true"] { background: var(--selection); color: var(--accent-text); box-shadow: inset 0 0 0 1.5px var(--accent-fill); font-weight: 600; }
+.dspi-web .sg-tile[aria-checked="true"] path { stroke: var(--accent-text); opacity: 1; }
+.dspi-web .sg-outs { display: grid; grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); gap: 6px; }
+.dspi-web .sg-outs > .chip { border-radius: var(--radius-control); min-height: 26px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dspi-web .sg-quiet { min-height: 22px; padding: 0.05rem 0.6rem; font-size: 12px; }
+.dspi-web .sg-value { display: inline-flex; align-items: center; gap: 6px; }
+.dspi-web .sg-unit { min-width: 1.6rem; font-size: 11px; color: var(--muted); }
+.dspi-web .siggen .siggen-number { width: 72px; font-family: var(--mono); font-size: 12px; text-align: right; }
+.dspi-web .sg-slider { width: 100%; }
+.dspi-web .siggen .siggen-params, .dspi-web .siggen .siggen-options { display: flex; flex-direction: column; gap: 0; }
+.dspi-web .siggen .form-row-caption { max-width: 28rem; }
+.dspi-web .sg-foot { position: sticky; bottom: 0; z-index: 1; display: flex; align-items: center; gap: 8px; padding: 10px 0; background: var(--bg); box-shadow: inset 0 1px var(--separator); }
+.dspi-web .sg-foot .siggen-title { font-weight: 400; }
+.dspi-web .sg-foot .siggen-detail { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+@media (max-width: 900px) {
+  .dspi-web .sg-columns { grid-template-columns: minmax(0, 1fr); }
+  .dspi-web .sg-col { padding: 0; }
+  .dspi-web .sg-right { padding: 16px 0 0; box-shadow: inset 0 1px var(--separator); margin-top: 16px; }
+}
+
+/* Stats for nerbs: sections, not cards; the numbers in mono at the right */
+.dspi-web .stats .stats-grid { gap: 24px 32px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); }
+.dspi-web .stats .stats-grid > .card { background: none; padding: 0; border-radius: 0; }
+.dspi-web .stats .stats-grid > .card > h3 { margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.dspi-web .stats .stat-rows { gap: 0; font-size: 12.5px; }
+.dspi-web .stats .stat-rows dt, .dspi-web .stats .stat-rows dd { padding: 4px 6px; }
+.dspi-web .stats .stat-rows dt { color: var(--text); }
+.dspi-web .stats .stat-rows dd { font-family: var(--mono); font-size: 12px; }
+.dspi-web .stats .stat-rows dt:nth-of-type(even), .dspi-web .stats .stat-rows dt:nth-of-type(even) + dd { background: var(--stripe); }
+.dspi-web .stats .card > .muted { margin: 6px 0 0; font-size: 11px; }
+
+/* The Interrupt Monitor: tools and state in a row, the lines in mono on the panel's tone */
+.dspi-web .monitor { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.dspi-web .monitor .monitor-tools { margin: 0; }
+.dspi-web .monitor .status-chip { margin-left: auto; }
+.dspi-web .monitor .monitor-lines { max-height: calc(100vh - 16rem); padding: 8px 10px; border: 0; border-radius: 8px; background: var(--panel); font-family: var(--mono); font-size: 12px; }
+.dspi-web .monitor .monitor-lines code { font: inherit; }

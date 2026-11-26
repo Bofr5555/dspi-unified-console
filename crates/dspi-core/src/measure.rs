@@ -1309,6 +1309,9 @@ impl DspiCore {
             self.lock().measure_tap.set(true);
             let mut session = Session::new(plan, ctx, Instant::now());
             session.set_actor(actor); // -- WP ROLL1 --
+            // -- INTC -- the core's tests run it on a loaded CPU's wall clock
+            #[cfg(test)]
+            session.wall_clock_tests();
             let state = session.state();
             // Review P5-D: the passive microphone RTA never runs beside the
             // generator (it would show the stimulus as programme audio).
@@ -1345,7 +1348,31 @@ impl DspiCore {
                 .map(|o| (o.output, preflight::chain_of(&inner.state, o.output)))
                 .collect()
         };
-        plan.resolve_roles(&chains, confirmed.as_ref())
+        // -- WP ROLES -- trust but check: an agent plays nothing below the
+        // floor of a stated non-tweeter its top-fall check has not cleared,
+        // nor of an output a stated layout leaves out (the user's own runs
+        // are not held)
+        let agent = crate::actor::JobActor::capture(self).actor() != crate::actor::EMBEDDER;
+        if agent && let Some(l) = confirmed.as_ref() {
+            for o in &mut plan.outputs {
+                if plan.probe.is_none() && l.agent_floor_held(o.output) {
+                    o.held_floor_hz = plan::TWEETER_STIMULUS_FLOOR_HZ.max(o.profile_floor_hz);
+                }
+            }
+        }
+        plan.resolve_roles(&chains, confirmed.as_ref())?;
+        if plan.kind == MeasureRunKind::Pink
+            && let Some(o) = plan.outputs.iter().find(|o| o.held_floor_hz > 0.0)
+        {
+            return Err(DspiError::InvalidArgument {
+                msg: format!(
+                    "pink noise is broadband: not on Out {}, whose stated role is not checked \
+                     yet (a log sweep checks it first)",
+                    u16::from(o.output).saturating_add(1)
+                ),
+            });
+        }
+        Ok(())
     }
 
     // -- WP ROLL1 --

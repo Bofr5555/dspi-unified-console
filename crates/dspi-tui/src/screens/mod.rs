@@ -433,13 +433,17 @@ pub fn channel_name(state: &DeviceState, channel: usize) -> String {
 }
 
 // -- BUG1 --
-/// How one output is shown: its label, its slot's name, and the label cut
-/// short for the sidebar.
+/// How one output is shown: its label, its slot's name, the label cut
+/// short for the sidebar, and whether nothing is routed to it.
 #[derive(Debug, Clone, Default)]
 struct Shown {
     label: String,
     slot: String,
     short: String,
+    // -- WP INTE -- (owner 2026-11-24) an unused output leaves the non-edit views
+    unused: bool,
+    // -- WP FIN015 -- (REVF R1) unless a test signal plays on it
+    hidden: bool,
 }
 
 /// The bulk image the labels were worked out from, and the labels.
@@ -451,7 +455,7 @@ struct LabelCache {
 
 thread_local! {
     /// [`channel_label`] is called while drawing; the labels change only
-    /// with the image.
+    /// with the image (and the outputs the generator plays on, -- WP FIN015 --).
     static LABELS: std::cell::RefCell<LabelCache> = std::cell::RefCell::new(LabelCache::default());
 }
 
@@ -460,12 +464,23 @@ thread_local! {
 fn with_shown<T>(state: &DeviceState, output: usize, f: impl FnOnce(&Shown) -> T) -> Option<T> {
     use dspi_session::output_label::{Band, LabelSource, output_labels};
     LABELS.with_borrow_mut(|c| {
-        if c.key.as_slice() != state.bulk.as_bytes() {
+        // -- WP FIN015 -- the generator's outputs are part of the key
+        let key: Vec<u8> = state
+            .bulk
+            .as_bytes()
+            .iter()
+            .copied()
+            .chain(state.siggen_outputs.to_le_bytes())
+            .collect();
+        if c.key != key {
             c.outputs = output_labels(&LabelSource::from_state(state))
                 .into_iter()
                 .map(|l| {
+                    // -- WP REVEFIX -- (REVE C5) an unused output is the core's "None"
+                    // beside its OUTn (owner 2026-11-24: "3 · None"), never "None·Lo"
                     let short = match (l.user_named, l.band) {
                         (true, _) => l.label.clone(),
+                        (false, _) if l.unused => l.short_label.clone(),
                         (false, Band::Full) => l.channel.clone(),
                         (false, Band::Low) => format!("{}·Lo", l.channel),
                         (false, Band::High) => format!("{}·Hi", l.channel),
@@ -475,10 +490,12 @@ fn with_shown<T>(state: &DeviceState, output: usize, f: impl FnOnce(&Shown) -> T
                         label: l.label,
                         slot: l.slot_name,
                         short,
+                        unused: l.unused,
+                        hidden: l.hidden, // -- WP FIN015 --
                     }
                 })
                 .collect();
-            c.key = state.bulk.as_bytes().to_vec();
+            c.key = key;
         }
         c.outputs.get(output).map(f)
     })
@@ -497,6 +514,36 @@ pub fn channel_label(state: &DeviceState, channel: usize) -> String {
                 .unwrap_or_else(|| channel_name(state, channel))
         }
         _ => channel_name(state, channel),
+    }
+}
+
+// -- WP INTE -- (owner 2026-11-24) the core's `OutputLabel.unused`, for the
+// views that hide such an output (the overview, the spectrum chooser, stats)
+/// Whether `channel` is an output nothing is routed to: the views that are
+/// not for editing leave it out, the edit views show it as "3 · None". An
+/// input, or a channel past the outputs, is never unused.
+pub fn channel_unused(state: &DeviceState, channel: usize) -> bool {
+    let ni = usize::from(state.caps.num_inputs);
+    match channel.checked_sub(ni) {
+        Some(o) if o < usize::from(state.caps.num_outputs) => {
+            with_shown(state, o, |s| s.unused).unwrap_or(false)
+        }
+        _ => false,
+    }
+}
+
+// -- WP FIN015 -- (REVF R1)
+/// Whether a view that only shows levels (the overview's grid, the spectrum
+/// chooser, stats) leaves `channel` out: an unused output ([`channel_unused`])
+/// that no test signal plays on. The generator writes after the matrix, so an
+/// unused output it plays on keeps its place.
+pub fn channel_hidden(state: &DeviceState, channel: usize) -> bool {
+    let ni = usize::from(state.caps.num_inputs);
+    match channel.checked_sub(ni) {
+        Some(o) if o < usize::from(state.caps.num_outputs) => {
+            with_shown(state, o, |s| s.hidden).unwrap_or(false)
+        }
+        _ => false,
     }
 }
 
@@ -713,7 +760,10 @@ pub(crate) mod tests {
         );
         let f = frame(&mut s, 120, 40);
         assert!(f.contains("╭ FL FR "), "{f}");
-        assert!(f.contains("LP 80 Hz · -3.0 dB"), "{f}");
+        // -- WP INTE -- (owner 2026-11-24) the fixture routes nothing to the
+        // Sub, so it has no cell now: the OUT L / OUT R cell's summary instead
+        assert!(f.contains("HP 80 Hz"), "{f}");
+        assert!(!f.contains("╭ Sub "), "an unused output has no cell: {f}");
         assert!(
             !f.contains("Filter Response"),
             "the grid carries the curves: {f}"
@@ -964,6 +1014,18 @@ pub(crate) mod tests {
         assert_eq!(channel_label(&s, ni + 1), "Out 2 · R · High");
     }
 
+    // -- WP INTE -- (owner 2026-11-24) the core's flag for an output nothing
+    // is routed to, which the non-edit views hide
+    #[test]
+    fn inte_an_output_nothing_is_routed_to_is_unused() {
+        let s = fixture::state();
+        let ni = usize::from(s.caps.num_inputs);
+        assert!(channel_unused(&s, ni + 8), "nothing feeds the Sub");
+        assert!(!channel_unused(&s, ni), "FL feeds OUT L");
+        assert!(!channel_unused(&s, 0), "an input is never unused");
+        assert!(!channel_unused(&s, ni + 9), "past the outputs");
+    }
+
     #[test]
     fn bug1_the_fixture_state_is_labelled_too() {
         let s = fixture::state();
@@ -971,8 +1033,11 @@ pub(crate) mod tests {
         for o in 0..s.caps.num_outputs as usize {
             let l = channel_label(&s, ni + o);
             let stored = channel_name(&s, ni + o);
+            // -- WP INTD -- (W12); -- WP REVEFIX -- an unused output is "N · None"
             assert!(
-                l == stored || l.starts_with(&format!("Out {} · ", o + 1)),
+                l == stored
+                    || l == format!("{} · None", o + 1)
+                    || l.starts_with(&format!("Out {} · ", o + 1)),
                 "{o}: {l} / {stored}"
             );
         }
@@ -983,6 +1048,24 @@ pub(crate) mod tests {
     #[test]
     fn bug1_k340_sidebar_frame() {
         let (s, mut session) = k340();
+        // -- WP REVEFIX -- (REVE C5) the first unused output low-passed: still "None"
+        let ni = usize::from(s.caps.num_inputs);
+        let spare = (0..usize::from(s.caps.num_outputs))
+            .find(|&o| channel_label(&s, ni + o) == format!("{} · None", o + 1))
+            .expect("an unused output");
+        session
+            .write_band(&dspi_proto::value::EqParamPacket {
+                channel: (ni + spare) as u8,
+                band: 0,
+                filter_type: dspi_proto::enums::FilterType::LowPass,
+                bypass: false,
+                freq: 300.0,
+                q: 0.707,
+                gain_db: 0.0,
+                qp: None,
+            })
+            .unwrap();
+        let s = DeviceState::new(s.caps.clone(), session.snapshot().unwrap());
         let theme = crate::Theme::console(
             crate::theme::ColorDepth::TrueColor,
             crate::theme::Glyphs::Braille,
@@ -1000,5 +1083,16 @@ pub(crate) mod tests {
             assert!(frame.contains(l), "{l} not in\n{frame}");
         }
         assert_eq!(channel_short_label(&live.state, 8), "R·Lo");
+        // -- WP REVEFIX -- (REVE C5) the unused outputs read the core's "None" in
+        // the sidebar and "N · None" elsewhere, never a band word after "None"
+        assert!(!frame.contains("None·"), "{frame}");
+        assert_eq!(channel_short_label(&live.state, ni + spare), "None");
+        let unused: Vec<usize> = (0..usize::from(live.state.caps.num_outputs))
+            .filter(|&o| channel_label(&live.state, ni + o) == format!("{} · None", o + 1))
+            .collect();
+        assert!(!unused.is_empty());
+        for o in unused {
+            assert_eq!(channel_short_label(&live.state, ni + o), "None");
+        }
     }
 }

@@ -86,7 +86,7 @@ test("one session per DSPi: another entry for a DSPi that is open shows its tab 
   const entry = (site: string) => page.getByRole("region", { name: site }).getByRole("listitem").filter({ hasText: "Stage rack" }).getByRole("button", { name: "Connect" });
   await entry("Site A").click();
   const session = page.getByRole("article");
-  await expect(session.locator(".device-meta")).toContainText(SERIAL);
+  await expect(session).toHaveAttribute("data-serial", new RegExp(SERIAL));
   const tabs = page.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab");
   await openDevices(page);
   // Twice at once: still one session.
@@ -95,10 +95,10 @@ test("one session per DSPi: another entry for a DSPi that is open shows its tab 
   await expect(tabs).toHaveCount(1);
   await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
   expect(await page.evaluate(() => (globalThis as unknown as { dspiClients: unknown[] }).dspiClients.length)).toBe(1);
-  await session.getByRole("button", { name: "Disconnect" }).click();
+  await session.getByRole("tablist", { name: "Open DSPi" }).getByRole("button", { name: /^Close / }).click(); // -- WP REVEFIX -- the tab's ×
   await expect(tabs).toHaveCount(0);
   await entry("Site B").click();
-  await expect(session.locator(".device-meta")).toContainText(SERIAL);
+  await expect(session).toHaveAttribute("data-serial", new RegExp(SERIAL));
   await expect(tabs).toHaveCount(1);
   expect(errors).toEqual([]);
 });
@@ -107,7 +107,7 @@ async function chooseAndOpen(session: ReturnType<Page["getByRole"]>, serial = SE
   await expect(session.locator(".banner")).toContainText(words("choose_device").text);
   const entry = session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: serial.slice(-8) });
   await entry.getByRole("button", { name: "Open" }).click();
-  await expect(session.locator(".device-meta")).toContainText(serial);
+  await expect(session).toHaveAttribute("data-serial", new RegExp(serial));
   await expect(session.locator(".banner")).toHaveCount(0);
 }
 
@@ -184,7 +184,7 @@ test("reconnecting: its Disconnect leaves the hub", async ({ page, request }) =>
   await fault(request, id, "drop");
   const reconnecting = words("reconnecting");
   await session.locator(".banner").getByRole("button", { name: reconnecting.action! }).click();
-  await expect(page.getByText("Choose a DSPi to connect to.")).toBeVisible();
+  await expect(page.getByText("No DSPi is connected. Connect one over USB, or try the demo device.")).toBeVisible();
 });
 
 test("the Origin rule: a page from another site is refused by the hub", async ({ page, request }) => {
@@ -219,7 +219,7 @@ test("fleet embedding: hubDevices names the DSPi, hubCredentials supplies the to
   // Site A: the fleet's own entry for the DSPi; it opens with the fleet's token, no PIN, no list.
   await page.getByRole("region", { name: "Site A" }).getByRole("listitem").filter({ hasText: "Stage rack" }).getByRole("button", { name: "Connect" }).click();
   const one = page.getByRole("article");
-  await expect(one.locator(".device-meta")).toContainText(SERIAL);
+  await expect(one).toHaveAttribute("data-serial", new RegExp(SERIAL));
   await expect(one.getByLabel("PIN")).toHaveCount(0);
   await writeVolume(one, "-36");
   expect(await page.evaluate(() => (globalThis as unknown as { fleet: { asked: string[] } }).fleet.asked)).toContain(hubAddress(a));
@@ -272,7 +272,7 @@ test("fleet embedding: hubDevices names the DSPi, hubCredentials supplies the to
   await expect(page.getByRole("article").locator(".banner")).toContainText(words("reconnecting").text);
   await page.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab").first().click();
   // (The user volume shows what the hub re-read gave: the fake hub keeps only the master volume.)
-  await expect(page.getByRole("article").locator(".device-meta")).toContainText(SERIAL);
+  await expect(page.getByRole("article")).toHaveAttribute("data-serial", new RegExp(SERIAL));
   await expect(page.getByRole("article").locator(".banner")).toHaveCount(0);
   expect(((await core(page, 0, "state")) as { state: { masterVolumeDb: number } }).state.masterVolumeDb).toBe(-5);
   expect(errors).toEqual([]);

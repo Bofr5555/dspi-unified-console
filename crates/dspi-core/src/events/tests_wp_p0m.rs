@@ -231,7 +231,8 @@ fn wp_p0m_connects_disconnects_and_notifications_are_recorded() {
                 .unwrap();
             assert_eq!(n.source, "UART");
             assert!(!n.own);
-            assert!(n.text.contains("delays"), "{}", n.text);
+            // -- WP SHOWFIX -- (finding 2) plain words, not the monitor's line
+            assert_eq!(n.text, "Delay of In 1 set to 1.5 ms");
             break;
         }
         assert!(
@@ -245,6 +246,14 @@ fn wp_p0m_connects_disconnects_and_notifications_are_recorded() {
     assert_eq!(first[0].serial, "P0M");
     assert_eq!(first[0].source, "fake");
     assert!(first[0].fw.is_some());
+    // -- WP FIN015 -- (REVF D2) the demo in words, not the transport's id
+    assert!(
+        first[0]
+            .text
+            .starts_with("Connected to the demo (firmware "),
+        "{}",
+        first[0].text
+    );
     core.disconnect();
     // The open device is gone: read it by serial.
     let all = core.event_log_read("P0M".into(), 0, 100).entries;

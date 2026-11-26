@@ -7,7 +7,7 @@
     "dspi_set_peq_band",
     {
      "device": "demo:1",
-     "output": 0,
+     "output": 1,
      "slot": "free",
      "type": "peaking",
      "freq_hz": 120,
@@ -20,7 +20,7 @@
     "dspi_set_gain",
     {
      "device": "demo:1",
-     "output": 0,
+     "output": 1,
      "gain_db": -1
     },
     "ok"

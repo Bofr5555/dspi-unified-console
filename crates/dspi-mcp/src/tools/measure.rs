@@ -2,9 +2,10 @@
 //! several units"): the preflight, a measurement, the low-end (roll-off)
 //! search, the auto-tune and the measurement across units, as agent tools.
 //!
-//! - **Roles come from the user's speaker layout only.** No tool has a role
-//!   argument (the schemas are closed, so one is refused before the tool
-//!   runs); every setup asks the core for `roles_from_layout`, which refuses
+//! - **Roles come from the user's speaker layout only.** No measuring tool
+//!   has a role argument (the schemas are closed, so one is refused before
+//!   the tool runs; -- WP ROLES -- the roles the user states are set apart,
+//!   by `tools::roles`, and checked here before a sub-floor stimulus); every setup asks the core for `roles_from_layout`, which refuses
 //!   with `measure.layout_unconfirmed` when the user has not confirmed the
 //!   layout (Settings › Speakers). The core resolves effective roles, so an
 //!   output whose high-pass is at 1 kHz or above is a tweeter whatever its
@@ -93,13 +94,14 @@ use dspi_core::{
     target_builtin_document, target_builtins,
 };
 use dspi_core::{DetectClass, DetectConfidence, DetectHeard, Detection, LayoutState}; // -- WP ADET1 --
+use dspi_core::{RoleCheck, RoleCheckVerdict}; // -- WP ROLES --
 use serde_json::{Map, Value, json};
 
 use crate::ClientId;
 use crate::policy::{self, RiskKind};
 use crate::registry::{Call, Tool, ToolClass, ToolError, ToolResult};
 use crate::tools::edit::schema;
-use crate::tools::read::{empty_schema, num, object_schema, put, state};
+use crate::tools::read::{empty_schema, from_shown, num, object_schema, put, shown, state};
 use crate::tools::results; // -- WP FFIX --
 use crate::untrusted;
 
@@ -145,10 +147,13 @@ const KEPT: usize = 32;
 
 /// The text for an unconfirmed (or missing) speaker layout. -- WP ADET1 --
 /// An auto-detected one is trusted; the detection is the way to one.
-pub const LAYOUT_TEXT: &str = "the speaker layout of this device is not confirmed by the user \
-     and was not detected, so nothing was played: run dspi_detect_speakers to find what is wired \
-     to each output (the user is asked first), or ask the user to confirm which output drives \
-     what in Settings › Speakers (an agent can never set it), then try again";
+// -- WP ROLES -- (owner 2026-11-23) or set from the user's words
+pub const LAYOUT_TEXT: &str = "the speaker layout of this device is not confirmed by the user, \
+     not detected and not set from the user's words, so nothing was played. If the user told you \
+     which output drives what, set it with dspi_set_speaker_roles (quote their words; the user is \
+     asked once, with the whole table). If not, run dspi_detect_speakers to find what is wired to \
+     each output (the user is asked first), or ask the user to set it up in Settings › Speakers. \
+     Then try again";
 
 // -- WP ADET1 --
 /// The refusal of a detection on a confirmed layout (v1, owner Q7).
@@ -159,10 +164,15 @@ pub const DETECT_CONFIRMED_TEXT: &str = "the user has confirmed the speaker layo
 // -- WP ADET1 --
 /// The speaker detection's warning on the mechanism (AUTODES 4.1): the
 /// confirmation sheet shows it with the grouped question.
+/// -- WP FIN015 -- the worst cases as the core plays them: the quiet probe
+/// below a tweeter's floor, and the free descent only for a driver still
+/// flat at 177 Hz under it (measure/detect.rs, the absolute gate).
 pub const DETECT_WARNING: &str = "Nothing is known about these outputs yet. A tweeter wired \
-     where the probe expects a woofer could receive a few seconds of sweep below 1 kHz at −50 \
-     dBFS: less than a hundredth of what a 1 kHz crossover lets through from music, but not \
-     nothing. Keep the volume where it is and stay by Stop. Afterwards check the result in \
+     where the probe expects a woofer could receive a few seconds of sweep below its floor at \
+     −50 dBFS (more with a raised floor): below 1 kHz less than a hundredth of what a 1 kHz \
+     crossover lets through from music, but not nothing. Only a driver still playing flat at \
+     177 Hz under that quiet sweep, as no tweeter does, is then swept down to 20 Hz at up to \
+     −24 dBFS. Keep the volume where it is and stay by Stop. Afterwards check the result in \
      Settings › Speakers and confirm or correct it: until you do, the detected roles guard your \
      speakers in place of a confirmed setup.";
 
@@ -310,6 +320,14 @@ pub struct Request {
     // -- WP RCFIX --
     /// Its ticket's number while it is taken ([`TICKETS`]), 0 else.
     ticket_no: u64,
+    // -- WP ROLES --
+    /// A top-fall check's request: the job it was asked for (kind, setup,
+    /// what), queued when the check is done.
+    pub then: Option<Box<(JobKind, Value, String)>>,
+    /// The request the job went on as after its check, 0 none.
+    pub continues_as: u64,
+    /// The check's words, carried to the job's own note.
+    pub checked: String,
 }
 
 // -- WP RCFIX -- (review RC, RC4)
@@ -380,6 +398,8 @@ impl Request {
             "note": self.note,
             "filed_measurement_id": self.filed_id,
             "valid": !self.disturbed, // -- WP AIVIS --
+            // -- WP ROLES -- after a top-fall check, the job's own request
+            "continues_as": (self.continues_as != 0).then_some(self.continues_as),
         })
     }
 }
@@ -464,6 +484,21 @@ impl Jobs {
 
     fn all(&self) -> Vec<Request> {
         self.lock().requests.values().cloned().collect()
+    }
+
+    // -- WP ROLES --
+    /// `r`, or the request its job went on as after a top-fall check.
+    fn followed(&self, mut r: Request) -> Request {
+        for _ in 0..4 {
+            match (r.continues_as != 0)
+                .then(|| self.get(r.continues_as))
+                .flatten()
+            {
+                Some(next) => r = next,
+                None => break,
+            }
+        }
+        r
     }
 
     /// `client`'s newest request on `device`.
@@ -623,7 +658,18 @@ pub fn tick(set: &CoreSet, jobs: &Jobs, now_ms: u64) {
                     continue;
                 }
                 if let Some((note, document)) = ended(&core, &r) {
+                    // -- WP ROLES -- a top-fall check ended: the job it was for
+                    if let Some(then) = r.then.clone() {
+                        after_check(jobs, &core, &r, *then, note);
+                        continue;
+                    }
                     let note = user_stopped(set, &core, &r, note); // -- WP AIVIS --
+                    // -- WP ROLES -- what the check found comes first
+                    let note = if r.checked.is_empty() {
+                        note
+                    } else {
+                        format!("{} Then: {note}", r.checked)
+                    };
                     let filed = document
                         .as_ref()
                         .and_then(|d| core.measure_doc_put(d.clone()).ok())
@@ -1040,7 +1086,12 @@ fn host<'a>(call: &Call<'a>) -> Result<&'a Jobs, ToolError> {
 fn running_on(core: &DspiCore) -> Option<&'static str> {
     // -- WP ADET1 -- first: its sessions are measurements too
     if detecting(core) {
-        Some("a speaker detection is running")
+        // -- WP ROLES --
+        Some(if core.detect_state().check {
+            "a check of the stated speaker roles is running"
+        } else {
+            "a speaker detection is running"
+        })
     } else if core.measure_state().active {
         Some("a measurement is running")
     } else if core.measure_rolloff_state().running {
@@ -1118,15 +1169,18 @@ fn outputs_arg(args: &Map<String, Value>, n_out: u8) -> Result<Vec<u8>, ToolErro
         .ok_or_else(|| ToolError::new("`outputs` must be a list of output numbers"))?;
     let mut out = Vec::with_capacity(list.len());
     for x in list {
+        // -- WP SHOWFIX -- from 1, as the app shows them
         let o = x
             .as_u64()
+            .and_then(from_shown)
             .and_then(|o| u8::try_from(o).ok())
             .filter(|o| *o < n_out)
             .ok_or_else(|| {
-                ToolError::new(
-                    "`outputs` must be output numbers from 0 (the roles come from the user's \
-                     speaker layout, never from an agent)",
-                )
+                ToolError::new(format!(
+                    "`outputs` must be output numbers 1..{n_out}, counted from 1 as on the \
+                     screen (Out 1 is 1; the roles come from the user's speaker layout, never \
+                     from an agent)"
+                ))
             })?;
         if out.contains(&o) {
             return Err(ToolError::new("an output twice in `outputs`"));
@@ -1181,8 +1235,8 @@ fn setup_props() -> Map<String, Value> {
     );
     m.insert(
         "outputs".into(),
-        json!({"type": "array", "items": {"type": "integer", "minimum": 0},
-               "description": "The outputs to measure, from 0; default: every output of the \
+        json!({"type": "array", "items": {"type": "integer", "minimum": 1},
+               "description": "The outputs to measure, from 1 (1 is Out 1); default: every output of the \
                                user's speaker layout. Their roles come from that layout."}),
     );
     // -- WP FFIX -- FUNC1 bug 3
@@ -1418,8 +1472,9 @@ fn setup_of(
             .map(|o| {
                 let row = layout.output(o).ok_or_else(|| {
                     ToolError::new(format!(
-                        "output {o} is not in the user's speaker layout: ask the user to add it \
-                         in Settings › Speakers"
+                        "Out {} is not in the user's speaker layout: ask the user to add it \
+                         in Settings › Speakers",
+                        shown(o)
                     ))
                 })?;
                 Ok(dspi_core::measure::MeasureOutput {
@@ -1504,14 +1559,34 @@ fn played(setup: &MeasureSetup, layout: &SpeakerLayout) -> Vec<u8> {
     }
 }
 
+// -- WP ROLES --
+/// `dspi_get_overview`'s `roles_from` for a trusted layout's state.
+fn roles_from_word(s: LayoutState) -> &'static str {
+    match s {
+        LayoutState::Confirmed => "speaker_setup_confirmed",
+        LayoutState::AutoDetected => "speaker_setup_auto_detected",
+        LayoutState::Stated => "speaker_setup_stated",
+        LayoutState::Unconfirmed => "speaker_setup_unconfirmed",
+    }
+}
+
 /// The roles the layout gives `outputs`, read-only.
 fn roles_json(layout: &SpeakerLayout, outputs: &[u8]) -> Vec<Value> {
     outputs
         .iter()
         .map(|o| match layout.output(*o) {
-            Some(r) => json!({"output": o, "role": role_word(r.role),
+            // -- WP ROLES -- a stated role says whether its top end was checked
+            Some(r) if r.source == dspi_core::RoleSource::Stated => json!({
+                "output": shown(*o), "role": role_word(r.role),
+                "speaker_name": untrusted::clean(&r.speaker, 32), "group": r.group,
+                "source": "stated",
+                "role_check": layout.check_of(*o).map(|c| check_verdict_word(c.verdict)),
+                "below_1khz_waits_for_check": layout.agent_floor_held(*o)
+                    && r.role != dspi_core::measure::MeasureRole::High,
+            }),
+            Some(r) => json!({"output": shown(*o), "role": role_word(r.role),
                               "speaker_name": untrusted::clean(&r.speaker, 32), "group": r.group}),
-            None => json!({"output": o, "role": null,
+            None => json!({"output": shown(*o), "role": null,
                            "note": "not in the user's speaker layout"}),
         })
         .collect()
@@ -1520,7 +1595,7 @@ fn roles_json(layout: &SpeakerLayout, outputs: &[u8]) -> Vec<Value> {
 fn issues_json(issues: &[MeasureIssue]) -> Vec<Value> {
     issues
         .iter()
-        .map(|i| json!({"key": i.key, "output": i.output, "note": untrusted::note(&i.message)}))
+        .map(|i| json!({"key": i.key, "output": i.output.map(shown), "note": untrusted::note(&i.message)}))
         .collect()
 }
 
@@ -1548,6 +1623,19 @@ fn blocked(p: &MeasurePreflight) -> Result<(), ToolError> {
 
 /// Queue a request for the app: the agent's answer.
 fn request(call: &Call<'_>, kind: JobKind, setup: Value, what: String) -> ToolResult {
+    request_then(call, kind, setup, what, None)
+}
+
+// -- WP ROLES --
+/// [`request`], with the job a top-fall check is for (`then`), set before
+/// the app can take it.
+fn request_then(
+    call: &Call<'_>,
+    kind: JobKind,
+    setup: Value,
+    what: String,
+    then: Option<Box<(JobKind, Value, String)>>,
+) -> ToolResult {
     let jobs = host(call)?;
     let label = call.client_label.clone();
     let id = jobs.add(Request {
@@ -1567,6 +1655,9 @@ fn request(call: &Call<'_>, kind: JobKind, setup: Value, what: String) -> ToolRe
         began: 0, // -- WP AIVIS --
         disturbed: false,
         ticket_no: 0,
+        then, // -- WP ROLES --
+        continues_as: 0,
+        checked: String::new(),
     });
     Ok(json!({
         "ok": true,
@@ -1578,6 +1669,186 @@ fn request(call: &Call<'_>, kind: JobKind, setup: Value, what: String) -> ToolRe
                  dspi_measure_status with wait_s 25 (it answers when something changes); tell \
                  the user where to put the microphone. dspi_measure_stop stops it.",
     }))
+}
+
+// -- WP ROLES -- trust but check (owner 2026-11-23)
+
+/// A top-fall check's setup from a job's microphone and levels.
+fn check_setup(
+    placement: &MeasurePlacement,
+    coupler: Option<MeasureCoupler>,
+    mic_document: &str,
+    spl_cap_db: Option<f32>,
+) -> DetectSetup {
+    DetectSetup {
+        placement: match placement {
+            MeasurePlacement::NearField => MeasurePlacement::NearField,
+            MeasurePlacement::Headphones => MeasurePlacement::Headphones,
+            _ => MeasurePlacement::ListeningPosition,
+        },
+        coupler,
+        mic_document: mic_document.to_owned(),
+        spl_cap_db,
+        check: true,
+        ..DetectSetup::default()
+    }
+}
+
+/// Queue the job of `kind`, or first the top-fall check of the outputs
+/// among `outs` the user's words made a midrange, woofer, sub or full range
+/// and nothing has checked yet: the check plays only above the floor; when
+/// it is done ([`after_check`]) the job is queued as its own request.
+fn checked_request(
+    call: &Call<'_>,
+    layout: &SpeakerLayout,
+    outs: &[u8],
+    mut check: DetectSetup,
+    kind: JobKind,
+    setup: Value,
+    what: String,
+) -> ToolResult {
+    let unchecked = layout.unchecked(outs);
+    if unchecked.is_empty() {
+        return request(call, kind, setup, what);
+    }
+    check.outputs = unchecked.clone();
+    let roles: Vec<String> = unchecked
+        .iter()
+        .filter_map(|o| layout.output(*o))
+        .map(|r| {
+            format!(
+                "Out {} (stated {})",
+                u16::from(r.output).saturating_add(1),
+                dspi_core::speaker_layout::role_word(r.role)
+            )
+        })
+        .collect();
+    let check_what = format!(
+        "First a check that {} {} not a tweeter: quiet sweeps above 1 kHz, at most −24 dBFS \
+         (one silent there is probed below at most −50 dBFS). Then: {what}",
+        roles.join(", "),
+        if roles.len() == 1 { "is" } else { "are" },
+    );
+    let mut answer = request_then(
+        call,
+        JobKind::Detect,
+        to_value!(&check),
+        check_what,
+        Some(Box::new((kind, setup, what))),
+    )?;
+    if let Some(o) = answer.as_object_mut() {
+        o.insert(
+            "next".into(),
+            json!(
+                "The app first checks the top end of the outputs the user's words made a \
+                   midrange, woofer, sub or full range (quiet sweeps above 1 kHz only), then \
+                   starts the job as its own request (`continues_as`): poll dspi_measure_status \
+                   with wait_s 25, it follows. If an output's top holds like a tweeter's, \
+                   nothing below 1 kHz plays on it and the note says so: tell the user. Tell the \
+                   user where to put the microphone. dspi_measure_stop stops it."
+            ),
+        );
+    }
+    Ok(answer)
+}
+
+/// What a top-fall check found, for the agent to relay.
+fn check_words(checks: &[RoleCheck]) -> String {
+    checks
+        .iter()
+        .map(|c| {
+            let n = u16::from(c.output).saturating_add(1);
+            let role = dspi_core::speaker_layout::role_word(c.role);
+            match c.verdict {
+                RoleCheckVerdict::TopHolds => format!(
+                    "Out {n} looks like a tweeter: the user's words made it a {role}, but its top \
+                     end holds like a tweeter's{}, so nothing below 1 kHz plays on it and the \
+                     safety rules now treat it as a tweeter. Tell the user: the wiring or the \
+                     stated role may be wrong; only the user can correct it in Settings › \
+                     Speakers.",
+                    c.top_fall_db
+                        .map(|d| format!(" (10–16 kHz only {d:.1} dB under 1.5–3 kHz)"))
+                        .unwrap_or_default()
+                ),
+                RoleCheckVerdict::TopFalls => {
+                    format!("Out {n} (stated {role}): its top end falls as a {role}'s does.")
+                }
+                RoleCheckVerdict::Silent => format!(
+                    "Out {n} (stated {role}): nothing heard above 1 kHz but heard below it at \
+                     the quiet probe's level, no tweeter."
+                ),
+                // -- the output's own low-pass hides its top end
+                RoleCheckVerdict::Unfinished if c.filters_hide_top => format!(
+                    "Out {n} (stated {role}): its own low-pass hides its top end, so the check \
+                     cannot tell it from a tweeter and nothing below 1 kHz plays on it. Measure it \
+                     before it gets its low-pass (take the low-pass off first: the check runs \
+                     again), or ask the user to confirm the role in Settings › Speakers."
+                ),
+                RoleCheckVerdict::Unfinished => format!(
+                    "Out {n} (stated {role}): the check did not finish or heard nothing, so \
+                     nothing below 1 kHz plays on it. Ask the user whether the microphone hears \
+                     it, or to confirm the role in Settings › Speakers."
+                ),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// A top-fall check's request `r` ended (`note`): when it is done, the job
+/// it was for is queued as its own request; when it stopped, nothing more.
+fn after_check(
+    jobs: &Jobs,
+    core: &DspiCore,
+    r: &Request,
+    then: (JobKind, Value, String),
+    note: String,
+) {
+    let st = core.detect_state();
+    let (kind, setup, what) = then;
+    let job = match kind {
+        JobKind::Rolloff => "low-end search",
+        _ => "measurement",
+    };
+    if st.actor != r.actor || !st.check || st.stage != DetectStage::Done {
+        jobs.update(r.id, |q| {
+            q.state = RequestState::Ended;
+            q.then = None;
+            q.note = format!(
+                "the check of the stated speaker roles did not finish ({note}); nothing played \
+                 below 1 kHz and the {job} did not start"
+            );
+        });
+        return;
+    }
+    let found = check_words(&st.checks);
+    let next = jobs.add(Request {
+        id: 0,
+        client: r.client,
+        client_label: r.client_label.clone(),
+        actor: r.actor,
+        device: r.device.clone(),
+        kind,
+        setup,
+        what,
+        state: RequestState::Waiting,
+        note: String::new(),
+        at_ms: 0,
+        filed_id: String::new(),
+        document: None,
+        began: 0,
+        disturbed: false,
+        ticket_no: 0,
+        then: None,
+        continues_as: 0,
+        checked: found.clone(),
+    });
+    jobs.update(r.id, |q| {
+        q.state = RequestState::Ended;
+        q.then = None;
+        q.continues_as = next;
+        q.note = format!("the check of the stated speaker roles is done: {found} The {job} goes on as request {next}.");
+    });
 }
 
 /// The grant's binding: the kind and the outputs.
@@ -1595,7 +1866,8 @@ static PREFLIGHT: Tool = Tool {
     description: "What stands between a measurement and the device now, in words: the \
                   volume, the tweeter rule, programme audio, locks, the speaker layout. The \
                   roles of the outputs come from the user's confirmed speaker layout (or one \
-                  dspi_detect_speakers found) and are shown read-only; an output with a high-pass at 1 kHz or above is a tweeter \
+                  dspi_detect_speakers found, or one dspi_set_speaker_roles set from the \
+                  user's words: roles_from) and are shown read-only; an output with a high-pass at 1 kHz or above is a tweeter \
                   whatever its role and is never played below 1 kHz. Plays nothing.",
     class: ToolClass::Read,
     device: true,
@@ -1613,6 +1885,8 @@ static PREFLIGHT: Tool = Tool {
         Ok(json!({
             "device": call.device_text(),
             "preflight": preflight_json(&p),
+            // -- WP ROLES -- where the roles come from, as the overview says
+            "roles_from": roles_from_word(layout.state()),
             "roles": roles_json(&layout, &outs),
             "measuring_available": jobs(call)?.host(),
         }))
@@ -1625,8 +1899,11 @@ static START: Tool = Tool {
     description: "Ask the app to measure: it plays sweeps on the outputs, one at a time \
                   (walked) or together (summed), and records them with the app's microphone. \
                   Someone must put the microphone where `placement` says. Roles come from \
-                  the user's confirmed speaker layout or a detected one (an unconfirmed layout \
-                  is refused: dspi_detect_speakers); \
+                  the user's confirmed speaker layout, a detected one, or one set from the \
+                  user's words (an unconfirmed layout is refused: dspi_set_speaker_roles or \
+                  dspi_detect_speakers); on roles set from the user's words a stated \
+                  midrange, woofer or sub is first checked above 1 kHz and played no lower if \
+                  its top end looks like a tweeter's (the request goes on as `continues_as`); \
                   the device's safety setup always applies (a tweeter is never played below \
                   1 kHz, the level caps, the limits profile, the preflight). It may be held \
                   for the user's confirmation (test signals). Returns a request: poll \
@@ -1663,7 +1940,22 @@ static START: Tool = Tool {
             &what,
             &binding(JobKind::Measure, &outs),
         )?;
-        request(call, JobKind::Measure, to_value!(&setup), what)
+        // -- WP ROLES -- trust but check
+        let check = check_setup(
+            &setup.placement,
+            setup.coupler,
+            &setup.mic_document,
+            setup.spl_cap_db,
+        );
+        checked_request(
+            call,
+            &layout,
+            &outs,
+            check,
+            JobKind::Measure,
+            to_value!(&setup),
+            what,
+        )
     },
 };
 
@@ -1684,7 +1976,7 @@ static ROLLOFF_START: Tool = Tool {
         let mut m = Map::new();
         m.insert(
             "output".into(),
-            json!({"type": "integer", "minimum": 0, "description": "The output, from 0"}),
+            json!({"type": "integer", "minimum": 1, "description": "The output, from 1 (1 is Out 1)"}),
         );
         m.insert(
             "placement".into(),
@@ -1713,10 +2005,20 @@ static ROLLOFF_START: Tool = Tool {
         host(call)?;
         let layout = trusted_layout(core)?;
         busy(call, core)?;
-        let output = u8_arg(args, "output");
-        if output >= st.num_output_channels {
-            return Err(ToolError::new("the device has no such output"));
-        }
+        // -- WP SHOWFIX -- from 1, as the app shows it
+        let output = args
+            .get("output")
+            .and_then(Value::as_u64)
+            .and_then(from_shown)
+            .and_then(|o| u8::try_from(o).ok())
+            .filter(|o| *o < st.num_output_channels)
+            .ok_or_else(|| {
+                ToolError::new(format!(
+                    "the device has no such output: it has outputs 1..{}, counted from 1 as on \
+                     the screen (Out 1 is 1)",
+                    st.num_output_channels
+                ))
+            })?;
         if layout.output(output).is_none() {
             return Err(ToolError::new(
                 "that output is not in the user's speaker layout: ask the user to add it in \
@@ -1777,7 +2079,22 @@ static ROLLOFF_START: Tool = Tool {
             &what,
             &binding(JobKind::Rolloff, &[output]),
         )?;
-        request(call, JobKind::Rolloff, to_value!(&setup), what)
+        // -- WP ROLES -- trust but check
+        let check = check_setup(
+            &setup.placement,
+            setup.coupler,
+            &setup.mic_document,
+            setup.spl_cap_db,
+        );
+        checked_request(
+            call,
+            &layout,
+            &[output],
+            check,
+            JobKind::Rolloff,
+            to_value!(&setup),
+            what,
+        )
     },
 };
 
@@ -1795,7 +2112,8 @@ fn request_id_props() -> Map<String, Value> {
 fn own_request(call: &Call<'_>, args: &Map<String, Value>) -> Result<Option<Request>, ToolError> {
     let j = jobs(call)?;
     match args.get("request_id").and_then(Value::as_u64) {
-        Some(id) => match j.get(id) {
+        // -- WP ROLES -- a check's request: the job's own after it
+        Some(id) => match j.get(id).map(|r| j.followed(r)) {
             Some(r) if r.client == call.client && r.device == call.device_text() => Ok(Some(r)),
             _ => Err(ToolError::new(
                 "no request of this agent's on this device has that id",
@@ -1905,17 +2223,17 @@ static STATUS: Tool = Tool {
                 "waiting_for_position": m.phase == MeasurePhase::WaitPosition,
                 "run": m.run,
                 "runs": m.runs,
-                "output": m.output,
+                "output": m.output.map(shown),
                 "progress": m.progress,
                 "level_db": m.level_db,
                 "result_ready": m.result_ready,
                 "timing_reliable": m.timing_reliable,
-                "issue": m.issue.as_ref().map(|i| json!({"key": i.key, "output": i.output, "text": untrusted::note(&i.message)})),
+                "issue": m.issue.as_ref().map(|i| json!({"key": i.key, "output": i.output.map(shown), "text": untrusted::note(&i.message)})),
             },
             "rolloff": {
                 "stage": r.stage,
                 "running": r.running,
-                "output": r.output,
+                "output": r.output.map(shown),
                 "role": role_word(r.role),
                 "floor_hz": r.floor_hz,
                 "segment": r.segment,
@@ -2162,6 +2480,7 @@ pub(crate) fn layout_state_word(s: LayoutState) -> &'static str {
         LayoutState::Unconfirmed => "unconfirmed",
         LayoutState::AutoDetected => "auto_detected",
         LayoutState::Confirmed => "confirmed",
+        LayoutState::Stated => "stated", // -- WP ROLES --
     }
 }
 
@@ -2207,7 +2526,7 @@ pub(crate) fn detection_json(d: &Detection, state: LayoutState) -> Value {
         .iter()
         .map(|o| {
             json!({
-                "output": o.output,
+                "output": shown(o.output),
                 "class": class_word(o.class),
                 "confidence": confidence_word(o.confidence),
                 "role": o.role.map(role_word),
@@ -2253,7 +2572,7 @@ fn detect_json(core: &DspiCore, call: &Call<'_>) -> Value {
         "stage": stage_word(d.stage),
         "running": d.running,
         "by_this_agent": d.actor == call.actor,
-        "output": d.output,
+        "output": d.output.map(shown),
         "outputs_done": d.outputs_done,
         "outputs_total": d.outputs_total,
         "floor_hz": num(d.floor_hz),
@@ -2261,7 +2580,26 @@ fn detect_json(core: &DspiCore, call: &Call<'_>) -> Value {
         "level_dbfs": num(d.level_dbfs),
         "result": result,
         "issue": d.issue.as_ref().map(|i| json!({"key": i.key, "text": untrusted::note(&i.message)})),
+        // -- WP ROLES -- a check of stated roles, and what it found so far
+        "check": d.check,
+        "checks": d.check.then(|| d.checks.iter().map(|c| json!({
+            "output": shown(c.output),
+            "stated_role": role_word(c.role),
+            "verdict": check_verdict_word(c.verdict),
+            "top_fall_db": tenth(c.top_fall_db),
+        })).collect::<Vec<_>>()),
     })
+}
+
+// -- WP ROLES --
+/// A top-fall check's verdict as agents read it.
+pub(crate) fn check_verdict_word(v: RoleCheckVerdict) -> &'static str {
+    match v {
+        RoleCheckVerdict::TopFalls => "top_falls",
+        RoleCheckVerdict::Silent => "silent_above_floor",
+        RoleCheckVerdict::TopHolds => "looks_like_tweeter",
+        RoleCheckVerdict::Unfinished => "unfinished",
+    }
 }
 
 /// "Out 1–6", "Out 1, 3, 5–6": outputs from 0, in runs.
@@ -2308,12 +2646,19 @@ static DETECT: Tool = Tool {
                   speaker_setup_unconfirmed): it plays quiet test sweeps on each output in turn, \
                   from the top down, and finds which outputs reach a driver and which drive a \
                   tweeter. Each output is played only above 1 kHz (or the floor) at most -24 \
-                  dBFS; only an output whose response says it is not a tweeter is played lower, \
-                  at most -50 dBFS. The levels are fixed: no argument changes them. Whatever \
+                  dBFS; only an output whose response says it is not a tweeter (or that is not \
+                  heard above the floor) is played lower, at most -50 dBFS (the shaped descent, \
+                  down to 157 Hz whatever the floor); one still flat at 177 Hz there, which no \
+                  tweeter is, then gets the free descent to 20 Hz (never under the limits \
+                  profile's high-pass minimum for that output) at the level its top was heard \
+                  at, at most -24 dBFS, or at most -50 dBFS when its top was not heard (status \
+                  `stage` \"descent\" for both). The levels are fixed: no argument changes \
+                  them, and a raised floor never starts the free descent sooner. Whatever \
                   cannot be told apart is a tweeter. Outputs that are off or muted are not \
                   probed. The roles it finds guard the outputs as a confirmed setup would \
                   (roles_from: speaker_setup_auto_detected) until the user confirms or \
-                  corrects them in Settings › Speakers; an agent never sets them. Refused on a \
+                  corrects them in Settings › Speakers. If the user told you the roles, set \
+                  them with dspi_set_speaker_roles instead. Refused on a \
                   confirmed setup. One question to the user with a warning (it also allows test \
                   signals for 10 minutes); under \"never ask\" only with the user's switch \
                   (agent_may.detect). Returns a request: poll dspi_measure_status (its `detect` \
@@ -2324,8 +2669,9 @@ static DETECT: Tool = Tool {
         let mut m = Map::new();
         m.insert(
             "outputs".into(),
-            json!({"type": "array", "items": {"type": "integer", "minimum": 0},
-                   "description": "The outputs to probe, from 0; default: every output"}),
+            json!({"type": "array", "items": {"type": "integer", "minimum": 1},
+                   "description": "The outputs to probe, from 1 (1 is Out 1); default: every \
+                                   output"}),
         );
         m.insert(
             "placement".into(),
@@ -2342,9 +2688,13 @@ static DETECT: Tool = Tool {
         m.insert(
             "floor_hz".into(),
             json!({"type": "number", "minimum": PROBE_FLOOR_MIN_HZ, "maximum": PROBE_FLOOR_MAX_HZ,
-                   "description": "Nothing but the quiet probe plays below this, Hz (default \
-                                   1000; it may only be raised, and the limits profile may raise \
-                                   an output's further)"}),
+                   "description": "The floor, Hz (default 1000; it may only be raised, and \
+                                   the limits profile may raise an output's further). Above it \
+                                   each output plays at most -24 dBFS; below it only the quiet \
+                                   probe (at most -50 dBFS, down to 157 Hz), and for an output \
+                                   the quiet probe still finds flat at 177 Hz the free descent \
+                                   down to 20 Hz at most -24 dBFS. A raised floor never starts \
+                                   the free descent sooner"}),
         );
         m.insert(
             "microphone".into(),
@@ -2418,6 +2768,7 @@ static DETECT: Tool = Tool {
             mic_document: levels.mic_document,
             spl_cap_db: levels.spl_cap_db,
             capture_rate_hz: 0,
+            check: false, // -- WP ROLES --
         };
         let headphones = placement == MeasurePlacement::Headphones;
         let (ceiling, below) = if headphones {
@@ -2440,7 +2791,8 @@ static DETECT: Tool = Tool {
         let what = format!(
             "Play quiet test sweeps on {} to find which outputs reach a driver and which drive \
              a tweeter, from {mic} (above {floor} at most {ceiling}; below it at most \
-             {below} and only where the response is not a tweeter's)",
+             {below} and only where the response is not a tweeter's; only one still flat \
+             at 177 Hz then down to 20 Hz at most {ceiling})",
             outs_range_words(&on)
         );
         let off_words = if off.is_empty() {
@@ -2456,8 +2808,12 @@ static DETECT: Tool = Tool {
         let detect = format!(
             "Speaker detection: {}{off_words}. Each output is first played only above {floor}, \
              at most {ceiling}. Only an output whose response says it is not a tweeter \
-             is played lower, and then at most {below}. Whatever cannot be told apart \
-             is treated as a tweeter.",
+             (or that is not heard above {floor}) is played lower, and then at most \
+             {below}, no lower than 157 Hz; one still flat at 177 Hz there, as no \
+             tweeter is, is then played down to 20 Hz (never under the limits profile's \
+             high-pass minimum for it) at the level its top was heard at, at most \
+             {ceiling} ({below} when its top was not heard). Whatever cannot be told \
+             apart is treated as a tweeter.",
             outs_range_words(&on)
         );
         policy::require_detect(
@@ -2630,7 +2986,7 @@ static TUNE_PROPOSE: Tool = Tool {
             .writes
             .iter()
             .map(|w| {
-                json!({"output": w.output, "kind": w.kind, "timing": w.timing,
+                json!({"output": shown(w.output), "kind": w.kind, "timing": w.timing,
                             "what": untrusted::note(&w.words)})
             })
             .collect();
@@ -2897,7 +3253,8 @@ fn units_props() -> Map<String, Value> {
                "items": {"type": "object", "additionalProperties": false, "required": ["device"],
                          "properties": {
                              "device": {"type": "string", "description": "A unit open in the app (dspi_list_devices)"},
-                             "outputs": {"type": "array", "items": {"type": "integer", "minimum": 0}}}},
+                             "outputs": {"type": "array", "items": {"type": "integer", "minimum": 1},
+                                         "description": "From 1: 1 is Out 1"}}},
                "description": "The units, each open in the app, and their outputs (default: \
                                every output of that unit's speaker layout). Roles come from \
                                each unit's own confirmed speaker layout."}),
@@ -2970,6 +3327,22 @@ fn system_setup(
         } else {
             wanted
         };
+        // -- WP ROLES -- a measurement across units plays each unit's ways as
+        // the hub runs them: roles set from the user's words are checked first,
+        // one unit at a time (dspi_measure_start does), never here
+        if let Some(o) = outs
+            .iter()
+            .find(|o| layout.agent_floor_held(**o) && layout.output(**o).is_some())
+        {
+            return Err(ToolError::new(format!(
+                "unit {}: Out {}'s role was set from the user's words and its top end is not \
+                 checked yet, so it is not measured across units: measure that unit first with \
+                 dspi_measure_start (it checks the stated roles), then measure across units. \
+                 Nothing was played.",
+                untrusted::clean(id.as_str(), 64),
+                u16::from(*o).saturating_add(1)
+            )));
+        }
         let mut outputs = Vec::with_capacity(outs.len());
         for out in &outs {
             let row = layout.output(*out).ok_or_else(|| {
@@ -3053,7 +3426,7 @@ static SYSTEM_PREFLIGHT: Tool = Tool {
             l.iter()
                 .map(|i| {
                     json!({"unit_serial": untrusted::clean(&i.serial, 64), "key": i.key,
-                                "output": i.output, "note": untrusted::note(&i.message)})
+                                "output": i.output.map(shown), "note": untrusted::note(&i.message)})
                 })
                 .collect()
         };
@@ -3127,7 +3500,7 @@ static SYSTEM_PROPOSAL: Tool = Tool {
         let arrivals = |l: &[dspi_core::measure::MeasureSystemArrival]| -> Vec<Value> {
             l.iter()
                 .map(|a| {
-                    json!({"unit_serial": untrusted::clean(&a.serial, 64), "output": a.output,
+                    json!({"unit_serial": untrusted::clean(&a.serial, 64), "output": shown(a.output),
                                 "arrival_us": a.arrival_us, "offered": a.offered,
                                 "reason": untrusted::note(&a.reason)})
                 })

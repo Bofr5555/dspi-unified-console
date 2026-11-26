@@ -11,6 +11,7 @@ import {
   inputRows,
   liveInputs,
   masterToPos,
+  meterHidden,
   meterNames,
   outputRows,
   posToMaster,
@@ -25,6 +26,7 @@ import { join } from "node:path";
 import { WasmCore, loadWasmModule } from "../../src/core/wasm";
 import type { CoreClient } from "../../src/core/client";
 import { Session } from "../../src/ui/session";
+import { tapNames } from "../../src/screens/analysis/SpectrumStrip";
 
 test("WB6a: the user taper is the Console's square root over -60..0 dB", () => {
   assert.equal(userToPos(0), USER_STEPS);
@@ -173,7 +175,7 @@ test("BUG1: outputs show the core's labels, keep their stored name for a rename 
     channelNames: ["USB 1", "USB 2", "I2S 1 L", "I2S 1 R", "I2S 2 L", "I2S 2 R"],
     outputEnabled: [true, true, true, true],
   } as unknown as DspState;
-  const label = (output: number, l: string, slotName: string): OutputLabel => ({ output, label: l, shortLabel: "", slotName, userNamed: false, channel: "", band: "" });
+  const label = (output: number, l: string, slotName: string): OutputLabel => ({ output, label: l, shortLabel: "", slotName, userNamed: false, channel: "", band: "", unused: false, hidden: false });
   const labels = [label(0, "Out 1 · R · Low", "I2S 1 L"), label(1, "Out 2 · R · High", "I2S 1 R"), label(2, "Out 3 · L · Low", "I2S 2 L"), label(3, "Out 4 · L · High", "I2S 2 R")];
   assert.deepEqual(
     outputRows(k340, labels).map((r) => [r.descriptor, r.name, r.stored, r.detail]),
@@ -190,3 +192,24 @@ test("BUG1: outputs show the core's labels, keep their stored name for a rename 
   assert.deepEqual(outputRows(k340).map((r) => r.name), ["I2S 1 L", "I2S 1 R", "I2S 2 L", "I2S 2 R"]);
 });
 
+
+// -- WP INTE -- (owner 2026-11-24) the meters and the Spectrum strip are views: an unused output leaves them
+test("INTE: an output nothing is routed to has no meter and no Spectrum chip", () => {
+  const s = {
+    numChannels: 5,
+    numInputChannels: 2,
+    numOutputChannels: 3,
+    channelNames: ["USB 1", "USB 2", "Out 1", "Out 2", "Out 3"],
+    outputEnabled: [true, true, true],
+  } as unknown as DspState;
+  const label = (output: number, l: string, unused: boolean, hidden = unused): OutputLabel => ({ output, label: l, shortLabel: "", slotName: `Out ${output + 1}`, userNamed: false, channel: "", band: "", unused, hidden });
+  const labels = [label(0, "Out 1 · L", false), label(1, "Out 2 · R", false), label(2, "3 · None", true)];
+  assert.deepEqual(meterHidden(s, labels), [false, false, false, false, true]);
+  assert.deepEqual(meterHidden(s), [false, false, false, false, false]);
+  assert.deepEqual(tapNames(s, labels).unused, [false, false, true]);
+  // -- WP FIN015 -- (REVF R1) the generator plays on Out 3: unused ("3 · None") but loud, so it keeps
+  // its meter and its chip; the views read the core's `hidden`, not `unused`
+  const playing = [labels[0]!, labels[1]!, label(2, "3 · None", true, false)];
+  assert.deepEqual(meterHidden(s, playing), [false, false, false, false, false]);
+  assert.deepEqual(tapNames(s, playing).unused, [false, false, false]);
+});

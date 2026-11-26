@@ -70,6 +70,9 @@ public:
 
     // Re-reads the device on the worker (dspi_fetch_all), then a snapshot.
     void refresh();
+    // -- WP SHOWFIX -- the snapshot again, without reading the device: the
+    // core's channel words follow a speaker layout that changed (no state did)
+    void reread();
     void openDemo();
     void selectDevice(const QString &serial);
     // Closes and reopens the open device (the device button's right-click)

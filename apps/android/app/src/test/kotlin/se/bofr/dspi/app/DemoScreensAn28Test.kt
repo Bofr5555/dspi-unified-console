@@ -146,7 +146,11 @@ class DemoScreensAn28Test {
         assertTrue("the demo device takes writes", bridge.writesAllowed.value)
         val show = host()
         show { HomeScreen(bridge, {}, {}) }
-        assertShows("home", "Filter Response", "USB 1", "L · Full", "Demo", "User Volume")
+        assertShows("home", "Filter Response", "USB 1", "Demo", "User Volume")
+        // -- WP INTD -- (REVD W12) output 1's short label is "L": a full-range output says no "· Full"
+        assertTrue("home shows \"L\"", rule.onAllNodesWithText("L", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
+        assertAbsent("· Full")
+        assertAbsent("· None")
         show { ChannelScreen(bridge, 0, {}, {}) }
         assertShows("input channel", "Preamp", "Clear PEQ", "Bypass All")
         show { ChannelScreen(bridge, 2, {}, {}) }

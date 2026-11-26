@@ -47,6 +47,7 @@ fn failure(e: DspiError) -> CallError {
             },
             message: msg.clone(),
             notice_key: Some(e.notice_key()),
+            text: Some(e.user_text()), // -- WP INTE --
         },
         _ => CallError::from(e),
     }

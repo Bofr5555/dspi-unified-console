@@ -36,11 +36,15 @@ QByteArray once(const std::function<uint32_t(char *, uint32_t)> &call) {
     return buf;
 }
 
-QString feedWords(const QJsonObject &o) {
+// -- WP SHOWFIX -- (finding 6) the input by the name the person knows it by
+// ("from C"), from the core's channel words
+QString feedWords(const QJsonObject &o, const QJsonObject &words) {
     const QJsonValue in = o.value(QLatin1String("feedInput"));
     if (!in.isDouble()) return QCoreApplication::translate("TuneController", "no programme feed");
-    QString s = QCoreApplication::translate("TuneController", "from input %1 at %2 dB")
-                    .arg(in.toInt() + 1)
+    const QString name = words.value(QLatin1String("inputs")).toArray().at(in.toInt()).toString();
+    //: An output's programme feed: %1 the input's name ("C", "In 3"), %2 its gain
+    QString s = QCoreApplication::translate("TuneController", "from %1 at %2 dB")
+                    .arg(name.isEmpty() ? QCoreApplication::translate("TuneController", "In %1").arg(in.toInt() + 1) : name)
                     .arg(o.value(QLatin1String("feedGainDb")).toDouble(), 0, 'f', 1);
     if (o.value(QLatin1String("feedInverted")).toBool()) s += QCoreApplication::translate("TuneController", ", inverted");
     return s;
@@ -237,6 +241,10 @@ bool TuneSession::measured(int output) const {
 }
 
 void TuneSession::onResult() {
+    // -- WP SHOWFIX -- (finding 6) a measurement came: "No measurement" is
+    // no longer so
+    MeasureSession *ms = measure();
+    if (!m_error.isEmpty() && ms && !ms->resultDocument().isEmpty()) clearError();
     bool changed = false;
     for (QVariant &v : m_layout) {
         QVariantMap row = v.toMap();
@@ -310,17 +318,20 @@ void TuneSession::reloadLayout() {
                       return;
                   }
                   QVariantList rows;
+                  // -- WP SHOWFIX -- (finding 6) outputs and inputs named as elsewhere ("Centre woofer", "C")
+                  const QJsonObject words = m->model() ? m->model()->snapshot().channelWords : QJsonObject();
                   for (const QJsonValue &v : o.value(QLatin1String("outputs")).toArray()) {
                       const QJsonObject p = v.toObject();
                       const int n = p.value(QLatin1String("output")).toInt();
+                      const QString word = words.value(QLatin1String("outputs")).toArray().at(n).toString();
                       rows.append(QVariantMap{ { QStringLiteral("output"), n },
-                                               { QStringLiteral("label"), m->outputName(n) },
+                                               { QStringLiteral("label"), word.isEmpty() ? m->outputName(n) : word },
                                                { QStringLiteral("on"), measured(n) },
                                                { QStringLiteral("role"), str(p, "role") },
                                                { QStringLiteral("speaker"), str(p, "speaker") },
                                                { QStringLiteral("group"), p.value(QLatin1String("group")).toInt() },
                                                { QStringLiteral("name"), str(p, "name") },
-                                               { QStringLiteral("feed"), feedWords(p) },
+                                               { QStringLiteral("feed"), feedWords(p, words) },
                                                { QStringLiteral("feedInput"), p.value(QLatin1String("feedInput")).toVariant() },
                                                { QStringLiteral("feedGainDb"), p.value(QLatin1String("feedGainDb")).toDouble() },
                                                { QStringLiteral("feedInverted"), p.value(QLatin1String("feedInverted")).toBool() } });
@@ -483,9 +494,23 @@ void TuneSession::setProposal(const QJsonObject &p) {
     MeasureSession *m = measure();
     m_proposal = p;
     m_writes.clear();
+    // -- WP INTE -- (SHOWFIX leftover) the core's line begins "Out 3 (L high): ...":
+    // that output is named as everywhere else ("Centre woofer (L high): ..."),
+    // by the core's channel words, where it has a word of its own
+    const QJsonArray outputWords = m && m->model() ? m->model()->snapshot().channelWords.value(QLatin1String("outputs")).toArray()
+                                                   : QJsonArray();
+    const auto named = [&outputWords](const QString &words, int output) -> QString {
+        if (output < 0) return words;
+        const QString number = QStringLiteral("Out %1").arg(output + 1);
+        const QString word = outputWords.at(output).toString();
+        if (word.isEmpty() || word == number || !words.startsWith(number)) return words;
+        const QChar next = words.size() > number.size() ? words.at(number.size()) : QChar();
+        if (next != QLatin1Char(' ') && next != QLatin1Char(':')) return words; // "Out 1" is not "Out 12"
+        return word + words.mid(number.size());
+    };
     for (const QJsonValue &v : p.value(QLatin1String("writes")).toArray()) {
         const QJsonObject w = v.toObject();
-        m_writes.append(QVariantMap{ { QStringLiteral("words"), str(w, "words") },
+        m_writes.append(QVariantMap{ { QStringLiteral("words"), named(str(w, "words"), w.value(QLatin1String("output")).toInt(-1)) },
                                      { QStringLiteral("timing"), w.value(QLatin1String("timing")).toBool() },
                                      { QStringLiteral("kind"), str(w, "kind") },
                                      { QStringLiteral("output"), w.value(QLatin1String("output")).toInt() } });
@@ -496,8 +521,19 @@ void TuneSession::setProposal(const QJsonObject &p) {
     for (const QJsonValue &v : p.value(QLatin1String("withdrawn")).toArray())
         m_withdrawn << (m ? m->issueWords(v.toObject()) : str(v.toObject(), "message"));
     m_warnings.clear();
-    for (const QJsonValue &v : p.value(QLatin1String("warnings")).toArray())
+    // -- INTC (DL2 fold) -- "changed after it was measured" for several
+    // outputs is one line naming them, where the first of them was
+    QStringList changed;
+    qsizetype changedAt = -1;
+    for (const QJsonValue &v : p.value(QLatin1String("warnings")).toArray()) {
+        if (const QString who = m ? m->changedWho(v.toObject()) : QString(); !who.isEmpty()) {
+            if (changedAt < 0) changedAt = m_warnings.size();
+            if (!changed.contains(who)) changed << who;
+            continue;
+        }
         m_warnings << (m ? m->issueWords(v.toObject()) : str(v.toObject(), "message"));
+    }
+    if (changedAt >= 0) m_warnings.insert(changedAt, m->changedWords(changed));
     m_notes.clear();
     for (const QJsonValue &v : p.value(QLatin1String("notes")).toArray()) m_notes << v.toString();
     // Each speaker's curves: before solid, predicted dotted, target dashed

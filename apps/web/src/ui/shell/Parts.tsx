@@ -30,7 +30,7 @@ export function PartsSlot() {
 export interface Part {
   id: string;
   label: string;
-  /** A dot after the label: on (true) or off (false); none when undefined. */
+  /** A dot before the label: on (true) or off (false); none when undefined. */
   on?: boolean;
 }
 
@@ -56,15 +56,28 @@ export function PageParts(props: { label: string; parts: readonly Part[]; curren
           tabIndex={i === Math.max(0, at) ? 0 : -1}
           onClick={() => props.onPart(p.id)}
         >
+          {/* -- WP REVEFIX -- (REVE D3, §6) the state's dot before the label, as Qt's tabs */}
+          {p.on === undefined ? null : <span class={`part-dot${p.on ? " on" : ""}`} aria-hidden="true" title={p.on ? "On" : "Off"} />}
           {p.label}
-          {p.on === undefined ? null : (
-            <>
-              <span class={`part-dot${p.on ? " on" : ""}`} aria-hidden="true" title={p.on ? "On" : "Off"} />
-              <span class="visually-hidden"> {p.on ? "On" : "Off"}</span>
-            </>
-          )}
+          {p.on === undefined ? null : <span class="visually-hidden"> {p.on ? "On" : "Off"}</span>}
         </button>
       ))}
+    </div>
+  );
+  if (!slot) return row;
+  return slot.body ? createPortal(row, slot.body) : null;
+}
+
+// -- WP MXW --
+/**
+ * A page's tools at the right of its head (DESIGN-LANGUAGE §7: secondary buttons, at most four),
+ * through the same slot as its parts; where the page draws without a frame, where it is.
+ */
+export function PageTools(props: { label: string; children: ComponentChildren }) {
+  const slot = useContext(SlotContext);
+  const row = (
+    <div class="page-tools" role="toolbar" aria-label={props.label}>
+      {props.children}
     </div>
   );
   if (!slot) return row;

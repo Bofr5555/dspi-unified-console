@@ -1,6 +1,6 @@
-// WP WB6e: the scene bar's arithmetic and its two verbs. The bar shows the
-// device's ten preset slots as numbered recall buttons; Recall loads a slot and
-// Store saves the live settings into one, both through the session (the core's
+// WP WB6e: the preset slots' two verbs (the scene bar's until INTD; now the session bar's preset
+// popover's, ui/shell/PresetPopover.tsx): Recall loads a slot and Store saves the live settings
+// into one, both through the session (the core's
 // `preset.load` and `preset.save` writes, with the save's confirmation token),
 // so the lock, the limits, a safe apply and the undo history are the core's as
 // for every other write. A recall with unsaved changes asks first: the session
@@ -16,52 +16,7 @@ import type { DspState } from "../../core/protocol";
 import type { Ask, Unsaved } from "../../ui/screens";
 import { PRESET_SLOTS, presetName } from "../main/model";
 
-/** One slot's button. */
-export interface SlotView {
-  slot: number;
-  /** The number on the button: 1..10. */
-  number: number;
-  /** "Living room", "Preset 3", or "Empty". */
-  name: string;
-  occupied: boolean;
-  active: boolean;
-  /** The active slot's live settings differ from what it holds. */
-  unsaved: boolean;
-}
-
 type Slots = Pick<DspState, "presetNames" | "presetOccupied" | "activePresetSlot">;
-
-/** The ten buttons, in slot order. */
-export function slotViews(s: Slots, dirty: boolean): SlotView[] {
-  return Array.from({ length: PRESET_SLOTS }, (_, slot) => {
-    const active = slot === s.activePresetSlot;
-    return {
-      slot,
-      number: slot + 1,
-      name: presetName(s, slot),
-      occupied: (s.presetOccupied & (1 << slot)) !== 0,
-      active,
-      unsaved: active && dirty,
-    };
-  });
-}
-
-/** A button's accessible name: what pressing it does, and the slot's state. */
-export function slotLabel(v: SlotView, storing: boolean): string {
-  const state = [v.active ? "active" : "", v.unsaved ? "unsaved" : ""].filter(Boolean).join(", ");
-  return `${storing ? "Store in" : "Recall"} ${v.number}: ${v.name}${state ? ` (${state})` : ""}`;
-}
-
-/**
- * The line beside the bar's label: the active slot. -- fixup b4fix F1 -- whether its
- * settings are saved is a mark of its own (`unsaved`), always laid out and only shown
- * when true, so the bar keeps its size as the mark comes and goes.
- */
-export function activeLine(views: SlotView[]): { text: string; unsaved: boolean } {
-  const a = views.find((v) => v.active);
-  if (!a) return { text: "", unsaved: false };
-  return { text: `${a.number}: ${a.name}`, unsaved: a.unsaved };
-}
 
 /**
  * What a recall of `slot` does first. The active slot with nothing unsaved is

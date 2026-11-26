@@ -173,6 +173,7 @@ public:
     bool connected() const;
     QString playBlocker() const;
     QVariantList outputs() const { return m_outputs; }
+    QVariantList liveOutputs() const; // -- WP INTE --
 
     bool simAvailable() const { return m_simAvailable; }
     QString simLabel() const { return m_simLabel; }
@@ -184,16 +185,19 @@ public:
     bool micCalibrated() const { return !m_micDocument.isEmpty(); }
     QByteArray micDocument() const { return m_micDocument; }
 
-    QVariantList setupOutputs() const { return m_setupOutputs; }
-    QString placement() const { return m_placement; }
+    // -- WP DL2 -- (SHOW 3) while an AI agent's measurement runs, the form
+    // shows the agent's run (its outputs, placement and sweep), not the
+    // person's choices, which stay as they were and come back after it
+    QVariantList setupOutputs() const;
+    QString placement() const;
     void setPlacement(const QString &p);
-    int count() const { return m_count; }
+    int count() const;
     void setCount(int n);
     QString coupler() const { return m_coupler; }
     void setCoupler(const QString &c);
-    int sweepMs() const { return m_sweepMs; }
+    int sweepMs() const;
     void setSweepMs(int ms);
-    int passes() const { return m_passes; }
+    int passes() const;
     void setPasses(int n);
     QString runName() const { return m_runName; }
     void setRunName(const QString &n);
@@ -212,6 +216,8 @@ public:
     bool timingReliable() const;
     bool running() const;
     QString runningText() const;
+    // -- WP REVDFIX -- (REVD D3) what an AI agent's run plays, without "Requested by"
+    QString agentDoing() const;
 
     bool hasResult() const { return !m_result.isEmpty(); }
     QByteArray resultDocument() const { return m_result; }
@@ -380,6 +386,11 @@ public:
     static QString failureText(const QJsonObject &reply);
     // An issue {key, output, message} in words
     QString issueWords(const QJsonObject &issue) const;
+    // -- INTC (DL2 fold) -- the output a tune's "changed after it was measured"
+    // warning (measure.tune.chains_changed) is about, "" for another issue; and
+    // that warning for one or several outputs, as one line
+    QString changedWho(const QJsonObject &issue) const;
+    QString changedWords(const QStringList &who) const;
     QString outputName(int output) const;
     void fail(const QString &text);
     void say(const QString &text);
@@ -504,12 +515,15 @@ private:
     // -- WP MCP5 -- the low-end search runs; "AI · name" while an agent's request does
     bool m_rolloffRunning = false;
     QString m_agentLabel;
+    QJsonObject m_agentSetup;   // -- WP DL2 -- the agent's measurement's setup while it runs
+    QString agentRunWords() const;
     void onRolloffState(const QByteArray &json);
     // -- WP ADETQ -- the speaker detection runs (the app's or an agent's), its last state
     bool m_detectRunning = false;
     QJsonObject m_detect;
     void onDetectState(const QByteArray &json);
     void detectEnded(const QJsonObject &state);
+    void checkEnded(const QJsonObject &state);   // -- WP ROLES --
     void openDetectMic(quint64 epoch);
 
     QByteArray m_result;

@@ -83,7 +83,7 @@ async function openUnit(page: Page, hub: OwnHub, serial: string, pair = !!hub.pi
   }
   const entry = session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: serial.slice(-8) });
   await entry.getByRole("button", { name: "Open" }).click();
-  await expect(session.locator(".device-meta")).toContainText(serial);
+  await expect(session).toHaveAttribute("data-serial", new RegExp(serial));
   // -- WP FLAKE1 -- the page settles before a test clicks: Link's "bound" phase arrives after the
   // open (its banner above the screens goes then), and the installation's first status after it.
   // A click while either still moves the page lands where the button was (the rail's Mode and
@@ -226,9 +226,11 @@ test.describe("SW3: an audio link installation on the hub", () => {
     hub = await linkHub(["--open", "--forget-clients"]);
     const session = await openUnit(page, hub, "DEMO-ALINK-A");
     const system = session.getByRole("region", { name: "System" });
+    // -- WP WEB7 -- Qt's tabs: the clock is a page of its own (Clock and Links), not part of Units
     await expect(system.getByRole("region", { name: "Clock and audio links" })).toHaveCount(0);
     await setMode(session, page, "Installer");
-    const panel = system.getByRole("region", { name: "Clock and audio links" });
+    await openPage(session, "Clock and Links");
+    const panel = session.getByRole("region", { name: "Clock and audio links" });
     await expect(panel).toBeVisible();
     await expect(panel.getByText("this panel is read only")).toHaveCount(0);
     // Per unit: the range the unit reports, its audio link delay and hop offset as the hub computes them,
@@ -270,7 +272,9 @@ test.describe("SW3: an audio link installation on the hub", () => {
     await expect(panel.getByRole("group", { name: "Unsaved installation" })).toHaveCount(0);
     await expect(cell).toHaveAttribute("aria-pressed", "true");
     await expect(measured).toHaveValue("250");
+    await openPage(session, "System"); // -- WP WEB7 -- the units are on their own tab
     await expect(system.getByRole("region", { name: "Room Main room" }).getByLabel("Unit Main right")).toContainText("Ch 6");
+    await openPage(session, "Clock and Links");
     await align.getByRole("button", { name: "Align audio link delays…", exact: true }).click();
     await page.getByRole("dialog", { name: "Align audio link delays?" }).getByRole("button", { name: "Align" }).click();
     await expect(writes.getByLabel("Result for Main right")).toContainText("Audio link slots: Done");
@@ -280,6 +284,7 @@ test.describe("SW3: an audio link installation on the hub", () => {
     hub = await linkHub(["--pair"], true);
     const session = await openUnit(page, hub, "DEMO-ALINK-C");
     await setMode(session, page, "Installer");
+    await openPage(session, "Clock and Links"); // -- WP WEB7 -- Qt's tab
     const panel = session.getByRole("region", { name: "Clock and audio links" });
     await expect(panel.getByText("Changing the installation needs the hub's Admin role: this panel is read only.")).toBeVisible();
     await expect(panel.getByRole("button", { name: "Align audio link delays…", exact: true })).toBeDisabled();
@@ -349,7 +354,8 @@ test.describe("SW3: an audio link installation on the hub", () => {
     await shot(page, "hwlk1f-scene");
     // Aligning: written on the others, skipped on P, and why.
     await setMode(session, page, "Installer");
-    const panel = system.getByRole("region", { name: "Clock and audio links" });
+    await openPage(session, "Clock and Links"); // -- WP WEB7 -- Qt's tab
+    const panel = session.getByRole("region", { name: "Clock and audio links" });
     const align = panel.getByRole("region", { name: "Alignment" });
     await align.getByRole("button", { name: "Align audio link delays…", exact: true }).click();
     await page.getByRole("dialog", { name: "Align audio link delays?" }).getByRole("button", { name: "Align" }).click();
@@ -394,7 +400,8 @@ test.describe("SW3: an audio link installation on the hub", () => {
     await ausb1Shot(page, "scene-mixed");
     // The Installer's panel: the USB-direct units, their delay against the system delay, the start offset, the stats.
     await setMode(session, page, "Installer");
-    const panel = system.getByRole("region", { name: "Clock and audio links" });
+    await openPage(session, "Clock and Links"); // -- WP WEB7 -- Qt's tab
+    const panel = session.getByRole("region", { name: "Clock and audio links" });
     const usb = panel.getByRole("table", { name: "USB-direct units" });
     await expect(usb.getByRole("row", { name: "USB-direct clock of Rear L/R" })).toContainText("170..399");
     await expect(usb.getByRole("row", { name: "USB-direct clock of Rear L/R" })).toContainText("144 samples");
@@ -414,6 +421,7 @@ test.describe("SW3: an audio link installation on the hub", () => {
     await expect(writes.getByLabel("Result for Height")).toContainText("USB-direct mode and delay: Done");
     await expect(writes.getByLabel("Result for Rear L/R")).toContainText("Delay OUT1: Done");
     await expect(usb.getByRole("row", { name: "USB-direct clock of Height" })).toContainText("Rate-locked", { timeout: 10_000 });
+    await openPage(session, "System"); // -- WP WEB7 -- the units are on their own tab
     await expect(main.getByLabel("Unit Height")).toContainText("USB-direct: Rate-locked", { timeout: 10_000 });
     await ausb1Shot(page, "clock-and-audio-links-usb");
   });
@@ -436,7 +444,8 @@ test.describe("SW3: an audio link installation on the hub", () => {
     await ausb1Shot(page, "ausb2-lock-error-muted");
     // The Installer: Rear L/R plays unaligned when it can't lock; saved on the hub, which writes it to the unit.
     await setMode(session, page, "Installer");
-    const panel = system.getByRole("region", { name: "Clock and audio links" });
+    await openPage(session, "Clock and Links"); // -- WP WEB7 -- Qt's tab
+    const panel = session.getByRole("region", { name: "Clock and audio links" });
     const usb = panel.getByRole("table", { name: "USB-direct units" });
     const row = usb.getByRole("row", { name: "USB-direct clock of Rear L/R" });
     await expect(row).toContainText("Can't lock: muted (the host's rate is out of range)");
@@ -447,8 +456,10 @@ test.describe("SW3: an audio link installation on the hub", () => {
     // The hub's own poll (every 5 s) writes it: the unit then plays unaligned, and the alarm says so.
     await expect(row).toContainText("Can't lock: playing unaligned", { timeout: 20_000 });
     await expect(row).not.toContainText("(unit: Mute)");
+    await openPage(session, "System"); // -- WP WEB7 -- the units are on their own tab
     await expect(rear).toContainText("USB-direct: Can't lock: playing unaligned");
     await expect(alarm).toContainText("USB-direct unit Rear L/R can't lock — playing unaligned");
+    await openPage(session, "Clock and Links"); // -- WP WEB7 --
     const stats = panel.getByRole("table", { name: "USB-direct stats" });
     await expect(stats.getByRole("row", { name: "USB-direct stats of Rear L/R" })).toContainText("Can't lock: playing unaligned");
     await ausb1Shot(page, "ausb2-lock-error-playing");
@@ -460,6 +471,7 @@ test.describe("SW3: an audio link installation on the hub", () => {
     hub = await linkHub(["--open", "--forget-clients"]);
     const session = await openUnit(page, hub, "DEMO-ALINK-A");
     await setMode(session, page, "Installer");
+    await openPage(session, "Clock and Links"); // -- WP WEB7 -- Qt's tab
     const panel = session.getByRole("region", { name: "Clock and audio links" });
     await panel.getByRole("table", { name: "Audio link slots" }).getByRole("button", { name: "Bar IN3 from Ch 7" }).click();
     await expect(panel.getByRole("group", { name: "Unsaved installation" })).toBeVisible();
@@ -468,6 +480,7 @@ test.describe("SW3: an audio link installation on the hub", () => {
     try {
       const s2 = await openUnit(other, hub, "DEMO-ALINK-B");
       await setMode(s2, other, "Installer");
+      await openPage(s2, "Clock and Links"); // -- WP WEB7 --
       const p2 = s2.getByRole("region", { name: "Clock and audio links" });
       const theirs = p2.getByRole("table", { name: "Audio link slots" }).getByRole("button", { name: "Terrace IN4 from Ch 7" });
       await theirs.click();
@@ -523,7 +536,8 @@ test.describe("SW3: an audio link installation on the hub", () => {
       await expect(bar2.getByRole("button", { name: `Recall ${name}` })).toBeDisabled();
     }
     await setMode(s2, page, "Installer");
-    const panel = system.getByRole("region", { name: "Clock and audio links" });
+    await openPage(s2, "Clock and Links"); // -- WP WEB7 -- Qt's tab
+    const panel = s2.getByRole("region", { name: "Clock and audio links" });
     await expect(panel.getByText("Changing the installation needs the hub's Admin role: this panel is read only.")).toBeVisible();
     await expect(panel.getByRole("button", { name: "Compute" })).toBeDisabled();
     await expect(panel.getByRole("button", { name: "Align audio link delays…", exact: true })).toBeDisabled();
@@ -536,19 +550,25 @@ test.describe("SW3: an audio link installation on the hub", () => {
   });
 });
 
-test("SW3: one device on its own is a system of one unit; Simple has no System view", async ({ page }) => {
+test("SW3, WEB7: a device on its own is not on a hub (Qt's empty state); Simple has no System view", async ({ page }) => {
   await page.goto("/");
   await picker(page).getByRole("listitem").filter({ hasText: "Demo DSPi" }).getByRole("button", { name: "Connect" }).click();
   const session = page.getByRole("article").last();
-  await expect(session.locator(".device-meta")).toBeVisible();
+  await expect(session).toHaveAttribute("data-status", "open");
   // Today's main window stays first; the System view follows.
   await expectPage(session, "Main");
   await openPage(session, "System");
-  const system = session.getByRole("region", { name: "System" });
-  await expect(system.getByText("One device, shown as a single unit.")).toBeVisible();
-  const unit = system.getByLabel(/^Unit /);
-  await expect(unit).toContainText("Connected");
-  await expect(unit).toContainText("No audio link");
+  // -- WP WEB7 -- Qt's System on a device the console holds itself: one empty state on Units, Clock and Links
+  // and Installation, with the way to the hubs (it was a system of one unit: Qt shows none)
+  for (const tab of ["System", "Clock and Links", "Installation"]) {
+    await openPage(session, tab);
+    const none = session.getByRole("status").filter({ hasText: "Not on a hub" });
+    await expect(none).toContainText("Open a DSPi on a hub with an audio link to see its installation here.");
+    await expect(none.getByRole("button", { name: "Hubs and Their Devices" })).toBeVisible();
+  }
+  await session.getByRole("button", { name: "Hubs and Their Devices" }).click();
+  await expectPage(session, "Connect");
+  await openPage(session, "System");
   const rail = session.getByRole("complementary", { name: "Status" });
   await expect(rail.getByLabel("Alarms")).toHaveText("No hub alarms");
   await expect(rail.getByRole("button", { name: "System mute" })).toHaveCount(0);

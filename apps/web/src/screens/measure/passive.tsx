@@ -9,6 +9,7 @@ import type { MeasureRtaAveraging } from "../../core/measure-protocol";
 import type { MeasureTabProps } from "./MeasureScreen";
 import { MeasureGraph, type Series } from "./graph";
 import { AVERAGING } from "./model";
+import { NoticeRow } from "../../ui/design"; // -- WP WEB --
 
 export function PassiveTab(props: MeasureTabProps) {
   const { desk } = props;
@@ -28,11 +29,11 @@ export function PassiveTab(props: MeasureTabProps) {
   const blocker = desk.passiveBlocker;
   const mic = desk.mic;
   return (
-    <section class="card" aria-label="Passive microphone RTA" style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-      <div class="card-head" style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
-        <strong style={{ flex: "1 1 auto" }}>Passive microphone RTA</strong>
+    // -- WP WEB4 -- as DL2's Live: no card and no second title; Listen the one primary, Stop secondary
+    <section class="measure-live" aria-label="Passive microphone RTA">
+      <div class="m-line">
         {f ? (
-          <button type="button" class="danger" onClick={() => void desk.stopPassive()}>
+          <button type="button" onClick={() => void desk.stopPassive()}>
             Stop listening
           </button>
         ) : (
@@ -41,11 +42,12 @@ export function PassiveTab(props: MeasureTabProps) {
           </button>
         )}
       </div>
-      {props.blocked ? <p class="note">{props.blocked}</p> : null}
-      <p class="muted">The microphone listens to what is playing; nothing is played and nothing on the DSPi changes.</p>
-      {blocker ? <p class="error">{blocker}</p> : null}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px 16px", alignItems: "flex-end" }}>
-        <label style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+      {props.blocked ? <NoticeRow kind="info">{props.blocked}</NoticeRow> : null}
+      <p class="m-caption">The microphone listens to what is playing; nothing is played and nothing on the DSPi changes.</p>
+      {/* -- WP WEB -- the condition that holds Listen back, as a notice row (DESIGN-LANGUAGE §14) */}
+      {blocker ? <NoticeRow kind="warning">{blocker}</NoticeRow> : null}
+      <div class="m-line">
+        <label class="m-inline">
           <span>Microphone</span>
           <select
             aria-label="Microphone"
@@ -61,7 +63,7 @@ export function PassiveTab(props: MeasureTabProps) {
             ))}
           </select>
         </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+        <label class="m-inline">
           <span>Averaging</span>
           <select
             aria-label="Averaging"
@@ -85,7 +87,7 @@ export function PassiveTab(props: MeasureTabProps) {
         <button type="button" disabled={!rta?.held} onClick={() => void desk.passiveHold(false)}>
           Clear hold
         </button>
-        <span class="muted" aria-label="Frames averaged" data-frames={f?.state.frames ?? 0}>
+        <span class="m-caption" aria-label="Frames averaged" data-frames={f?.state.frames ?? 0}>
           {f ? `${f.state.frames} frames averaged` : "Not listening."}
         </span>
       </div>

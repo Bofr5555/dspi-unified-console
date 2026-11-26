@@ -5,8 +5,10 @@
 import { noticeRow } from "../../ui/texts";
 import type { MeasureTabProps } from "./MeasureScreen";
 import { issueText, phaseText, progressPct, timingWords } from "./model";
+import { Glyph } from "../../ui/design"; // -- WP WEB4 (INTD: ui/) --
 
-export function RunPanel(props: MeasureTabProps) {
+/** -- WP WEB4 -- `inTune`: inside the auto-tune, where "See the results" is not the page's one primary. */
+export function RunPanel(props: MeasureTabProps & { inTune?: boolean }) {
   const { desk, outputName } = props;
   const st = desk.state;
   if (!st || st.phase === "idle" || desk.live?.active) return null;
@@ -14,11 +16,12 @@ export function RunPanel(props: MeasureTabProps) {
   const timing = timingWords(st.timing);
   const stopped = st.phase === "aborted" || st.phase === "failed";
   return (
-    <section class="card" aria-label="Measurement run" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-      <div class="card-head" style={{ display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
-        <strong style={{ flex: "1 1 auto" }}>Run</strong>
+    // -- WP WEB4 -- a section of the page (DL2): no card; Stop is secondary (the danger fill only in a question)
+    <section class="m-sec measure-run measure-column" aria-label="Measurement run">
+      <div class="ds-section-head">
+        <h4 class="section-label">Run</h4>
         {st.active ? (
-          <button type="button" class="danger" onClick={() => void desk.stopAll()}>
+          <button type="button" onClick={() => void desk.stopAll()}>
             Stop measuring
           </button>
         ) : null}
@@ -27,12 +30,12 @@ export function RunPanel(props: MeasureTabProps) {
         {phaseText(st, outputName)}
       </p>
       {st.active ? (
-        <div role="progressbar" aria-label="Progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} style={{ height: "6px", background: "var(--line)", borderRadius: "3px" }}>
-          <div style={{ width: `${pct}%`, height: "100%", background: "var(--accent)", borderRadius: "3px" }} />
+        <div role="progressbar" class="m-progress" aria-label="Progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
+          <div style={{ width: `${pct}%` }} />
         </div>
       ) : null}
       {st.rampLevels.length ? (
-        <p class="muted">
+        <p class="m-caption">
           Levels found: {st.rampLevels.map((l) => `${outputName(l.output)} ${l.levelDb.toFixed(0)} dBFS`).join(", ")}
           {typeof st.runLevelDb === "number" ? `; the run plays at ${st.runLevelDb.toFixed(0)} dBFS (the quietest of them).` : "."}
         </p>
@@ -51,13 +54,14 @@ export function RunPanel(props: MeasureTabProps) {
         </p>
       ) : null}
       {timing ? (
-        <p class={timing.reliable ? "note" : "error"} aria-label="Timing" data-reliable={String(timing.reliable)}>
-          {timing.text}
+        <p class={`m-iconline ${timing.reliable ? "m-ok" : "m-bad"}`} aria-label="Timing" data-reliable={String(timing.reliable)}>
+          <Glyph name={timing.reliable ? "circle-check" : "warning"} class="m-line-icon" />
+          <span>{timing.text}</span>
         </p>
       ) : null}
       {st.phase === "done" ? (
         <div>
-          <button type="button" class="primary" onClick={() => props.show("results")}>
+          <button type="button" class={props.inTune ? undefined : "primary"} onClick={() => props.show("results")}>
             See the results
           </button>
         </div>

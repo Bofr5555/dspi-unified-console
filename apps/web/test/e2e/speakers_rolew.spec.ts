@@ -5,7 +5,7 @@
 // "imported" banner until it is confirmed (review RA F1).
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { openPage } from "../nav";
+import { openPage, openSetting } from "../nav";
 
 type Clients = { dspiClients: { call(m: string, p: unknown): Promise<unknown> }[] };
 
@@ -27,13 +27,13 @@ async function openDemo(page: Page): Promise<Locator> {
   const one = page.locator("#one");
   await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article").first();
-  await expect(session.getByRole("region", { name: "Presets" })).toBeVisible();
+  await expect(session.getByRole("button", { name: /^Presets: / })).toBeVisible(); // -- WP INTD -- the session bar's presets (DL5)
   return session;
 }
 
 async function speakersPage(session: Locator): Promise<Locator> {
   await openPage(session, "Settings");
-  await session.getByRole("navigation", { name: "Settings pages" }).getByRole("button", { name: "Speakers" }).click();
+  await openSetting(session, "Speakers"); // -- WP WEB7 -- its part, then its row
   const page = session.getByRole("region", { name: "Speakers" });
   await expect(page.getByRole("list", { name: "Speaker layout" })).toBeVisible();
   return page;
@@ -51,6 +51,22 @@ async function noSidewaysScroll(page: Page) {
   const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(over).toBeLessThanOrEqual(0);
 }
+
+// -- WP FIN015 -- (REVF D4) a row names its output once: the channel pill, then the label ("OUT1" and
+// "Out 1 · L"), never "OUT1 Out 1 · L" as plain text
+test("FIN015: a Speakers row shows the channel pill and the output's label once", async ({ page }) => {
+  const errors = errorsOf(page);
+  const session = await openDemo(page);
+  const sp = await speakersPage(session);
+  const first = sp.getByRole("list", { name: "Speaker layout" }).getByRole("listitem").first();
+  await expect(first.locator(".ch-pill")).toHaveText("OUT1");
+  await expect(first.locator(".speakers-name")).toHaveText("Out 1 · L");
+  const who = (await first.locator(".speakers-who").innerText()).replace(/\s+/g, " ").trim();
+  expect(who.match(/Out 1/g)?.length).toBe(1);
+  await expect(sp.getByRole("combobox", { name: "Role of OUT1 Out 1 · L" })).toBeVisible();
+  await noSidewaysScroll(page);
+  expect(errors).toEqual([]);
+});
 
 test("ROLEW: the suggestion confirmed in Settings › Speakers; Measure pre-filled, an edit written back; kept across a reload", async ({ page }) => {
   const errors = errorsOf(page);
@@ -81,9 +97,9 @@ test("ROLEW: the suggestion confirmed in Settings › Speakers; Measure pre-fill
   // Measure: the rows come from the layout, with no banner; an edit is kept in the layout.
   let setup = await measureSetup(session);
   await expect(setup.getByRole("status", { name: "Speaker layout", exact: true })).toHaveCount(0);
-  const way = setup.getByRole("combobox", { name: /^Way of OUT1 / });
+  const way = setup.getByRole("combobox", { name: /^Way of Out 1 / });
   await expect(way).toHaveValue("low");
-  await setup.getByRole("combobox", { name: /^Way of OUT2 / }).selectOption("high");
+  await setup.getByRole("combobox", { name: /^Way of Out 2 / }).selectOption("high");
   await expect(setup.getByRole("status", { name: "Speaker layout saved" })).toHaveText("Saved to your speaker layout.");
   await noSidewaysScroll(page);
   const after = await call<{ confirmedByUser: boolean; outputs: { output: number; role: string }[] }>(page, "speakerLayout");
@@ -95,7 +111,7 @@ test("ROLEW: the suggestion confirmed in Settings › Speakers; Measure pre-fill
   session = await openDemo(page);
   await expect.poll(async () => (await call<{ confirmedByUser: boolean } | null>(page, "speakerLayout"))?.confirmedByUser).toBe(true);
   setup = await measureSetup(session);
-  await expect(setup.getByRole("combobox", { name: /^Way of OUT2 / })).toHaveValue("high");
+  await expect(setup.getByRole("combobox", { name: /^Way of Out 2 / })).toHaveValue("high");
   await expect(setup.getByRole("status", { name: "Speaker layout", exact: true })).toHaveCount(0);
   sp = await speakersPage(session);
   await expect(sp.getByRole("combobox", { name: /^Role of OUT1 / })).toHaveValue("low");
@@ -119,7 +135,7 @@ test("ROLEW: an imported layout is not confirmed: its banner on Measure and Sett
   const banner = setup.getByRole("status", { name: "Speaker layout", exact: true });
   await expect(banner).toContainText("Imported speaker layout");
   await expect(banner).toContainText("Settings › Speakers");
-  await expect(setup.getByRole("combobox", { name: /^Way of OUT1 / })).toHaveValue("sub");
+  await expect(setup.getByRole("combobox", { name: /^Way of Out 1 / })).toHaveValue("sub");
   await noSidewaysScroll(page);
   if (test.info().project.name === "narrow") {
     await setup.screenshot({ path: test.info().outputPath("measure-imported-light.png") });
@@ -151,7 +167,7 @@ test("ROLEW: a view-only console shows the layout, not changes it", async ({ pag
   // Venue B is this console's view-only installation.
   await one.getByRole("region", { name: "Venue B" }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article").first();
-  await expect(session.getByRole("region", { name: "Presets" })).toBeVisible();
+  await expect(session.getByRole("button", { name: /^Presets: / })).toBeVisible(); // -- WP INTD -- the session bar's presets (DL5)
   const sp = await speakersPage(session);
   await expect(sp.getByRole("combobox", { name: /^Role of OUT1 / })).toBeDisabled();
   await expect(sp.getByRole("button", { name: "Confirm" })).toBeDisabled();

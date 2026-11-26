@@ -47,7 +47,8 @@
 #                                     MinGW Qt 6 app, zip and installer; then
 #                                     test-installer.sh runs them under Wine
 #       proptest                      the property tests (functions named
-#                                     proptest_*), 20000 cases each
+#                                     proptest_*), 20000 cases each; -- WP CIPAR --
+#                                     in the proptest profile, binaries side by side
 #       kotlin                        generate the UniFFI bindings and compile
 #                                     them with kotlinc (ci/compile-bindings.sh)
 #       swift                         the same with swiftc, linked to the library
@@ -71,6 +72,10 @@
 #                                     firmware/manifest.json current
 #                                     (tools/firmware_manifest.py --check, with its
 #                                     own tests). python3 stdlib on the host
+#       tools                         -- WP INTE -- tools/prune-worktree.sh against a
+#                                     scratch repository and a fake podman
+#                                     (tools/test-prune-worktree.sh; git and bash
+#                                     on the host)
 #       ios-check                     dspi-ffi without `usb`: nusb is out of the iOS
 #                                     graph, clippy and tests pass with the feature
 #                                     off. Fails if the image has no iOS std.
@@ -98,6 +103,9 @@
 #                                     firmware in Espressif's QEMU, the demo device on
 #                                     its UART; our client and the TS client must reach
 #                                     live meters through it
+#   -- WP CIPAR -- test and proptest run their test binaries DSPI_TEST_PAR at a
+#   time (default 4, ci/par-test.py); DSPI_TEST_PAR=0 is cargo test's own run.
+#   ci/full.sh runs every --all step (and qt-packages) in parallel lanes.
 #   ci/check.sh --all                 full gate plus every optional step
 #   ci/check.sh --all-clients         every client, then the matrix (ci/matrix.sh);
 #                                     builds missing images first
@@ -149,7 +157,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --crate) crates+=("$2"); shift 2 ;;
     --step) steps+=("$2"); shift 2 ;;
-    --all) steps=(fetch fmt clippy test windows-gnu android-contract licences deny firmware-digests windows-msvc android android-tests android-aab wasm wasm-core qt qt-offscreen qt-windows terminal proptest kotlin swift ios-check drift conformance-ts mcp-conformance web); shift ;;
+    --all) steps=(fetch fmt clippy test windows-gnu android-contract licences deny firmware-digests tools windows-msvc android android-tests android-aab wasm wasm-core qt qt-offscreen qt-windows terminal proptest kotlin swift ios-check drift conformance-ts mcp-conformance web); shift ;;
     --all-clients) exec ci/matrix.sh ;;
     -h|--help) sed -n "2,/^set -euo/p" "$0" | sed '$d'; exit 0 ;;
     *) echo "unknown argument $1" >&2; exit 2 ;;
@@ -177,7 +185,11 @@ for s in "${steps[@]}"; do
     fmt)
       $RUN "cargo fmt --all --check" ;;
     clippy) $RUN "cargo clippy --workspace --all-features --all-targets -- -D warnings" ;;
-    test) $RUN "cargo fetch --locked && cargo test --workspace --all-features --no-fail-fast" ;;
+    test)
+      # -- WP CIPAR -- The test binaries DSPI_TEST_PAR at a time (default 4;
+      # ci/par-test.py), 0 for cargo's one at a time
+      if [ "${DSPI_TEST_PAR:-4}" = 0 ]; then $RUN "cargo fetch --locked && cargo test --workspace --all-features --no-fail-fast"
+      else $RUN "cargo fetch --locked && python3 ci/par-test.py --jobs ${DSPI_TEST_PAR:-4} -- --workspace --all-features"; fi ;;
     windows-gnu) $RUN "cargo build --workspace --all-features --target x86_64-pc-windows-gnu" ;;
     windows-msvc)
       DSPI_PROFILE=cross $RUN "cargo xwin build -p dspi-core -p dspi-capi -p dspi-term --features dspi-core/link,dspi-core/midir,dspi-capi/link,dspi-capi/midir,dspi-capi/mdns --target x86_64-pc-windows-msvc" ;;
@@ -237,7 +249,18 @@ for s in "${steps[@]}"; do
       # -- WP QP13 -- The fake hub is back, for the Link sections (DSPI_SMOKE_FAKEHUB).
       # -- WP LKUI1 -- And the Terminal, whose `--demo hub --alink` is the
       # System window's hub (DSPI_SMOKE_UCONSOLE).
-      $RUN "cargo build --release -p dspi-capi --features $CAPI_FEATURES && $FAKEHUB && $TERMINAL && cmake -S apps/desktop/qt -B /work/build-desktop-qt-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt-smoke --target uconsole-for-dspi-smoke && DSPI_SMOKE_FAKEHUB=/target/release/dspi-link-fakehub DSPI_SMOKE_UCONSOLE=/target/release/$CMD DSPI_SMOKE_SECTION=${DSPI_SMOKE_SECTION:-} apps/desktop/qt/smoke/run.sh /work/build-desktop-qt-smoke/uconsole-for-dspi-smoke /work/smoke-out" ;;
+      # -- WP CIPAR -- A whole run (no DSPI_SMOKE_SECTION) is split across
+      # DSPI_SMOKE_SHARDS app instances (default 4; smoke/run-shards.sh); 1 is
+      # the single run
+      smoke_build="cargo build --release -p dspi-capi --features $CAPI_FEATURES && $FAKEHUB && $TERMINAL && cmake -S apps/desktop/qt -B /work/build-desktop-qt-smoke -G Ninja -DCMAKE_BUILD_TYPE=Release -DDSPI_CARGO_TARGET_DIR=/target -DDSPI_SMOKE=ON && cmake --build /work/build-desktop-qt-smoke --target uconsole-for-dspi-smoke"
+      smoke_app=/work/build-desktop-qt-smoke/uconsole-for-dspi-smoke
+      if [ -z "${DSPI_SMOKE_SECTION:-}" ] && [ "${DSPI_SMOKE_SHARDS:-4}" -gt 1 ]; then
+        $RUN "$smoke_build"
+        DSPI_SMOKE_FAKEHUB=/target/release/dspi-link-fakehub DSPI_SMOKE_UCONSOLE=/target/release/$CMD \
+          apps/desktop/qt/smoke/run-shards.sh "${DSPI_SMOKE_SHARDS:-4}" "$smoke_app" /work/smoke-out
+      else
+        $RUN "$smoke_build && DSPI_SMOKE_FAKEHUB=/target/release/dspi-link-fakehub DSPI_SMOKE_UCONSOLE=/target/release/$CMD DSPI_SMOKE_SECTION=${DSPI_SMOKE_SECTION:-} apps/desktop/qt/smoke/run.sh $smoke_app /work/smoke-out"
+      fi ;;
     qt-windows)
       # -- WP QP20 -- Back on: the zip and the installer, then the installer's
       # test under Wine (install over an earlier install, refused while the app
@@ -251,7 +274,11 @@ for s in "${steps[@]}"; do
       $RUN "BUILD_DIR=/work/build-desktop-win64 DSPI_UPDATE_FEED_URL= apps/desktop/packaging/windows/build-windows.sh /work/dist-windows && apps/desktop/packaging/windows/test-installer.sh /work/dist-windows/uConsole-for-DSPi-$version-windows-x86_64-setup.exe" ;;
     proptest)
       # Every property test function is named proptest_* (PLAN §1.9).
-      $RUN "PROPTEST_CASES=20000 cargo test --workspace --all-features --release -- proptest_" ;;
+      # -- WP CIPAR -- In the proptest profile (release without LTO, 16 codegen
+      # units: Cargo.toml), its binaries DSPI_TEST_PAR at a time (ci/par-test.py);
+      # DSPI_TEST_PAR=0 is the release profile, one binary at a time, as before
+      if [ "${DSPI_TEST_PAR:-4}" = 0 ]; then $RUN "PROPTEST_CASES=20000 cargo test --workspace --all-features --release -- proptest_"
+      else $RUN "PROPTEST_CASES=20000 python3 ci/par-test.py --jobs ${DSPI_TEST_PAR:-4} -- --workspace --all-features --profile proptest -- proptest_"; fi ;;
     terminal)
       # -- WP MR2 --
       $RUN "cargo build --release --locked -p dspi-term && /target/release/$CMD --version && python3 apps/terminal/tools/gen_rust_notices.py --check" ;;
@@ -355,6 +382,9 @@ for s in "${steps[@]}"; do
         elif ls -d "$CARGO_HOME"/advisory-dbs/*/ >/dev/null 2>&1; then echo "deny: no network, using the cached advisory database" >&2
         else echo "deny: no advisory database: run once with network" >&2; exit 1; fi
         cargo deny --workspace --all-features --frozen check advisories' ;;
+    tools)
+      # -- WP INTE --
+      bash tools/test-prune-worktree.sh ;;
     firmware-digests)
       # -- WP SECFWV --
       python3 tools/test_firmware_manifest.py

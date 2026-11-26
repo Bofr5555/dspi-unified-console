@@ -106,7 +106,8 @@ function ChainView(props: { s: DspState; labels?: OutputLabel[]; meters: SystemS
         </section>
         <section class="sys-chain-col" aria-label="Chain outputs">
           <h4>Routing and outputs</h4>
-          {chain.outputs.map((o) => {
+          {/* -- WP WEB7 -- a view that only shows leaves out the outputs nothing is routed to (owner 2026-11-24) */}
+          {chain.outputs.filter((o) => !o.unused).map((o) => {
             const t = outputText(o);
             return (
               <div
@@ -133,6 +134,7 @@ function ChainView(props: { s: DspState; labels?: OutputLabel[]; meters: SystemS
               </div>
             );
           })}
+          {unusedNote(chain.outputs.filter((o) => o.unused).length)}
         </section>
       </div>
     </section>
@@ -195,4 +197,11 @@ function ChainMeter(props: { name: string; db: number; clip: boolean }) {
       <span style={{ width: `${meterPct(props.db)}%` }} />
     </span>
   );
+}
+
+// -- WP WEB7 --
+/** How many outputs the chain leaves out, in one muted line; nothing when none is. */
+function unusedNote(n: number) {
+  if (!n) return null;
+  return <p class="sys-note sys-chain-unused">{n === 1 ? "1 output with nothing routed to it is not shown." : `${n} outputs with nothing routed to them are not shown.`}</p>;
 }

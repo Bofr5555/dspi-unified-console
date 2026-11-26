@@ -53,9 +53,41 @@ ScrollView {
     // -- WP ROLEQ -- the rows come from the speaker layout and write back to it
     Component.onCompleted: SpeakersController.reload()
 
-    ColumnLayout {
-        width: tab.availableWidth
-        spacing: Theme.spacing
+    // -- WP DL2 -- Modern: the groups are sections (a label, no box) in the
+    // 760 px column, the blocking condition a notice row above the actions,
+    // Measure the one primary action; Classic keeps its cards
+    readonly property bool modern: LayoutController.modern
+    component Section: Card {
+        color: tab.modern ? "transparent" : Theme.panel
+        padding: tab.modern ? 0 : Theme.spacing
+    }
+    // A line that says how something went: Modern puts the state in an icon
+    // and keeps the words in the text colour (never warning-orange text)
+    component StatusLine: RowLayout {
+        id: line
+        property string kind: "info"   // "ok", "warning", "error", "info"
+        property string text
+        property color classicColor: Theme.text
+        spacing: 6
+        Icon {
+            visible: tab.modern
+            Layout.alignment: Qt.AlignTop
+            name: line.kind === "ok" ? "circle-check" : line.kind === "error" ? "circle-alert" : line.kind === "warning" ? "triangle-alert" : "info"
+            color: line.kind === "ok" ? Theme.success : line.kind === "error" ? Theme.dangerText : line.kind === "warning" ? Theme.warning : Theme.textMuted
+        }
+        Text {
+            Layout.fillWidth: true
+            textFormat: Text.PlainText
+            text: line.text
+            font: Theme.fontBody
+            color: tab.modern ? Theme.text : line.classicColor
+            wrapMode: Text.WordWrap
+        }
+    }
+
+    ContentColumn {
+        width: tab.modern ? Math.min(tab.availableWidth, maximumWidth) : tab.availableWidth
+        spacing: tab.modern ? Theme.spacingSection : Theme.spacing
 
         // -- WP ROLEQ -- while the speaker layout is not confirmed
         SpeakersBanner {
@@ -63,7 +95,7 @@ ScrollView {
             Layout.fillWidth: true
         }
 
-        Card {
+        Section {
             title: qsTr("Microphone")
             Layout.fillWidth: true
             RowLayout {
@@ -116,7 +148,7 @@ ScrollView {
             }
         }
 
-        Card {
+        Section {
             title: qsTr("Placement")
             Layout.fillWidth: true
             RowLayout {
@@ -166,7 +198,7 @@ ScrollView {
             }
         }
 
-        Card {
+        Section {
             title: qsTr("Outputs")
             Layout.fillWidth: true
             Text {
@@ -178,43 +210,60 @@ ScrollView {
             }
             Repeater {
                 model: mc.setupOutputs
-                RowLayout {
+                Item {
+                    id: outputRow
                     required property var modelData
-                    spacing: Theme.spacingSmall
-                    AppCheckBox {
-                        objectName: "MeasureSetup.output." + modelData.output
-                        text: modelData.label
-                        Layout.preferredWidth: 200
-                        enabled: tab.editable
-                        checked: modelData.on
-                        onToggled: mc.setOutputOn(modelData.output, checked)
+                    required property int index
+                    Layout.fillWidth: true
+                    implicitWidth: outputCells.implicitWidth
+                    implicitHeight: outputCells.implicitHeight
+                    // -- WP DL2 -- Modern: a list row's stripe
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: Theme.radiusSmall
+                        visible: tab.modern && outputRow.index % 2 === 1
+                        color: Theme.stripe
                     }
-                    AppComboBox {
-                        objectName: "MeasureSetup.role." + modelData.output
-                        label: qsTr("Way")
-                        Layout.preferredWidth: 150
-                        enabled: tab.editable && modelData.on
-                        model: tab.roles
-                        textRole: "text"
-                        currentIndex: tab.indexOf(tab.roles, modelData.role)
-                        onActivated: index => mc.setOutputRole(modelData.output, tab.roles[index].id)
-                    }
-                    BorderedField {
-                        objectName: "MeasureSetup.speaker." + modelData.output
-                        label: qsTr("Speaker")
-                        Layout.preferredWidth: 60
-                        enabled: tab.editable && modelData.on
-                        text: modelData.speaker
-                        onCommitted: t => mc.setOutputSpeaker(modelData.output, t)
-                    }
-                    AppSpinBox {
-                        label: qsTr("Group")
-                        implicitWidth: 90
-                        enabled: tab.editable && modelData.on
-                        realFrom: 0
-                        realTo: 15
-                        realValue: modelData.group
-                        onCommitted: value => mc.setOutputGroup(modelData.output, Math.round(value))
+                    RowLayout {
+                        id: outputCells
+                        spacing: Theme.spacingSmall
+                        AppCheckBox {
+                            objectName: "MeasureSetup.output." + modelData.output
+                            text: modelData.label
+                            Layout.preferredWidth: 200
+                            enabled: tab.editable
+                            checked: modelData.on
+                            onToggled: mc.setOutputOn(modelData.output, checked)
+                        }
+                        AppComboBox {
+                            objectName: "MeasureSetup.role." + modelData.output
+                            label: qsTr("Way")
+                            Layout.preferredWidth: 150
+                            enabled: tab.editable && modelData.on
+                            model: tab.roles
+                            textRole: "text"
+                            currentIndex: tab.indexOf(tab.roles, modelData.role)
+                            onActivated: index => mc.setOutputRole(modelData.output, tab.roles[index].id)
+                        }
+                        BorderedField {
+                            objectName: "MeasureSetup.speaker." + modelData.output
+                            label: qsTr("Speaker")
+                            Layout.preferredWidth: 60
+                            enabled: tab.editable && modelData.on
+                            //: A speaker field with no speaker named (Measure and Settings › Speakers)
+                            placeholderText: qsTr("Not set")   // -- INTC (DL7 fold) --
+                            text: modelData.speaker
+                            onCommitted: t => mc.setOutputSpeaker(modelData.output, t)
+                        }
+                        AppSpinBox {
+                            label: qsTr("Group")
+                            implicitWidth: 90
+                            enabled: tab.editable && modelData.on
+                            realFrom: 0
+                            realTo: 15
+                            realValue: modelData.group
+                            onCommitted: value => mc.setOutputGroup(modelData.output, Math.round(value))
+                        }
                     }
                 }
             }
@@ -237,7 +286,7 @@ ScrollView {
             }
         }
 
-        Card {
+        Section {
             title: qsTr("Sweep")
             Layout.fillWidth: true
             RowLayout {
@@ -295,6 +344,14 @@ ScrollView {
             }
         }
 
+        // -- WP DL2 -- Modern: what keeps Measure disabled, as a notice row
+        NoticeRow {
+            objectName: "MeasureSetup.problem"
+            visible: tab.modern && text.length > 0 && !mc.running
+            Layout.fillWidth: true
+            kind: "warning"
+            text: mc.setupProblem
+        }
         RowLayout {
             spacing: Theme.spacingSmall
             AppButton {
@@ -306,7 +363,9 @@ ScrollView {
             AppButton {
                 objectName: "MeasureSetup.start"
                 text: qsTr("Measure")
-                primary: true
+                // -- WP DL2 -- one primary: Next Position while it waits (-- WP REVDFIX --
+                // REVD D11: in Modern; Classic keeps Measure the accent)
+                primary: !LayoutController.modern || !mc.waitingPosition
                 enabled: tab.editable && mc.setupProblem.length === 0
                 onClicked: mc.start()
             }
@@ -318,6 +377,7 @@ ScrollView {
                 onClicked: mc.nextPosition()
             }
             Text {
+                visible: !tab.modern
                 Layout.fillWidth: true
                 textFormat: Text.PlainText
                 text: mc.setupProblem
@@ -333,27 +393,27 @@ ScrollView {
             visible: mc.preflightDone
             Layout.fillWidth: true
             spacing: 4
-            Text {
+            StatusLine {
+                Layout.fillWidth: true
+                kind: mc.preflightClear ? "ok" : "error"
                 text: mc.preflightClear ? qsTr("Clear to measure.") : qsTr("Not clear to measure:")
-                font: Theme.fontBody
-                color: mc.preflightClear ? Theme.success : Theme.dangerText
+                classicColor: mc.preflightClear ? Theme.success : Theme.dangerText
             }
             Repeater {
                 model: mc.preflightLines
-                Text {
+                StatusLine {
                     required property var modelData
                     Layout.fillWidth: true
-                    textFormat: Text.PlainText
-                    text: (modelData.kind === "blocker" ? "• " : qsTr("Warning: ")) + modelData.text
-                    font: Theme.fontBody
-                    color: modelData.kind === "blocker" ? Theme.dangerText : Theme.warning
-                    wrapMode: Text.WordWrap
+                    kind: modelData.kind === "blocker" ? "error" : "warning"
+                    // -- WP DL2 -- Modern: the icon says which; no "Warning:" prefix
+                    text: tab.modern ? modelData.text : (modelData.kind === "blocker" ? "• " : qsTr("Warning: ")) + modelData.text
+                    classicColor: modelData.kind === "blocker" ? Theme.dangerText : Theme.warning
                 }
             }
         }
 
         // The run
-        Card {
+        Section {
             title: qsTr("Run")
             Layout.fillWidth: true
             Text {
@@ -384,15 +444,13 @@ ScrollView {
                 color: mc.phase === "aborted" ? Theme.textMuted : Theme.dangerText
                 wrapMode: Text.WordWrap
             }
-            Text {
+            StatusLine {
                 objectName: "MeasureSetup.timing"
                 visible: text.length > 0
                 Layout.fillWidth: true
-                textFormat: Text.PlainText
+                kind: mc.timingReliable ? "ok" : "warning"
                 text: mc.timingText
-                font: Theme.fontBody
-                color: mc.timingReliable ? Theme.success : Theme.warning
-                wrapMode: Text.WordWrap
+                classicColor: mc.timingReliable ? Theme.success : Theme.warning
             }
             AppButton {
                 visible: mc.hasResult && mc.resultFrom === "run" && !mc.measuring

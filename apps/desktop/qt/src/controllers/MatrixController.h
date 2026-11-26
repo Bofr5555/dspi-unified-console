@@ -52,6 +52,17 @@ class MatrixController : public QObject {
     // The upmixer turns a stereo input into 3 or 5 source rows
     Q_PROPERTY(bool upmixRows READ upmixRows NOTIFY changed)
     Q_PROPERTY(double maxDelayMs READ maxDelayMs NOTIFY changed)
+    // -- WP MX1 -- Link L/R pairs: an edit of a crosspoint of a stereo pair's
+    // input is mirrored onto the pair's other input one column over, inside
+    // the output pair (L->Out 1 and R->Out 2, L->Out 2 and R->Out 1), as one
+    // undo step. Off by default, kept per device (its serial).
+    Q_PROPERTY(bool linkPairs READ linkPairs WRITE setLinkPairs NOTIFY viewChanged)
+    // -- WP MX1 -- The dense grid, chosen (it is also used past 12 outputs)
+    Q_PROPERTY(bool dense READ dense WRITE setDense NOTIFY viewChanged)
+    // -- WP MX1 -- The crosspoint the grid's keyboard focus and the inspector
+    // are on, -1 / -1 for none
+    Q_PROPERTY(int currentInput READ currentInput NOTIFY currentChanged)
+    Q_PROPERTY(int currentOutput READ currentOutput NOTIFY currentChanged)
 public:
     MatrixController(const AppContext &ctx, QObject *parent);
     static MatrixController *create(QQmlEngine *, QJSEngine *) { return Registrar::instance<MatrixController>(); }
@@ -71,6 +82,13 @@ public:
     bool wide() const;
     bool upmixRows() const;
     double maxDelayMs() const;
+    // -- WP MX1 --
+    bool linkPairs() const { return m_linkPairs; }
+    void setLinkPairs(bool on);
+    bool dense() const { return m_dense; }
+    void setDense(bool on);
+    int currentInput() const { return m_currentInput; }
+    int currentOutput() const { return m_currentOutput; }
 
     // Source rows for `inputs` inputs: the same, or 3 / 5 while the upmixer
     // derives rows from a stereo input (surround engine off / on)
@@ -87,6 +105,16 @@ public:
     Q_INVOKABLE void setConnected(int input, int output, bool connected);
     Q_INVOKABLE void setGain(int input, int output, double db);
     Q_INVOKABLE void setInvert(int input, int output, bool invert);
+    // -- WP MX1 -- The whole crosspoint at once (mirrored as the others are)
+    Q_INVOKABLE void setRoute(int input, int output, bool connected, double gain, bool invert);
+    // The source row linked with `row` (its stereo partner, both real inputs),
+    // -1 for none; whether or not Link L/R pairs is on
+    Q_INVOKABLE int pairRow(int row) const;
+    // The crosspoint an edit of (input, output) is mirrored to while Link L/R
+    // pairs is on: {input, output}, empty for none
+    Q_INVOKABLE QVariantMap mirrorOf(int input, int output) const;
+    // The crosspoint the grid is on; out of range for none
+    Q_INVOKABLE void setCurrent(int input, int output);
     // Each input to the matching output at 0 dB, every other crosspoint off,
     // those outputs on and the PDM sub off (the Mac's applyDirectRouting)
     Q_INVOKABLE void directRouting();
@@ -110,6 +138,8 @@ public:
 
 signals:
     void changed();
+    void viewChanged();      // -- WP MX1 --
+    void currentChanged();   // -- WP MX1 --
     // Before an enable that switches the other side of Core 1 off
     void enableQuestion(int output, const QString &title, const QString &text, const QString &acceptText);
 
@@ -126,6 +156,13 @@ private:
     MatrixModel *m_model;
     std::shared_ptr<State> m_shown;   // -- WP MDQT2a -- of the device the model shows
     int m_revision = 0;
+    // -- WP MX1 --
+    void loadLinkPairs();
+    QString m_linkSerial;
+    bool m_linkPairs = false;
+    bool m_dense = false;
+    int m_currentInput = -1;
+    int m_currentOutput = -1;
 };
 
 #endif // MATRIXCONTROLLER_H

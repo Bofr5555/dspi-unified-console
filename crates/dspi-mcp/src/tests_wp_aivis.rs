@@ -105,7 +105,11 @@ fn wp_aivis_every_result_says_what_the_user_did_since() {
     );
     assert!(what[0].contains("from -20 dB"), "{a}");
     assert_eq!(a["events"][0]["device"], json!(id.as_str()));
-    assert_eq!(a["events"][0]["output"], json!(2));
+    assert_eq!(
+        a["events"][0]["output"],
+        json!(3),
+        "Out 3, as the text says"
+    );
     assert_eq!(a["events"][0]["path"], json!("out.gain"));
     // A name is said to have changed, never what to
     assert!(!r.to_string().contains("ignore previous"), "{r}");
@@ -123,7 +127,7 @@ fn wp_aivis_every_result_says_what_the_user_did_since() {
         &mut s,
         c,
         "dspi_set_gain",
-        json!({"output": 3, "gain_db": -25.0}),
+        json!({"output": 4, "gain_db": -25.0}),
     );
     let r = ok(&mut s, c, "dspi_list_devices", json!({}));
     assert_eq!(r.get("user_activity"), None, "{r}");
@@ -134,7 +138,7 @@ fn wp_aivis_every_result_says_what_the_user_did_since() {
         core.set_output_mute(o, true).unwrap();
         core.set_output_delay(o, 1.0).unwrap();
     }
-    let e = err(&mut s, c, "dspi_get_channel", json!({"output": 99}));
+    let e = err(&mut s, c, "dspi_get_channel", json!({"output": 100}));
     let text = e[1]["text"].as_str().unwrap();
     assert!(text.contains("4 more before that"), "{text}");
     assert_eq!(text.matches("; ").count(), BLOCK_MAX - 1, "{text}");
@@ -201,33 +205,33 @@ fn wp_aivis_a_control_the_user_took_back_is_the_users() {
     let mut s = server(&set, ConfirmMode::NeverAsk);
     let c = s.connect();
     let gain = |o: u8, db: f64| json!({"output": o, "gain_db": db});
-    ok(&mut s, c, "dspi_set_gain", gain(0, -22.0));
-    ok(&mut s, c, "dspi_set_gain", gain(0, -24.0));
+    ok(&mut s, c, "dspi_set_gain", gain(1, -22.0));
+    ok(&mut s, c, "dspi_set_gain", gain(1, -24.0));
     core.set_output_gain(0, -30.0).unwrap();
-    let e = err(&mut s, c, "dspi_set_gain", gain(0, -25.0));
+    let e = err(&mut s, c, "dspi_set_gain", gain(1, -25.0));
     assert_eq!(e[0]["text"], json!(USER_CHANGED_TEXT));
     assert!(e[1]["text"].as_str().unwrap().contains("-30 dB"), "{e}");
     // A retry at once too; a plan that has it changes nothing of the rest
-    err(&mut s, c, "dspi_set_gain", gain(0, -25.0));
+    err(&mut s, c, "dspi_set_gain", gain(1, -25.0));
     let e = err(
         &mut s,
         c,
         "dspi_apply_changes",
         json!({"changes": [
-            {"op": "set_gain", "output": 1, "gain_db": -23.0},
-            {"op": "set_gain", "output": 0, "gain_db": -25.0}]}),
+            {"op": "set_gain", "output": 2, "gain_db": -23.0},
+            {"op": "set_gain", "output": 1, "gain_db": -25.0}]}),
     );
     assert!(e.to_string().contains("the user changed this"), "{e}");
     let st = core.get_state();
     assert_eq!((st.output_gain_db[0], st.output_gain_db[1]), (-30.0, -20.0));
     // Another control, and another agent, are free
-    ok(&mut s, c, "dspi_set_gain", gain(1, -23.0));
-    let d = s.connect();
-    ok(&mut s, d, "dspi_set_gain", gain(0, -31.0));
-    // The user's undo of an agent's change takes it back as well
     ok(&mut s, c, "dspi_set_gain", gain(2, -23.0));
+    let d = s.connect();
+    ok(&mut s, d, "dspi_set_gain", gain(1, -31.0));
+    // The user's undo of an agent's change takes it back as well
+    ok(&mut s, c, "dspi_set_gain", gain(3, -23.0));
     core.undo().unwrap();
-    let e = err(&mut s, c, "dspi_set_gain", gain(2, -23.0));
+    let e = err(&mut s, c, "dspi_set_gain", gain(3, -23.0));
     assert!(e[1]["text"].as_str().unwrap().contains("undid"), "{e}");
 }
 
@@ -241,13 +245,13 @@ fn wp_aivis_the_users_yes_gives_it_back() {
         &mut s,
         c,
         "dspi_set_gain",
-        json!({"output": 0, "gain_db": -24.0}),
+        json!({"output": 1, "gain_db": -24.0}),
     );
     let held = ok(
         &mut s,
         c,
         "dspi_set_gain",
-        json!({"output": 0, "gain_db": -10.0}),
+        json!({"output": 1, "gain_db": -10.0}),
     );
     let id = held["confirmation_id"].as_u64().unwrap();
     // The user moves it while the question waits, and then allows the change
@@ -281,7 +285,7 @@ fn wp_aivis_a_preview_the_user_changed_is_not_kept_unasked() {
     let mut s = server(&set, ConfirmMode::NeverAsk);
     let c = s.connect();
     let args = json!({"guard_s": 60, "changes": [
-        {"op": "set_gain", "output": 0, "gain_db": -24.0}]});
+        {"op": "set_gain", "output": 1, "gain_db": -24.0}]});
     ok(&mut s, c, "dspi_apply_changes", args);
     assert_eq!(s.work()["guards"].as_array().unwrap().len(), 1);
     core.set_output_gain(0, -30.0).unwrap();
@@ -328,7 +332,7 @@ fn measuring() -> (Arc<CoreSet>, Arc<DspiCore>, Server, ClientId) {
 
 /// The agent's measurement, running in the "app".
 fn start(s: &mut Server, core: &DspiCore, c: ClientId) -> u64 {
-    let r = ok(s, c, "dspi_measure_start", json!({"outputs": [0]}));
+    let r = ok(s, c, "dspi_measure_start", json!({"outputs": [1]}));
     let id = r["request_id"].as_u64().unwrap();
     assert_eq!(s.work()["jobs"][0]["state"], json!("waiting_for_app"));
     let ticket = s.measure_take(id).unwrap();
@@ -477,7 +481,7 @@ fn wp_aivis_the_app_hears_of_a_call_before_it_runs_and_after() {
     });
     let r = post(
         "dspi_set_gain",
-        json!({"device": id.as_str(), "output": 2, "gain_db": -25.0}),
+        json!({"device": id.as_str(), "output": 3, "gain_db": -25.0}),
     );
     assert_eq!(r["isError"], json!(false), "{r}");
     assert!(*seen.lock().unwrap() >= 2);
@@ -523,7 +527,7 @@ fn wp_aivis_the_preview_of_an_agent_that_is_gone_is_put_back_where_the_app_sees_
     let mut s = server(&set, ConfirmMode::NeverAsk);
     let c = s.connect();
     let args = json!({"guard_s": 10, "changes": [
-        {"op": "set_gain", "output": 0, "gain_db": -24.0}]});
+        {"op": "set_gain", "output": 1, "gain_db": -24.0}]});
     ok(&mut s, c, "dspi_apply_changes", args);
     s.disconnect(c);
     core.process_notifications();

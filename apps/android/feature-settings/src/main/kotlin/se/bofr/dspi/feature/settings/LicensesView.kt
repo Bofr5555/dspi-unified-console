@@ -27,7 +27,7 @@ import kotlinx.coroutines.withContext
 
 // -- WP CLEAN1 -- (DRAFT) the source goes with each release, as its source archive
 internal const val APP_SOURCE_NOTE = "Published with each release as its -source.tar.gz archive, beside the downloads"
-internal const val PRIVACY_POLICY_URL = "https://github.com/Bofr5555/dspi-android/blob/main/PRIVACY.md"
+internal const val PRIVACY_POLICY_URL = "https://github.com/Bofr5555/dspi-unified-console/blob/main/apps/android/PRIVACY.md"
 
 /** One bundled licence text (assets/licenses/[asset]). */
 internal data class LicenseText(val title: String, val asset: String)

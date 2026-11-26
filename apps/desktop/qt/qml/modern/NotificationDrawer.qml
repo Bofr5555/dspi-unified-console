@@ -9,6 +9,7 @@ import UConsole
 // this session. It lies over the page's right side; a press beside it or
 // Escape closes it. The banners live here also while it is closed, off the
 // window and not enabled, so the bell can count them.
+// -- WP DL5 -- With nothing in it, an EmptyState.
 Item {
     id: drawer
     objectName: "NotificationDrawer"
@@ -39,7 +40,9 @@ Item {
         height: drawer.height
         x: drawer.open ? drawer.width - width : drawer.width + 1
         enabled: drawer.open
-        color: Theme.panel
+        // -- WP DL5 -- a sheet, not a floating surface: the page's tone, its
+        // edge a separator line (DESIGN-LANGUAGE §5)
+        color: Theme.window
         // Presses on the sheet stay on it
         MouseArea { anchors.fill: parent }
         Rectangle {
@@ -89,13 +92,16 @@ Item {
                 Layout.fillWidth: true
                 types: Shell.noticeBanners
             }
-            Text {
+            // -- WP DL5 -- nothing at all: the empty state (DESIGN-LANGUAGE §16);
+            // with earlier notices, their list says enough
+            EmptyState {
+                objectName: "NotificationDrawer.empty"
                 Layout.fillWidth: true
-                Layout.margins: Theme.spacing
-                visible: drawer.waiting === 0
-                text: qsTr("Nothing waits for you.")
-                font: Theme.fontBody
-                color: Theme.textMuted
+                Layout.fillHeight: true
+                visible: drawer.waiting === 0 && earlier.count === 0
+                iconName: "bell"
+                title: qsTr("No notifications")
+                text: qsTr("Nothing waits for you. What the app and your devices tell you shows here.")
             }
             RowLayout {
                 Layout.fillWidth: true
@@ -114,9 +120,11 @@ Item {
                 }
             }
             ListView {
+                id: earlierList
                 objectName: "NotificationDrawer.earlier"
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                visible: count > 0   // -- WP DL5 -- the empty state takes the room
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
                 ScrollBar.vertical: AppScrollBar {}
@@ -155,6 +163,11 @@ Item {
                         color: Theme.textMuted
                     }
                 }
+            }
+            // -- WP DL5 -- waiting banners only: they sit at the top
+            Item {
+                Layout.fillHeight: true
+                visible: !earlierList.visible && drawer.waiting > 0
             }
         }
     }

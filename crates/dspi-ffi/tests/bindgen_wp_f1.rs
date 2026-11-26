@@ -15,8 +15,15 @@ const NOT_EXPORTED: &[&str] = &[
     // -- WP MCP2a -- Rust-only: the MCP server asks who opened the undo group
     // (actors exist only in the process; no binding has them).
     "undo_group_owner",
+    // -- WP SHOWFIX -- the names a person knows a channel by: the C ABI (Qt's History,
+    // Equaliser list and Auto-tune) and the MCP server's activity words; Android and
+    // Swift name channels as they did
+    "channel_words",
     // -- WP FEAT2 -- Rust-only, for the same server
     "user_editing",
+    // -- WP ROLES -- Rust-only, for the same server: an agent sets the speaker roles
+    // from the user's words (no binding runs agents)
+    "speaker_roles_state",
     // -- WP INTI -- Rust-only, for the same server (review RF4: a scene's preset loads)
     "alink_system_scene_preset_loads",
     // -- WP INTI -- the C ABI and the web binding: the desktop and the web show what a

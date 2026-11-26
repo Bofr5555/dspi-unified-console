@@ -1,0 +1,50 @@
+# WP SHOW2: the "after" gallery's state, as SHOWB's "before" set (wp-SHOWB/REPORT.md): the tuned home theatre,
+# the Centre shown with presets 1 "Movie night", 3 "Late night", 9 "Test" and two snapshots. No step: for
+# `functest.py up` and gallery.py.
+name = "show-gallery"
+confirm = "ask_everything"
+seed = "tuned"
+show = "Centre"
+
+[[user]]
+do = "preset_name"
+device = "Centre"
+slot = 1
+name = "Movie night"
+
+[[user]]
+do = "preset_save"
+device = "Centre"
+
+[[user]]
+do = "snapshot"
+device = "Centre"
+name = "Movie night, as tuned"
+note = "Measured and tuned last week; the tweeter 5 dB down."
+
+[[user]]
+do = "preset_copy"
+device = "Centre"
+slot = 3
+
+[[user]]
+do = "preset_name"
+device = "Centre"
+slot = 3
+name = "Late night"
+
+[[user]]
+do = "preset_copy"
+device = "Centre"
+slot = 9
+
+[[user]]
+do = "preset_name"
+device = "Centre"
+slot = 9
+name = "Test"
+
+[[user]]
+do = "snapshot"
+device = "Centre"
+name = "Before the late-night tweak"

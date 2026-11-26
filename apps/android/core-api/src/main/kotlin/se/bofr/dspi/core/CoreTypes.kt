@@ -6373,7 +6373,10 @@ data class HistoryEntry(
      * gain and the Linkwitz target Q as little-endian `f32`s), `ext.pairmap`
      * (the crossfeed pair map's four bytes), `ext.vreg` (a core-voltage
      * request: op and value), `raw` (a raw request: opcode and `wValue` as
-     * indices, the payload as the value), `ext.alink.slots` (the 8
+     * indices, the payload as the value), `sig.run` (a measurement's run of
+     * the signal generator's changes: the outputs it played on as indices,
+     * the number of starts as the value, the row in words as the label;
+     * WP SHOWFIX), `ext.alink.slots` (the 8
      * slot bytes), `ext.alink.phase` (mode, then the delay and the
      * hops offset as little-endian 16-bit values), `ext.alink.apply`
      * (op and arg as indices, the 16-byte request as the value) and
@@ -7011,6 +7014,13 @@ data class DetectSetup(
      * The capture's rate, Hz (0: 48000).
      */
     val captureRateHz: Long,
+    /**
+     * The top-fall check only (stages A and B, never below the floor) of
+     * the listed outputs' stated roles: no class, no layout row; each
+     * output's [`RoleCheck`] goes to the stated layout. Refused when the
+     * layout is not stated or a listed output is not a stated row.
+     */
+    val check: Boolean,
 )
 
 /**
@@ -7065,6 +7075,14 @@ data class DetectState(
      * Who started it: 0 the app, else an agent's actor.
      */
     val actor: Long,
+    /**
+     * It is a top-fall check of stated roles ([`DetectSetup::check`]).
+     */
+    val check: Boolean,
+    /**
+     * The check's verdicts so far, by output.
+     */
+    val checks: List<RoleCheck>,
 )
 
 /**
@@ -9051,12 +9069,14 @@ data class OutputLabel(
      */
     val output: Int,
     /**
-     * What to show: the user's name, else "Out 1 · R · Low".
+     * What to show: the user's name, else "Out 1 · R · Low"; an unused
+     * output "3 · None" (owner 2026-11-24).
      */
     val label: String,
     /**
      * The same for a phone row, beside the output's "OUTn" button: the
-     * user's name, else "R · Low" (owner decision, review c86 F3).
+     * user's name, else "R · Low" (owner decision, review c86 F3); an unused
+     * output "None".
      */
     val shortLabel: String,
     /**
@@ -9076,6 +9096,21 @@ data class OutputLabel(
      * "Low", "High", "Band" or "Full".
      */
     val band: String,
+    /**
+     * No input is routed to the output (owner 2026-11-24): a view that only
+     * shows (the Overview's cards and tiles, a phone's Home, a summary) leaves
+     * it out; a view that edits it shows `label`. [`DspiCore::output_cards`]
+     * leaves it out already.
+     */
+    val unused: Boolean,
+    /**
+     * `unused`, and no test signal plays on it (the signal generator, which a
+     * measurement, a live run and Identify use too): what a view that only
+     * shows levels (meters, a Spectrum chooser, Stats) leaves out. The
+     * generator writes after the matrix, so an unused output it plays on is
+     * loud and keeps its meter; it still reads "3 · None".
+     */
+    val hidden: Boolean,
 )
 
 /**
@@ -9485,6 +9520,12 @@ data class SpeakerLayout(
      * [`LayoutState::AutoDetected`].
      */
     val detected: Detection?,
+    /**
+     * The roles an AI agent set from the user's words, if it did: the
+     * words, when, and the top-fall checks made since. With a `stated` row
+     * and no suggestion it makes the layout [`LayoutState::Stated`].
+     */
+    val stated: Statement?,
 )
 
 /**
@@ -9498,7 +9539,7 @@ data class DetectedOutput(
     /**
      * What it was found to be.
      */
-    val class: DetectClass,
+    val `class`: DetectClass,
     /**
      * How sure.
      */
@@ -9566,7 +9607,7 @@ data class Detection(
     /**
      * Where the microphone was.
      */
-    val placement: measure::MeasurePlacement,
+    val placement: MeasurePlacement,
     /**
      * The floor the caller asked for, Hz (each output's own may be higher).
      */
@@ -9591,6 +9632,78 @@ data class Detection(
      * The device's output count when it ran: another count invalidates it.
      */
     val deviceOutputs: Int,
+)
+
+/**
+ * One output's top-fall check.
+ */
+data class RoleCheck(
+    /**
+     * The output, 0-based.
+     */
+    val output: Int,
+    /**
+     * The stated role it checked (a check stands only for that role).
+     */
+    val role: MeasureRole,
+    /**
+     * What it found.
+     */
+    val verdict: RoleCheckVerdict,
+    /**
+     * The mean level 1.5 to 3 kHz less the mean 10 to 16 kHz, dB.
+     */
+    val topFallDb: Float?,
+    /**
+     * The floor it never played below, Hz.
+     */
+    val floorHz: Float,
+    /**
+     * When, ms since the Unix epoch.
+     */
+    val atMs: Long,
+    /**
+     * Unfinished because the output's own filters (a low-pass) hide its top
+     * end: the check judges the driver, not them.
+     */
+    val filtersHideTop: Boolean,
+)
+
+/**
+ * The user's words an AI agent set the roles from.
+ */
+data class Statement(
+    /**
+     * When, ms since the Unix epoch.
+     */
+    val atMs: Long,
+    /**
+     * The agent's label ("AI · Claude Code").
+     */
+    val by: String,
+    /**
+     * The user's words, as the agent quoted them.
+     */
+    val words: String,
+    /**
+     * Over a confirmed layout: the user's words on what changed ("" else).
+     */
+    val whatChanged: String,
+    /**
+     * The device's output count then: another count invalidates it.
+     */
+    val deviceOutputs: Int,
+    /**
+     * The top-fall checks made since, by output.
+     */
+    val checks: List<RoleCheck>,
+    /**
+     * The user's own rows the statement replaced (a confirmed layout's, or
+     * rows the user set): a tweeter among them stays a tweeter for agents
+     * ([`SpeakerLayout::user_tweeter_held`]) until the user changes its row
+     * in Settings › Speakers.
+     */
+    val replaced: List<SpeakerLayoutOutput>,
 )
 
 /**
@@ -10984,6 +11097,11 @@ enum class RoleSource {
      * A suggestion (the filters' inference, an import), nobody's word.
      */
     SUGGESTED,
+    /**
+     * Set by an AI agent from the user's words (the layout's `stated`),
+     * not checked by the user.
+     */
+    STATED,
 }
 
 /**
@@ -11003,6 +11121,13 @@ enum class LayoutState {
      * The user confirmed it.
      */
     CONFIRMED,
+    /**
+     * Set by an AI agent from the user's words, not yet confirmed: its
+     * roles guard the outputs as a detected layout's do, an output it does
+     * not name is unknown (a tweeter), and an agent's sub-floor stimulus on
+     * a stated non-tweeter waits for the top-fall check.
+     */
+    STATED,
 }
 
 /**
@@ -11083,6 +11208,35 @@ enum class DetectHeard {
      * Nowhere.
      */
     NEVER,
+}
+
+/**
+ * What the top-fall check (the detection's stage B) made of a stated
+ * non-tweeter, before an agent plays anything below its floor.
+ */
+enum class RoleCheckVerdict {
+    /**
+     * The top end falls as a woofer's or a midrange's does: the stated
+     * role stands.
+     */
+    TOP_FALLS,
+    /**
+     * Nothing heard above the floor, but heard below it by the
+     * detection's shaped probe (at most −50 dBFS, two octaves): a sub or a
+     * low woofer, no tweeter; the stated role stands. (Heard nowhere, the
+     * check is [`RoleCheckVerdict::Unfinished`].)
+     */
+    SILENT,
+    /**
+     * The top holds like a tweeter's: nothing below the floor plays on it
+     * for an agent, and the safety rules take it for a tweeter.
+     */
+    TOP_HOLDS,
+    /**
+     * The check did not finish (stopped, the microphone did not follow):
+     * still unchecked.
+     */
+    UNFINISHED,
 }
 
 /**

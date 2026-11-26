@@ -1,0 +1,7 @@
+• The volume buttons set your DSPi's volume (Settings › Advanced to turn off).
+• DSPi Link from the main page when no DSPi is plugged in.
+• Reconnects to the last DSPi Link hub at start, and connects faster.
+• An unencrypted hub shows in amber; you can stop highlighting a hub you trust.
+• Outputs nothing plays to are left out of Home, Spectrum and Stats.
+• The app's own colours, easy to read in light and dark.
+• A number field writes only what you typed.

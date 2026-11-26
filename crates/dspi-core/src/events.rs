@@ -82,6 +82,20 @@ pub(crate) fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
+// -- WP FIN015 -- (REVF D2)
+/// How a connection reached the device, in words after "Connected": the
+/// transport's id (`Opened::transport`, kept as the record's `source`) is
+/// not a word for a person ("over fake").
+fn over(transport: &str) -> String {
+    match transport {
+        "usb" => "over USB".to_owned(),
+        "midi" => "over USB MIDI".to_owned(),
+        "link" => "through a hub".to_owned(),
+        "fake" => "to the demo".to_owned(),
+        other => format!("over {other}"),
+    }
+}
+
 /// What the event log wants to know of a connection that just opened.
 pub(crate) struct Opened {
     pub(crate) serial: String,
@@ -224,8 +238,8 @@ impl Store {
             EventKind::Connected,
             t,
             match &o.fw {
-                Some(fw) => format!("Connected over {} (firmware {fw})", o.transport),
-                None => format!("Connected over {}", o.transport),
+                Some(fw) => format!("Connected {} (firmware {fw})", over(&o.transport)),
+                None => format!("Connected {}", over(&o.transport)),
             },
         );
         r.source = Some(o.transport.clone());
@@ -355,7 +369,11 @@ impl Store {
             }
             _ => (None, None),
         };
-        let mut r = EventRecord::new(EventKind::Notification, t, crate::monitor::describe(note));
+        // -- WP SHOWFIX -- (finding 2) plain words, the raw line for details
+        let raw = crate::monitor::describe(note);
+        let plain = words::plain(note, self.inputs.load(Ordering::Relaxed));
+        let mut r = EventRecord::new(EventKind::Notification, t, plain.as_deref().unwrap_or(&raw));
+        r.raw = plain.is_some().then_some(raw);
         r.source = source.map(crate::monitor::source_label);
         r.session = note.origin.filter(|&o| o != 0).map(u32::from);
         r.own = own;
@@ -668,6 +686,10 @@ impl DspiCore {
         self.events.clear_result(ok);
     }
 }
+
+// -- WP SHOWFIX -- (finding 2) the log's plain words; its number words serve
+// `change_words` too (finding 4)
+pub(crate) mod words;
 
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]

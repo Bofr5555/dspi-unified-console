@@ -6,7 +6,8 @@
 //
 // dist/ is what a host serves: index.html, app.js (standalone), dspi-web.js (the
 // library), worker.js (one per session), dspi_wasm.wasm (the core, WB3: built by
-// crates/dspi-wasm/tools/build.sh and taken from $DSPI_WASM_DIR), dspi-web.css.
+// crates/dspi-wasm/tools/build.sh and taken from $DSPI_WASM_DIR), dspi-web.css (-- WP WEB3 -- with
+// the screens' own stylesheets after it).
 // --pages adds test/stub-worker.js, a Worker on the tests' fake core, and (WB4a)
 // test/usb.html over a WebUSB mock, with dspi_wasm_test.wasm as the mock's engine.
 //
@@ -71,7 +72,16 @@ if (args.has("--unit")) {
     minify: true,
   });
   cpSync(join(root, "index.html"), join(out, "index.html"));
-  cpSync(join(root, "src/dspi-web.css"), join(out, "dspi-web.css"));
+  // -- WP WEB3 -- a screen's own stylesheet (`import "./effects.css"` in the screen): esbuild bundles
+  // the screens' stylesheets beside the library's entry (dist/dspi-web.css); they go after
+  // src/dspi-web.css in that one file, so a host links the one stylesheet as before.
+  const screensCss = join(out, "dspi-web.css");
+  const own = existsSync(screensCss) ? readFileSync(screensCss, "utf8").replace(/\/\*# sourceMappingURL=.*?\*\/\s*$/, "") : "";
+  writeFileSync(screensCss, readFileSync(join(root, "src/dspi-web.css"), "utf8") + (own ? `\n/* -- the screens' own stylesheets (src/screens/**.css) -- */\n${own}` : ""));
+  // -- WP INTD -- the standalone entry bundles the same screen stylesheets as dist/app.css, which
+  // nothing links (index.html links dspi-web.css): not shipped
+  rmSync(join(out, "app.css"), { force: true });
+  rmSync(join(out, "app.css.map"), { force: true });
   // -- WP WB7 --
   cpSync(join(root, "src/page.css"), join(out, "page.css"));
   // -- job ICON1 -- the standalone page's icons (assets/icon/render.sh makes them)

@@ -14,6 +14,7 @@
 #include <QPointer>
 #include <QVariantList>
 #include <QVariantMap>
+#include <functional>   // -- WP SHOWFIX --
 #include <QtQml/qqmlregistration.h>
 
 #include "MeasureSession.h"
@@ -35,6 +36,9 @@ class MeasureController : public QObject {
     Q_PROPERTY(QString playBlocker READ playBlocker NOTIFY deviceChanged)
     // The device's outputs: [{ output, label }]
     Q_PROPERTY(QVariantList outputs READ outputs NOTIFY deviceChanged)
+    // -- WP INTE -- (owner 2026-11-24) the Live tab's: the outputs something is
+    // routed to (an unused one is left out of a view that only shows)
+    Q_PROPERTY(QVariantList liveOutputs READ liveOutputs NOTIFY deviceChanged)
 
     // ---- The microphone ----
     // The demo's simulated microphone is offered (the demo DSPi only)
@@ -197,6 +201,11 @@ public:
     // parts ("measure", "tune", "units"...); the shown panel takes it with
     // takePart(), "" when nothing was asked
     void showPart(const QString &part);
+    // -- WP SHOWFIX -- (finding 14) An agent's run on `device` brought forward through
+    // AiController's gate: the device's tab, then Measure on `part`. A click or key
+    // just before it (the question's Allow) holds it off only until the input rests,
+    // as long as `going` says the run still goes.
+    void followAgentRun(const QString &device, const QString &part, const std::function<bool()> &going, int tries = 3);
     Q_INVOKABLE QString takePart();
     // -- WP RBFIX -- The devices stopAll() would stop something on ("" for none)
     QString runsOn() const;
@@ -204,6 +213,7 @@ public:
     bool connected() const { return session()->connected(); }
     QString playBlocker() const { return session()->playBlocker(); }
     QVariantList outputs() const { return session()->outputs(); }
+    QVariantList liveOutputs() const { return session()->liveOutputs(); } // -- WP INTE --
 
     bool simAvailable() const { return session()->simAvailable(); }
     QString simLabel() const { return session()->simLabel(); }

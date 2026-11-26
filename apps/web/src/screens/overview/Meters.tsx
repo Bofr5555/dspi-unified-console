@@ -90,7 +90,7 @@ export function InputMeters(props: { channels: MeterChannel[]; meters: SystemSta
   const stale = props.meters?.stale === true;
   return (
     <section class="ov-inputs" aria-label="Input meters">
-      <h4>Inputs</h4>
+      <h4 class="section-label">Inputs</h4>
       <ul class="ov-input-list">
         {props.channels.map((c) => (
           <li key={c.wire} class="ov-input">

@@ -240,7 +240,11 @@ pub(crate) fn next_demo() -> Option<FakeDevice> {
         i
     };
     let spec = room.spec.devices.get(i)?;
-    let dev = FakeDevice::demo().with_serial(&spec.serial);
+    // -- WP SHOWFIX -- (finding 12) the device stores the name the user calls
+    // it by, as a real one would: its tab and the Overview's Device card agree
+    let dev = FakeDevice::demo()
+        .with_serial(&spec.serial)
+        .with_device_name(&spec.name);
     let remote = dev.remote();
     let mut s = crate::state::default_state();
     if crate::state::decode_bulk(&remote.image(), &mut s).is_ok() {
@@ -303,7 +307,8 @@ pub(crate) fn layout_saved(layout: &crate::speaker_layout::SpeakerLayout) {
         .map(|o| {
             let d = layout.detected_output(o.output);
             json!({"output": o.output, "role": o.role, "source": o.source,
-                "class": d.map(|d| d.class), "confidence": d.map(|d| d.confidence)})
+                "class": d.map(|d| d.class), "confidence": d.map(|d| d.confidence),
+                "speaker": o.speaker}) // -- WP ROLES -- the side the words gave it
         })
         .collect();
     let detected: Vec<Value> = layout
@@ -319,7 +324,12 @@ pub(crate) fn layout_saved(layout: &crate::speaker_layout::SpeakerLayout) {
     room.note(
         json!({"kind": "layout", "device": name, "serial": layout.serial,
         "state": layout.state(), "outputs": outputs, "detected": detected,
-        "summary": layout.detected.as_ref().map(|d| d.summary.clone())}),
+        "summary": layout.detected.as_ref().map(|d| d.summary.clone()),
+        // -- WP ROLES -- the person's words an agent set the roles from, and the checks
+        "stated": layout.stated.as_ref().map(|st| json!({"by": st.by, "words": st.words,
+            "whatChanged": st.what_changed,
+            "checks": st.checks.iter().map(|c| json!({"output": c.output, "role": c.role,
+                "verdict": c.verdict, "topFallDb": c.top_fall_db})).collect::<Vec<_>>()}))}),
     );
 }
 
@@ -341,7 +351,8 @@ pub(crate) fn profile_saved(serial: &str, profile: Option<&dspi_session::limits:
 }
 
 /// The detection starts a session on `output` of `serial`: its stage and the
-/// floor the core holds it to (the free descent's is 20 Hz). Logged as a
+/// floor the core holds it to (the free descent's is 20 Hz, or the limits
+/// profile's high-pass minimum: -- WP FIN015 --). Logged as a
 /// `probe` line (AUTODES 7.2.6).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn probe_segment(
@@ -567,7 +578,8 @@ impl Room {
     /// What output `o` of `serial` is held to beyond its driver's `safe`:
     /// an output with no trusted role (no confirmed role, no finished
     /// detection) the probe's envelope (AUTODES 7.2.1; the free descent's
-    /// floor is 20 Hz, the shaped one's showed it is no tweeter); a detected
+    /// floor is 20 Hz or the profile's minimum, the shaped one's showed it
+    /// is no tweeter); a detected
     /// tweeter nothing below its floor above the shaped probe's level
     /// (7.2.3); anything else nothing more. `wired`: an output with a driver
     /// (one with none is always held to the envelope, 7.2.2).
@@ -603,18 +615,28 @@ impl Room {
                         Some(_) => Some((row.role, true)),
                     },
                 },
+                // -- WP ROLES -- a stated row is trusted as stated (the
+                // driver's own `safe` judges a wrong statement); an output
+                // the statement leaves out is unknown
+                LayoutState::Stated => Some((row.role, false)),
                 LayoutState::Unconfirmed => None,
             }
         });
         match trusted.filter(|_| wired) {
             None => {
+                // -- WP FIN015 -- the free descent's floor as the core holds
+                // it: 20 Hz, or the limits profile's high-pass minimum
                 let free = k
                     .and_then(|k| k.probe.iter().find(|(x, _, _)| *x == o))
-                    .is_some_and(|(_, stage, f)| stage == "free" && *f < 1000.0);
+                    .filter(|(_, stage, f)| stage == "free" && *f < 1000.0)
+                    .map(|(_, _, f)| f64::from(*f).max(20.0));
                 Some(Envelope {
                     knowledge: "unknown",
                     safe: Safe {
-                        below_hz: if free && wired { 20.0 } else { floor },
+                        below_hz: match free {
+                            Some(f) if wired => f,
+                            _ => floor,
+                        },
                         below_dbfs: below,
                         cap_dbfs: ceiling,
                     },

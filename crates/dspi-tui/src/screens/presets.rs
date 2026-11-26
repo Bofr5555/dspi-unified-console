@@ -12,6 +12,12 @@ use super::SharedState;
 /// The ten slots the firmware has (`preset.save <index>` takes 0 to 9).
 pub const SLOTS: usize = 10;
 
+// -- WP FIN015 --
+/// Why Save, Rename, Set as Default, Copy to… and Clear are off: they act on
+/// the active slot, and slot 1 must not stand in for one the device did not
+/// name (REVF S1).
+pub const ACTIVE_UNKNOWN: &str = "The device has not said which preset is active";
+
 /// What the person picked out of the Preset menu.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PresetChoice {
@@ -59,18 +65,23 @@ impl PresetMenu {
     /// what each row means alongside so the caller never counts rows. The
     /// Clear rows appear only when there is something to clear
     /// (`ContentView.swift:1249-1257`).
+    ///
+    /// -- WP FIN015 -- `active` is `None` when the device did not name a slot
+    /// (10 or more is not one): the rows that act on the active slot are then
+    /// dimmed, under a line that says why, and no slot is marked.
     pub fn popup(
         shared: &SharedState,
-        active: u8,
+        active: Option<u8>,
         dirty: bool,
     ) -> (PopupList, Vec<Option<PresetChoice>>) {
+        let known = active.filter(|a| (*a as usize) < SLOTS);
         let mut items: Vec<String> = Vec::new();
         let mut choices: Vec<Option<PresetChoice>> = Vec::new();
         for slot in 0..SLOTS as u8 {
             let mut label = Self::slot_label(shared, slot);
             // Only the active slot ever carries the dirty marker, so at
             // most one `*` is ever on screen.
-            if slot == active && dirty {
+            if Some(slot) == known && dirty {
                 label.push('*');
             }
             items.push(label);
@@ -82,6 +93,16 @@ impl PresetMenu {
         };
         // A header with no text is the rule between the slots and the actions.
         push("#".into(), None);
+        let Some(active) = known else {
+            push(format!("#{ACTIVE_UNKNOWN}"), None);
+            for row in ["Save", "Rename...", "Set as Default", "Copy to..."] {
+                push(format!("#{row}"), None);
+            }
+            if shared.occupied != 0 {
+                push("Clear All Slots...".into(), Some(PresetChoice::ClearAll));
+            }
+            return (PopupList::new("Preset", items, 0), choices);
+        };
         push("Save".into(), Some(PresetChoice::Save));
         push("Rename...".into(), Some(PresetChoice::Rename));
         // `ContentView.swift:1238-1239` disables Set as Default when the
@@ -167,14 +188,14 @@ mod tests {
         let s = shared();
         assert_eq!(PresetMenu::slot_label(&s, 255), "256: Empty");
         assert_eq!(PresetMenu::slot_label(&s, 16), "17: Empty");
-        let (p, _) = PresetMenu::popup(&s, 200, false);
+        let (p, _) = PresetMenu::popup(&s, Some(200), false);
         assert!(!p.items.iter().any(|i| i.starts_with("Clear \"")));
     }
 
     #[test]
     fn the_menu_lists_the_slots_then_the_console_actions() {
         let s = shared();
-        let (p, _) = PresetMenu::popup(&s, 2, true);
+        let (p, _) = PresetMenu::popup(&s, Some(2), true);
         assert_eq!(p.items[0], "1: Studio");
         assert_eq!(p.items[1], "2: Empty");
         assert_eq!(p.items[2], "3: Living Room*", "the dirty marker");
@@ -191,7 +212,7 @@ mod tests {
     #[test]
     fn only_the_active_slot_carries_the_marker() {
         let s = shared();
-        let (p, _) = PresetMenu::popup(&s, 2, false);
+        let (p, _) = PresetMenu::popup(&s, Some(2), false);
         assert_eq!(p.items[2], "3: Living Room");
         assert_eq!(p.items.iter().filter(|i| i.ends_with('*')).count(), 0);
     }
@@ -202,25 +223,25 @@ mod tests {
     fn set_as_default_is_disabled_on_the_slot_that_already_is_the_default() {
         let mut s = shared();
         s.default_slot = Some(2);
-        let (p, _) = PresetMenu::popup(&s, 2, false);
+        let (p, _) = PresetMenu::popup(&s, Some(2), false);
         assert_eq!(p.items[13], "#Set as Default", "dimmed and unpickable");
         // The rest of the menu keeps its indices.
         assert_eq!(p.items[12], "Rename...");
         assert_eq!(p.items[14], "Copy to...");
 
         // Another slot still offers it.
-        let (p, _) = PresetMenu::popup(&s, 0, false);
+        let (p, _) = PresetMenu::popup(&s, Some(0), false);
         assert_eq!(p.items[13], "Set as Default");
         // And so does a device whose startup mode is not "a specified slot".
         s.default_slot = None;
-        let (p, _) = PresetMenu::popup(&s, 2, false);
+        let (p, _) = PresetMenu::popup(&s, Some(2), false);
         assert_eq!(p.items[13], "Set as Default");
     }
 
     #[test]
     fn indices_map_to_the_actions_and_the_rule_maps_to_nothing() {
         let s = shared();
-        let (_, c) = PresetMenu::popup(&s, 2, false);
+        let (_, c) = PresetMenu::popup(&s, Some(2), false);
         assert_eq!(c[0], Some(PresetChoice::Slot(0)));
         assert_eq!(c[9], Some(PresetChoice::Slot(9)));
         assert_eq!(c[10], None);
@@ -228,7 +249,7 @@ mod tests {
         assert_eq!(*c.last().unwrap(), Some(PresetChoice::ClearAll));
         // An empty active slot has no Clear row; a device with nothing
         // stored has no Clear All either.
-        let (p, c) = PresetMenu::popup(&s, 1, false);
+        let (p, c) = PresetMenu::popup(&s, Some(1), false);
         assert!(
             !p.items.iter().any(|i| i.starts_with("Clear \"")),
             "{:?}",
@@ -237,12 +258,44 @@ mod tests {
         assert!(c.contains(&Some(PresetChoice::ClearAll)));
         let mut empty = shared();
         empty.occupied = 0;
-        let (p, _) = PresetMenu::popup(&empty, 1, false);
+        let (p, _) = PresetMenu::popup(&empty, Some(1), false);
         assert!(
             !p.items.iter().any(|i| i.starts_with("Clear")),
             "{:?}",
             p.items
         );
+    }
+
+    // -- WP FIN015 --
+    /// With no active slot named (a failed read, or 10 or more), nothing that
+    /// acts on "the active preset" can be picked, and the menu says why: slot
+    /// 1 never stands in for it (REVF S1).
+    #[test]
+    fn an_unknown_active_slot_disables_what_acts_on_it() {
+        let s = shared();
+        for active in [None, Some(10), Some(255)] {
+            let (p, c) = PresetMenu::popup(&s, active, true);
+            assert_eq!(p.items[0], "1: Studio", "no slot is marked");
+            assert!(!p.items.iter().any(|i| i.ends_with('*')), "{:?}", p.items);
+            assert_eq!(p.items[11], format!("#{ACTIVE_UNKNOWN}"), "the reason");
+            for row in ["#Save", "#Rename...", "#Set as Default", "#Copy to..."] {
+                assert!(p.items.iter().any(|i| i == row), "{row}: {:?}", p.items);
+            }
+            assert!(!p.items.iter().any(|i| i.starts_with("Clear \"")));
+            for gone in [
+                PresetChoice::Save,
+                PresetChoice::Rename,
+                PresetChoice::SetDefault,
+                PresetChoice::CopyTo,
+                PresetChoice::Clear,
+            ] {
+                assert!(!c.contains(&Some(gone)), "{gone:?} can be picked");
+            }
+            // Loading a slot and Clear All do not depend on the active one.
+            assert_eq!(c[0], Some(PresetChoice::Slot(0)));
+            assert_eq!(c.last(), Some(&Some(PresetChoice::ClearAll)));
+            assert_eq!(p.items.len(), c.len());
+        }
     }
 
     #[test]

@@ -77,6 +77,6 @@ export class CoreClient {
     if (!p) return;
     this.pending.delete(m.reply.id);
     if (m.reply.ok) p.resolve(m.reply.value);
-    else p.reject(new CoreCallError(m.reply.error.code, m.reply.error.message, m.reply.error.noticeKey)); // -- WP P1WB1 --
+    else p.reject(new CoreCallError(m.reply.error.code, m.reply.error.message, m.reply.error.noticeKey, m.reply.error.text)); // -- WP P1WB1 --, INTE
   }
 }

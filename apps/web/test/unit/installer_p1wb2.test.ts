@@ -28,6 +28,7 @@ import {
 import { lockedScreens, screensFor } from "../../src/ui/screens";
 import { staleText } from "../../src/ui/components";
 import { autoEqPairs, levelLine } from "../../src/screens/eq/AutoEq";
+import { hasLimits as revefixHasLimits, limitDefault as revefixDefault, stepLimit as revefixStep } from "../../src/screens/installer/model"; // -- WP REVEFIX --
 import { WasmCore, loadWasmModule } from "../../src/core/wasm";
 import type { CoreClient } from "../../src/core/client";
 import { CoreCallError, type LockStateRecord } from "../../src/core/protocol";
@@ -289,4 +290,20 @@ test("P1WB2 power-on: the DAC mute as the page writes it (fetch, change one fiel
   assert.equal(back.enabled, true, `${JSON.stringify(d)} -> ${JSON.stringify(back)}`);
   await s.core.call("dacMuteSet", { ...back, holdMs: 25 });
   assert.equal((await s.core.call("dacMuteFetch", undefined)).holdMs, 25);
+});
+
+// -- WP REVEFIX -- (REVE §3.1) Qt's check box and stepper per limit
+
+test("REVEFIX: a limit's default is Qt's, in range; the stepper steps by the range's step and stays in it; Remove All needs a limit", () => {
+  assert.equal(revefixDefault("masterVolumeMaxDb", { min: -128, max: 0 }), -10);
+  assert.equal(revefixDefault("highpassMinHz", { min: 100, max: 500 }), 100);
+  assert.equal(revefixDefault("unknown", null), 0);
+  assert.equal(revefixStep(-10, 1, { min: -128, max: 0, step: 0.5 }), -9.5);
+  assert.equal(revefixStep(-0.2, 1, { min: -128, max: 0, step: 0.5 }), 0);
+  assert.equal(revefixStep(0.01, -1, { min: 0, max: 85, step: 0.01 }), 0);
+  assert.equal(revefixStep(5, 1, null), 6);
+  assert.equal(revefixHasLimits({}), false);
+  assert.equal(revefixHasLimits({ outputs: [{ output: 1 }] }), false);
+  assert.equal(revefixHasLimits({ outputs: [{ output: 1, maxGainDb: 2 }] }), true);
+  assert.equal(revefixHasLimits({ maxPeqBoostDb: 3 }), true);
 });

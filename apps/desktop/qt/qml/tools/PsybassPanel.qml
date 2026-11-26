@@ -8,6 +8,8 @@ import UConsole
 // to four times it) with the starting points, over the harmonics controls;
 // on the right the outputs and the shaping. Firmware before wire V23 has none
 // of it and gets a note instead.
+// -- WP DL1 -- Modern: the intro row, the sketch in a GraphFrame, the
+// outputs as option chips, "Apply preset" and "Presets" secondary buttons.
 // -- WP LAY1a -- A panel (Panel.qml): PanelTable's row for
 // tools.psybass gives its window's title and sizes.
 Panel {
@@ -68,37 +70,14 @@ Panel {
         }
         EffectRule {}
 
-        ColumnLayout {
+        ToolUnsupported {
             objectName: "PsybassWindow.unsupported"
             visible: panel.unsupported
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.margins: 24
-            spacing: 10
-            Item { Layout.fillHeight: true }
-            Icon {
-                Layout.alignment: Qt.AlignHCenter
-                name: "triangle-alert"
-                size: 28
-                color: Theme.textMuted
-            }
-            Text {
-                Layout.fillWidth: true
-                horizontalAlignment: Text.AlignHCenter
-                text: qsTr("Requires firmware with wire format V23 or newer.")
-                font: Theme.fontBody
-                color: Theme.textMuted
-                wrapMode: Text.Wrap
-            }
-            Text {
-                Layout.fillWidth: true
-                horizontalAlignment: Text.AlignHCenter
-                text: qsTr("Update the DSPi firmware to use Psychoacoustic Bass.")
-                font: Theme.fontSmall
-                color: Theme.textMuted
-                wrapMode: Text.Wrap
-            }
-            Item { Layout.fillHeight: true }
+            text: qsTr("Requires firmware with wire format V23 or newer.")
+            detail: qsTr("Update the DSPi firmware to use Psychoacoustic Bass.")
         }
 
         EffectColumns {
@@ -138,7 +117,7 @@ Panel {
                         id: sketch
                         objectName: "PsybassWindow.graph"
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 160
+                        Layout.preferredHeight: LayoutController.modern ? 200 : 160   // -- WP DL1 --
                         title: qsTr("Spectrum")
                         active: EffectsController.psybassOn
                         bottomInset: 6
@@ -261,9 +240,8 @@ Panel {
                         color: Theme.textMuted
                         wrapMode: Text.Wrap
                     }
-                    RowLayout {
+                    EffectChipRow {   // -- WP DL1 --
                         Layout.fillWidth: true
-                        spacing: 6
                         Repeater {
                             model: EffectsController.numOutputs
                             EffectChip {

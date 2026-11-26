@@ -11,9 +11,9 @@ import { appMenu, openDevices } from "../nav";
 type Clients = { dspiClients: { call(m: string, p: unknown): Promise<unknown> }[] };
 
 /** A call on the n-th session the embedding page opened, straight to its core. */
-// -- BUG1 -- An output's name on the page is its label ("Out 3 · R · Full"), which follows the
+// -- BUG1 -- An output's name on the page is its label ("Out 3 · R"), which follows the
 // routing and the filters while the device keeps the slot's default name: matched by its number.
-const OUT = (o: number) => `Out ${o + 1} · [^·]+ · \\w+`;
+const OUT = (o: number) => `(?:Out ${o + 1}(?: · [^·]+){0,2}|${o + 1} · None)`; // -- WP REVEFIX -- an unused output is "3 · None"
 const re = (s: string) => new RegExp(`^${s}$`);
 
 function core(page: Page, n: number, method: string, params: unknown = null) {
@@ -52,7 +52,7 @@ test("standalone: the core's demo connects, a volume write reads back, meters ar
   await picker.getByRole("listitem").filter({ hasText: "Demo DSPi" }).getByRole("button", { name: "Connect" }).click();
 
   const session = page.getByRole("article", { name: "DSPi" });
-  await expect(session.locator(".device-meta")).toHaveText("RP2350 · firmware 1.1.6 · DEMO0000DSPI0001");
+  await expect(session).toHaveAttribute("data-serial", "DEMO0000DSPI0001");
   await expect(session.locator(".volume-value")).toHaveText("0.0 dB");
 
   // -- WP WB6a -- the main window's slider is the Console's taper: position 128 of 200 is -12 dB
@@ -61,13 +61,15 @@ test("standalone: the core's demo connects, a volume write reads back, meters ar
   await slider.dispatchEvent("change");
   await expect(session.locator(".volume-value")).toHaveText("-12.0 dB");
 
-  // The demo's meter capture is silent: every channel the core named, at the floor.
-  await expect(session.getByRole("meter")).toHaveCount(17);
+  // The demo's meter capture is silent: every channel the core named, at the floor. -- WP INTE -- (owner
+  // 2026-11-24) the meters are a view: the demo routes to Out 1 and 2 only, so 8 inputs and 2 outputs
+  await expect(session.getByRole("meter")).toHaveCount(10);
   await expect(session.getByRole("meter", { name: "USB 1" })).toHaveAttribute("aria-valuenow", "-90");
-  await expect(session.getByRole("meter", { name: re(OUT(8)) })).toBeVisible();
+  await expect(session.getByRole("meter", { name: re(OUT(0)) })).toBeVisible();
+  await expect(session.getByRole("meter", { name: re(OUT(8)) })).toHaveCount(0);
 
-  await session.getByRole("button", { name: "Disconnect" }).click();
-  await expect(page.getByText("Choose a DSPi to connect to.")).toBeVisible();
+  await session.getByRole("tablist", { name: "Open DSPi" }).getByRole("button", { name: /^Close / }).click(); // -- WP REVEFIX -- the tab's ×
+  await expect(page.getByText("No DSPi is connected. Connect one over USB, or try the demo device.")).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -98,7 +100,6 @@ test("standalone ?readonly: the volume control is off and says why", async ({ pa
   await page.goto("/?readonly");
   await page.getByRole("listitem").filter({ hasText: "Demo DSPi" }).getByRole("button", { name: "Connect" }).click();
   const session = page.getByRole("article", { name: "DSPi" });
-  await expect(session.getByText("Read only", { exact: true })).toBeVisible();
   await expect(session.getByRole("slider", { name: "Volume" })).toBeDisabled();
   await expect(session.locator(".read-only-reason")).toHaveText("You can view this DSPi but not change it");
 });
@@ -205,7 +206,7 @@ test("core: a change made elsewhere arrives as a notification and the page shows
   // The core's demo: another host renames the device. The Worker's poll drains
   // the notification and pushes the new snapshot.
   await core(page, 0, "demo", { action: "renameElsewhere", name: "Stage left" });
-  await expect(one.getByRole("article", { name: "Stage left" }).locator(".device-name")).toHaveText("Stage left");
+  await expect(one.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab", { selected: true })).toContainText("Stage left"); // -- WP REVEFIX -- the tab names it
   expect(errors).toEqual([]);
 });
 

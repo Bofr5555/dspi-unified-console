@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 use crate::policy;
 use crate::registry::{Tool, ToolClass};
 use crate::tools::hub::record;
-use crate::tools::read::{empty_schema, object_schema};
+use crate::tools::read::{empty_schema, object_schema, put};
 use crate::untrusted;
 
 /// The tools, in `tools/list` order.
@@ -31,12 +31,24 @@ static GET_LIMITS: Tool = Tool {
     handler: |call, _| {
         let core = call.core()?;
         let status = core.limits_status();
-        let profile = if status.active {
+        let mut profile = if status.active {
             serde_json::from_str::<Value>(&core.limits_profile_document())
                 .map_or(Value::Null, untrusted::scrub_json)
         } else {
             Value::Null
         };
+        // -- WP FIN015 -- (REVF S3) each limited output from 1, as the agent
+        // counts it (the file keeps 0)
+        for o in profile
+            .pointer_mut("/limits/outputs")
+            .and_then(Value::as_array_mut)
+            .into_iter()
+            .flatten()
+        {
+            if let Some(n) = o.get("output").and_then(Value::as_u64) {
+                put(o, "output", json!(n.saturating_add(1)));
+            }
+        }
         let mode = policy::lock(&call.judging).mode.map(|m| m.as_str());
         Ok(json!({
             "device": call.device_text(),

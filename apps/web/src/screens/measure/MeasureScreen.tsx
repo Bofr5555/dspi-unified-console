@@ -32,7 +32,7 @@ import { useSessionState } from "../../ui/components";
 import type { Ask, ScreenProps } from "../../ui/screens";
 import type { Session } from "../../ui/session";
 import { noticeOf, noticeRow } from "../../ui/texts";
-import { outputRows } from "../main/model";
+import { outputLabel, outputRows } from "../main/model";
 import { LiveTab } from "./live";
 import { PassiveTab } from "./passive";
 import { playBlocker, type MeasureDraft } from "./model";
@@ -41,6 +41,8 @@ import { RunPanel } from "./run";
 import { SetupPanel } from "./setup";
 import { WAT_TABS } from "./tune"; // -- WP P5WAT --
 import { SYSTEM_TABS } from "./system/SystemTab"; // -- WP ATWEB --
+import { Glyph, NoticeRow } from "../../ui/design"; // -- WP WEB4 --
+import "./measure.css"; // -- WP WEB4 --
 
 /** The microphone choice: the demo's simulated one, or a browser input ("" its default). */
 export type MicChoice = { kind: "sim" } | { kind: "browser"; deviceId: string };
@@ -208,6 +210,12 @@ export class MeasureDesk {
   }
 
   fail(e: unknown): void {
+    // -- WP INTE -- (SHOWFIX finding 1) the core's words for the person first, as Qt's measure session
+    if (e instanceof CoreCallError && e.text) {
+      this.error = e.text;
+      this.changed();
+      return;
+    }
     const n = noticeOf(e);
     this.error = n ? `${n.title}: ${n.detail || n.reason}` : e instanceof Error ? e.message : String(e);
     this.changed();
@@ -493,6 +501,8 @@ export interface MeasureTabProps {
   outputs: number[];
   /** Show another tab. */
   show: (id: string) => void;
+  /** -- WP INTD -- Open another screen of the session (ScreenProps.go): Several units' "Hubs…". */
+  go?: (screen: string) => void;
 }
 
 export interface MeasureTab {
@@ -517,9 +527,9 @@ export const MEASURE_TABS: MeasureTab[] = [
   { id: "measure", label: "Measure", View: MeasureTabView },
   { id: "results", label: "Results", View: ResultsTab, passive: true },
   { id: "live", label: "Live", View: LiveTab },
-  ...SYSTEM_TABS, // -- WP ATWEB -- several units on one time base
   // -- tab slot: WP P5WAT -- (auto-tune and the documents)
   ...WAT_TABS, // -- WP P5WAT --
+  ...SYSTEM_TABS, // -- WP ATWEB -- several units on one time base (-- WP WEB4 -- last, as Qt's tabs)
 ];
 
 const PASSIVE_TAB: MeasureTab = { id: "passive", label: "Passive RTA", View: PassiveTab, passive: true };
@@ -535,34 +545,32 @@ export function MeasureScreen(props: ScreenProps) {
   }, [desk]);
   const snap = st.snapshot;
   const rows = useMemo(() => (snap ? outputRows(snap.state, snap.outputLabels) : []), [snap]);
-  const outputName = (o: number) => {
-    const r = rows.find((x) => x.index === o);
-    return r ? `${r.descriptor} ${r.name}` : `Output ${o + 1}`;
-  };
+  // -- WP WEB7 -- (REVE D2) the core's label alone ("Out 1 · L"), for every output, as Qt's rows
+  const outputName = (o: number) => (snap ? outputLabel(snap.state, snap.outputLabels, o) : `Output ${o + 1}`);
   const blocked = playBlocker(session.readOnlyReason, desk.hubRole);
   const tabs = blocked ? [PASSIVE_TAB, ...MEASURE_TABS.filter((t) => t.passive)] : MEASURE_TABS;
   // -- WP WEBM3 -- the tabs are the page's parts, in its head; the one on show kept per session
   const [chosen, setChosen] = usePart(session, "measure", tabs.map((t) => t.id));
   const tab = tabs.find((t) => t.id === chosen) ?? tabs[0]!;
   if (!snap) return null;
-  const p: MeasureTabProps = { session, desk, ask: props.ask, blocked, outputName, outputs: rows.map((r) => r.index), show: setChosen };
+  // -- WP WEB7 -- (REVE D4) one Stop: on the Live tab the live view's own Stop Live is the stop
+  const liveHere = tab.id === "live" && !!desk.live?.active && !desk.state?.active && !desk.passive;
+  const p: MeasureTabProps = { session, desk, ask: props.ask, blocked, outputName, outputs: rows.map((r) => r.index), show: setChosen, go: props.go };
   return (
-    <div class="measure-screen" role="region" aria-label="Measure" style={{ display: "flex", flexDirection: "column", gap: "10px", minWidth: 0 }}>
-      {desk.running ? (
-        <div class="banner" role="status" aria-label="Measuring" style={{ position: "sticky", top: 0, zIndex: 2, display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" }}>
-          <span style={{ flex: "1 1 12em" }}>
+    <div class="measure-screen" role="region" aria-label="Measure">
+      {/* -- WP WEB4 -- DL2's stop bar: an info notice with a secondary Stop; the error as an error notice */}
+      {desk.running && !liveHere ? (
+        <div class="notice-row notice-row-info measure-stopbar" role="status" aria-label="Measuring">
+          <Glyph name="volume" class="notice-icon" />
+          <span class="notice-text">
             {desk.passive ? "The microphone is open for the passive RTA; nothing is played." : desk.live?.active ? "The live view is playing the DSPi's generator." : desk.state?.active ? "Measuring with the DSPi's generator." : "The microphone is open."}
           </span>
-          <button type="button" class="danger" onClick={() => void desk.stopAll()}>
+          <button type="button" onClick={() => void desk.stopAll()}>
             Stop
           </button>
         </div>
       ) : null}
-      {desk.error ? (
-        <p class="error" role="alert">
-          {desk.error}
-        </p>
-      ) : null}
+      {desk.error ? <NoticeRow kind="error">{desk.error}</NoticeRow> : null}
       <PageParts label="Measurement" parts={tabs} current={tab.id} onPart={setChosen} />
       <div role="tabpanel" aria-labelledby={`${tab.id}-part-tab`} style={{ display: "contents" }}>
         <tab.View {...p} />

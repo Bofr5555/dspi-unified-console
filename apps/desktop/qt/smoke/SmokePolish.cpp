@@ -238,7 +238,8 @@ void checkUndo(SmokeDriver &d) {
     const QVariantList entries = history->entries();
     const QVariantMap newest = entries.isEmpty() ? QVariantMap() : entries.first().toMap();
     d.check(QStringLiteral("qp18: the history lists it in the glossary's words"),
-            newest.value(QStringLiteral("title")).toString() == QLatin1String("Output gain, OUT1")
+            // -- WP SHOWFIX -- as the person knows the output (the core's channel words)
+            newest.value(QStringLiteral("title")).toString() == QLatin1String("Output gain, Out 1")
                 && newest.value(QStringLiteral("detail")).toString().endsWith(QStringLiteral(" dB")));
     QObject *undoRow = d.object(QStringLiteral("Menu.edit.undo"));
     QObject *undoAction = undoRow ? undoRow->property("action").value<QObject *>() : nullptr;
@@ -296,7 +297,12 @@ void checkUndo(SmokeDriver &d) {
     d.check(QStringLiteral("qp18: describe() names a crosspoint"),
             HistoryController::describe(QJsonObject{ { QStringLiteral("path"), QStringLiteral("mix") },
                                                      { QStringLiteral("indices"), QJsonArray{ 0, 2 } } })
-                    .value(QStringLiteral("title")).toString() == QLatin1String("Crosspoint, IN1 to OUT3"));
+                    .value(QStringLiteral("title")).toString() == QLatin1String("Crosspoint, In 1 to Out 3")); // -- WP SHOWFIX --
+    // -- WP SHOWFIX -- (finding 5) a measurement's generator run is one row, the core's words
+    d.check(QStringLiteral("showfix: describe() shows a measurement's run as the core words it"),
+            HistoryController::describe(QJsonObject{ { QStringLiteral("path"), QStringLiteral("sig.run") },
+                                                     { QStringLiteral("label"), QStringLiteral("Measurement: Out 1–3, 6 sweeps") } })
+                    .value(QStringLiteral("title")).toString() == QStringLiteral("Measurement: Out 1–3, 6 sweeps"));
     d.check(QStringLiteral("qp18: describe() keeps a path it has no words for"),
             HistoryController::describe(QJsonObject{ { QStringLiteral("path"), QStringLiteral("raw") } })
                     .value(QStringLiteral("title")).toString() == QLatin1String("raw"));

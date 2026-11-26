@@ -474,10 +474,13 @@ pub fn probe_quick(
                 .next()
                 .and_then(Result::ok)
                 .and_then(|d| BuildInfo::decode(&d).ok());
-            let active = answers
-                .next()
-                .and_then(Result::ok)
-                .and_then(|d| d.first().copied());
+            // -- WP FIN015 -- past the last slot is unknown (REVF S1)
+            let active = crate::preset_copy::known_slot(
+                answers
+                    .next()
+                    .and_then(Result::ok)
+                    .and_then(|d| d.first().copied()),
+            );
             (r.key.build == build).then_some((r, active))
         });
     let image = crate::compat::read_any(t, Some(&info.version))?;
@@ -690,7 +693,10 @@ fn describe(
     // Informational, and absent before beta4: a stall is the answer, so no
     // retry (config.h:326).
     let build_info = next().ok().and_then(|d| BuildInfo::decode(&d).ok());
-    let active_preset = next().ok().and_then(|d| d.first().copied());
+    // -- WP FIN015 -- a slot past the last (255 from a confused device) is
+    // unknown, as a failed read is: nothing saves to it (REVF S1).
+    let active_preset =
+        crate::preset_copy::known_slot(next().ok().and_then(|d| d.first().copied()));
     let band0 = h.max_bands != 0 && next().is_ok();
     let round1: Vec<(u8, bool)> = round1.into_iter().map(|b| (b, next().is_ok())).collect();
     let ext_list = ext.then(&mut next);
@@ -1261,6 +1267,19 @@ mod tests {
         assert_eq!(caps.firmware_version, FirmwareVersion::new(1, 1, 6, 4));
         assert_eq!(caps.wire_format, 32);
         assert_eq!(caps.active_preset, Some(3));
+    }
+
+    // -- WP FIN015 --
+    /// An active slot past the last is unknown, as a failed read is: a host
+    /// would otherwise save to slot 255 (REVF S1).
+    #[test]
+    fn an_active_slot_past_the_last_is_unknown() {
+        for reply in [10u8, 255] {
+            let mut t = device().data(op::REQ_PRESET_GET_ACTIVE, vec![reply]);
+            assert_eq!(probe(&mut t).unwrap().active_preset, None, "{reply}");
+        }
+        let mut t = device().data(op::REQ_PRESET_GET_ACTIVE, vec![9]);
+        assert_eq!(probe(&mut t).unwrap().active_preset, Some(9));
     }
 
     /// GET_PLATFORM is asked for 7 bytes and older firmware answers fewer;

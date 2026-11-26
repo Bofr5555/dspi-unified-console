@@ -33,7 +33,7 @@ export interface SectionDef {
 
 /** The page with the devices to connect to (the page's own, not a session's screen). */
 export const CONNECT = "connect";
-export const CONNECT_PAGE: Page = { id: CONNECT, label: "Open a DSPi" };
+export const CONNECT_PAGE: Page = { id: CONNECT, label: "This Computer" }; // -- WP WEB7 -- Qt's Devices tab
 
 export const SECTIONS: readonly SectionDef[] = [
   { id: "overview", title: "Overview", pages: ["main", "overview", "sender"] },
@@ -42,10 +42,10 @@ export const SECTIONS: readonly SectionDef[] = [
   { id: "effects", title: "Effects", pages: ["effects"] },
   { id: "measure", title: "Measure", pages: ["measure"] },
   { id: "analyse", title: "Analyse", pages: ["analyser", "generator", "stats", "monitor"] },
-  { id: "library", title: "Library", pages: ["snapshots", "history", "files"] }, // -- WP WEBM3 -- history
-  { id: "system", title: "System", pages: ["system", "events"] },
+  { id: "library", title: "Library", pages: ["presets", "snapshots", "history", "files", "autoeq"] }, // -- WP WEBM3 -- history -- WP WEB7 -- presets, autoeq (Qt's order)
+  { id: "system", title: "System", pages: ["system", "system-clock", "system-installation", "events", "chain"] }, // -- WP WEB7 -- Qt's Units | Clock and Links | Installation | Events, then the web's Signal Chain
   { id: "devices", title: "Devices", foot: true, pages: [CONNECT, "hub", "hub-settings", "device"] },
-  { id: "settings", title: "Settings", foot: true, pages: ["settings", "surfaces", "installer"] },
+  { id: "settings", title: "Settings", foot: true, pages: ["settings", "installer"] }, // -- WP WEB7 -- Control Surfaces is Settings' Control part
 ];
 
 /** The section a screen is a page of; Settings for one no section lists. */

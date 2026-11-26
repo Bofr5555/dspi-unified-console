@@ -11,6 +11,7 @@
 import type { LimitFieldRangeRecord } from "../../core/protocol";
 import type { KeyValueStore } from "../../fleet/local";
 import { noticeRow } from "../../ui/texts";
+import { readNumber } from "../../ui/number";
 
 /** One output's limits (`dspi_session::limits::OutputLimits`). */
 export interface OutputLimits {
@@ -36,13 +37,14 @@ export interface LimitsProfile {
 }
 
 /** The fields of an output's limits, in the order the page shows them, with their words. Their ranges and units are the core's ([fieldRange]). */
+// -- WP WEB5 -- Qt's words (InstallerPage.qml)
 export const OUTPUT_FIELDS: { key: Exclude<keyof OutputLimits, "output">; label: string }[] = [
-  { key: "maxGainDb", label: "Highest gain" },
+  { key: "maxGainDb", label: "Gain at most" },
   { key: "limiterCeilingDb", label: "Limiter on, ceiling at most" },
-  { key: "highpassMinHz", label: "High-pass at least" },
+  { key: "highpassMinHz", label: "High-pass kept, at or above" },
   { key: "highpassMinSlopeDb", label: "High-pass slope at least" },
-  { key: "delayMinMs", label: "Shortest delay" },
-  { key: "delayMaxMs", label: "Longest delay" },
+  { key: "delayMinMs", label: "Delay at least" },
+  { key: "delayMaxMs", label: "Delay at most" },
 ];
 
 // -- WP P1EFIX -- one range table for every client's limits editor: the core's
@@ -136,14 +138,44 @@ export function withField<K extends "maxPeqBoostDb" | "masterVolumeMaxDb" | "not
 }
 
 /** A number field's text as a limit: "" (or junk) is no limit; a number is kept within `range` (none: as typed). */
-export function limitValue(text: string, range: { min: number; max: number } | null): number | undefined {
+export function limitValue(text: string, range: { min: number; max: number; unit?: string } | null): number | undefined {
   const min = range?.min ?? -Infinity;
   const max = range?.max ?? Infinity;
-  const t = text.trim().replace(",", ".");
-  if (!t) return undefined;
-  const v = Number(t);
-  if (!Number.isFinite(v)) return undefined;
+  // -- WP WEB -- a decimal comma, U+2212 and the unit after it, as Qt's fields (USR1)
+  const v = readNumber(text, range?.unit ? [range.unit] : []);
+  if (v === null) return undefined;
   return Math.min(max, Math.max(min, v));
+}
+
+// -- WP REVEFIX -- (REVE §3.1) Qt's Installer: a limit's check box and stepper
+/** What a limit shows while it is off, and takes when it is checked: Qt's defaults (InstallerPage.qml), in range. */
+export const LIMIT_DEFAULTS: Readonly<Record<string, number>> = {
+  masterVolumeMaxDb: -10,
+  maxPeqBoostDb: 6,
+  maxGainDb: 0,
+  limiterCeilingDb: -1,
+  highpassMinHz: 80,
+  highpassMinSlopeDb: 12,
+  delayMinMs: 0,
+  delayMaxMs: 10,
+};
+
+export function limitDefault(key: string, range: { min: number; max: number } | null): number {
+  const v = LIMIT_DEFAULTS[key] ?? 0;
+  return range ? Math.min(range.max, Math.max(range.min, v)) : v;
+}
+
+/** `v` one step (`by` −1 or +1) on, by the range's step (1 without one), kept in range. */
+export function stepLimit(v: number, by: number, range: { min: number; max: number; step?: number } | null): number {
+  const step = range?.step && range.step > 0 ? range.step : 1;
+  const next = Math.round((v + by * step) / step) * step;
+  const rounded = Math.round(next * 1000) / 1000;
+  return range ? Math.min(range.max, Math.max(range.min, rounded)) : rounded;
+}
+
+/** Whether the profile limits anything (Remove All Limits is off otherwise, as Qt's). */
+export function hasLimits(p: LimitsProfile): boolean {
+  return p.masterVolumeMaxDb !== undefined || p.maxPeqBoostDb !== undefined || (p.outputs ?? []).some((o) => OUTPUT_FIELDS.some((f) => o[f.key] !== undefined));
 }
 
 /** One output's limit as the field shows it: "" for none. */

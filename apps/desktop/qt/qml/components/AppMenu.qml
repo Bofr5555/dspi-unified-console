@@ -10,11 +10,11 @@ Menu {
     // A small inset above the first row and below the last, as the system's menus have
     topPadding: Theme.radiusSmall
     bottomPadding: Theme.radiusSmall
-    background: Rectangle {
+    // -- WP REVDFIX -- (REVD D5) the floating surface of the popovers in
+    // Modern (shadow, radius 8, no Classic outline); Classic's as before
+    background: FloatingBackground {
         implicitWidth: 240
         color: Theme.menu
-        radius: Theme.radiusSmall
-        border.width: 1
-        border.color: Theme.border
+        radius: LayoutController.modern ? Theme.radius : Theme.radiusSmall
     }
 }

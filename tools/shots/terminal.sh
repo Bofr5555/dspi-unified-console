@@ -10,6 +10,8 @@ root=$(cd "$(dirname "$0")/../.." && pwd)
 . "$root/ci/container/images.conf"
 B=${DSPI_BUILD_CACHE:-$HOME/.cache/dspi-build}
 branch=$(git -C "$root" rev-parse --abbrev-ref HEAD 2>/dev/null || echo detached)
+# -- WP SHOWFIX -- a detached worktree is named by its short commit, not "HEAD"
+if [ "$branch" = HEAD ]; then branch=$(git -C "$root" rev-parse --short HEAD); fi
 work=$B/work/web/${branch//\//-}
 mkdir -p "$out/html" "$out/png" "$B/work/empty"
 out=$(cd "$out" && pwd)

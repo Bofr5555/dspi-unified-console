@@ -475,7 +475,7 @@ impl Server {
     }
 
     fn server_info(&self) -> Value {
-        json!({"name": self.config.name, "title": "DSPi Console", "version": self.config.version})
+        json!({"name": self.config.name, "title": "uConsole for DSPi", "version": self.config.version})
     }
 
     fn initialize(
@@ -589,6 +589,7 @@ impl Server {
             journal_ids: Vec::new(),
             touched: Vec::new(), // -- WP AIVIS --
             detail: String::new(),
+            said: String::new(), // -- WP SHOWFIX --
         };
         let taken = self.clients.get_mut(&client).map(|c| match tool.class {
             ToolClass::Read => c.reads.take(now_ms),
@@ -817,6 +818,7 @@ impl Server {
         entry.device.clone_from(&out.device);
         entry.journal_ids = out.journal_ids;
         entry.touched = out.touched; // -- WP AIVIS --
+        let said = out.said; // -- WP SHOWFIX --
         self.measure.stamp(now_ms); // -- WP MCP5 -- a request's clock starts now
         self.opens.stamp(now_ms); // -- WP FEAT2 --
         let asked = !out.judging.asked.is_empty() && out.judging.refused.is_none();
@@ -852,8 +854,12 @@ impl Server {
             }
             Ok(data) => {
                 // -- WP MCP4 -- the change in words, for the app's log
+                // -- WP SHOWFIX -- (finding 4) and the core's words for what
+                // it changed, the channels as the person knows them, for the
+                // app alone (they may hold names the user or a device wrote)
                 if entry.write {
                     entry.detail = crate::activity::words(&data);
+                    entry.said = said;
                 }
                 tool_ok(data)
             }
@@ -1083,6 +1089,7 @@ impl Server {
                 journal_ids: Vec::new(),
                 touched: Vec::new(), // -- WP AIVIS --
                 detail,
+                said: String::new(), // -- WP SHOWFIX --
             });
         }
     }
@@ -1125,6 +1132,7 @@ impl Server {
             journal_ids: Vec::new(),
             touched: Vec::new(), // -- WP AIVIS --
             detail: String::new(),
+            said: String::new(), // -- WP SHOWFIX --
         };
         let tool = self.registry.get(tool_name);
         let gone = !self.clients.contains_key(&client);
@@ -1147,6 +1155,7 @@ impl Server {
                 self.activity.push(ActivityEntry {
                     outcome: Outcome::Error,
                     detail: format!("declined by the user (confirmation {id})"),
+                    said: String::new(), // -- WP SHOWFIX --
                     ..entry
                 });
                 (ConfirmState::Denied, tool_error(msg))
@@ -1162,6 +1171,7 @@ impl Server {
                 self.activity.push(ActivityEntry {
                     outcome: Outcome::Error,
                     detail: format!("{msg} (confirmation {id})"),
+                    said: String::new(), // -- WP SHOWFIX --
                     ..entry
                 });
                 (ConfirmState::Gone, tool_error(msg))
@@ -1338,6 +1348,7 @@ impl Server {
                     journal_ids: Vec::new(),
                     touched: Vec::new(), // -- WP AIVIS --
                     detail: format!("not answered in time (confirmation {id})"),
+                    said: String::new(), // -- WP SHOWFIX --
                 });
             }
             let secs = CONFIRM_HOLD_MS / 1000;

@@ -130,18 +130,21 @@ Rectangle {
         }
         background: Rectangle {
             radius: Theme.radiusSmall
-            color: button.checked ? Theme.control : button.hovered ? Theme.controlHover : "transparent"
-            border.width: button.visualFocus ? 2 : 0
+            // -- WP DL5 -- the section on show in the selection tone (DESIGN-LANGUAGE §1)
+            color: button.checked ? Theme.selection : button.hovered ? Theme.controlHover : "transparent"
+            border.width: button.visualFocus ? Theme.focusRingWidth : 0
             border.color: Theme.focusRing
-            // The mark of the section on show
+            // The mark of the section on show. -- WP DL5 -- in the rail, the
+            // mockup's 3 × 16 accent bar at the item's left edge
             Rectangle {
+                objectName: button.objectName + ".mark"
                 visible: button.checked
                 color: Theme.accent
-                radius: 1
-                x: rail.horizontal ? 8 : 0
-                y: rail.horizontal ? parent.height - 2 : parent.height / 4
-                width: rail.horizontal ? parent.width - 16 : 2
-                height: rail.horizontal ? 2 : parent.height / 2
+                radius: rail.horizontal ? 1 : 1.5
+                x: rail.horizontal ? 8 : -2
+                y: rail.horizontal ? parent.height - 2 : (parent.height - height) / 2
+                width: rail.horizontal ? parent.width - 16 : 3
+                height: rail.horizontal ? 2 : 16
             }
         }
         onClicked: rail.chosen(modelData.id)

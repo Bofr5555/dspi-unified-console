@@ -20,7 +20,7 @@ const PROMPTS: &[Prompt] = &[
         name: "match_channel_response",
         title: "Match a channel's response",
         description: "Look at one output's response and propose PEQ bands toward a flat target",
-        arguments: &[("output", "The output, from 0", true)],
+        arguments: &[("output", "The output, from 1 (1 is Out 1)", true)],
         text: "Read dspi://guide. Call dspi_get_overview, then dspi_get_channel and \
                dspi_get_response for output {output}. If a measurement of it exists \
                (dspi_list_measurements), read its response too. Describe how the response \
@@ -45,7 +45,7 @@ const PROMPTS: &[Prompt] = &[
         title: "Tame a peak",
         description: "Propose a cut for a peak at a frequency on one output",
         arguments: &[
-            ("output", "The output, from 0", true),
+            ("output", "The output, from 1 (1 is Out 1)", true),
             ("freq_hz", "The peak's frequency in Hz", true),
         ],
         text: "Read dspi://guide. Call dspi_get_channel and dspi_get_response for output \

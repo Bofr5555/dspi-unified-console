@@ -40,7 +40,9 @@ ScrollView {
     }
 
     // The draft
-    property int output: mc.outputs.length ? mc.outputs[0].output : 0
+    // -- WP INTE -- (owner 2026-11-24) the outputs something is routed to: the
+    // live view only shows (the Setup tab lists them all)
+    property int output: mc.liveOutputs.length ? mc.liveOutputs[0].output : 0
     property string role: "full"
     // -- WP ROLEQ -- the output's role from the speaker layout (else the
     // suggestion); a change here is written back to it
@@ -62,8 +64,14 @@ ScrollView {
             tab.placementChoice = ""
             tab.couplerChoice = ""
             tab.at = tab.from = tab.to = ""
-            tab.output = tab.mc.outputs.length ? tab.mc.outputs[0].output : 0
+            tab.output = tab.mc.liveOutputs.length ? tab.mc.liveOutputs[0].output : 0
             tab.layoutRole()
+        }
+        // -- WP INTE -- the chosen output had its routes taken away: the first
+        // one still offered, so the box and the draft agree (not while it plays)
+        function onDeviceChanged() {
+            const outs = tab.mc.liveOutputs
+            if (!tab.active && outs.length && outs.findIndex(o => o.output === tab.output) < 0) tab.output = outs[0].output
         }
     }
     property string mode: "sweep"
@@ -94,6 +102,15 @@ ScrollView {
         return null
     }
 
+    // -- WP DL2 -- Modern: no heading that repeats the tab, the state as a
+    // chip beside Start Live, why it waits as a notice row, the adjustments
+    // as a section; Classic keeps its heading, lines and card
+    readonly property bool modern: LayoutController.modern
+    component Section: Card {
+        color: tab.modern ? "transparent" : Theme.panel
+        padding: tab.modern ? 0 : Theme.spacing
+    }
+
     function start() {
         mc.liveStart({ output: tab.output, role: tab.role, mode: tab.mode, placement: tab.placement,
                        coupler: tab.coupler, smoothing: tab.smoothing, averaging: tab.averaging })
@@ -111,6 +128,7 @@ ScrollView {
         RowLayout {
             spacing: Theme.spacingSmall
             Text {
+                visible: !tab.modern
                 Layout.fillWidth: true
                 text: qsTr("Live response")
                 font: Theme.fontTitle
@@ -128,14 +146,30 @@ ScrollView {
                 objectName: "MeasureLive.stop"
                 visible: tab.active
                 text: qsTr("Stop Live")
-                destructive: true
+                destructive: !tab.modern
                 onClicked: mc.liveStop()
             }
+            // -- WP DL2 -- the state as a status chip (a dot and the words)
+            StatusChip {
+                objectName: "MeasureLive.status"
+                visible: tab.modern && mc.liveText.length > 0
+                Layout.maximumWidth: 480
+                kind: mc.liveIssueText.length ? "warning" : tab.active ? "success" : "idle"
+                text: mc.liveText
+            }
+            Item { visible: tab.modern; Layout.fillWidth: true }
         }
         // -- WP P5FOLLOW -- why Start Live waits
+        NoticeRow {
+            objectName: tab.modern ? "MeasureLive.placementNeeded" : ""
+            visible: tab.modern && !tab.active && tab.placement.length === 0
+            Layout.fillWidth: true
+            kind: "warning"
+            text: qsTr("Choose the placement first: speakers or headphones on a coupler. Headphones are measured much more quietly.")
+        }
         Text {
-            objectName: "MeasureLive.placementNeeded"
-            visible: !tab.active && tab.placement.length === 0
+            objectName: tab.modern ? "" : "MeasureLive.placementNeeded"
+            visible: !tab.modern && !tab.active && tab.placement.length === 0
             Layout.fillWidth: true
             text: qsTr("Choose the placement first: speakers or headphones on a coupler. Headphones are measured much more quietly.")
             font: Theme.fontBody
@@ -149,10 +183,10 @@ ScrollView {
                 objectName: "MeasureLive.output"
                 label: qsTr("Live output")
                 enabled: tab.editable
-                model: mc.outputs
+                model: mc.liveOutputs   // -- WP INTE --
                 textRole: "label"
-                currentIndex: Math.max(0, mc.outputs.findIndex(o => o.output === tab.output))
-                onActivated: index => tab.output = mc.outputs[index].output
+                currentIndex: Math.max(0, mc.liveOutputs.findIndex(o => o.output === tab.output))
+                onActivated: index => tab.output = mc.liveOutputs[index].output
             }
             AppComboBox {
                 objectName: "MeasureLive.role"
@@ -262,6 +296,7 @@ ScrollView {
         }
         Text {
             objectName: "MeasureLive.state"
+            visible: !tab.modern   // -- WP DL2 -- Modern: the status chip
             Layout.fillWidth: true
             textFormat: Text.PlainText
             text: mc.liveText
@@ -269,13 +304,20 @@ ScrollView {
             color: Theme.text
         }
         Text {
-            visible: text.length > 0
+            visible: text.length > 0 && !tab.modern
             Layout.fillWidth: true
             textFormat: Text.PlainText
             text: mc.liveIssueText
             font: Theme.fontBody
             color: Theme.dangerText
             wrapMode: Text.WordWrap
+        }
+        NoticeRow {
+            objectName: "MeasureLive.issue"
+            visible: text.length > 0 && tab.modern
+            Layout.fillWidth: true
+            kind: "error"
+            text: mc.liveIssueText
         }
         MeasureGraph {
             objectName: "MeasureLive.graph"
@@ -305,7 +347,7 @@ ScrollView {
         }
 
         // The direct adjustments
-        Card {
+        Section {
             title: qsTr("Direct adjustments")
             Layout.fillWidth: true
             RowLayout {
@@ -406,8 +448,16 @@ ScrollView {
                     Layout.fillWidth: true
                     text: mc.proposal.reason || ""
                     font: Theme.fontBody
-                    color: Theme.warning
+                    // -- WP DL2 -- Modern: a warning icon before words in the text colour
+                    color: tab.modern ? Theme.text : Theme.warning
                     wrapMode: Text.WordWrap
+                    leftPadding: tab.modern ? 22 : 0
+                    Icon {
+                        visible: tab.modern
+                        y: Math.max(0, (parent.font.pixelSize * 1.3 - height) / 2)
+                        name: "triangle-alert"
+                        color: Theme.warning
+                    }
                 }
                 RowLayout {
                     visible: (mc.proposal.reason || "").length === 0

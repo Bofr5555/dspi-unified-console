@@ -55,6 +55,7 @@ struct Matrix {
         d.check(QStringLiteral("qp6: %1 exists").arg(name), o != nullptr);
         if (!o) return;
         o->setProperty("text", text);
+        QMetaObject::invokeMethod(o, "textEdited"); // -- WP INTE -- (REVE C1) as typed: Enter writes only typed text
         QMetaObject::invokeMethod(o, "accepted");
         d.waitIdle();
     }
@@ -161,21 +162,36 @@ void crosspoints(Matrix &m) {
 
     m.type(m.cellName(i, o, "gain"), QStringLiteral("-3"));
     d.check(QStringLiteral("qp6: a typed crosspoint gain reaches the device"), m.deviceRoute(i, o, true, -3, false));
-    d.check(QStringLiteral("qp6: the field shows \"-3 dB\""), gainField->property("text").toString() == QLatin1String("-3 dB"));
+    // -- WP MX1 -- the tile shows the bare number
+    d.check(QStringLiteral("qp6: the field shows \"-3\""), gainField->property("text").toString() == QLatin1String("-3"));
     m.type(m.cellName(i, o, "gain"), QStringLiteral("40"));
     d.check(QStringLiteral("qp6: a gain above +12 dB is held at +12"), m.deviceRoute(i, o, true, 12, false));
     m.type(m.cellName(i, o, "gain"), QStringLiteral("loud"));
     d.check(QStringLiteral("qp6: a text that is no number changes nothing"),
-            m.deviceRoute(i, o, true, 12, false) && gainField->property("text").toString() == QLatin1String("+12 dB"));
+            m.deviceRoute(i, o, true, 12, false) && gainField->property("text").toString() == QLatin1String("+12"));
     m.type(m.cellName(i, o, "gain"), QStringLiteral("-1.5 dB"));
     d.check(QStringLiteral("qp6: the unit may be typed"),
-            m.deviceRoute(i, o, true, -1.5, false) && gainField->property("text").toString() == QLatin1String("-1.5 dB"));
+            m.deviceRoute(i, o, true, -1.5, false) && gainField->property("text").toString() == QLatin1String("-1.5"));
 
     m.wheel(gainField, 1);
     d.check(QStringLiteral("qp6: a wheel notch raises the crosspoint gain by 0.5 dB"),
-            m.deviceRoute(i, o, true, -1, false) && gainField->property("text").toString() == QLatin1String("-1 dB"));
+            m.deviceRoute(i, o, true, -1, false) && gainField->property("text").toString() == QLatin1String("-1"));
+    // -- WP MX1 -- a right-click opens the cell's menu, which has the reset
     m.rightClick(gainField);
-    d.check(QStringLiteral("qp6: a right-click resets the crosspoint gain to 0 dB"), m.deviceRoute(i, o, true, 0, false));
+    QObject *cellMenu = m.obj(QStringLiteral("Matrix.cellMenu"));
+    d.check(QStringLiteral("mx1: a right-click on a crosspoint opens its menu"), m.opened(cellMenu));
+    // -- WP REVDFIX -- (REVD C2) MX1 ended the instant reset: the right-click
+    // alone leaves the gain, and the menu's item is pressed as a person would
+    // (click() does nothing on a disabled item; "triggered" ignored that)
+    d.waitIdle();
+    d.check(QStringLiteral("mx1: the right-click alone leaves the gain"), m.deviceRoute(i, o, true, -1, false)
+            && gainField->property("text").toString() == QLatin1String("-1"));
+    QObject *reset = m.obj(QStringLiteral("Matrix.cellMenu.reset"));
+    d.check(QStringLiteral("mx1: the menu's Gain to 0 dB is enabled"), reset && reset->property("enabled").toBool());
+    if (reset) QMetaObject::invokeMethod(reset, "click");
+    if (cellMenu) cellMenu->setProperty("visible", false);
+    d.waitIdle();
+    d.check(QStringLiteral("qp6: the menu resets the crosspoint gain to 0 dB"), m.deviceRoute(i, o, true, 0, false));
 
     m.click(m.cellName(i, o, "invert"));
     d.check(QStringLiteral("qp6: INV inverts the crosspoint"), m.deviceRoute(i, o, true, 0, true));
@@ -203,7 +219,7 @@ void crosspoints(Matrix &m) {
     d.check(QStringLiteral("qp6: the matrix shows what the output card wrote"),
             near(m.mc->model()->get(i, o, QStringLiteral("gain")).toDouble(), -6) &&
                 !m.mc->model()->get(i, o, QStringLiteral("invert")).toBool() &&
-                gainField->property("text").toString() == QLatin1String("-6 dB"));
+                gainField->property("text").toString() == QLatin1String("-6"));
     m.cc->setRoute(i, o, false, 0, false);
     d.waitIdle();
 }
@@ -224,14 +240,15 @@ void outputRow(Matrix &m) {
     m.type(QStringLiteral("Matrix.delay.%1").arg(o), QStringLiteral("2.5"));
     d.check(QStringLiteral("qp6: DELAY keeps a typed 2.5 ms"), near(m.s()->output_delay_ms[o], 2.5));
     QQuickItem *delay = m.item(QStringLiteral("Matrix.delay.%1").arg(o));
-    d.check(QStringLiteral("qp6: the delay shows \"2.5 ms\""), delay && delay->property("text").toString() == QLatin1String("2.5 ms"));
+    // -- WP MX1 -- the footer shows the bare number, its unit in the row's label
+    d.check(QStringLiteral("qp6: the delay shows \"2.5\""), delay && delay->property("text").toString() == QLatin1String("2.5"));
     QString refused;
     QMetaObject::Connection c = QObject::connect(m.device, &DeviceModel::writeFailed, [&](const QString &what) { refused = what; });
     m.type(QStringLiteral("Matrix.delay.%1").arg(o), QString::number(m.cc->maxDelayMs() + 20));
     QObject::disconnect(c);
     d.check(QStringLiteral("qp6: a delay past the line is refused by the core"),
             refused == QStringLiteral("output delay %1").arg(o) && near(m.s()->output_delay_ms[o], 2.5));
-    d.check(QStringLiteral("qp6: and the field shows the delay kept"), delay->property("text").toString() == QLatin1String("2.5 ms"));
+    d.check(QStringLiteral("qp6: and the field shows the delay kept"), delay->property("text").toString() == QLatin1String("2.5"));
     m.wheel(delay, 1);
     d.check(QStringLiteral("qp6: a wheel notch moves 2.5 ms to the next whole ms"), near(m.s()->output_delay_ms[o], 3));
     m.wheel(delay, -1);
@@ -324,7 +341,11 @@ void quickRoutes(Matrix &m) {
 
     m.cc->setRoute(1, 2, true, -5, true);
     d.waitIdle();
+    // -- WP MX1 -- past four crosspoints Clear asks first
     m.click(QStringLiteral("Matrix.clear"));
+    QObject *clearAsk = m.obj(QStringLiteral("Matrix.clearQuestion"));
+    d.check(QStringLiteral("mx1: Clear asks before it disconnects more than four"), m.opened(clearAsk));
+    m.answer(clearAsk, "accept");
     bool none = true;
     for (int i = 0; i < inputs; ++i)
         for (int o = 0; o < outputs; ++o) none = none && !m.s()->matrix_routing[i][o];
@@ -366,6 +387,7 @@ void headerMenu(Matrix &m) {
                     m.device->channels()->get(m.device->channels()->rowOfChannel(ch), QStringLiteral("name")).toString());
     if (field) {
         field->setProperty("text", QStringLiteral("  Sub Left  "));
+        QMetaObject::invokeMethod(field, "textEdited"); // -- WP INTE -- (REVE C1) as typed: Enter writes only typed text
         QMetaObject::invokeMethod(field, "accepted");
     }
     d.waitIdle();

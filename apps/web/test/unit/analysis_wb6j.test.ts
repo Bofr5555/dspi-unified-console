@@ -21,7 +21,6 @@ import {
   smooth,
   tidyChoice,
 } from "../../src/screens/analysis/analyser";
-import { columnsFor as cardColumns, loadPerRow, perRowLabel, perRowSummary, savePerRow, tidyPerRow } from "../../src/screens/analysis/dashboard";
 import {
   FLAG_WALK,
   initialDraft,
@@ -113,7 +112,7 @@ test("WB6j: the Spectrum preferences are WB6i's dspi-web.prefs, checked; the cho
   assert.equal(p.fftOrder, 9);
   assert.equal(p.showPeakHold, false);
   assert.equal(p.graphOpacity, 1, "held to its range");
-  assert.deepEqual(tidyChoice({ bars: true, tap: 7, mask: -1 }), { bars: true, graph: false, tap: 0, mask: 3 });
+  assert.deepEqual(tidyChoice({ bars: true, tap: 7, mask: -1 }), { bars: true, graph: false, tap: 0, mask: 3, view: "curves" });
 });
 
 // ------------------------------------------------------------ signal generator
@@ -221,21 +220,6 @@ test("WB6j: the monitor keeps the newest lines, counts and copies them", () => {
   assert.equal(eventCount(1), "1 event");
   assert.equal(eventCount(3), "3 events");
   assert.match(copyText([line(7)]), /^\d\d:\d\d:\d\d\.007  line 7$/);
-});
-
-test("WB6j: cards per row: Auto or 1..3, kept, held to the cards there are", () => {
-  const st = new MemStore();
-  assert.equal(loadPerRow(st), 0);
-  savePerRow(st, 2);
-  assert.equal(loadPerRow(st), 2);
-  savePerRow(st, 9);
-  assert.equal(loadPerRow(st), 0);
-  assert.equal(tidyPerRow(3), 3);
-  assert.equal(cardColumns(3, 2), 2);
-  assert.equal(cardColumns(1, 4), 1);
-  assert.equal(perRowLabel(0), "Auto");
-  assert.equal(perRowLabel(1), "1 card per row");
-  assert.equal(perRowSummary(2), "Up to 2 cards per row.");
 });
 
 // -------------------------------------------------- on the real core (demo device)

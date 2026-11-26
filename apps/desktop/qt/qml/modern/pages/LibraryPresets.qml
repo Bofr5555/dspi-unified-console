@@ -6,6 +6,10 @@ import UConsole
 // -- WP LAY5b -- Library > Presets: every preset slot of the device, with what can
 // be done to it (the slot's menu, by its button or a right-click: ContextMenus)
 // and Recall. The active one says whether it has unsaved changes.
+// -- WP DL3a -- The slots as ListRows in the 760 px column at the page's left
+// (DESIGN-LANGUAGE §3, §9): number, name, a caption with the state; Recall,
+// Save and the menu show on hover and on the active row; a double click
+// recalls. (INTC: Save in the tab row; REVDFIX: not an accent button.)
 Item {
     id: page
     objectName: "LibraryPresets"
@@ -15,130 +19,123 @@ Item {
     readonly property bool writable: DeviceModel.connected && !DeviceModel.readOnly && !SidebarController.presetBusy
     function menu(slot, item, x, y) { ContextMenus.slot(slot, page.host ? page.host.dialogs : null, item, x, y) }
 
-    Text {
+    // -- INTC (DL3a fold) -- the page's one action in the tab row (PageHost.
+    // pageTools): Save the current settings in the active slot. The rows keep
+    // Recall, a quiet Save and the menu on hover.
+    // -- WP REVDFIX -- (REVD D6) a secondary button: the top bar's Save to
+    // Device is the view's one primary (DESIGN-LANGUAGE §7).
+    readonly property Component pageTools: Component {
+        AppButton {
+            objectName: "LibraryPresets.tools.save"
+            readonly property int slot: DeviceModel.presets.activeSlot
+            visible: DeviceModel.connected && slot >= 0
+            enabled: page.writable
+            iconName: "save"
+            //: %1 is the active preset slot's number
+            text: qsTr("Save to Preset %1").arg(slot + 1)
+            toolTip: qsTr("Save the current settings in this slot")
+            onClicked: SidebarController.savePreset()
+        }
+    }
+
+    EmptyState {
         objectName: "LibraryPresets.none"
-        anchors.centerIn: parent
+        anchors.fill: parent
         visible: !DeviceModel.connected
-        text: qsTr("No Device Connected")
-        font: Theme.fontTitle
-        color: Theme.textMuted
+        iconName: "unplug"
+        title: qsTr("No Device Connected")
+        text: qsTr("Presets live on the device. Open one to see its slots.")
     }
     ListView {
         id: list
         objectName: "LibraryPresets.list"
         visible: DeviceModel.connected
-        anchors.horizontalCenter: parent.horizontalCenter
-        width: Math.min(760, parent.width - 2 * Theme.spacingLarge)
+        x: Theme.spacing
+        width: Math.min(Theme.contentMaxWidth, parent.width - 2 * Theme.spacing)
         height: parent.height
-        topMargin: Theme.spacingLarge
-        bottomMargin: Theme.spacingLarge
-        spacing: 2
+        topMargin: Theme.spacing
+        bottomMargin: Theme.spacing
         clip: true
         boundsBehavior: Flickable.StopAtBounds
+        activeFocusOnTab: true
+        keyNavigationEnabled: true
+        currentIndex: -1
         model: DeviceModel.presets
         ScrollBar.vertical: AppScrollBar {}
         Accessible.role: Accessible.List
         Accessible.name: qsTr("Presets")
 
-        header: ColumnLayout {
+        header: Text {
+            objectName: "LibraryPresets.startup"
             width: list.width
-            spacing: Theme.spacingSmall
-            Text {
-                objectName: "LibraryPresets.startup"
-                Layout.fillWidth: true
-                textFormat: Text.PlainText
-                text: DeviceModel.presets.startupMode === 0
-                      //: %1 is a slot's number
-                      ? qsTr("At power-on the device loads preset %1.").arg(DeviceModel.presets.defaultSlot + 1)
-                      : qsTr("At power-on the device loads the preset it was last on.")
-                font: Theme.fontSmall
-                color: Theme.textMuted
-                wrapMode: Text.Wrap
-                bottomPadding: Theme.spacingSmall
-            }
+            textFormat: Text.PlainText
+            text: DeviceModel.presets.startupMode === 0
+                  //: %1 is a slot's number
+                  ? qsTr("At power-on the device loads preset %1.").arg(DeviceModel.presets.defaultSlot + 1)
+                  : qsTr("At power-on the device loads the preset it was last on.")
+            font: Theme.fontSmall
+            color: Theme.textMuted
+            wrapMode: Text.Wrap
+            leftPadding: Theme.spacingSmall
+            bottomPadding: Theme.spacing
         }
-        delegate: Rectangle {
+        delegate: ListRow {
             id: row
+            required property int index
             required property int slot
             required property string name
             required property bool occupied
             required property bool active
             readonly property bool startup: DeviceModel.presets.startupMode === 0 && DeviceModel.presets.defaultSlot === slot
-            readonly property string title: name.length ? name : occupied || active ? qsTr("Preset %1").arg(slot + 1) : qsTr("Empty")
+            readonly property string label: name.length ? name : occupied || active ? qsTr("Preset %1").arg(slot + 1) : qsTr("Empty")
             readonly property string note: [active ? (SidebarController.unsaved ? qsTr("Active, with unsaved changes") : qsTr("Active")) : "",
                                             startup ? qsTr("Startup") : ""].filter(t => t.length).join(" · ")
             objectName: "LibraryPresets.slot." + slot
             width: ListView.view.width
-            implicitHeight: 44
-            radius: Theme.radiusSmall
-            color: active ? Theme.selection : hover.hovered ? Theme.controlHover : Theme.panel
-            HoverHandler { id: hover }
-            TapHandler {
-                acceptedButtons: Qt.RightButton
-                onTapped: point => page.menu(row.slot, row, point.position.x, point.position.y)
+            rowIndex: index
+            title: label
+            titleMuted: !occupied && !active && !name.length   // -- INTC (DL3a fold) -- "Empty", quietly
+            subtitle: note
+            selected: active
+            iconName: startup ? "power" : ""
+            // The actions show on hover and on the active row; they stay
+            // enabled for the keyboard and for a click that comes first
+            // (INTC: ListRow's own fade, DL0 fold)
+            onClicked: list.currentIndex = index
+            onActivated: if (!active && page.writable) SidebarController.requestPresetSwitch(slot)
+            onMenuRequested: (x, y) => page.menu(row.slot, row, x, y)
+            leading: Text {
+                Layout.preferredWidth: 22
+                horizontalAlignment: Text.AlignRight
+                text: row.slot + 1
+                font: Theme.fontMono
+                color: Theme.textMuted
             }
-            Accessible.role: Accessible.ListItem
-            Accessible.name: (slot + 1) + ": " + title + (note.length ? ", " + note : "")
+            Accessible.name: (slot + 1) + ": " + label + (note.length ? ", " + note : "")
 
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: Theme.spacing
-                anchors.rightMargin: Theme.spacingSmall
-                spacing: Theme.spacing
-                Text {
-                    Layout.preferredWidth: 22
-                    horizontalAlignment: Text.AlignRight
-                    text: row.slot + 1
-                    font: Theme.fontMono
-                    color: Theme.textMuted
-                }
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 0
-                    Text {
-                        objectName: row.objectName + ".name"
-                        Layout.fillWidth: true
-                        textFormat: Text.PlainText
-                        text: row.title
-                        font: Theme.fontBody
-                        color: row.occupied || row.active ? Theme.text : Theme.textMuted
-                        elide: Text.ElideRight
-                    }
-                    Text {
-                        objectName: row.objectName + ".note"
-                        Layout.fillWidth: true
-                        visible: text.length > 0
-                        text: row.note
-                        font: Theme.fontSmall
-                        color: Theme.textMuted
-                        elide: Text.ElideRight
-                    }
-                }
-                AppButton {
-                    objectName: row.objectName + ".recall"
-                    visible: !row.active
-                    enabled: page.writable
-                    text: qsTr("Recall")
-                    Accessible.name: qsTr("Recall") + " " + (row.slot + 1) + ": " + row.title
-                    onClicked: SidebarController.requestPresetSwitch(row.slot)
-                }
-                AppButton {
-                    objectName: row.objectName + ".save"
-                    visible: row.active
-                    enabled: page.writable
-                    primary: SidebarController.unsaved
-                    text: qsTr("Save")
-                    toolTip: qsTr("Save the current settings in this slot")
-                    onClicked: SidebarController.savePreset()
-                }
-                IconButton {
-                    id: more
-                    objectName: row.objectName + ".menu"
-                    iconName: "chevron-down"
-                    toolTip: qsTr("More")
-                    Accessible.name: qsTr("More") + ", " + (row.slot + 1) + ": " + row.title
-                    onClicked: page.menu(row.slot, more, 0, more.height + 2)
-                }
+            AppButton {
+                objectName: row.objectName + ".recall"
+                visible: !row.active
+                enabled: page.writable
+                text: qsTr("Recall")
+                Accessible.name: qsTr("Recall") + " " + (row.slot + 1) + ": " + row.label
+                onClicked: SidebarController.requestPresetSwitch(row.slot)
+            }
+            AppButton {
+                objectName: row.objectName + ".save"
+                visible: row.active
+                enabled: page.writable
+                text: qsTr("Save")   // -- INTC -- quiet: the tab row's Save is the accent
+                toolTip: qsTr("Save the current settings in this slot")
+                onClicked: SidebarController.savePreset()
+            }
+            IconButton {
+                id: more
+                objectName: row.objectName + ".menu"
+                iconName: "chevron-down"
+                toolTip: qsTr("More")
+                Accessible.name: qsTr("More") + ", " + (row.slot + 1) + ": " + row.label
+                onClicked: page.menu(row.slot, more, 0, more.height + 2)
             }
         }
     }

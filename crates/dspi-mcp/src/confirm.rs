@@ -100,7 +100,10 @@ impl Confirmation {
     }
 
     /// As JSON, for the app's sheet and the agent: numbers and the server's
-    /// words only.
+    /// words only. -- WP FIN015 -- (REVF S8) two counting origins, on
+    /// purpose: `risks[].output` counts from 1, as the risk's words and the
+    /// agent do; `roles.rows[].output` is the wire output, from 0 (the app
+    /// shows it as Out N+1), as the app's own speaker rows are.
     pub fn to_json(&self) -> Value {
         json!({
             "confirmation_id": self.id,
@@ -123,6 +126,23 @@ impl Confirmation {
             // -- WP ADET1 -- the speaker detection's warning on the mechanism
             "warning": crate::grant::asks_detect(&self.risks)
                 .then_some(crate::tools::measure::DETECT_WARNING),
+            // -- WP ROLES -- speaker roles from the user's words: the table
+            // (`after`: the question's words after the table)
+            "roles": (self.tool == crate::tools::roles::SET_ROLES_NAME)
+                .then(|| crate::tools::roles::table_json(&self.args))
+                .flatten()
+                .map(|mut t| {
+                    let after = self
+                        .risks
+                        .iter()
+                        .find(|r| r.kind == crate::policy::RiskKind::SpeakerRoles)
+                        .and_then(|r| r.what.split_once('\n'))
+                        .map_or("", |(_, a)| a);
+                    if let Some(o) = t.as_object_mut() {
+                        o.insert("after".into(), json!(after));
+                    }
+                    t
+                }),
         })
     }
 }
