@@ -7,9 +7,12 @@ import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isEnabled
+import androidx.compose.ui.test.isPopup
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -80,6 +83,11 @@ class SpeakersPageWpUanTest {
     private fun textShown(text: String) =
         rule.onAllNodes(hasText(text, substring = true), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
 
+    // -- FIX016 --
+    private fun count(text: String) = rule.onAllNodes(hasText(text, substring = true), useUnmergedTree = true).fetchSemanticsNodes().size
+
+    private fun confirmEnabled() = rule.onAllNodes(hasTestTag(SPEAKERS_CONFIRM_TAG) and isEnabled()).fetchSemanticsNodes().isNotEmpty()
+
     private fun shoot(name: String) {
         if (dir.isNullOrEmpty()) return
         rule.mainClock.advanceTimeBy(400)
@@ -121,7 +129,11 @@ class SpeakersPageWpUanTest {
         }
         pumpUntil("writes") { bridge.writesAllowed.value }
         pumpUntil("rows") { rule.onAllNodes(hasTestTag(speakerRoleTag(0))).fetchSemanticsNodes().isNotEmpty() }
-        assertTrue(textShown(SpeakerWords.UNCONFIRMED))
+        // -- FIX016 -- (REVG R1) UB12's tuned demo opens with the example's roles, confirmed (woofers on
+        // Out 1-2, tweeters on Out 3-4): the page says so and Confirm has nothing to do
+        assertTrue(textShown(SpeakerWords.CONFIRMED))
+        assertTrue("Confirm is off with nothing changed", !confirmEnabled())
+        assertEquals("the example's role for Out 2", MeasureRole.LOW, kept(bridge)!!.outputs.first { it.output == 1 }.role)
         assertEquals(
             "a row per output",
             bridge.numOutputChannels,
@@ -129,11 +141,16 @@ class SpeakersPageWpUanTest {
                 rule.onAllNodes(hasTestTag(speakerRoleTag(o))).fetchSemanticsNodes().isNotEmpty()
             }
         )
-        // Out 2 is a tweeter: its row says its floor
+        val floor = "Its high-pass: at least 1000 Hz, 12 dB/octave"
+        assertEquals("the two tweeters say their floor", 2, count(floor))
+        // Out 2, a woofer in the example, made a tweeter: its row says its floor, and the change waits for Confirm
         rule.onNodeWithTag(speakerRoleTag(1)).performClick()
-        pumpUntil("menu") { textShown("Tweeter") }
-        rule.onNode(hasText("Tweeter") and hasClickAction()).performClick()
-        pumpUntil("floor") { textShown("Its high-pass: at least 1000 Hz, 12 dB/octave") }
+        val inMenu = hasText("Tweeter") and hasClickAction() and hasAnyAncestor(isPopup())
+        pumpUntil("menu") { rule.onAllNodes(inMenu).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNode(inMenu).performClick()
+        pumpUntil("floor") { count(floor) == 3 }
+        assertTrue("the change is not confirmed yet", textShown(SpeakerWords.UNCONFIRMED))
+        assertTrue("Confirm is on", confirmEnabled())
         shoot("uan-speakers-page-dark")
         rule.onNodeWithTag(SPEAKERS_CONFIRM_TAG).performClick()
         pumpUntil("confirmed") { textShown(SpeakerWords.CONFIRMED) }
