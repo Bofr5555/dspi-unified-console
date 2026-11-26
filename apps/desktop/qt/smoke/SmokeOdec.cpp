@@ -149,6 +149,11 @@ void odecSection(SmokeDriver &d) {
 
     // A confirmed speaker setup, so that the agent may measure
     DeviceModel *device = d.app().device;
+    // -- FIX016 -- (R1-QT) put back at the end: the volume, and no Measure window
+    // the agent's run opened (showfix 14 after it followed to that window, not
+    // to the main window's Measure)
+    const float volumeWas = device->state() ? device->state()->user_volume_db : -20.0f;
+    const bool measureWas = shell->shownWindows().contains(QStringLiteral("tools.measure"));
     device->write(QLatin1String("odec volume"), [](FfiCore *c) { return dspi_set_user_volume(c, -20.0f); });
     d.waitIdle();
     const QByteArray layoutJson = QJsonDocument(QJsonObject{
@@ -321,6 +326,8 @@ void odecSection(SmokeDriver &d) {
     ai->setAgentSplCapOn(capOn);
     ai->setPort(AiController::kDefaultPort);
     ai->revoke(ai->clients().value(0).toMap().value(QStringLiteral("id")).toDouble());
+    if (!measureWas) shell->closeWindow(QStringLiteral("tools.measure"));   // -- FIX016 --
+    device->write(QLatin1String("odec volume"), [volumeWas](FfiCore *c) { return dspi_set_user_volume(c, volumeWas); });   // -- FIX016 --
     d.switchLayout("classic");
     d.waitIdle();
     d.spin(200);
