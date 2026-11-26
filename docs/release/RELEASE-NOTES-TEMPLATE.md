@@ -2,7 +2,7 @@
 
 Release date: YYYY-MM-DD. One version for every client.
 
-<!-- What changed, per client, as in CHANGELOG-0.13.0.md. -->
+<!-- What changed, per client, as in CHANGELOG-0.16.0.md, with its "What was tested, and where" and "Known limits". -->
 
 ## Downloads
 
@@ -21,7 +21,7 @@ Release date: YYYY-MM-DD. One version for every client.
 | Web console | `uConsole-for-DSPi-VERSION-web.tar.gz` |
 
 The Windows files, the AppImage, the tar.gz and the `.dmg` check this project's releases for
-updates when that is switched on (Settings > Updates); the `.deb`, the `.rpm`
+updates when that is switched on (Settings › Updates); the `.deb`, the `.rpm`
 and the AUR package are updated by their package managers.
 
 Every file of this release is listed in `SHA256SUMS`, which is signed:

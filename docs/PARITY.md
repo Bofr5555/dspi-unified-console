@@ -14,7 +14,9 @@ Swift app reaches its devices through the core by default (USB and USB MIDI, DSP
 SW-M1, SW5, SW6, SW-M2, SW-M3; section 4's notes), so its "whenever a core is attached" cells hold for a plain launch; only the opt-out paths (`-CoreTransport NO`,
 `-CoreHub NO`) lack them. A stale copy of the first J table, left below J11 by a merge, was removed.
 **2026-11-20 (WP DOCS14, after round R1 at `2dcd5f41`):** K5's Qt cell (QTSENDER), J9's overlapped starts (ATOVL). The
-Swift app is deferred by the owner and not part of release 0.14.0; its cells say what `main` has. **†** marks a row
+Swift app is deferred by the owner and not part of releases 0.14.0 and 0.16.0; its cells say what `main` has.
+**2026-11-26, release 0.16.0:** not surveyed again. What 0.16.0 adds beyond the macOS console (the Modern layout,
+several devices, AI agents, the speaker setup, everyday use) is in [`FEATURES.md`](FEATURES.md), client by client. **†** marks a row
 that needs the DSPi fork firmware on the device ([Bofr5555/DSPi](https://github.com/Bofr5555/DSPi), branch
 `bofr-main`; the list: [`FEATURES.md`](FEATURES.md#firmware-stock-vs-fork)).
 

@@ -54,7 +54,7 @@ wire format V26, 190 vendor opcodes
 That pairing is what makes a bug report actionable: "wire V26" says more about
 what the app was talking to than an app version ever could.
 
-## Release archives and the source archive (WP CLEAN1)
+## Release archives and the source archive
 
 Every release publishes, beside its downloads, the source archive of the exact commit it
 was built from: `ci/release-source.sh VERSION dist` writes
