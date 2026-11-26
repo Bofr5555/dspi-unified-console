@@ -318,7 +318,7 @@ SettingsPage {
         Text {
             Layout.fillWidth: true
             visible: !LimitsController.pinSet
-            text: qsTr("No PIN is set: nothing is locked and nothing asks for one. Set a PIN to lock this console's settings for everyday use; volume, mute and presets stay open.")
+            text: qsTr("No PIN is set: nothing is locked and nothing asks for one. Set a PIN to lock this console's settings for everyday use; volume, mute, source and presets stay open.")   // -- FIX016 -- (LOCKSRC)
             font: Theme.fontBody
             color: Theme.text
             wrapMode: Text.Wrap
@@ -422,7 +422,7 @@ SettingsPage {
             objectName: "Installer.covers"
             visible: LimitsController.pinSet
             title: qsTr("Lock the settings")
-            caption: qsTr("When locked, only volume, mute and presets can be changed on this console.")
+            caption: qsTr("When locked, only volume, mute, source and presets can be changed on this console.")   // -- FIX016 -- (LOCKSRC)
             checked: LimitsController.covers
             enabled: page.canEdit
             onToggled: on => LimitsController.setCovers(on)

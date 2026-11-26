@@ -10,7 +10,7 @@
     "label": "Locked",
     "screens": ["front"],
     "settings": ["about", "installer_note"],
-    "writes": ["vol.master", "vol.user", "vol.mute", "out.mute", "preset.load"]
+    "writes": ["vol.master", "vol.user", "vol.mute", "out.mute", "preset.load", "in.source"]
   },
   "screens": [
     {"id": "front", "title": "Home", "modes": ["simple", "locked_user"], "firstIn": ["simple", "locked_user"]},

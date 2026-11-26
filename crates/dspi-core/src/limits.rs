@@ -1102,3 +1102,6 @@ mod tests_wp_p1cfix;
     clippy::indexing_slicing
 )]
 mod tests_wp_p1dkfix;
+// -- FIX016 --
+#[cfg(test)]
+mod tests_fix016_locksrc;

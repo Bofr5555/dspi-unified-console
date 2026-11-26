@@ -631,6 +631,7 @@ impl DspiCore {
     /// the link input (`alink_info`'s `alink_input`); the connection and
     /// transfer errors of every setter.
     pub fn set_input_source(&self, source: u8) -> Result<()> {
+        let _lock = crate::limits::LockScope::allow(); // -- FIX016 -- (LOCKSRC) allowed while locked
         // -- WP SW1 --
         self.ensure_probed();
         let mut inner = self.writing()?;

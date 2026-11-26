@@ -258,7 +258,7 @@ static void installerSection(SmokeDriver &d) {
     if (QQuickItem *page = item("InstallerPage")) page->setProperty("contentY", 0);
     shootBoth(d, w, QStringLiteral("installer-locked"));
 
-    // Only volume, mute and presets work; everything else is refused with its notice
+    // Only volume, mute, source and presets work; everything else is refused with its notice
     d.check("p1qt2: locked: master volume works",
             write(d, QStringLiteral("p1qt2 master"), [](FfiCore *c) { return dspi_set_master_volume(c, -20.0f); }));
     d.check("p1qt2: locked: mute works",

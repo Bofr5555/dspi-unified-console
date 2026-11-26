@@ -7,8 +7,8 @@ import UConsole
 // first page and the locked user's page (docs/UI-MODES.md §2). The device and its
 // connection, one big User volume with Mute, the source as segments, the presets
 // as a Recall list and the hub installation's health in one line; nothing else.
-// Nothing here is refused: under the installer's lock the source is words (the
-// lock lets volume, mute and preset loads through, nothing else), and the Master
+// Nothing here is refused: the installer's lock lets volume, mute, the source
+// (-- FIX016 -- LOCKSRC, one core rule) and preset loads through, and the Master
 // volume, Save and Copy are not on the page (the Installer's and Library's).
 Item {
     id: page
@@ -147,14 +147,15 @@ Item {
                         ToolSegments {
                             id: sources
                             objectName: "HomeSection.source"
-                            visible: SidebarController.sourceSupported && !page.locked && SidebarController.sources.length > 1
+                            // -- FIX016 -- (LOCKSRC) a working control under the lock too
+                            visible: SidebarController.sourceSupported && SidebarController.sources.length > 1
                             enabled: page.writable
                             label: qsTr("Source")
                             model: SidebarController.sources.map(s => s.title)
                             current: page.sourceIndex
                             onChosen: index => SidebarController.setSource(SidebarController.sources[index].value)
                         }
-                        // The lock refuses a source change: what plays, in words
+                        // One source only: what plays, in words
                         Text {
                             objectName: "HomeSection.sourceText"
                             property string shownName: text

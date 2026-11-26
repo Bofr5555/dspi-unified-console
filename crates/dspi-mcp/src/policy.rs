@@ -744,13 +744,13 @@ pub fn umbrella(verdict: Verdict) -> Verdict {
 
 /// The installer lock's refusal: what still passes
 /// (`dspi_core::limits::lock::LOCKED_USER_WRITES`, the locked-user banner's
-/// "only volume, mute and presets"), where the user unlocks, and that the PIN
+/// "only volume, mute, source and presets"), where the user unlocks, and that the PIN
 /// is never the agent's. -- WP FUNC2c -- (FSTORY S7: 0 of 3 agents offered the
 /// mute the lock lets through when the text said only "ask the user to
-/// unlock".)
+/// unlock".) -- FIX016 -- (LOCKSRC) and the input source.
 pub const LOCKED_TEXT: &str = "the installer lock is on: while it is locked only the volume, \
-     the mutes and a preset load pass (dspi_set_volume, dspi_set_user_mute, dspi_set_mute, \
-     dspi_preset_load). For anything else ask the user to unlock it in the app (Settings › \
+     the mutes, the input source and a preset load pass (dspi_set_volume, dspi_set_user_mute, \
+     dspi_set_mute, dspi_set_source, dspi_preset_load). For anything else ask the user to unlock it in the app (Settings › \
      Installer); no tool unlocks it, and an agent never takes or uses the PIN. Nothing was \
      changed.";
 
@@ -764,9 +764,9 @@ pub fn lock_json(lock: &dspi_core::LockState) -> Value {
     json!({
         "pin_set": lock.pin_set,
         "locked": true,
-        "while_locked": "only the volume, the mutes and a preset load pass (dspi_set_volume, \
-                         dspi_set_user_mute, dspi_set_mute, dspi_preset_load); the user unlocks \
-                         in the app (Settings › Installer)",
+        "while_locked": "only the volume, the mutes, the input source and a preset load pass \
+                         (dspi_set_volume, dspi_set_user_mute, dspi_set_mute, dspi_set_source, \
+                         dspi_preset_load); the user unlocks in the app (Settings › Installer)",
     })
 }
 

@@ -67,7 +67,7 @@ class LimitsController : public QObject {
     // heldBy, ... }
     Q_PROPERTY(QVariantMap lock READ lock NOTIFY lockChanged)
     Q_PROPERTY(bool pinSet READ pinSet NOTIFY lockChanged)
-    // The locked-user state: only volume, mute and presets may change
+    // The locked-user state: only volume, mute, source and presets may change
     Q_PROPERTY(bool locked READ locked NOTIFY lockChanged)
     // The Installer page may change things without a prompt
     Q_PROPERTY(bool installerOpen READ installerOpen NOTIFY lockChanged)

@@ -47,7 +47,7 @@ Rectangle {
             model: SidebarController.sources
             textRole: "title"
             valueRole: "value"
-            enabled: dock.writable && !LimitsController.locked   // -- WP UB2 --
+            enabled: dock.writable   // -- WP UB2 -- -- FIX016 -- (LOCKSRC) the lock lets the source through
             // The device's, not the click's; again when the list changes
             function follow() { currentIndex = Qt.binding(() => indexOfValue(SidebarController.source)) }
             Component.onCompleted: follow()

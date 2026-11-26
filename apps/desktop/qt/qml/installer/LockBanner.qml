@@ -4,7 +4,7 @@ import QtQuick.Window
 import UConsole
 
 // -- WP P1QT2 -- The locked-user view (P1LK, docs/UI-MODES.md): while the
-// installer's lock holds, only volume, mute and presets change; every other
+// installer's lock holds, only volume, mute, source and presets change; every other
 // write is refused by the core with its notice. The banner says so, with the
 // installer's note and contact, and offers the one unlock prompt. With no PIN
 // set it never shows.

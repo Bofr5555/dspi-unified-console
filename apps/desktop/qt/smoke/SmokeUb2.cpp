@@ -5,7 +5,7 @@
 //   User volume that writes, Mute, the source as segments, the stored presets
 //   as a Recall list), the dock without Master and Bypass EQ; Window › Mode…
 //   is offered again. The installer's lock (PIN, covers, Lock Now) opens Home
-//   in Advanced too: the source is words there, Save and undo are not in the top
+//   in Advanced too: the source works there (-- FIX016 -- LOCKSRC), Save and undo are not in the top
 //   bar, and another page (Equaliser › PEQ) is read-only: its controls off, its
 //   scroll on, its tools off, one notice that says why. Dark and light pictures
 //   of each. Unlocked and back in Advanced, all is as before.
@@ -160,13 +160,15 @@ void homeSection(SmokeDriver &d) {
     d.spin(300);
     d.check(QStringLiteral("ub2: the lock opens on Home (%1)").arg(m.where()), m.where() == QLatin1String("overview/home"));
     home = shownItem(root, QStringLiteral("HomeSection"));
-    d.check(QStringLiteral("ub2: locked: the source in words, no segments"), home && shownItem(home, QStringLiteral("HomeSection.sourceText"))
-            && !shownItem(home, QStringLiteral("HomeSection.source")));
+    // -- FIX016 -- (LOCKSRC) the lock lets the source through: segments, as unlocked
+    d.check(QStringLiteral("ub2: locked: the source as segments, no words"), home && shownItem(home, QStringLiteral("HomeSection.source"))
+            && !shownItem(home, QStringLiteral("HomeSection.sourceText")));
     d.check(QStringLiteral("ub2: locked: no Save, no undo, no redo in the top bar"),
             !shownItem(root, QStringLiteral("TopBar.save")) && !shownItem(root, QStringLiteral("TopBar.undo")) && !shownItem(root, QStringLiteral("TopBar.redo")));
-    d.check(QStringLiteral("ub2: locked: the dock has no Master, no Bypass EQ; the source is off"),
+    // -- FIX016 -- (LOCKSRC) the dock's source stays on: the lock lets it through
+    d.check(QStringLiteral("ub2: locked: the dock has no Master, no Bypass EQ; the source is on"),
             !shownItem(root, QStringLiteral("Dock.mode")) && !shownItem(root, QStringLiteral("Dock.bypass"))
-                && (!shownItem(root, QStringLiteral("Dock.source")) || !shownItem(root, QStringLiteral("Dock.source"))->isEnabled()));
+                && (!shownItem(root, QStringLiteral("Dock.source")) || shownItem(root, QStringLiteral("Dock.source"))->isEnabled()));
     d.check(QStringLiteral("ub2: locked: Home's volume and presets are on"), home && shownItem(home, QStringLiteral("HomeSection.volume"))
             && shownItem(home, QStringLiteral("HomeSection.volume"))->isEnabled());
     d.check(QStringLiteral("ub2: Home says nothing about read-only"), !shownItem(root, QStringLiteral("ModernShell.lockRead")));
