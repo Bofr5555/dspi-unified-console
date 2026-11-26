@@ -4,8 +4,10 @@
 // bar and the screens share it. Everything that decides is the core's (P1SN, P1AB, P1DF, P1SA,
 // P1OF): the desk only holds the documents the page has, calls the core and keeps the answers.
 //
-// The web has no file system (OD-P1b): a snapshot is a `.dspipreset` document the page
-// downloads, and one the user opens from a file is held for this visit. A recall over DSPi
+// The web has no file system (OD-P1b): a snapshot is a `.dspipreset` document; Export… downloads
+// one. -- WP UB14 -- (B14, D14) The held ones, captured or opened from a file, are kept in the
+// browser per DSPi serial (`store.ts`), so a reload finds them again; where the browser keeps
+// nothing they last for this visit, and `kept` says which (the page says so). A recall over DSPi
 // Link to a hub with the guard is a guarded apply (OD-P1g, p1cfix): `applyGuardDefault` says
 // so, and then the plain recall goes through `applyGuardedSnapshot`; on USB the rollback is the
 // user's choice. While a guard waits, the A/B calls are refused by the core: the toggle is off
@@ -26,10 +28,15 @@ import type { HubSnapshotRecallRecord } from "../../core/hub-settings-protocol";
 import type { Session } from "../../ui/session";
 // -- WP WB6K -- the document's input pair-link mask, both ways
 import { inputLinks } from "../inputs/model";
+import { browserSnapshotStore, newUid, type KeptDoc, type SnapshotStore } from "./store"; // -- WP UB14 --
 
-/** A document the page holds for this visit: captured here, or opened from a file. */
+/** A document the page holds: captured here, or opened from a file (-- WP UB14 -- kept in the browser). */
 export interface HeldDoc {
   id: number;
+  /** -- WP UB14 -- the kept copy's id (stable across visits and tabs). */
+  uid: string;
+  /** -- WP UB14 -- the DSPi serial it is kept under, "" when it is held for this visit only. */
+  keptFor: string;
   name: string;
   note: string;
   /** `meta.kind`: `snapshot`, `preset`, `template`. */
@@ -70,6 +77,8 @@ export interface DeskState {
   waitingText: string;
   /** -- WP P1WB2 -- beside the countdown when the hub runs the guard too: the core's row `guard.hub_backstop`. */
   backstopText: string;
+  /** -- WP UB14 -- where the held snapshots are: kept in this browser, or only until the page closes. */
+  kept: "browser" | "page";
 }
 
 /** The rollback's default, seconds (OD-P1g). */
@@ -173,6 +182,7 @@ export class SnapshotDesk {
     rollback: false, // -- WP WEB7 --
     waitingText: WAITING_FALLBACK,
     backstopText: BACKSTOP_FALLBACK, // -- WP P1WB2 --
+    kept: "page", // -- WP UB14 --
   };
   private readonly listeners = new Set<() => void>();
   private next = 1;
@@ -183,11 +193,19 @@ export class SnapshotDesk {
   private wasOpen = false;
   // -- WP P5FOLLOW -- the core's events: a guard the auto-tune started
   private unsubscribe: (() => void) | undefined;
+  // -- WP UB14 -- the DSPi whose kept list is shown, its read, and whether the store refused once
+  private keptSerial: string | null = null;
+  private loading: Promise<void> = Promise.resolve();
+  private loads = 0;
+  private refused = false;
 
   constructor(
     readonly session: Session,
     private readonly pollMs = GUARD_POLL_MS,
-  ) {}
+    private readonly store: SnapshotStore = browserSnapshotStore(), // -- WP UB14 --
+  ) {
+    this.state.kept = store.persistent ? "browser" : "page"; // -- WP UB14 -- until a DSPi's list says otherwise
+  }
 
   /** Whether this session may write (a viewer or read-only firmware may not). */
   get readOnly(): string {
@@ -204,8 +222,10 @@ export class SnapshotDesk {
         const open = this.session.state.status === "open";
         if (open && !this.wasOpen) void this.reread();
         this.wasOpen = open;
+        this.follow(); // -- WP UB14 --
       });
     }
+    this.follow(); // -- WP UB14 --
     // -- WP P5FOLLOW -- (review P5-E) a tune's guard is the bar's too: adopted from the Worker's
     // tune events, its countdown shown; Keep stays the core's gated applyConfirm.
     const sub = (core as { subscribe?: (fn: (e: unknown) => void) => () => void }).subscribe;
@@ -313,18 +333,73 @@ export class SnapshotDesk {
 
   // ---------------------------------------------------------------- documents
 
-  private hold(text: string, fileName: string, origin: HeldDoc["origin"]): HeldDoc {
-    const m = docMeta(text, fileName);
-    const doc: HeldDoc = { id: this.next++, ...m, fileName: fileName || fileNameFor(m.name), text, origin };
+  // -- WP UB14 --
+  /** The serial of the DSPi this session has open (or a hub's chosen one), "" when none (an open file). */
+  private serialNow(): string {
+    return this.session.state?.snapshot?.device.serial || this.session.deviceId || "";
+  }
+
+  /** The session's DSPi changed (or was first known): its kept snapshots read. */
+  private follow(): void {
+    const serial = this.serialNow();
+    if (serial === this.keptSerial) return;
+    this.keptSerial = serial;
+    this.loading = this.load(serial);
+  }
+
+  /** Done when the current DSPi's kept snapshots are read (the tests wait for it). */
+  loaded(): Promise<void> {
+    return this.loading;
+  }
+
+  private keptWord(serial: string): DeskState["kept"] {
+    return serial && this.store.persistent && !this.refused ? "browser" : "page";
+  }
+
+  /** The store refused: what is held stays for this visit, and the page says so. */
+  private notKept(): void {
+    this.refused = true;
+    this.set({ kept: "page" });
+  }
+
+  /**
+   * The list for `serial`: what is kept for it, then what this view holds that is kept nowhere (or
+   * kept for it meanwhile). Another DSPi's kept snapshots leave the view; they stay in the store.
+   */
+  private async load(serial: string): Promise<void> {
+    const seq = ++this.loads;
+    const kept = serial ? await this.store.list(serial).catch(() => (this.notKept(), [] as KeptDoc[])) : [];
+    if (!this.alive || seq !== this.loads) return;
+    const uids = new Set(kept.map((k) => k.uid));
+    const rest = this.state.docs.filter((d) => d.keptFor === "" || (d.keptFor === serial && !uids.has(d.uid)));
+    const docs = kept.map((k) => this.heldOf(k, serial));
+    this.set({ docs: [...docs, ...rest], kept: this.keptWord(serial) });
+  }
+
+  private heldOf(k: KeptDoc, keptFor: string): HeldDoc {
+    return { id: this.next++, uid: k.uid, keptFor, ...docMeta(k.text, k.fileName), fileName: k.fileName, text: k.text, origin: k.origin };
+  }
+
+  /** Held, and kept for the session's DSPi (a refusal keeps it for this visit, said by `kept`). */
+  private async hold(text: string, fileName: string, origin: HeldDoc["origin"]): Promise<HeldDoc> {
+    const serial = this.keptWord(this.keptSerial ?? "") === "browser" ? (this.keptSerial ?? "") : "";
+    const kept: KeptDoc = { uid: newUid(), fileName: fileName || fileNameFor(docMeta(text, fileName).name), text, origin };
+    const doc = this.heldOf(kept, serial);
     this.set({ docs: [...this.state.docs, doc] });
-    return doc;
+    if (serial) {
+      await this.store.add(serial, kept).catch(() => {
+        this.notKept();
+        this.set({ docs: this.state.docs.map((d) => (d.uid === doc.uid ? { ...d, keptFor: "" } : d)) });
+      });
+    }
+    return this.doc(doc.id) ?? doc;
   }
 
   /** The device as a snapshot document: held here, and the text for the download. */
   capture(name: string, note: string): Promise<HeldDoc | null> {
     return this.run("Capture", async () => {
       const { text } = await this.session.core.call("snapshotCapture", { name, note });
-      const doc = this.hold(text, "", "captured");
+      const doc = await this.hold(text, "", "captured");
       this.set({ outcome: null });
       return doc;
     });
@@ -335,12 +410,19 @@ export class SnapshotDesk {
     return this.run("Import", async () => { // -- WP WEB7 -- Qt's Import…
       await this.session.core.call("configDiff", { before: text, after: text });
       this.set({ outcome: null });
-      return this.hold(text, fileName, "file");
+      return await this.hold(text, fileName, "file");
     });
   }
 
-  remove(id: number): void {
+  /** Let a held snapshot go, and its kept copy (-- WP UB14 --: for good). */
+  async remove(id: number): Promise<void> {
+    const doc = this.doc(id);
     this.set({ docs: this.state.docs.filter((d) => d.id !== id) });
+    if (!doc?.keptFor) return;
+    await this.store.remove(doc.keptFor, doc.uid).catch((e: unknown) => {
+      // Still kept: back in the list, and why.
+      this.set({ docs: [...this.state.docs, doc], outcome: { title: "Delete: not done", lines: [message(e)], notes: [], tone: "error" } });
+    });
   }
 
   doc(id: number): HeldDoc | undefined {
