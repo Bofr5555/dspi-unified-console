@@ -29,6 +29,8 @@ pub mod output;
 pub mod overview;
 pub mod panel;
 pub mod presets;
+// -- WP UB11 --
+pub mod snapshots;
 pub mod psybass;
 pub mod signals;
 pub mod spectrum;
@@ -55,6 +57,7 @@ pub use input::InputPage;
 pub use leveller::LevellerPanel;
 pub use linkwitz::LinkwitzPanel;
 pub use loudness::LoudnessPanel;
+pub use snapshots::SnapshotsPanel; // -- WP UB11 --
 pub use matrix::MatrixPanel;
 pub use monitor::MonitorPanel;
 pub use output::OutputPage;

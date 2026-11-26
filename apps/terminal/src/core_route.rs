@@ -734,6 +734,19 @@ pub(crate) fn on_interface_core<T>(f: impl FnOnce() -> T) -> Option<T> {
     Some(out)
 }
 
+// -- WP UB11 --
+/// The interface's core as it is now (a device switch or a reconnect opens a
+/// new one): its serial, and whether it is a DSPi Link session. `None` with
+/// none open.
+pub(crate) fn interface_core() -> Option<(Arc<DspiCore>, bool)> {
+    INTERFACE
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .as_ref()
+        .and_then(Weak::upgrade)
+        .map(|h| (Arc::clone(&h.core), h.caps.kind == TransportKind::Link))
+}
+
 /// [`session_on`] for the interface: the whole state read, the writes
 /// routed, every dangerous one already confirmed by its dialog.
 pub(crate) fn connected_on(opened: &OpenedCore) -> Result<Connected, OpenError> {

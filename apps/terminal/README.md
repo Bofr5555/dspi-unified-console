@@ -86,7 +86,8 @@ mnemonics (its Shift-Cmd-M is `M` here):
 | `G` `A` | Signal Generator, Spectrum Analyser |
 | `T` `I` | Stats for Nerbs, Interrupt Monitor |
 | `B` | AutoEQ |
-| `,` | Settings |
+| `N` | Snapshots: save the device as it is, Recall, and A/B (the device now against a snapshot: `a` starts it, `Space` switches, `k` keeps the side it is on). Over DSPi Link a recall counts down: `k` keeps it, `r` puts the settings back |
+| `,` | Settings (Settings › Speakers: which output drives what, the roles the measurement and its safety checks take; `n` names a speaker, `g` sets a group, Confirm keeps it) |
 
 Everywhere:
 
@@ -99,7 +100,7 @@ Everywhere:
 | `Space` | Toggle: a bypass, a feature in the quick strip, mute on the volume row |
 | `;` | Page commands: a small grammar scoped to the current page, with live hints (`1 2 > 3` routes on the matrix, `3 peak 1k -2` sets a band, `gain -3` trims an output) |
 | `Ctrl-P` | Search: words find places, tools, actions, verbs and parameters ("crossover", "mute", "low pass", "snapshot"); `Enter` goes there, `Tab` puts a command on the `:` line |
-| `:` | Command line, the shell's grammar (numbers take `k`: `1k`); `:help` is `?`. `snapshot`, `ab`, `diff`, `lock`, `limits`, `status` and `measure docs`, `show`, `export` run here on this device, with the terminal handed back while they run |
+| `:` | Command line, the shell's grammar (numbers take `k`: `1k`); `:help` is `?`. `snapshot`, `ab`, `diff`, `lock`, `limits`, `status` and `measure docs`, `show`, `export` run here on this device, with the terminal handed back while they run; `:snapshot recall NAME` and `:ab NAME` run in the interface and open the Snapshots panel (`:snapshot` and `:ab` alone open it) |
 | `Ctrl-S` | Commit Parameters to the active preset |
 | `Ctrl-Z` `Ctrl-Y` | Undo, redo |
 | `= g p . + - h l` | Graph height, pop-out, phase, linked partner, zoom, cursor |

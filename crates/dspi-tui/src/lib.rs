@@ -5,6 +5,8 @@ pub mod actions;
 pub mod autoeq_fetch;
 pub mod curves;
 pub mod graph;
+// -- WP UB11 -- the core's snapshots, A/B and speaker layout, from the embedder
+pub mod host;
 pub mod live;
 pub mod perf;
 // -- WP UB11 -- the plain line mode's sentences (UXP B11)

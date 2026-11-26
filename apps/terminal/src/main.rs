@@ -1360,6 +1360,8 @@ fn run_tui_with(
         live.set_connection(target, ext);
         // -- WP UTM -- the shell's verbs on the `:` line, on this core
         live.set_shell_verbs(std::rc::Rc::new(shell_verb));
+        // -- WP UB11 -- the Snapshots panel and Settings › Speakers, on this core
+        live.set_host(std::rc::Rc::new(pro::host::CoreHost::interface()));
     }
     live.set_protocol(protocol); // -- WP PGTM --
     if let Some(file) = document {

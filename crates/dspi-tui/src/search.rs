@@ -179,17 +179,18 @@ fn places() -> Vec<Hit> {
         .also("devices switch picker usb serial"),
         Hit::new("Help", "the keys here and everywhere (?)", Action::Help, Rank::Place)
             .also("keys shortcuts keyboard"),
+        // -- WP UB11 -- the panel (UXP B11)
         Hit::new(
             "Snapshots",
-            "save, list, recall (:snapshot)",
-            Action::Complete("snapshot ".into()),
+            "save, recall, A/B (N)",
+            ev(ShellEvent::OpenTool(Tool::Snapshots)),
             Rank::Place,
         )
         .also("snapshot capture recall compare before"),
         Hit::new(
             "A/B",
-            "compare two snapshots (:ab)",
-            Action::Complete("ab ".into()),
+            "the device now against a snapshot (N, then a)",
+            ev(ShellEvent::OpenTool(Tool::Snapshots)),
             Rank::Place,
         )
         .also("ab compare snapshot"),

@@ -30,6 +30,8 @@
 pub(crate) mod autoeq;
 pub(crate) mod installer;
 pub(crate) mod snapshots;
+// -- WP UB11 -- the interface's Snapshots panel and Settings › Speakers on the core
+pub(crate) mod host;
 
 use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
@@ -57,6 +59,9 @@ pub(crate) const GUARD_MAX_S: u32 = 300;
 pub(crate) struct Stores {
     pub snapshots: Option<PathBuf>,
     pub limits: Option<PathBuf>,
+    // -- WP UB11 -- for Settings › Speakers (`uconsole measure` names the
+    // same folder beside its documents)
+    pub speakers: Option<PathBuf>,
 }
 
 impl Stores {
@@ -72,6 +77,7 @@ impl Stores {
         Self {
             snapshots: Some(dir.join("snapshots")),
             limits: Some(dir.join("limits")),
+            speakers: Some(dir.join("speaker-layouts")), // -- WP UB11 --
         }
     }
 }
@@ -100,6 +106,12 @@ pub(crate) fn prepare(stores: &Stores) -> Result<Arc<DspiCore>, u8> {
     }
     if let Some(dir) = name(&stores.limits) {
         core.limits_set_dir(dir).map_err(|e| fail(&e))?;
+    }
+    // -- WP UB11 -- a folder that cannot be named keeps the layout in memory
+    if let Some(dir) = name(&stores.speakers)
+        && let Err(e) = core.speaker_layout_set_dir(dir)
+    {
+        log::warn!("the speaker layouts' folder: {e}");
     }
     Ok(core)
 }
