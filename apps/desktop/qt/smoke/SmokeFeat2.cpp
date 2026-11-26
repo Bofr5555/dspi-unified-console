@@ -138,6 +138,9 @@ void feat2Section(SmokeDriver &d) {
         ai->setConfirmMode(mode);
         ai->setPort(AiController::kDefaultPort);
         for (const QVariant &c : ai->clients()) ai->revoke(c.toMap().value(QStringLiteral("id")).toDouble());
+        // -- FIX016 -- (R1-QT) the revoke answers on the AI thread: no agent left
+        // paired for the next section (mcp4-ai's "no agent yet" after it in a shard)
+        d.waitFor(5000, [&] { return ai->clients().isEmpty(); });
         for (DeviceSession *s : r->sessions())
             if (s != main) r->close(s->id());
         d.waitFor(15000, [&] { return r->sessions().size() == 1; });
