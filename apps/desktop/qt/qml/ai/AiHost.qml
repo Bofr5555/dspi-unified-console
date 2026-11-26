@@ -24,9 +24,6 @@ Item {
     function clock(seconds) {
         return Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0")
     }
-    function timeLeft(seconds) {
-        return qsTr("Time left: %1").arg(clock(seconds))
-    }
     // -- WP UAG -- (UXP A6) the rows of a question: the whole call (the asked ones marked), else the risks
     readonly property var rows: !front ? []
         : front.batch && front.batch.length ? front.batch
@@ -50,7 +47,7 @@ Item {
         SheetText {
             objectName: "AiPairingSheet.name"
             //: %1 is the AI agent's own name, %2 the app's name
-            text: qsTr("“%1” wants to control your DSPi devices through %2.").arg(host.pairing.name || "").arg(AppIdentity.displayName)
+            text: qsTr("“%1” on this computer wants to control your DSPi devices through %2.").arg(host.pairing.name || "").arg(AppIdentity.displayName)   // -- WP UAG --
         }
         Text {
             objectName: "AiPairingSheet.code"
@@ -64,13 +61,17 @@ Item {
             Accessible.name: qsTr("Pairing code")
             Accessible.description: text
         }
+        // -- WP UAG -- (UXP A9) where the code shows: the relay puts it in the agent's chat and its log
         SheetText {
-            text: qsTr("Allow it only if you have just connected an agent on this computer. Its log shows the same code.")
+            objectName: "AiPairingSheet.where"
+            text: qsTr("Allow it only if you have just added an agent on this computer. The agent's chat or its log shows the same code.")
         }
         SheetText {
+            objectName: "AiPairingSheet.left"
             font: Theme.fontSmall
             color: Theme.textMuted
-            text: host.timeLeft(host.pairing.secondsLeft || 0)
+            //: %1 is the time left ("1:59")
+            text: qsTr("If you don't answer within %1, the agent is not added.").arg(host.clock(host.pairing.secondsLeft || 0))
         }
     }
 

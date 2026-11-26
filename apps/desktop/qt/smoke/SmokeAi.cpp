@@ -174,6 +174,15 @@ void aiSection(SmokeDriver &d) {
     d.check("mcp4: Copy copies it", QGuiApplication::clipboard()->text() == ai->desktopConfig());
     d.check("mcp4: another computer's way is only a link", ai->otherComputerUrl().endsWith(QLatin1String("/docs/mcp-ssh-forwarding.md")));
     d.grab(w, QStringLiteral("settings-ai.png"));
+    // -- WP UAG -- (UXP A9) with no agent paired, Connect an Agent is right under the switch
+    {
+        QQuickItem *connect = item("AiAgents.connect");
+        QQuickItem *permissions = item("AiAgents.permissions");
+        d.check("uag: no agent yet: Connect an Agent comes before the settings", ai->clients().isEmpty() && connect && permissions
+                && connect->mapToScene(QPointF()).y() < permissions->mapToScene(QPointF()).y());
+        QQuickItem *hostAsks = item("AiAgents.hostAsks");
+        d.check("uag: it says the agent app may ask too", hostAsks && hostAsks->property("text").toString().contains(QLatin1String("this app still asks you")));
+    }
 
     QObject *question = item("AiAgentsPage")->property("enableDialog").value<QObject *>();
     QQuickItem *allow = item("AiAgents.allow");
@@ -229,6 +238,11 @@ void aiSection(SmokeDriver &d) {
     d.check("mcp4: a click in the first moment answers nothing", !answerAtOnce && opened(pairing));
     d.waitFor(3000, [&] { return pairing->property("armed").toBool(); });
     d.grab(main, QStringLiteral("ai-pairing.png"));
+    // -- WP UAG -- (UXP A9) where the person checks the code
+    d.check("uag: the pairing sheet says where the code shows", [&] {
+        QObject *where = d.object(QStringLiteral("AiPairingSheet.where"));
+        return where && where->property("text").toString().contains(QLatin1String("The agent's chat or its log shows the same code"));
+    }());
     d.check("mcp4: Deny", click(overlay("AiPairingSheet.deny")) && d.waitFor(2000, [&] { return !opened(pairing); }));
     const auto waitFor = [&](const std::unique_ptr<Exchange> &request) {
         auto e = std::make_unique<Exchange>(port, "/pair/wait", QByteArray(),
@@ -244,6 +258,12 @@ void aiSection(SmokeDriver &d) {
     d.check("mcp4: the allowed agent gets its token, and is listed", agent.token.startsWith("dspi-mcp-")
             && d.waitFor(3000, [&] { return ai->clients().size() == 1; })
             && ai->clients().first().toMap().value(QStringLiteral("name")) == QLatin1String("Fake agent"));
+    // -- WP UAG -- (UXP A9) and Connect an Agent moves down, after the settings
+    d.check("uag: once an agent is paired, Connect an Agent comes after the settings", d.waitFor(3000, [&] {
+        QQuickItem *connect = item("AiAgents.connect");
+        QQuickItem *permissions = item("AiAgents.permissions");
+        return connect && permissions && connect->mapToScene(QPointF()).y() > permissions->mapToScene(QPointF()).y();
+    }));
 
     // ---- A change made at once, and undone -----------------------------------------------
     setGain(-10);
