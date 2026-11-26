@@ -175,6 +175,24 @@ export function alarmSummary(list: readonly HubAlarmRecord[]): { raised: number;
   return { raised: raised.length, critical: raised.some((a) => a.severity === "critical") };
 }
 
+// -- WP UB6 -- (UXP B6)
+/** The Fleet's count: the DSPis online and offline, and the alarms still to acknowledge (one critical among them). */
+export function fleetSummary(devices: readonly HubDeviceRecord[], alarms: readonly HubAlarmRecord[]): { online: number; offline: number; raised: number; critical: boolean } {
+  const online = devices.filter((d) => d.online).length;
+  const s = alarmSummary(alarms.filter((a) => a.source !== "alink"));
+  return { online, offline: devices.length - online, raised: s.raised, critical: s.critical };
+}
+
+/** The alarms that are on about device `serial` (the audio link's are the System view's). */
+export function deviceAlarms(alarms: readonly HubAlarmRecord[], serial: string): HubAlarmRecord[] {
+  return alarms.filter((a) => alarmOn(a) && a.source !== "alink" && a.serial === serial);
+}
+
+/** "2 alarms", "1 alarm"; "" for none. */
+export function alarmCountText(n: number): string {
+  return n ? `${n} ${n === 1 ? "alarm" : "alarms"}` : "";
+}
+
 /** The health panel's key for a hub alarm. */
 export function alarmKey(a: HubAlarmRecord): string {
   return `hub:${a.id}`;

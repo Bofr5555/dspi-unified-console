@@ -6,8 +6,8 @@ import { useEffect, useState } from "preact/hooks";
 import type { HubAlarmRuleRecord } from "../../core/hub-settings-protocol";
 import { noticeRow } from "../../ui/texts";
 import { failure } from "../installer/HubAdmin";
-import { alarmLabel, numberOf, ruleFields, withRule } from "./model";
-import { Done, Problem, type SectionProps } from "./parts";
+import { alarmLabel, numberOf, ruleChanges, ruleFields, withRule } from "./model";
+import { Done, Problem, useDraft, type SectionProps } from "./parts";
 
 // -- WP P3WRO -- (review p3c N3) the rules the hub keeps on whatever is sent: `alarm.rules.set`
 // cannot turn `rollout_failed` off (hub-api.md section 21), so its switch shows it on and fixed.
@@ -16,13 +16,18 @@ import { ALWAYS_ON_ALARMS as ALWAYS_ON } from "../hub/rollout-model";
 export function AlarmRules(props: SectionProps) {
   const { session, edit } = props;
   const [rules, setRules] = useState<HubAlarmRuleRecord[] | null>(null);
+  const [saved, setSaved] = useState<HubAlarmRuleRecord[] | null>(null); // -- WP UB6 -- the hub's copy, for the page's unsaved bar
   const [problem, setProblem] = useState("");
   const [done, setDone] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     let live = true;
     void session.core.call("hubAlarmRulesGet", undefined).then(
-      (r) => live && setRules(r),
+      (r) => {
+        if (!live) return;
+        setRules(r);
+        setSaved(r);
+      },
       (e: unknown) => live && setProblem(failure(e)),
     );
     return () => {
@@ -33,19 +38,28 @@ export function AlarmRules(props: SectionProps) {
     setRules((r) => (r ? withRule(r, code, patch) : r));
     setDone("");
   };
-  const save = async () => {
-    if (!rules) return;
+  const save = async (): Promise<boolean> => {
+    if (!rules) return true;
     setBusy(true);
     try {
-      setRules(await session.core.call("hubAlarmRulesSet", { rules }));
+      const now = await session.core.call("hubAlarmRulesSet", { rules });
+      setRules(now);
+      setSaved(now);
       setProblem("");
       setDone("The hub's alarm rules are saved.");
+      return true;
     } catch (e) {
       setProblem(failure(e));
+      return false;
     } finally {
       setBusy(false);
     }
   };
+  // -- WP UB6 -- (UXP B6) saved or discarded with the page's other changes, from its one bar
+  useDraft("alarms", edit ? ruleChanges(saved, rules) : 0, save, () => {
+    setRules(saved);
+    setDone("");
+  });
   const disabled = !edit || busy;
   return (
     <section class="card hub-section" aria-label="Alarm rules">
@@ -96,11 +110,6 @@ export function AlarmRules(props: SectionProps) {
           })}
         </div>
       ) : null}
-      <div class="installer-buttons">
-        <button type="button" disabled={disabled || !rules} onClick={() => void save()}>
-          Save Alarm Rules
-        </button>
-      </div>
       <Done text={done} />
     </section>
   );

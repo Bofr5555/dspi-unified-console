@@ -5,14 +5,22 @@
 // comes from the core's typed calls through `HubFeed`; on a hub without these
 // families (an upstream hub) the screen is not offered.
 
+//
+// -- WP UB6 -- (UXP B6, W10) Not one long stack: the page's parts as Qt's pages are, Devices · Alarms ·
+// Updates · Groups · Hub (each where the hub has its family); the device table and the health board
+// one table (DeviceTable.tsx), its details on expand; the hub's name, this console's role and the
+// statistics in Hub. The alarm banner's Show Alarms opens the Alarms part.
+
 import type { FunctionComponent } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import type { HubAlarmRecord, HubStatsRecord } from "../../core/protocol";
 import type { ScreenDef, ScreenProps } from "../../ui/screens";
 import { HubFeed, type HubView, type Said } from "./feed";
-import { alarmSummary, alarmTitle, deviceRows, durationText, rowActions, shortTime, tagsFrom, type HubRow } from "./model";
+import { alarmSummary, alarmTitle, durationText, shortTime } from "./model";
 import { useSessionState } from "../../ui/components";
-import { HealthBoard } from "./HealthBoard"; // -- WP P3WHB --
+import { DeviceTable, roleWord } from "./DeviceTable"; // -- WP UB6 -- the device table and the health board in one
+import { PageParts, usePart, type Part } from "../../ui/shell/Parts"; // -- WP UB6 --
+import { placeOf } from "../../ui/shell/places"; // -- WP UB6 --
 import { HubGroups, useHubGroups } from "./Groups"; // -- WP P3WGR --
 import { Rollout } from "./Rollout"; // -- WP P3WRO --
 import { rolloutShown } from "./rollout-model"; // -- WP P3WRO --
@@ -46,21 +54,37 @@ export const HubScreen: FunctionComponent<ScreenProps> = (props) => {
   // the strip's, which says the link is lost; the page only dims
   const away = !!view?.stale;
   const groups = useHubGroups(props.session, !!view?.caps?.onHub && !!view.caps.groups); // -- WP P3WGR --
+  // -- WP UB6 -- the parts the hub has families for
+  const caps = view?.caps ?? null;
+  const parts: Part[] = [
+    ...(caps?.inventory || caps?.health ? [{ id: "devices", label: "Devices" }] : []),
+    ...(caps?.alarms ? [{ id: "alarms", label: "Alarms" }] : []),
+    ...(view && rolloutShown(caps, view.role) ? [{ id: "updates", label: "Updates" }] : []),
+    ...(caps?.groups ? [{ id: "groups", label: "Groups" }] : []),
+    { id: "hub", label: "Hub" },
+  ];
+  const [part, setPart] = usePart(props.session, HUB_SCREEN_ID, parts.map((x) => x.id));
   if (!feed || !view) return null;
   return (
-    <div class={away ? "hub-screen away" : "hub-screen"} aria-disabled={away || undefined} title={away ? "The hub does not answer: this is what it said last" : undefined}>
+    <div class={away ? "hub-screen away" : "hub-screen"} data-part={part} aria-disabled={away || undefined} title={away ? "The hub does not answer: this is what it said last" : undefined}>
+      <PageParts label="Hub" parts={parts} current={part} onPart={setPart} />
       <fieldset class="hub-fence" disabled={away}>
       {/* -- SEC hook (SECWEB, PLAN-SEC section 6) -- the "unencrypted" banner and the hub's fingerprint go here */}
-      <HubDevices feed={feed} view={view} props={props} />
-      {/* -- WP P3WHB -- (-- WP P3WGR -- with the groups for its filter) */ view.caps?.health ? <HealthBoard feed={feed} view={view} readOnly={props.session.readOnlyReason} groups={groups.view.groups} /> : null}
-      {/* -- WP P3WGR -- */ view.caps?.groups ? <HubGroups session={props.session} ask={props.ask} view={view} groups={groups} name={(s) => feed.deviceName(s)} /> : null}
-      {/* -- WP P3WRO -- the firmware rollout: an Admin's, on a hub with the `rollout` cap */ rolloutShown(view.caps, view.role) ? (
+      {part === "devices" ? (
+        <DeviceTable feed={feed} view={view} props={props} groups={groups.view.groups} onAlarms={caps?.alarms ? () => setPart("alarms") : null} identifyFailure={identifyFailure} />
+      ) : null}
+      {/* -- WP P3WGR -- */ part === "groups" && caps?.groups ? <HubGroups session={props.session} ask={props.ask} view={view} groups={groups} name={(s) => feed.deviceName(s)} /> : null}
+      {/* -- WP P3WRO -- the firmware rollout: an Admin's, on a hub with the `rollout` cap */ part === "updates" && rolloutShown(caps, view.role) ? (
         <Rollout session={props.session} hub={feed} view={view} ask={props.ask} readOnly={props.session.readOnlyReason} />
       ) : null}
-      {view.caps?.alarms ? <AlarmBoard feed={feed} view={view} readOnly={props.session.readOnlyReason} /> : null}
-      {/* -- WP P2WB3 -- */}
-      {view.caps?.hubStats && view.role === "admin" && !props.session.readOnlyReason ? <HubName feed={feed} name={hubName} /> : null}
-      {view.stats ? <HubStats stats={view.stats} name={(s) => feed.deviceName(s)} /> : null}
+      {part === "alarms" && caps?.alarms ? <AlarmBoard feed={feed} view={view} readOnly={props.session.readOnlyReason} /> : null}
+      {part === "hub" ? (
+        <>
+          {/* -- WP P2WB3 -- */}
+          <HubName feed={feed} name={hubName} role={view.role} rename={!!caps?.hubStats && view.role === "admin" && !props.session.readOnlyReason} />
+          {view.stats ? <HubStats stats={view.stats} name={(s) => feed.deviceName(s)} /> : null}
+        </>
+      ) : null}
       </fieldset>
     </div>
   );
@@ -78,202 +102,9 @@ export function identifyFailure(who: string, said: Said): string {
 
 export const HUB_SCREEN: ScreenDef = { id: HUB_SCREEN_ID, label: "Hub", View: HubScreen };
 
-function HubDevices(p: { feed: HubFeed; view: HubView; props: ScreenProps }) {
-  const { feed, view, props } = p;
-  const session = props.session;
-  const rows = deviceRows(view.devices, view.health, feed.openSerial());
-  const [said, setSaid] = useState<Said | null>(null);
-  const [busy, setBusy] = useState(false);
-  // -- WP P2WB3 -- the device whose details an Admin edits, and the form's text
-  const [editing, setEditing] = useState<{ serial: string; location: string; note: string; tags: string } | null>(null);
-  const run = async (f: () => Promise<Said>) => {
-    setBusy(true);
-    setSaid(await f());
-    setBusy(false);
-  };
-  const readOnly = session.readOnlyReason;
-  const opts = { role: view.role, identify: !!view.caps?.identify, inventory: !!view.caps?.inventory, readOnly, canOpen: !!session.openDevice };
-  const forget = async (r: HubRow) => {
-    const a = await props.ask({
-      title: "Forget the DSPi",
-      body: (
-        <>
-          <p>
-            Forget {r.name} ({r.serial}) on the hub? Its record and its history on the hub go. It is listed again the next time it is attached.
-          </p>
-          <p>Its snapshots on the hub stay unless you delete them too.</p>
-        </>
-      ),
-      buttons: [
-        { label: "Forget", value: "forget", danger: true },
-        { label: "Forget and Delete Its Snapshots", value: "with-data", danger: true },
-        { label: "Cancel", value: "cancel" },
-      ],
-    });
-    if (a !== "forget" && a !== "with-data") return;
-    if (editing?.serial === r.serial) setEditing(null);
-    await run(() => feed.forget(r.serial, a === "with-data"));
-  };
-  // -- WP UWN -- (UXP A16) Identify's failure in one sentence naming the action and the device, in the core's words
-  // ("Identify DSPi Demo (BENCH0000DSPI001): not available. The connected firmware does not have this feature."); that
-  // DSPi's Identify then off with the reason; any action's line goes after 10 s
-  const [cannotBlink, setCannotBlink] = useState<Record<string, string>>({});
-  const identify = (r: HubRow) =>
-    run(async () => {
-      const said = await feed.identify(r.serial);
-      if (!said.bad) return said;
-      const who = rows.some((o) => o.serial !== r.serial && o.name === r.name) ? `${r.name} (${r.serial})` : r.name;
-      const text = identifyFailure(who, said);
-      if (said.notice?.key === "unsupported") setCannotBlink((m) => ({ ...m, [r.serial]: text }));
-      return { text, bad: true, notice: said.notice ? { ...said.notice, reason: "" } : null };
-    });
-  useEffect(() => {
-    if (!said) return;
-    const t = setTimeout(() => setSaid(null), 10_000);
-    return () => clearTimeout(t);
-  }, [said]);
-  const edited = editing ? rows.find((r) => r.serial === editing.serial) : undefined;
-  return (
-    <section class="card hub-devices" aria-label="Devices on the hub">
-      <div class="card-head">
-        <h2>Devices on the hub</h2>
-        {view.role ? <span class="hub-role-tag">{roleWord(view.role)}</span> : null}
-      </div>
-      {view.error ? (
-        <p class="error" role="alert">
-          {view.error}
-        </p>
-      ) : null}
-      {/* -- WP P2WB3 -- every action's line (Identify, Edit, Forget), not only Identify's */}
-      {said ? (
-        <p class={said.bad ? "error" : "note"} role="status" aria-label="Action result" data-key={said.notice?.key}>
-          {said.text}
-          {said.notice?.reason ? ` ${said.notice.reason}` : ""}
-        </p>
-      ) : null}
-      {rows.length ? (
-        <div class="hub-table-wrap">
-          <table class="hub-table">
-            <thead>
-              <tr>
-                <th scope="col">Name</th>
-                <th scope="col">Location</th>
-                <th scope="col">State</th>
-                <th scope="col">Firmware</th>
-                <th scope="col">CPU</th>
-                <th scope="col">Temperature</th>
-                <th scope="col">Last restart</th>
-                <th scope="col">
-                  <span class="visually-hidden">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => {
-                const may = rowActions(r, opts);
-                return (
-                  <tr key={r.serial} class={r.online ? undefined : "offline"} aria-label={r.name}>
-                    <td>
-                      <span class="hub-name">{r.name}</span>
-                      <span class="hub-serial">{r.serial}</span>
-                      {r.tags.length ? <span class="hub-tags">{r.tags.join(", ")}</span> : null}
-                      {r.note ? <span class="hub-note">{r.note}</span> : null}
-                    </td>
-                    <td>{r.location || "–"}</td>
-                    <td>
-                      <StateWord row={r} />
-                    </td>
-                    <td>{r.firmware || "–"}</td>
-                    <td>{r.cpu === null ? "–" : `${r.cpu}%`}</td>
-                    <td>{r.tempC === null ? "–" : `${r.tempC.toFixed(1)} °C`}</td>
-                    <td>{r.restart || "–"}</td>
-                    <td class="hub-actions">
-                      <div class="hub-action-row">
-                        {may.identify ? (
-                          <button
-                            type="button"
-                            disabled={busy || !!may.identifyOff || !!cannotBlink[r.serial]}
-                            title={may.identifyOff || cannotBlink[r.serial] || "Blink this DSPi's LED"}
-                            onClick={() => void identify(r)}
-                          >
-                            Identify
-                          </button>
-                        ) : null}
-                        {may.open ? (
-                          <button type="button" onClick={() => session.openDevice!(r.serial)}>
-                            Open
-                          </button>
-                        ) : null}
-                        {may.edit ? (
-                          <button
-                            type="button"
-                            disabled={busy}
-                            aria-label={`Edit the details of ${r.name}`}
-                            onClick={() => setEditing({ serial: r.serial, location: r.location, note: r.note, tags: r.tags.join(", ") })}
-                          >
-                            Edit…
-                          </button>
-                        ) : null}
-                        {may.forget ? (
-                          <button type="button" class="danger-text" disabled={busy} aria-label={`Forget ${r.name}`} onClick={() => void forget(r)}>
-                            Forget…
-                          </button>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      ) : view.caps?.inventory ? (
-        <p class="note">The hub has seen no DSPi yet.</p>
-      ) : null}
-      {editing && edited ? (
-        <form
-          class="hub-edit"
-          aria-label={`Details of ${edited.name}`}
-          onSubmit={(e) => {
-            e.preventDefault();
-            const d = { location: editing.location.trim(), note: editing.note, tags: tagsFrom(editing.tags) };
-            void run(async () => {
-              const r = await feed.setDetails(editing.serial, d);
-              if (!r.bad) setEditing(null);
-              return r;
-            });
-          }}
-        >
-          <h3>Details of {edited.name}</h3>
-          <label>
-            Location
-            <input value={editing.location} maxLength={256} onInput={(e) => setEditing({ ...editing, location: (e.target as HTMLInputElement).value })} />
-          </label>
-          <label>
-            Note
-            <textarea value={editing.note} maxLength={256} rows={2} onInput={(e) => setEditing({ ...editing, note: (e.target as HTMLTextAreaElement).value })} />
-          </label>
-          <label>
-            Tags (separated by commas)
-            <input value={editing.tags} onInput={(e) => setEditing({ ...editing, tags: (e.target as HTMLInputElement).value })} />
-          </label>
-          <div class="hub-edit-actions">
-            <button type="submit" disabled={busy}>
-              Save
-            </button>
-            <button type="button" onClick={() => setEditing(null)}>
-              Cancel
-            </button>
-          </div>
-        </form>
-      ) : null}
-    </section>
-  );
-}
-
 // -- WP P2WB3 --
-/** The hub's name, and (Admin, a hub with `hub_stats`) Rename. */
-function HubName(props: { feed: HubFeed; name: string }) {
+/** The hub's name, and (Admin, a hub with `hub_stats`) Rename; -- WP UB6 -- this console's role on it. */
+function HubName(props: { feed: HubFeed; name: string; role: string; rename: boolean }) {
   const [text, setText] = useState<string | null>(null);
   const [said, setSaid] = useState<Said | null>(null);
   const [busy, setBusy] = useState(false);
@@ -291,7 +122,8 @@ function HubName(props: { feed: HubFeed; name: string }) {
       </div>
       <p>
         Called <strong class="hub-own-name">{props.name || "–"}</strong>.{" "}
-        {text === null ? (
+        {props.role ? <span class="hub-role-tag">{roleWord(props.role)}</span> : null}{" "}
+        {props.rename && text === null ? (
           <button type="button" onClick={() => setText(props.name)}>
             Rename the Hub…
           </button>
@@ -328,17 +160,6 @@ function HubName(props: { feed: HubFeed; name: string }) {
       ) : null}
     </section>
   );
-}
-
-function StateWord(props: { row: HubRow }) {
-  const r = props.row;
-  if (!r.online) return <span class="hub-state offline">Offline{r.lastSeen ? `, last seen ${shortTime(r.lastSeen)}` : ""}</span>;
-  if (r.unresponsive) return <span class="hub-state bad">Not answering</span>;
-  return <span class="hub-state ok">{r.isOpen ? "Online (open here)" : "Online"}</span>;
-}
-
-function roleWord(role: string): string {
-  return role === "admin" ? "Admin" : role === "control" ? "Control" : role === "viewer" ? "Viewer" : role;
 }
 
 function AlarmBoard(props: { feed: HubFeed; view: HubView; readOnly: string }) {
@@ -456,7 +277,13 @@ export function HubAlarmBanner(props: { feed: HubFeed; onShow: (() => void) | nu
       <Glyph name={s.critical ? "error" : "warning"} class="notice-icon" />
       <span>{s.raised === 1 ? "The hub has 1 alarm to acknowledge." : `The hub has ${s.raised} alarms to acknowledge.`}</span>
       {props.onShow ? (
-        <button type="button" onClick={props.onShow}>
+        <button
+          type="button"
+          onClick={() => {
+            placeOf(props.feed.session).parts.set(HUB_SCREEN_ID, "alarms"); // -- WP UB6 -- the Alarms part
+            props.onShow!();
+          }}
+        >
           Show Alarms
         </button>
       ) : null}

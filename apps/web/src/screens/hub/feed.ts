@@ -77,6 +77,24 @@ export interface HubFeedOptions {
   visible?: () => boolean;
 }
 
+// -- WP UB6 -- (UXP A16, B6)
+/**
+ * The DSPis whose firmware refused Identify (the hub's `unsupported`: no EXT_IDENTIFY), with the sentence that said
+ * so: their Identify is not offered again in this page's visit, on the Fleet and the hub page alike (the inventory
+ * does not say beforehand which firmware can blink).
+ */
+const cannotIdentify = new Map<string, string>();
+
+/** Why `serial` cannot blink, "" when it was not refused. */
+export function identifyRefused(serial: string): string {
+  return cannotIdentify.get(serial) ?? "";
+}
+
+/** `serial` cannot blink: `text` says why. */
+export function refuseIdentify(serial: string, text: string): void {
+  cannotIdentify.set(serial, text);
+}
+
 /** Whether the hub has any of the families this screen shows. */
 export function hubScreenShown(caps: HubCapsRecord | null): boolean {
   return !!caps?.onHub && (caps.inventory || caps.health || caps.alarms);
@@ -97,7 +115,7 @@ export class HubFeed {
   private rulesAt = 0; // -- WP P3WHB -- when the rules were read last (Date.now()), 0 never
 
   constructor(
-    private readonly session: Session,
+    readonly session: Session, // -- WP UB6 -- the banner's Show Alarms opens the page's Alarms part
     opts: HubFeedOptions = {},
   ) {
     this.periodMs = opts.periodMs ?? HUB_POLL_MS;

@@ -5,18 +5,43 @@
 // Overview, as Qt's no-device window does.
 
 import type { ComponentChildren } from "preact";
-import { useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useState } from "preact/hooks";
 import { EmptyState, Glyph } from "../design";
 import { screensFor } from "../screens";
 import type { ShellProps } from "../components";
 import { Frame } from "./Frame";
 import { NoDeviceSettings } from "../../screens/settings/SettingsScreen"; // -- WP UWN --
-import { CONNECT, sectionOf, sectionsFor, type SectionId } from "./sections";
+import { CONNECT, FLEET, sectionOf, sectionsFor, type SectionId } from "./sections";
 
 const NO_PAGES: ReadonlyMap<SectionId, string> = new Map();
 
-/** The strip's line while no DSPi is open: Qt's words, with the demo one press away. */
-export function NoDeviceStrip(props: { openDemo: (() => void) | null }) {
+// -- WP UB6 -- (UXP B6)
+/** What a hub-served page's strip says of its hub: how many DSPis it shares now (null: not known yet), and the way to them. */
+export interface StripHub {
+  shared: number | null;
+  onOpen: (() => void) | null;
+}
+
+/** "This hub shares 2 DSPis." */
+export function hubSharesText(shared: number | null): string {
+  if (shared === null) return "Asking the hub which DSPis it shares…";
+  return shared === 0 ? "This hub shares no DSPi right now." : `This hub shares ${shared} ${shared === 1 ? "DSPi" : "DSPis"}.`;
+}
+
+/** The strip's line while no DSPi is open: Qt's words, with the demo one press away; -- WP UB6 -- on a hub's page, what the hub shares. */
+export function NoDeviceStrip(props: { openDemo: (() => void) | null; hub?: StripHub | null }) {
+  if (props.hub)
+    return (
+      <div class="banner banner-info no-device-strip" role="status">
+        <Glyph name="network" class="banner-icon" />
+        <span>{hubSharesText(props.hub.shared)}</span>
+        {props.hub.onOpen ? (
+          <button type="button" onClick={props.hub.onOpen}>
+            Open…
+          </button>
+        ) : null}
+      </div>
+    );
   return (
     <div class="banner banner-info no-device-strip" role="status">
       <Glyph name="unplug" class="banner-icon" />
@@ -46,7 +71,8 @@ export function NoDeviceEmpty(props: { overview: boolean; hub?: boolean; onChoos
  */
 export function NoDeviceFrame(props: {
   shell: ShellProps;
-  strip: ComponentChildren;
+  /** -- WP UB6 -- or made with the way to a page (the hub strip's Open… goes to the Fleet) */
+  strip: ComponentChildren | ((go: (page: string) => void) => ComponentChildren);
   /** The page shown first: the Overview's first unless said. */
   start?: string;
   /** On the way to a device (connecting, a PIN, a hub's list): the Devices section alone, as before a device answers. */
@@ -54,20 +80,31 @@ export function NoDeviceFrame(props: {
   empty?: (overview: boolean) => ComponentChildren;
   /** -- WP UWN -- (UXP A16) over the devices' page: why the last connect failed, with its way out. */
   connectNote?: ComponentChildren;
+  /** -- WP UB6 -- (UXP B6, D13) a hub-served console: Devices' first page, the hub's DSPis with none open. */
+  fleet?: ComponentChildren;
 }) {
   const { shell } = props;
   const connecting = props.connecting === true;
-  const sections = useMemo(() => sectionsFor(connecting ? [] : screensFor("advanced", false)), [connecting]);
+  const fleet = props.fleet !== undefined && !connecting;
+  const sections = useMemo(() => sectionsFor(connecting ? [] : screensFor("advanced", false), fleet), [connecting, fleet]);
   const [chosen, setChosen] = useState(connecting ? CONNECT : (props.start ?? "main"));
-  const page = shell.picking ? CONNECT : chosen;
+  // -- WP UB6 -- the page to start on may come later (the hub's list is read after the page shows): followed until a page is chosen
+  const [moved, setMoved] = useState(false);
+  useEffect(() => {
+    if (!moved && !connecting && props.start) setChosen(props.start);
+  }, [props.start]);
+  const page = shell.picking ? CONNECT : chosen === FLEET && !fleet ? CONNECT : chosen;
   const go = (id: string) => {
+    setMoved(true);
     setChosen(id);
     shell.onPicking(id === CONNECT);
   };
   const overview = sectionOf(page) === "overview";
   return (
-    <Frame bar={shell.top()} strip={props.strip} sections={sections} page={page} last={NO_PAGES} onPage={go}>
-      {page === CONNECT && !(connecting && !shell.picking) ? (
+    <Frame bar={shell.top()} strip={typeof props.strip === "function" ? props.strip(go) : props.strip} sections={sections} page={page} last={NO_PAGES} onPage={go}>
+      {page === FLEET ? (
+        props.fleet
+      ) : page === CONNECT && !(connecting && !shell.picking) ? (
         <>
           {props.connectNote}
           {shell.connect}
