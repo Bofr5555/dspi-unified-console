@@ -43,8 +43,8 @@ RowLayout {
                     type: ChannelController.crossoverType(f, order, !highPass),
                     //: A crossover family and its slope ("Linkwitz-Riley 24 dB/oct")
                     label: qsTr("%1 %2 dB/oct").arg(families[f]).arg(order * 6),
-                    //: The same, short ("LR 24 dB")
-                    brief: qsTr("%1 %2 dB").arg(briefNames[f]).arg(order * 6)
+                    //: The same, short ("LR 24"), as the page's legend explains it -- WP UB1 -- (A10)
+                    brief: qsTr("%1 %2").arg(briefNames[f]).arg(order * 6)
                 })
         return list
     }
@@ -65,7 +65,10 @@ RowLayout {
         popup.width: Math.max(width, 210)
         onActivated: index => {
             const at = side.on ? side.band : side.free
-            if (at >= 0) ChannelController.setBandType(side.channel, at, true, side.choices[index].type)
+            // -- WP UB1 -- (UXP B1) a pass the output had none of opens at its
+            // partner's frequency (a woofer's low pass at its tweeter's high pass)
+            const partner = side.on || index === 0 ? 0 : LayoutSetupController.partnerFrequency(side.channel, side.highPass)
+            if (at >= 0) ChannelController.setBandType(side.channel, at, true, side.choices[index].type, partner)
             // A refused choice shows the device's again
             currentIndex = Qt.binding(() => side.choice)
         }

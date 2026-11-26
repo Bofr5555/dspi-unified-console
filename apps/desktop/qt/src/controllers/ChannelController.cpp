@@ -374,11 +374,12 @@ void ChannelController::editBand(int channel, int band, bool crossover, const st
     writeBand(channel, band, crossover, p);
 }
 
-void ChannelController::setBandType(int channel, int band, bool crossover, int type) {
-    editBand(channel, band, crossover, [type](FilterParams &p) {
+void ChannelController::setBandType(int channel, int band, bool crossover, int type, double freq) {
+    editBand(channel, band, crossover, [type, freq](FilterParams &p) {
         const bool wasLt = p.filter_type == FILTER_LINKWITZ_TRANSFORM;
         const bool isLt = type == FILTER_LINKWITZ_TRANSFORM;
         p.filter_type = uint8_t(type);
+        if (std::isfinite(freq) && freq > 0) p.freq = float(qMax(freq, 10.0));   // -- WP UB1 --
         // The Linkwitz Transform reads gain as fp in Hz: entering it starts a
         // flat transform (target = driver), leaving it drops fp back to 0 dB
         if (isLt && !wasLt) {

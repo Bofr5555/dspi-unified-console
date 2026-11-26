@@ -13,6 +13,9 @@ import UConsole
 // -- WP UA1 -- (UXP A1, C5) a row names its output as the page's list does,
 // name first and number second ("Left woofer · 1"); the outputs nothing is
 // routed to fold under one row ("5 unused"), which opens them as "3 · None".
+// -- WP UB1 -- (UXP B1) the tool row over the table: "From Speaker Layout…"
+// (CrossoverFromLayout) sets every speaker's crossovers from the confirmed
+// layout in one undo step; the legend explains the short slope ("LR 24").
 EqualiserSection {
     id: page
     objectName: "EqualiserCrossover"
@@ -67,6 +70,13 @@ EqualiserSection {
             channel: page.channel
             host: page.host
         }
+    }
+
+    // -- WP UB1 --
+    CrossoverFromLayout {
+        id: fromLayout
+        parent: page.Window.window ? page.Window.window.contentItem : null
+        crossoversWanted: true
     }
 
     // -- WP DL8 -- EmptyState for the bare sentence
@@ -140,6 +150,21 @@ EqualiserSection {
                 id: lists
                 width: flick.width
                 spacing: Theme.spacingSmall
+
+                // -- WP UB1 -- the page's tool row
+                RowLayout {
+                    objectName: "EqualiserCrossover.tools"
+                    Layout.fillWidth: true
+                    spacing: Theme.spacingSmall
+                    AppButton {
+                        objectName: "EqualiserCrossover.fromLayout"
+                        text: qsTr("From Speaker Layout…")
+                        enabled: LayoutSetupController.writable
+                        toolTip: qsTr("Crossovers for every speaker of the confirmed speaker layout, in one undo step")
+                        onClicked: fromLayout.open()
+                    }
+                    Item { Layout.fillWidth: true }
+                }
 
                 // ---- Every output's high and low pass ----
                 Rectangle {
@@ -276,7 +301,8 @@ EqualiserSection {
                     objectName: "EqualiserCrossover.legend"
                     Layout.fillWidth: true
                     textFormat: Text.PlainText
-                    text: qsTr("LR is Linkwitz-Riley, BW Butterworth, BS Bessel.")
+                    // -- WP UB1 -- (A10) the short form "LR 24" explained once
+                    text: qsTr("LR 24 is Linkwitz-Riley at 24 dB/oct; BW is Butterworth, BS Bessel.")
                     font: Theme.fontSmall
                     color: Theme.textMuted
                     wrapMode: Text.Wrap
