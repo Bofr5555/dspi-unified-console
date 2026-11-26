@@ -769,9 +769,9 @@ mod tests_wp_cg10 {
     }
 
     // -- WP UFW -- (UXP A8, C8) What's New on Windows and Linux opens with the
-    // app's own notes (0.16, then 0.15; -- FIX016 --) and buttons to their
-    // places; the firmware's notes follow. The phone and the Apple consoles
-    // have no such section.
+    // app's own notes (-- FIX016 -- 0.16's, which hold the unpublished 0.15's)
+    // and buttons to their places; the firmware's notes follow. The phone and
+    // the Apple consoles have no such section.
     #[test]
     fn wp_ufw_whats_new_opens_with_the_apps_own_release() {
         for platform in [Platform::Windows, Platform::Linux] {
@@ -794,16 +794,12 @@ mod tests_wp_cg10 {
                     .iter()
                     .any(|i| i.as_str().unwrap().contains(what))
             };
-            assert_eq!(pages(first), ["speakers"]);
+            assert_eq!(pages(first), ["appearance", "ai", "speakers"]);
+            assert!(says(first, "Modern layout"));
+            assert!(says(first, "AI agent"));
             assert!(says(first, "From Speaker Layout"));
             assert!(says(first, "A/B"));
-            let second = &doc[1];
-            assert_eq!(second["app"], true, "{platform:?}");
-            assert_eq!(second["version"], "0.15");
-            assert_eq!(pages(second), ["appearance", "ai"]);
-            assert!(says(second, "Modern layout"));
-            assert!(says(second, "AI agent"));
-            assert!(doc[2].get("app").is_none(), "the firmware's notes follow");
+            assert!(doc[1].get("app").is_none(), "the firmware's notes follow");
         }
         for platform in [Platform::MacOs, Platform::Ios, Platform::Android] {
             let doc: Value = serde_json::from_str(&render_whats_new(platform)).unwrap();
