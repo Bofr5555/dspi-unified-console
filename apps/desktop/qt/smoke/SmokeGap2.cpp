@@ -81,6 +81,7 @@ void soloSection(SmokeDriver &d) {
 
     const QSize original = w->size();
     const Qt::ColorScheme scheme = shell->colorSchemeOverride();
+    const bool wasModern = shell->pageHost() != nullptr;   // -- INT016 -- left as found (ua5-keys after it counts on a fresh shell)
     if (!d.switchLayout("modern")) {
         d.check("gap2: in Modern", false);
         return;
@@ -204,6 +205,7 @@ void soloSection(SmokeDriver &d) {
     sc->select(-1);
     w->resize(original);
     d.spin(200);
+    if (!wasModern) d.switchLayout("classic");   // -- INT016 --
 }
 
 const SmokeDriver::Section soloSmoke("gap2-solo", 992, &soloSection);
