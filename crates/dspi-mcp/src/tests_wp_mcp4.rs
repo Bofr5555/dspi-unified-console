@@ -192,8 +192,12 @@ fn wp_mcp4_a_held_call_is_answered_by_allow_and_deny_and_blocks_no_connection() 
         let (status, body) = reply(send(&r, &json!(1), "tools/list", json!({})));
         assert_eq!(status, 200, "{body}");
     }
-    // A fourth question of the same agent's is refused, not asked.
-    let (_, body) = reply(louder(&r, -8.5));
+    // -- WP UB5 -- A fourth question of the same agent's is asked too (8 wait
+    // at most, tests_wp_mcp2a); denied, it ends with nothing changed.
+    let fourth = louder(&r, -8.5);
+    let ids = waiting(&r, 4);
+    r.http.answer_confirmation(ids[3], false).unwrap();
+    let (_, body) = reply(fourth);
     assert_eq!(body["result"]["isError"], json!(true), "{body}");
 
     let ids = waiting(&r, 3);

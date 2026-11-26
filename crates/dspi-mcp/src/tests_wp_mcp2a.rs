@@ -760,24 +760,21 @@ fn wp_mcp2a_boosts_delay_steps_and_routes_are_judged() {
     );
     assert_eq!(s.confirmation(id).unwrap().risks[0].kind, RiskKind::Enable);
     s.answer_confirmation(id, false, 0).unwrap();
-    // The fourth waiting one of one agent is not opened.
-    held(
-        &mut s,
-        c,
-        "dspi_set_volume",
-        json!({"volume": "user", "db": -5}),
-    );
-    held(
-        &mut s,
-        c,
-        "dspi_set_volume",
-        json!({"volume": "user", "db": -4}),
-    );
+    // The ninth waiting one of one agent is not opened (-- WP UB5 -- 8 wait
+    // at most, was 3: one sheet shows those raised together).
+    for db in -9..=-3 {
+        held(
+            &mut s,
+            c,
+            "dspi_set_volume",
+            json!({"volume": "user", "db": db}),
+        );
+    }
     let e = err(
         &mut s,
         c,
         "dspi_set_volume",
-        json!({"volume": "user", "db": -3}),
+        json!({"volume": "user", "db": -2}),
     );
     assert!(e.contains("not yet answered"), "{e}");
 }
