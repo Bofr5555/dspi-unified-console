@@ -29,6 +29,7 @@
 #include <QQuickWindow>
 #include <cstdio>
 #include <functional>
+#include <utility>
 
 namespace {
 
@@ -107,6 +108,20 @@ void ub7Toggle(QObject *box) {
     QMetaObject::invokeMethod(box, "toggled");
 }
 
+// The window in the dark and the light scheme, as <out>/ub7/<name>-<scheme>.png (the report's pictures)
+void ub7Pictures(SmokeDriver &d, QQuickWindow *w, const QString &name) {
+    if (!w) return;
+    Shell *shell = d.app().shell;
+    const Qt::ColorScheme was = shell->colorSchemeOverride();
+    for (const auto &[scheme, word] : { std::pair{ Qt::ColorScheme::Dark, "dark" }, std::pair{ Qt::ColorScheme::Light, "light" } }) {
+        shell->setColorSchemeOverride(scheme);
+        d.spin(250);
+        d.grab(w, QStringLiteral("ub7/%1-%2.png").arg(name, QLatin1String(word)));
+    }
+    shell->setColorSchemeOverride(was);
+    d.spin(100);
+}
+
 int ub7Group(SpeakersController *sc, int output) { return ub7Row(sc, output).value(QStringLiteral("group")).toInt(); }
 
 void ub7Section(SmokeDriver &d) {
@@ -122,6 +137,8 @@ void ub7Section(SmokeDriver &d) {
     if (!sc || !mc || !tc || !settingsCtl) return;
     const bool wasModern = d.app().shell->pageHost() != nullptr;
     check("Modern", d.switchLayout("modern"));
+    const QSize original = d.mainWindow()->size();
+    d.mainWindow()->resize(QSize(1600, 1000));   // the pictures' size (UA2's)
     auto settle = [&] {
         d.spin(60);
         d.waitIdle();
@@ -207,7 +224,7 @@ void ub7Section(SmokeDriver &d) {
     check("a new name leaves the group it shared for one of its own", fieldB && alone && sc->groupsFollowNames());
     std::printf("smoke: ub7: a=%d g%d \"%s\", b=%d g%d \"%s\"\n", a, ub7Group(sc, a), qPrintable(ub7Row(sc, a).value(QStringLiteral("groupName")).toString()), b,
                 ub7Group(sc, b), qPrintable(ub7Row(sc, b).value(QStringLiteral("groupName")).toString()));
-    d.grab(settings, QStringLiteral("ub7-speakers.png"));
+    ub7Pictures(d, settings, QStringLiteral("speakers"));
 
     // The override, and off again
     QQuickItem *byHand = shown(QStringLiteral("Speakers.byHand"));
@@ -229,7 +246,7 @@ void ub7Section(SmokeDriver &d) {
                                       ? shown(QStringLiteral("Speakers.group.%1").arg(a)) : nullptr;
         check("the group is named by both speakers", togetherNow != nullptr);
     }
-    d.grab(settings, QStringLiteral("ub7-speakers-byhand.png"));
+    ub7Pictures(d, settings, QStringLiteral("speakers-byhand"));
     byHand = shown(QStringLiteral("Speakers.byHand"));
     ub7Toggle(byHand);
     settle();
@@ -270,7 +287,7 @@ void ub7Section(SmokeDriver &d) {
         if (v.toMap().value(QStringLiteral("output")).toInt() == a) nowA = v.toMap().value(QStringLiteral("on")).toBool();
     check("a tick is this run's: the layout keeps", nowA != onA && ub7Stored(d).value(QLatin1String("outputs")) == before.value(QLatin1String("outputs")));
     mc->setOutputOn(a, onA);
-    d.grab(d.mainWindow(), QStringLiteral("ub7-measure.png"));
+    ub7Pictures(d, d.mainWindow(), QStringLiteral("measure"));
     settingsCtl->open(QStringLiteral("about"));
     settle();
     SmokeDriver::press(ub7Shown(setup, QStringLiteral("SpeakersSummary.edit")));
@@ -304,7 +321,7 @@ void ub7Section(SmokeDriver &d) {
     bool tuneTicks = false;
     for (const QVariant &v : tc->layout()) tuneTicks = tuneTicks || ub7Shown(tune, QStringLiteral("MeasureTune.output.%1").arg(v.toMap().value(QStringLiteral("output")).toInt()));
     check("the outputs to tune as tick boxes", tc->layout().isEmpty() || tuneTicks);
-    d.grab(d.mainWindow(), QStringLiteral("ub7-tune.png"));
+    ub7Pictures(d, d.mainWindow(), QStringLiteral("tune"));
     // An output left out of this tune stays out when the tab shows again (its feeds read again)
     auto tuneOn = [&](int o) {
         for (const QVariant &v : tc->layout())
@@ -331,6 +348,7 @@ void ub7Section(SmokeDriver &d) {
     sc->reload();
     d.waitFor(5000, [&] { return sc->loaded(); });
     d.goTo(QStringLiteral("overview/overview"), 200);
+    d.mainWindow()->resize(original);
     if (!wasModern) d.switchLayout("classic");
     check("left as found", device->connected());
 }

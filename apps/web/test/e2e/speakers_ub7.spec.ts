@@ -45,6 +45,22 @@ async function pictures(page: Page, what: Locator, name: string) {
   await page.emulateMedia({ colorScheme: "light" });
 }
 
+// The report's pictures, before any of this package's assertions (so the same test takes them on the base)
+test("UB7: pictures of Settings › Speakers, Measure and Auto-tune", async ({ page }) => {
+  const session = await openDemo(page);
+  const sp = await speakersPage(session);
+  await pictures(page, sp, "pic-speakers");
+  await openPage(session, "Measure");
+  const setup = session.getByRole("region", { name: "Measurement setup" });
+  await expect(setup).toBeVisible();
+  await pictures(page, setup.locator("fieldset").filter({ hasText: "Outputs" }), "pic-measure-outputs");
+  const screen = session.getByRole("region", { name: "Measure" });
+  await partsOf(screen, "Measurement").getByRole("tab", { name: "Auto-tune" }).click();
+  const tune = screen.getByRole("region", { name: "Tune layout" });
+  await expect(tune.getByRole("list", { name: "Outputs" })).toBeVisible();
+  await pictures(page, tune, "pic-tune-layout");
+});
+
 test("UB7: the one speaker table: headings, names that set the groups, the override", async ({ page }) => {
   const session = await openDemo(page);
   const sp = await speakersPage(session);
