@@ -242,7 +242,7 @@ pub fn align(
     if let Some(w) = ways.iter().find(|w| !w.timing_reliable) {
         return Err(MeasureError::Invalid(format!(
             "timing unreliable: output {}'s run did not pass the timing quality gate; no delay or polarity is offered",
-            w.output
+            w.output.saturating_add(1) // -- WP UFW --
         )));
     }
     let grid = common_grid(ways.iter().map(|w| &w.response))?;
@@ -295,8 +295,8 @@ pub fn align(
         if pts.len() < MIN_WINDOW_POINTS {
             return Err(MeasureError::NoSignal(format!(
                 "outputs {} and {}: {} trusted points through the transition at {:.0} Hz (at least {MIN_WINDOW_POINTS})",
-                wa.output,
-                wb.output,
+                wa.output.saturating_add(1), // -- WP UFW --
+                wb.output.saturating_add(1),
                 pts.len(),
                 corner
             )));
@@ -353,7 +353,8 @@ pub fn align(
                         "outputs {} and {}: the best timing at {corner:.0} Hz lay more than \
                          {hold:.2} ms from the measured arrivals (a half or whole cycle off); the \
                          timing proposed is the best within that",
-                        wa.output, wb.output
+                        wa.output.saturating_add(1), // -- WP UFW --
+                        wb.output.saturating_add(1)
                     ));
                 }
                 fit
@@ -664,8 +665,10 @@ impl CornerInfo {
     }
 }
 
-/// The note a quadrature pair gets.
+/// The note a quadrature pair gets; the outputs are 0-based and the note
+/// counts them from 1 (-- WP UFW --, as a person reads them).
 pub(crate) fn quadrature_note(low_output: u8, high_output: u8) -> String {
+    let (low_output, high_output) = (low_output.saturating_add(1), high_output.saturating_add(1));
     format!(
         "outputs {low_output} and {high_output}: an odd-order Butterworth pair sums flat in either polarity; its polarity is kept and its delay puts the ways in quadrature"
     )
@@ -1122,8 +1125,10 @@ impl PairCtx {
     }
 }
 
-/// The note of a pair whose held timing was unclear (review P5-D).
+/// The note of a pair whose held timing was unclear (review P5-D), the
+/// outputs counted from 1 (-- WP UFW --).
 pub(crate) fn held_unclear_note(low: u8, high: u8, corner_hz: f64, hold_ms: f64) -> String {
+    let (low, high) = (low.saturating_add(1), high.saturating_add(1));
     format!(
         "outputs {low} and {high}: the best timing at {corner_hz:.0} Hz lay more than {hold_ms:.2} ms \
          from the measured arrivals (a half or whole cycle off), and within that none is clearly \

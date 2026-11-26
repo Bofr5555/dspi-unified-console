@@ -462,14 +462,15 @@ private fun PresetMenuSection(
     }
 }
 
-/** Tools menu: Commit Parameters..., Revert to Saved..., Factory Reset.... */
+/** Tools menu: Save to Device..., Revert to Saved..., Factory Reset.... */
 @Composable
 private fun ToolsSection(tools: ToolsMenuActions, connected: Boolean) {
-    // G1: Commit / Revert / Factory Reset write to the device
+    // G1: Save / Revert / Factory Reset write to the device
     @Suppress("NAME_SHADOWING")
     val connected = connected && writesAllowed()
     SectionHeader("Tools")
-    MenuRow("Commit Parameters...", enabled = connected, onClick = tools::commitParameters)
+    // -- WP UFW -- (UXP A10, D1) the desktop's and the web's word for it
+    MenuRow("Save to Device...", enabled = connected, onClick = tools::commitParameters)
     MenuRow("Revert to Saved...", enabled = connected, onClick = tools::revertToSaved)
     MenuRow("Factory Reset...", enabled = connected, destructive = true, onClick = tools::factoryReset)
 }

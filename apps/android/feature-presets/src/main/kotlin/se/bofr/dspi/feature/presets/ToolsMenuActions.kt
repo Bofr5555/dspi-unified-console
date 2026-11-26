@@ -17,7 +17,7 @@ import se.bofr.dspi.ui.alert.AlertStyle
 import se.bofr.dspi.ui.alert.ConsoleAlert
 
 class ToolsMenuActions(private val bridge: DspiBridge, private val scope: CoroutineScope, private val host: AlertHost) {
-    /** "Commit Parameters...": save the live settings into the active slot (GATED SAVE_PRESET). */
+    /** "Save to Device...": save the live settings into the active slot (GATED SAVE_PRESET). */
     fun commitParameters() {
         if (!bridge.connected) {
             host.showError("Not connected to device")
@@ -81,7 +81,8 @@ class ToolsMenuActions(private val bridge: DspiBridge, private val scope: Corout
             ConsoleAlert(
                 "Factory Reset",
                 "Do you wish to clear all active parameters?\n\n" +
-                    "This will not overwrite your saved parameters unless you run 'Commit Parameters'.",
+                    // -- WP UFW -- (UXP A10) the menu row's word
+                    "This will not overwrite your saved parameters unless you run 'Save to Device'.",
                 AlertStyle.CRITICAL,
                 listOf(
                     AlertButton("Reset", AlertButtonRole.DESTRUCTIVE) {

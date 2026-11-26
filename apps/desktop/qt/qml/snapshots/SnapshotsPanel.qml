@@ -616,7 +616,7 @@ Panel {
                 AppButton {
                     objectName: "SnapshotsWindow.abToggle"
                     text: qsTr("Toggle A/B")
-                    toolTip: SnapshotsController.guardWaiting ? qsTr("Finish the safe apply first: Keep or Revert.")
+                    toolTip: SnapshotsController.guardWaiting ? qsTr("Finish the trial first: Keep or Revert.")
                                                               : qsTr("Recall the other side (B)")
                     enabled: SnapshotsController.canToggle
                     onClicked: SnapshotsController.abToggle()
@@ -638,7 +638,7 @@ Panel {
             Text {
                 Layout.fillWidth: true
                 visible: SnapshotsController.abActive && SnapshotsController.guardWaiting
-                text: qsTr("Finish the safe apply first: Keep or Revert.")
+                text: qsTr("Finish the trial first: Keep or Revert.")   // -- WP UFW -- (UXP D10) "trial"
                 font: Theme.fontSmall
                 color: Theme.warning
                 wrapMode: Text.Wrap
@@ -854,7 +854,7 @@ Panel {
                             Layout.fillWidth: true
                             visible: SnapshotsController.abActive && SnapshotsController.guardWaiting
                             kind: "warning"
-                            text: qsTr("Finish the safe apply first: Keep or Revert.")
+                            text: qsTr("Finish the trial first: Keep or Revert.")
                         }
                         ListView {
                             id: diff

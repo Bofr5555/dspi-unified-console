@@ -514,7 +514,7 @@ void SnapshotsController::writeCall(const QString &what, std::function<QByteArra
 
 void SnapshotsController::recall(const QString &id) {
     if (guardWaiting()) {
-        failed({}, tr("Finish the safe apply first: Keep or Revert."));
+        failed({}, tr("Finish the trial first: Keep or Revert.") /* -- WP UFW -- (UXP D10) */);
         return;
     }
     const QByteArray i = id.toUtf8();
@@ -590,7 +590,7 @@ void SnapshotsController::reloadAb() {
 void SnapshotsController::abStart(const QString &aId, const QString &bId) {
     if (bId.isEmpty() || aId == bId) return;
     if (guardWaiting()) {
-        failed({}, tr("Finish the safe apply first: Keep or Revert."));
+        failed({}, tr("Finish the trial first: Keep or Revert.") /* -- WP UFW -- (UXP D10) */);
         return;
     }
     const QByteArray a = aId.toUtf8(), b = bId.toUtf8();
@@ -769,7 +769,7 @@ void SnapshotsController::removeFromHub(const QString &id) {
 
 void SnapshotsController::recallFromHub(const QString &id) {
     if (guardWaiting()) {
-        failed({}, tr("Finish the safe apply first: Keep or Revert."));
+        failed({}, tr("Finish the trial first: Keep or Revert.") /* -- WP UFW -- (UXP D10) */);
         return;
     }
     QString name;
