@@ -8482,7 +8482,8 @@ void dspi_core_set_free(struct FfiCoreSet *set);
 
 /**
  * Open the device `target` names on a core of its own and add it to the set.
- * `target` is JSON: `{"kind": "demo"}`, `{"kind": "usb", "serial"}`,
+ * `target` is JSON: `{"kind": "demo"}` (the tuned example), `{"kind":
+ * "demoBlank"}` (the demo as a new board), `{"kind": "usb", "serial"}`,
  * `{"kind": "document", "text", "fileName"}`, or (with Link) `{"kind": "hub",
  * "url", "hubId", "serial", "clientName", "appVersion", "credential",
  * "tlsAdvertised"}`: a unit behind a hub on its own session, with a credential
