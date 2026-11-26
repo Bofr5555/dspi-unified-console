@@ -16,6 +16,9 @@ import UConsole
 // stays, disabled after Apply; the proposal stays, dimmed, while the summed
 // check plays), so the page keeps the reader's place.
 //
+// -- WP UB7 -- (UXP B7) The layout section: the speaker layout's summary, the
+// outputs to tune as tick boxes; roles and groups only in Settings › Speakers.
+//
 // Keep after a verify that did not pass: the core refuses it once
 // (`measure.tune.keep_unverified`) and this tab asks again, in a question of
 // its own; only "Keep Anyway", pressed by the person, keeps the tune.
@@ -27,17 +30,11 @@ ScrollView {
 
     readonly property var tc: TuneController
     readonly property var mc: MeasureController
-    readonly property var roles: [
-        { id: "full", text: qsTr("Full range") }, { id: "sub", text: qsTr("Subwoofer") },
-        { id: "low", text: qsTr("Low (woofer)") }, { id: "mid", text: qsTr("Mid") },
-        { id: "high", text: qsTr("High (tweeter)") }
-    ]
-    function indexOf(list, id) {
-        for (let i = 0; i < list.length; ++i) if (list[i].id === id) return i
-        return 0
-    }
     readonly property bool idle: !mc.running && !tc.busy
     readonly property bool beforeApply: !tc.applied && tc.stage !== "kept"
+    // -- WP UB7 -- (was the button "Propose from the Device") the feeds read
+    // again each time the tab shows, before a proposal
+    onVisibleChanged: if (visible && idle && beforeApply && !tc.hasProposal) tc.reloadLayout()
 
     // -- WP DL2 -- Modern: the steps as dots over sections (a label, no box,
     // no number), one notice for what is missing, the state of each line in
@@ -156,6 +153,13 @@ ScrollView {
                 color: mc.hasResult ? Theme.text : Theme.warning
                 wrapMode: Text.WordWrap
             }
+            // -- WP UB7 -- (UXP B7) the speaker layout in one line, edited in
+            // Settings › Speakers; this tune's outputs are the tick boxes, each
+            // with the programme it is fed
+            SpeakersSummary {
+                objectName: "MeasureTune.speakers"
+                Layout.fillWidth: true
+            }
             Repeater {
                 model: tc.layout
                 RowLayout {
@@ -168,31 +172,6 @@ ScrollView {
                         enabled: tab.idle
                         checked: modelData.on
                         onToggled: tc.setOutputOn(modelData.output, checked)
-                    }
-                    AppComboBox {
-                        label: qsTr("Way")
-                        Layout.preferredWidth: 150
-                        enabled: tab.idle && modelData.on
-                        model: tab.roles
-                        textRole: "text"
-                        currentIndex: tab.indexOf(tab.roles, modelData.role)
-                        onActivated: index => tc.setOutputRole(modelData.output, tab.roles[index].id)
-                    }
-                    BorderedField {
-                        label: qsTr("Speaker")
-                        Layout.preferredWidth: 60
-                        enabled: tab.idle && modelData.on
-                        text: modelData.speaker
-                        onCommitted: t => tc.setOutputSpeaker(modelData.output, t)
-                    }
-                    AppSpinBox {
-                        label: qsTr("Group")
-                        implicitWidth: 90
-                        enabled: tab.idle && modelData.on
-                        realFrom: 0
-                        realTo: 15
-                        realValue: modelData.group
-                        onCommitted: value => tc.setOutputGroup(modelData.output, Math.round(value))
                     }
                     Text {
                         Layout.fillWidth: true
@@ -223,11 +202,6 @@ ScrollView {
             }
             RowLayout {
                 spacing: Theme.spacingSmall
-                AppButton {
-                    text: qsTr("Propose from the Device")
-                    enabled: tab.idle
-                    onClicked: tc.reloadLayout()
-                }
                 AppButton {
                     objectName: "MeasureTune.propose"
                     text: qsTr("Propose a Tune")

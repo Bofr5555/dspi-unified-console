@@ -10,6 +10,8 @@ import UConsole
 // verdict. The core decides everything; Stop is in the window's bar.
 // -- WP UA2 -- (A2) the bar (MeasureActionBar) has the run's step, progress,
 // Stop and Next Position; a refused Measure's problems are rows above the tabs.
+// -- WP UB7 -- (UXP B7) the outputs: the speaker layout's summary and this
+// run's tick boxes; roles and groups are edited in Settings › Speakers only.
 ScrollView {
     id: tab
     signal showResults()
@@ -17,11 +19,6 @@ ScrollView {
     contentWidth: availableWidth
 
     readonly property var mc: MeasureController
-    readonly property var roles: [
-        { id: "full", text: qsTr("Full range") }, { id: "sub", text: qsTr("Subwoofer") },
-        { id: "low", text: qsTr("Low (woofer)") }, { id: "mid", text: qsTr("Mid") },
-        { id: "high", text: qsTr("High (tweeter)") }
-    ]
     readonly property var placements: [
         { id: "listeningPosition", text: qsTr("Listening position"), detail: qsTr("Speakers: one position, with timing (alignment, crossover, EQ).") },
         { id: "multiPosition", text: qsTr("Several positions"), detail: qsTr("Speakers: 3 to 9 positions averaged; position 1 is the timing reference.") },
@@ -203,88 +200,34 @@ ScrollView {
         Section {
             title: qsTr("Outputs")
             Layout.fillWidth: true
+            // -- WP UB7 -- (UXP B7) the speaker layout in one line, edited in
+            // Settings › Speakers; this run's outputs are the tick boxes
+            SpeakersSummary {
+                objectName: "MeasureSetup.speakers"
+                Layout.fillWidth: true
+            }
             Text {
                 Layout.fillWidth: true
-                text: qsTr("The outputs measured together in one walked run are an alignment group: their delays and polarity are compared within the run only.")
+                text: qsTr("Tick the outputs to measure in this run. Their roles, and which of them are measured together, come from the speaker layout.")
                 font: Theme.fontSmall
                 color: Theme.textMuted
                 wrapMode: Text.WordWrap
             }
-            Repeater {
-                model: mc.setupOutputs
-                Item {
-                    id: outputRow
-                    required property var modelData
-                    required property int index
-                    Layout.fillWidth: true
-                    implicitWidth: outputCells.implicitWidth
-                    implicitHeight: outputCells.implicitHeight
-                    // -- WP DL2 -- Modern: a list row's stripe
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: Theme.radiusSmall
-                        visible: tab.modern && outputRow.index % 2 === 1
-                        color: Theme.stripe
-                    }
-                    RowLayout {
-                        id: outputCells
-                        spacing: Theme.spacingSmall
-                        AppCheckBox {
-                            objectName: "MeasureSetup.output." + modelData.output
-                            text: modelData.label
-                            Layout.preferredWidth: 200
-                            enabled: tab.editable
-                            checked: modelData.on
-                            onToggled: mc.setOutputOn(modelData.output, checked)
-                        }
-                        AppComboBox {
-                            objectName: "MeasureSetup.role." + modelData.output
-                            label: qsTr("Way")
-                            Layout.preferredWidth: 150
-                            enabled: tab.editable && modelData.on
-                            model: tab.roles
-                            textRole: "text"
-                            currentIndex: tab.indexOf(tab.roles, modelData.role)
-                            onActivated: index => mc.setOutputRole(modelData.output, tab.roles[index].id)
-                        }
-                        BorderedField {
-                            objectName: "MeasureSetup.speaker." + modelData.output
-                            label: qsTr("Speaker")
-                            Layout.preferredWidth: 60
-                            enabled: tab.editable && modelData.on
-                            //: A speaker field with no speaker named (Measure and Settings › Speakers)
-                            placeholderText: qsTr("Not set")   // -- INTC (DL7 fold) --
-                            text: modelData.speaker
-                            onCommitted: t => mc.setOutputSpeaker(modelData.output, t)
-                        }
-                        AppSpinBox {
-                            label: qsTr("Group")
-                            implicitWidth: 90
-                            enabled: tab.editable && modelData.on
-                            realFrom: 0
-                            realTo: 15
-                            realValue: modelData.group
-                            onCommitted: value => mc.setOutputGroup(modelData.output, Math.round(value))
-                        }
+            Flow {
+                objectName: "MeasureSetup.outputs"
+                Layout.fillWidth: true
+                spacing: Theme.spacing
+                Repeater {
+                    model: mc.setupOutputs
+                    AppCheckBox {
+                        required property var modelData
+                        objectName: "MeasureSetup.output." + modelData.output
+                        text: modelData.label
+                        enabled: tab.editable
+                        checked: modelData.on
+                        onToggled: mc.setOutputOn(modelData.output, checked)
                     }
                 }
-            }
-            // -- WP ROLEQ -- a way, speaker or group changed here is kept in
-            // the speaker layout (not confirmed by it)
-            Text {
-                objectName: "MeasureSetup.layoutSaved"
-                visible: text.length > 0
-                Layout.fillWidth: true
-                textFormat: Text.PlainText
-                text: SpeakersController.saidMeasure   // -- WP LAY5b -- not Confirm's
-                font: Theme.fontSmall
-                color: SpeakersController.saidError ? Theme.dangerText : Theme.textMuted
-                wrapMode: Text.WordWrap
-            }
-            AppButton {
-                text: qsTr("Propose from the Device")
-                enabled: tab.editable
-                onClicked: mc.proposeLayout()
             }
         }
 

@@ -189,8 +189,10 @@ use a capture path with a steadier clock, such as an analogue measurement microp
 Auto-tune lines up a multi-way speaker: the delay and polarity of each way, the crossover corner and the levels, then an
 EQ toward the target. Each step shows its result before the next, and you can stop after any step with nothing written.
 
-1. **Layout.** The console proposes your speakers and their ways (low, mid, high, sub) from the DSPi's settings, and
-   which outputs belong together. Check and correct it. You can leave outputs out.
+1. **Layout.** Your speaker layout in one line: each speaker with its outputs and their roles (woofer, mid driver,
+   tweeter, subwoofer), and whether you confirmed it. You correct it in one place, **Settings › Speakers** (**Edit in
+   Speakers…**); outputs with the same speaker name are measured together. Untick an output to leave it out of this
+   tune.
 2. **Checks.** Everything that would stop a run (section 4) is listed in words.
 3. **Measure.** One walked run of each speaker's ways at the listening position, three passes. Choose where it is
    measured first: in the web console's Auto-tune tab **Measured: Speakers, at the listening position** or

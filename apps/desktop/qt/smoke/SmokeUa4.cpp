@@ -237,9 +237,10 @@ void ua4Section(SmokeDriver &d) {
         else if (other < 0 && r.value(QStringLiteral("group")).toInt() != ua4Row(sc, first).value(QStringLiteral("group")).toInt())
             other = r.value(QStringLiteral("output")).toInt();
     }
-    QQuickItem *groupBox = ua4Shown(wizard, QStringLiteral("Speakers.group.%1").arg(first));
-    check("a group shows counted from 1",
-          first >= 0 && groupBox && qRound(groupBox->property("realValue").toDouble()) == ua4Row(sc, first).value(QStringLiteral("group")).toInt() + 1);
+    // -- WP UB7 -- (UXP B7) a group shows as the names measured together (was counted from 1)
+    QQuickItem *groupBox = ua4Shown(wizard, QStringLiteral("Speakers.together.%1").arg(first));
+    check("a group shows by its names",
+          first >= 0 && groupBox && groupBox->property("text").toString() == ua4Row(sc, first).value(QStringLiteral("groupName")).toString());
     d.grab(d.mainWindow(), QStringLiteral("ua4-speakers-later.png"));
     if (other < 0) {
         // One group only: give the second row a group of its own

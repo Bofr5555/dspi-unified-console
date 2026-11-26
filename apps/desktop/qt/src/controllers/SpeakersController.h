@@ -80,11 +80,19 @@ class SpeakersController : public QObject {
     Q_PROPERTY(QString detectText READ detectText NOTIFY detectChanged)
     Q_PROPERTY(QString detectHeading READ detectHeading NOTIFY detectChanged)
     Q_PROPERTY(QString detectQuestion READ detectQuestion NOTIFY detectChanged)
+    // -- WP UB7 -- (UXP B7) The draft's groups follow its speakers' names: the
+    // same name is one group, another name another group (unnamed rows aside)
+    Q_PROPERTY(bool groupsFollowNames READ groupsFollowNames NOTIFY rowsChanged)
+    // -- WP UB7 -- The layout Measure and Auto-tune use (the stored one, else the
+    // suggestion) in one line: "L: woofer Out 1, tweeter Out 2 · R: … · confirmed"
+    Q_PROPERTY(QString summary READ summary NOTIFY storedChanged)
 public:
     SpeakersController(const AppContext &ctx, QObject *parent);
     static SpeakersController *create(QQmlEngine *, QJSEngine *);
 
     // -- WP ADETQ -- each with its pill: { pill, pillKind, pillReason, source }
+    // -- WP UB7 -- and `groupName`: the speakers measured with it ("L", "L + Sub"),
+    // "" for a row left out
     QVariantList rows() const;
     QString status() const;
     qint64 stamp() const;
@@ -103,6 +111,8 @@ public:
     QString detectText() const;
     QString detectHeading() const;
     QString detectQuestion() const;
+    bool groupsFollowNames() const;   // -- WP UB7 --
+    QString summary() const;          // -- WP UB7 --
 
     // The stored layout as the core gave it, {} for none
     QJsonObject stored() const { return state()->stored; }
@@ -115,6 +125,10 @@ public:
     Q_INVOKABLE void setRole(int output, const QString &role);
     Q_INVOKABLE void setSpeaker(int output, const QString &speaker);
     Q_INVOKABLE void setGroup(int output, int group);
+    // -- WP UB7 -- (UXP B7) A speaker's name sets the group: a name another row has
+    // joins its group, a new name gets a group of its own (setSpeaker and
+    // setIncluded do it); followNames() does it for every row again
+    Q_INVOKABLE void followNames();
     // The draft back to the proposal
     Q_INVOKABLE void useSuggestion();
     // Keeps the draft as the confirmed layout
@@ -175,6 +189,7 @@ private:
     void rebuild(const StatePtr &st);
     void say(const StatePtr &st, const QString &text, bool error, bool measure = false);
     void setField(int output, const QString &field, const QVariant &value);
+    void settleGroup(int output);   // -- WP UB7 --
     static QVariantMap rowOf(const State &st, int output);
     QVariantMap pillOf(const State &st, const QVariantMap &row) const;   // -- WP ADETQ --
     QJsonObject draftLayout() const;
