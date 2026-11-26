@@ -644,6 +644,11 @@ impl DspiCore {
         self.ab_guard_free()?;
         // What was queued before the compare is part of "now".
         self.settle_notifications();
+        // -- INT016 -- (the integration's safety review) "as saved" plays what a
+        // load of the preset would: a trusted tweeter or midrange the preset
+        // leaves without its high-pass is held (muted) on A, as the load guard
+        // held it, never unmuted by the compare
+        let rules = self.load_guard_rules();
         let (saved, mark) = {
             let mut inner = self.lock();
             inner.conn()?;
@@ -656,7 +661,10 @@ impl DspiCore {
         let a = self.snapshot_capture_document_adjusted(
             SAVED_A_NAME.into(),
             SAVED_A_NOTE.into(),
-            &|live| *live = preset_on_live(&saved, live),
+            &|live| {
+                *live = preset_on_live(&saved, live);
+                crate::preset_guard::hold_unprotected(live, &rules);
+            },
         )?;
         self.ab_begin(Some(a), b, Some(mark))
     }

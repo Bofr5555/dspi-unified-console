@@ -63,17 +63,37 @@ fn protected(st: &DspState, o: u8, floor: f32, slope: u8) -> bool {
         })
 }
 
-impl DspiCore {
-    /// Silence the device for a load, when it needs guarding (module docs).
-    pub(crate) fn load_guard_begin(&self) -> Option<LoadGuard> {
-        let st = self.get_state();
-        if st.master_volume_mode != 0 || st.master_volume_db <= LOAD_GUARD_DB + 0.5 {
-            return None;
+/// -- INT016 -- Hold in `st` what [`DspiCore::load_guard_end`] holds after a
+/// load: each of `rules`' outputs that plays without its high-pass is muted.
+/// The outputs held, from 0. For a state about to be put on the device
+/// whole (the A/B compare's "as saved", ab.rs), so it plays what a load of
+/// that preset would.
+pub(crate) fn hold_unprotected(st: &mut DspState, rules: &[(u8, f32, u8)]) -> Vec<u8> {
+    let mut held = Vec::new();
+    for &(o, floor, slope) in rules {
+        if !plays(st, o) || protected(st, o, floor, slope) {
+            continue;
         }
+        if let Some(m) = st.output_muted.get_mut(usize::from(o)) {
+            *m = true;
+            held.push(o);
+        }
+    }
+    held
+}
+
+impl DspiCore {
+    /// The guard's rules now: each trusted tweeter or midrange of the speaker
+    /// layout as (output, floor Hz, slope dB/octave); none without a trusted
+    /// layout. -- INT016 -- (load_guard_begin's, for the A/B compare too)
+    pub(crate) fn load_guard_rules(&self) -> Vec<(u8, f32, u8)> {
+        let st = self.get_state();
         // -- WP ADET0 -- a detected layout's roles guard the load too
-        let layout = self.trusted_layout_now()?;
+        let Some(layout) = self.trusted_layout_now() else {
+            return Vec::new();
+        };
         let profile = crate::limits::profile(&mut self.lock());
-        let rules: Vec<(u8, f32, u8)> = layout
+        layout
             .outputs
             .iter()
             .filter(|o| o.output < st.num_output_channels)
@@ -81,7 +101,16 @@ impl DspiCore {
                 crate::measure::tweeter_rule(o.role, o.output, profile.as_ref())
                     .map(|(hz, slope)| (o.output, hz, slope))
             })
-            .collect();
+            .collect()
+    }
+
+    /// Silence the device for a load, when it needs guarding (module docs).
+    pub(crate) fn load_guard_begin(&self) -> Option<LoadGuard> {
+        let st = self.get_state();
+        if st.master_volume_mode != 0 || st.master_volume_db <= LOAD_GUARD_DB + 0.5 {
+            return None;
+        }
+        let rules = self.load_guard_rules();
         if rules.is_empty() {
             return None;
         }

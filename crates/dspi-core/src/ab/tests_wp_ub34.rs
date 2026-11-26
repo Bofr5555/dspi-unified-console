@@ -196,3 +196,64 @@ fn wp_ub34_no_device_is_refused() {
     assert!(core.ab_start_saved().is_err());
     assert!(!core.ab_is_saved());
 }
+
+/// -- INT016 -- (the integration's safety review) A preset that leaves a
+/// confirmed tweeter without its high-pass: its load holds the tweeter
+/// (muted), and "as saved" on A holds it too. The saved image has it
+/// unmuted, but the compare never plays it unprotected; B (now) keeps the
+/// load's hold as well.
+#[test]
+fn int016_as_saved_holds_a_tweeter_the_load_guard_held() {
+    use crate::measure::MeasureRole;
+    use crate::speaker_layout::{SpeakerLayout, SpeakerLayoutOutput};
+    let core = DspiCore::new();
+    core.open_demo().unwrap();
+    let n_in = core.get_state().num_input_channels;
+    // Output 1 a confirmed tweeter, fed from input 0, saved with its high
+    // pass at 850 Hz (below the 1 kHz floor) in slot 9
+    core.set_matrix_route(0, 1, true, 0.0, false).unwrap();
+    core.set_crossover(
+        n_in + 1,
+        0,
+        FilterParams {
+            filter_type: 35,
+            bypass: false,
+            freq: 850.0,
+            q: 0.707,
+            gain: 0.0,
+            qp: 0.707,
+        },
+    )
+    .unwrap();
+    let token = core.confirm_token(ConfirmOp::SavePreset);
+    core.save_preset_confirmed(8, Some(token)).unwrap();
+    core.set_master_volume(-12.0).unwrap();
+    let outputs = (0..core.get_state().num_output_channels)
+        .map(|n| SpeakerLayoutOutput {
+            output: n,
+            role: if n == 1 { MeasureRole::High } else { MeasureRole::Full },
+            speaker: "L".into(),
+            group: 0,
+            source: Default::default(),
+        })
+        .collect();
+    core.speaker_layout_set(SpeakerLayout {
+        outputs,
+        confirmed_by_user: true,
+        ..SpeakerLayout::default()
+    })
+    .unwrap();
+    core.load_preset(8).unwrap();
+    assert!(core.get_state().output_muted[1], "the load holds the tweeter");
+    edit(&core);
+
+    let c = core.ab_start_saved().unwrap();
+    assert_eq!(c.side, Some(AbSide::A));
+    assert!(core.get_state().output_muted[1], "A unmuted the held tweeter");
+    let c = core.ab_toggle().unwrap();
+    assert_eq!(c.side, Some(AbSide::B));
+    assert!(core.get_state().output_muted[1], "B is now: still held");
+    let c = core.ab_toggle().unwrap();
+    assert_eq!(c.side, Some(AbSide::A));
+    assert!(core.get_state().output_muted[1], "A again: still held");
+}
