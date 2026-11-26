@@ -116,11 +116,19 @@ class SpeakersPageWpUanTest {
     fun uanSettingsSpeakersKeepsTheUsersRoles() {
         val bridge = demo()
         val settings = InMemoryAppSettingsStore(AppSettings())
-        rule.setContent { CompositionLocalProvider(LocalAppSettings provides settings) { DspiTheme(darkTheme = true) { SpeakersSettingsTab(bridge) } } }
+        rule.setContent {
+            CompositionLocalProvider(LocalAppSettings provides settings) { DspiTheme(darkTheme = true) { SpeakersSettingsTab(bridge) } }
+        }
         pumpUntil("writes") { bridge.writesAllowed.value }
         pumpUntil("rows") { rule.onAllNodes(hasTestTag(speakerRoleTag(0))).fetchSemanticsNodes().isNotEmpty() }
         assertTrue(textShown(SpeakerWords.UNCONFIRMED))
-        assertEquals("a row per output", bridge.numOutputChannels, (0 until 16).count { o -> rule.onAllNodes(hasTestTag(speakerRoleTag(o))).fetchSemanticsNodes().isNotEmpty() })
+        assertEquals(
+            "a row per output",
+            bridge.numOutputChannels,
+            (0 until 16).count { o ->
+                rule.onAllNodes(hasTestTag(speakerRoleTag(o))).fetchSemanticsNodes().isNotEmpty()
+            }
+        )
         // Out 2 is a tweeter: its row says its floor
         rule.onNodeWithTag(speakerRoleTag(1)).performClick()
         pumpUntil("menu") { textShown("Tweeter") }

@@ -23,7 +23,11 @@ class SpeakersWpUanTest {
 
     @Test
     fun uanRowsCoverEveryOutputAndLeftOutIsNone() {
-        val l = layout(SpeakerLayoutOutput(0, MeasureRole.LOW, "L", 0, RoleSource.SUGGESTED), SpeakerLayoutOutput(2, MeasureRole.HIGH, "", 0, RoleSource.SUGGESTED))
+        val l =
+            layout(
+                SpeakerLayoutOutput(0, MeasureRole.LOW, "L", 0, RoleSource.SUGGESTED),
+                SpeakerLayoutOutput(2, MeasureRole.HIGH, "", 0, RoleSource.SUGGESTED)
+            )
         val rows = speakerRows(l, 4) { "Out ${it + 1}" }
         assertEquals(listOf(MeasureRole.LOW, null, MeasureRole.HIGH, null), rows.map { it.role })
         assertEquals("a blank speaker takes the slot's side", listOf("L", "R", "L", "R"), rows.map { it.side })
@@ -63,9 +67,18 @@ class SpeakersWpUanTest {
         assertEquals("Its high-pass: at least 1000 Hz, 12 dB/octave", speakerFloorWords(MeasureRole.HIGH, null))
         assertEquals("Its high-pass: at least 80 Hz, 12 dB/octave", speakerFloorWords(MeasureRole.MID, null))
         // A profile may raise a tweeter's, never lower it
-        assertEquals("Its high-pass: at least 1500 Hz, 24 dB/octave", speakerFloorWords(MeasureRole.HIGH, OutputLimits(0, highpassMinHz = 1500f, highpassMinSlopeDb = 24)))
-        assertEquals("Its high-pass: at least 1000 Hz, 12 dB/octave", speakerFloorWords(MeasureRole.HIGH, OutputLimits(0, highpassMinHz = 500f, highpassMinSlopeDb = 6)))
-        assertEquals("Its high-pass: at least 300 Hz, 12 dB/octave", speakerFloorWords(MeasureRole.MID, OutputLimits(0, highpassMinHz = 300f)))
+        assertEquals(
+            "Its high-pass: at least 1500 Hz, 24 dB/octave",
+            speakerFloorWords(MeasureRole.HIGH, OutputLimits(0, highpassMinHz = 1500f, highpassMinSlopeDb = 24))
+        )
+        assertEquals(
+            "Its high-pass: at least 1000 Hz, 12 dB/octave",
+            speakerFloorWords(MeasureRole.HIGH, OutputLimits(0, highpassMinHz = 500f, highpassMinSlopeDb = 6))
+        )
+        assertEquals(
+            "Its high-pass: at least 300 Hz, 12 dB/octave",
+            speakerFloorWords(MeasureRole.MID, OutputLimits(0, highpassMinHz = 300f))
+        )
         for (r in listOf(MeasureRole.LOW, MeasureRole.SUB, MeasureRole.FULL, null)) assertNull(speakerFloorWords(r, null))
         // The core's numbers
         val rs = generateSequence(File("").absoluteFile) { it.parentFile }
