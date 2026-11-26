@@ -851,6 +851,22 @@ interface DspiCoreApi : AutoCloseable {
     fun csDemoLearn(protocol: Int, code: Long): Boolean
 
     /**
+     * "Reset demo": the open demo device runs the settings it opened with
+     * again (the example, for [`DspiCore::open_demo`]'s) as preset slot 1's
+     * and the active slot, the mirror is read again with nothing unsaved,
+     * and the example's speaker layout is kept again. The device stays
+     * open. The history is a preset load's ("Preset 1 loaded"): what came
+     * before it is gone with the state, as after a factory reset.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device;
+     * [`DspiError::Unsupported`], with no traffic, on anything but a
+     * simulated device; the refusals of every write (read-only, an
+     * installer's lock, another actor) and the transfer errors of the read.
+     */
+    @Throws(DspiException::class)
+    fun resetDemo()
+
+    /**
      * Adopt a USB device the platform already opened: Android's
      * `UsbDeviceConnection.getFileDescriptor()`. The core `dup(2)`s the fd
      * and owns the duplicate, so the app keeps (and later closes) its own;
@@ -934,11 +950,6 @@ interface DspiCoreApi : AutoCloseable {
      */
     fun wireFeatures(): Long
 
-    /**
-     * Open the built-in demo device (`dspi_transport::FakeDevice::demo`):
-     * a simulated RP2350 that answers reads and writes and notifies.
-     * Replaces any open device.
-     */
     @Throws(DspiException::class)
     fun openDemo()
 

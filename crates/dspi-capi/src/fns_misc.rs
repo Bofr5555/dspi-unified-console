@@ -1337,8 +1337,9 @@ pub extern "C" fn dspi_bootloader_counts(rp2040: *mut u32, rp2350: *mut u32) {
 }
 
 /// Open the demo device, a simulated DSPi, in place of any open device.
-/// -- WP UB12 -- It runs a tuned example (a stereo two-way on outputs 1-4,
-/// its roles confirmed).
+/// It runs a tuned example (a stereo two-way on outputs 1-4, its roles
+/// confirmed).
+// -- WP UB12 -- its second sentence
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_open_demo(core: *mut FfiCore) -> bool {
     flag(core, DspiCore::open_demo)

@@ -538,11 +538,12 @@ impl DspiCore {
 
     /// Open the built-in demo device (`dspi_transport::FakeDevice::demo`):
     /// a simulated RP2350 that answers reads and writes and notifies.
-    /// -- WP UB12 -- It runs a tuned example (`demo_example`: a stereo two-way
-    /// on outputs 1-4, LR4 at 2.2 kHz, a few cuts, named outputs) with its
-    /// roles confirmed: the speaker layout kept for the demo's serial becomes
-    /// the example's. [`DspiCore::open_demo_blank`] opens the capture as it
-    /// is. Replaces any open device.
+    /// It runs a tuned example (a stereo two-way on outputs 1-4, LR4 at
+    /// 2.2 kHz, a few cuts, named outputs) with its roles confirmed: the
+    /// speaker layout kept for the demo's serial becomes the example's.
+    /// [`DspiCore::open_demo_blank`] opens the capture as it is. Replaces any
+    /// open device.
+    // -- WP UB12 -- the tuned example (`demo_example`)
     pub fn open_demo(&self) -> Result<()> {
         // -- WP FUNC1 -- the function test's next device
         #[cfg(feature = "sim-scenario")]
