@@ -8,6 +8,7 @@ import UConsole
 // with their note; the credits; and the third-party notices, each opened in a
 // text viewer (behaviour.md §27). The wording is the core's About table
 // (AboutController); sections other packages add (the licence) go below.
+// -- WP UA5 -- The open device's protocol moved to Advanced.
 SettingsPage {
     id: page
     objectName: "AboutPage"
@@ -61,29 +62,8 @@ SettingsPage {
         }
     }
 
-    // -- WP PGQT -- The open device's protocol (read once per connection), and
-    // the raw request by command id
-    SettingsGroup {
-        objectName: "About.device"
-        title: qsTr("Connected Device")
-        iconName: "cpu"
-        DeviceInfoRows {}
-        RowLayout {
-            Layout.fillWidth: true
-            Item { Layout.fillWidth: true }
-            AppButton {
-                objectName: "About.raw"
-                text: qsTr("Raw Request…")
-                enabled: DeviceModel.connected
-                onClicked: rawDialog.open()
-            }
-        }
-    }
-
-    RawRequestDialog {
-        id: rawDialog
-        parent: page.Window.window ? page.Window.window.contentItem : page
-    }
+    // -- WP UA5 -- The open device's protocol and Raw Request… are on Advanced:
+    // About is the app's page (the developer facts are not the first a visitor reads)
 
     SettingsGroup {
         title: qsTr("Made By")
