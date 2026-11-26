@@ -17,6 +17,7 @@
 #include "DeviceModel.h"
 #include "DeviceRegistry.h"
 #include "DeviceSession.h"
+#include "LayoutController.h"   // -- FIX016 --
 #include "SessionModel.h"
 #include "Registrar.h"
 #include "Shell.h"
@@ -114,6 +115,7 @@ void agentSection(SmokeDriver &d) {
     }
     QDir(QDir(d.outDir()).filePath(QStringLiteral("ub5"))).removeRecursively();
     QDir().mkpath(QDir(d.outDir()).filePath(QStringLiteral("ub5")));
+    const bool modernWas = Registrar::instance<LayoutController>()->modern();   // -- FIX016 -- (R1-QT)
     d.switchLayout("modern");
     const QSize size = main->size();
     main->resize(1600, 1000);
@@ -255,6 +257,7 @@ void agentSection(SmokeDriver &d) {
     d.waitFor(10000, [&] { return registry->sessions().size() == 1; });
     setGains(-20.0f);
     main->resize(size);
+    if (!modernWas) d.switchLayout("classic");   // -- FIX016 -- (R1-QT) the layout as it found it
     d.waitIdle();
 }
 
