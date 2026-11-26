@@ -84,7 +84,9 @@ fn wp_p1lk_defaults_per_platform_class() {
     assert_eq!(mode("phone").reason, "default");
     assert_eq!(mode("phone").first_screen, "system");
     assert_eq!(
-        resolve(&m, "phone", "simple", false, true, None).unwrap().first_screen,
+        resolve(&m, "phone", "simple", false, true, None)
+            .unwrap()
+            .first_screen,
         "front"
     );
     assert_eq!(mode("desktop").first_screen, "system");
