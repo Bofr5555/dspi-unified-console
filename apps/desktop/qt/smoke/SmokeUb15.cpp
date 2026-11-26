@@ -13,6 +13,7 @@
 #include "AiController.h"
 #include "ClaudeDesktopController.h"
 #include "Registrar.h"
+#include "SettingsController.h"
 #include "Shell.h"
 
 #include <QCoreApplication>
@@ -127,6 +128,12 @@ void desktopSection(SmokeDriver &d) {
             QDir::fromNativeSeparators(claude->configFile())
                 == QDir::fromNativeSeparators(claude->configFolder()) + QStringLiteral("/claude_desktop_config.json"));
 
+    // ---- The Settings search finds the page by the button's and the file's words
+    auto *pages = Registrar::instance<SettingsController>();
+    d.check("ub15-desktop: the Settings search finds AI Agents for \"extension\" and \"claude_desktop_config\"",
+            pages && pages->matches(QStringLiteral("ai"), QStringLiteral("extension"))
+                && pages->matches(QStringLiteral("ai"), QStringLiteral("claude_desktop_config")));
+
     // ---- The manifest: the hand-written configuration's server, for this platform
     const QString program = QDir::toNativeSeparators(QCoreApplication::applicationFilePath());
     const QJsonObject m = C::manifest(program, C::platform());
@@ -178,6 +185,7 @@ void desktopSection(SmokeDriver &d) {
     QQuickItem *said = d.item(QStringLiteral("AiAgents.installOpened"), scope);
     d.spin(100);
     d.check("ub15-desktop: the page says to click Install in Claude Desktop", said && said->isVisible());
+    grabBoth(d, settings, QStringLiteral("2-opened"));
     QFile f(file);
     const QByteArray bytes = f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
     const auto files = unzipStored(bytes);
@@ -187,7 +195,7 @@ void desktopSection(SmokeDriver &d) {
     d.check("ub15-desktop: its manifest is this program's, with the icon",
             written.value("server").toObject() == server && written.value("icon").toString() == "icon.png");
     const QImage icon = files.count("icon.png") ? QImage::fromData(files.at("icon.png"), "PNG") : QImage();
-    d.check("ub15-desktop: its icon is the app's, 256 px", icon.width() == 256 && icon.height() == 256);
+    d.check("ub15-desktop: its icon is the app's, 512 px", icon.width() == 512 && icon.height() == 512);
     const QString python = QStandardPaths::findExecutable(QStringLiteral("python3"));
     if (python.isEmpty()) {
         d.notRun("ub15-desktop: Python's zipfile reads the .mcpb", "no python3");
@@ -210,7 +218,7 @@ void desktopSection(SmokeDriver &d) {
     d.check("ub15-desktop: nothing opened it: the page says so and where the file is",
             claude->state() == "notOpened" && notice && notice->isVisible()
                 && notice->property("text").toString().contains(claude->extensionFile()) && !(said && said->isVisible()));
-    grabBoth(d, settings, QStringLiteral("2-nothing-opened-it"));
+    grabBoth(d, settings, QStringLiteral("3-nothing-opened-it"));
     opened.clear();
     QQuickItem *show = d.item(QStringLiteral("AiAgents.installNotOpened.action"), scope);
     d.check("ub15-desktop: Show File opens the folder that keeps it",

@@ -88,14 +88,14 @@ QByteArray zip(const std::vector<std::pair<QByteArray, QByteArray>> &files) {
     return out;
 }
 
-// The app's icon at 256 px, as Claude Desktop lists an extension
+// The app's icon at 512 px, the size Claude Desktop recommends (mcpb validate)
 QByteArray iconPng() {
     const QImage icon(QStringLiteral(":/ub15/dspi-icon-rounded-1024.png"));
     if (icon.isNull()) return {};
     QByteArray png;
     QBuffer buffer(&png);
     buffer.open(QIODevice::WriteOnly);
-    icon.scaled(256, 256, Qt::KeepAspectRatio, Qt::SmoothTransformation).save(&buffer, "PNG");
+    icon.scaled(512, 512, Qt::KeepAspectRatio, Qt::SmoothTransformation).save(&buffer, "PNG");
     return png;
 }
 
