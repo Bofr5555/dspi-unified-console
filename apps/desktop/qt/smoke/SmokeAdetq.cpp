@@ -396,6 +396,11 @@ void agentSection(SmokeDriver &d) {
     if (!device->connected() || !device->demo()) device->openDemo();
     d.waitFor(10000, [&] { return device->connected() && device->demo(); });
     d.switchLayout("classic");
+    // -- FIX016 -- (R1-QT) put back at the end: the volume, and no Measure window
+    // the agent's detection opened (ua2's "in view" checks after it read the main
+    // window while the Measure view was in that window)
+    const float volumeWas = device->state() ? device->state()->user_volume_db : -20.0f;
+    const bool measureWas = d.app().shell->shownWindows().contains(QStringLiteral("tools.measure"));
     quieten(d);
     const QJsonObject was = storedLayout(d);
     // Nobody's word yet: the proposal kept unconfirmed (a confirmed layout is not detected over)
@@ -549,6 +554,8 @@ void agentSection(SmokeDriver &d) {
     ai->revoke(ai->clients().value(0).toMap().value(QStringLiteral("id")).toDouble());
     if (!was.isEmpty() && was.value(QLatin1String("outputs")).isArray()) setLayout(d, was);
     sc->reload();
+    if (!measureWas) d.app().shell->closeWindow(QStringLiteral("tools.measure"));   // -- FIX016 --
+    device->write(QLatin1String("adet volume"), [volumeWas](FfiCore *c) { return dspi_set_user_volume(c, volumeWas); });   // -- FIX016 --
     d.waitIdle();
     d.spin(200);
 }
