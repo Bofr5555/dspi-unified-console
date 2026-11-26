@@ -111,6 +111,7 @@ class MainActivity : ComponentActivity() {
                         strip = connectionStrip(mode, usbState, remote, lockNotice, document = document?.fileName, security = security),
                         // -- WP AN7 -- every user switch goes through the Unsaved Changes flow
                         onExitDemo = { modes.switchTo(DeviceChoice.Usb) },
+                        onResetDemo = modes::resetDemo, // -- WP UB12 --
                         onRequestPermission = { app.session.requestPermission(this) },
                         bootloaderLocator = app.bootloaderLocator,
                         onRemoteAction = { a ->

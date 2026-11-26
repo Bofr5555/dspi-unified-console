@@ -180,10 +180,25 @@ test("WB3: a panic marks the core dead: an error reply, a lost event, every late
   assert.throws(() => m.newSession(), code("dead"));
 });
 
+// -- WP UB12 --
+test("UB12: the demo opens on its tuned example, and the demo call's reset puts it back", { skip }, async () => {
+  const core = session(await load(pageModule));
+  const snap: DeviceSnapshot = await core.call("open", { kind: "demo" });
+  const names = (snap.outputLabels ?? []).slice(0, 4).map((l) => l.label);
+  assert.deepEqual(names, ["Left woofer", "Right woofer", "Left tweeter", "Right tweeter"]);
+  assert.ok((snap.outputLabels ?? []).slice(4).every((l) => l.unused));
+  assert.equal(snap.state.outputGainDb[2], -3);
+  await core.call("write", { path: "out.gain", indices: [2], value: { float: -9 } });
+  assert.equal((await core.call("state", undefined)).state.outputGainDb[2], -9);
+  assert.equal(await core.call("demo", { action: "reset" }), null);
+  assert.equal((await core.call("state", undefined)).state.outputGainDb[2], -3);
+});
+
 // -- BUG1 --
 test("BUG1: the core's snapshot carries each output's label and the dashboard's cards", { skip }, async () => {
   const core = session(await load(pageModule));
-  const snap: DeviceSnapshot = await core.call("open", { kind: "demo" });
+  // -- WP UB12 -- the blank demo: the tuned example names its outputs
+  const snap: DeviceSnapshot = await core.call("open", { kind: "demo", blank: true });
   const labels = snap.outputLabels ?? [];
   assert.equal(labels.length, snap.state.numOutputChannels);
   // The demo routes USB 1 to output 1 and USB 2 to output 2, unfiltered, under the slots' default names

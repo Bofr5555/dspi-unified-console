@@ -74,6 +74,13 @@ public:
     // core's channel words follow a speaker layout that changed (no state did)
     void reread();
     void openDemo();
+    // -- WP UB12 -- "Reset Demo": the demo's own settings again (dspi_reset_demo)
+    void resetDemo();
+#ifdef DSPI_SMOKE
+    // -- WP UB12 -- the smoke build's demo is the blank capture its sections
+    // were written for (dspi_open_demo_blank); ub12-demo opens the example
+    static inline bool smokeDemoExample = false;
+#endif
     void selectDevice(const QString &serial);
     // Closes and reopens the open device (the device button's right-click)
     void reconnect();

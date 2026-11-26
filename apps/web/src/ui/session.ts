@@ -105,6 +105,8 @@ export interface SessionState {
 export type ChangeMethod = "presetCopy" | "presetRevert" | "factoryReset"
   // -- WP GAP1 -- the crossfeed's output pair map
   | "setCrossfeedPairMap"
+  // -- WP UB12 -- "Reset Demo" (`demo` with `reset`)
+  | "demo"
   // -- WP WB6c --
   | "crossoverType"
   | "crosspoint"

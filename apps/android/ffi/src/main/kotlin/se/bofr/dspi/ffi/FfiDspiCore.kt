@@ -209,6 +209,8 @@ class FfiDspiCore : DspiCoreApi {
 
     override fun csDemoLearn(protocol: Int, code: Long): Boolean = call { core.csDemoLearn(protocol.toUByte(), code.toUInt()) }
 
+    override fun resetDemo() = call { core.resetDemo() }
+
     override fun openFd(fd: Int, serial: String, vid: Int) = call { core.openFd(fd, serial, vid.toUShort()) }
 
     override fun closeFd() = core.closeFd()

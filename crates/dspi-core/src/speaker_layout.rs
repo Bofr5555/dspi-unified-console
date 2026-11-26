@@ -611,6 +611,20 @@ impl LayoutSlot {
         store.memory.push(layout.clone());
         Ok(())
     }
+
+    // -- WP UB12 --
+    /// Keep no layout for `serial` (the blank demo's: the example's roles do
+    /// not stand on it). A file that cannot be removed is logged.
+    pub(crate) fn forget(&self, serial: &str) {
+        let mut store = self.store();
+        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+        if let Some(dir) = &store.dir
+            && let Err(e) = files::remove(dir, serial)
+        {
+            log::warn!("the speaker layout could not be removed: {e}");
+        }
+        store.memory.retain(|l| l.serial != serial);
+    }
 }
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
@@ -654,6 +668,14 @@ mod files {
                 let _ = fs::rename(&path, path.with_extension("json.bad"));
                 None
             }
+        }
+    }
+
+    // -- WP UB12 --
+    pub(super) fn remove(root: &Path, serial: &str) -> io::Result<()> {
+        match fs::remove_file(root.join(dir_name(serial)).join(FILE)) {
+            Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
+            _ => Ok(()),
         }
     }
 

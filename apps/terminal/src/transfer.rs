@@ -1046,7 +1046,7 @@ mod wp_tm10_tests {
 
     fn qt_core() -> std::sync::Arc<dspi_core::DspiCore> {
         let core = dspi_core::DspiCore::new();
-        core.open_demo().unwrap();
+        core.open_demo_blank().unwrap(); // -- WP UB12 -- the capture the fixture is
         core
     }
 

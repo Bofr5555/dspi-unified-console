@@ -4925,8 +4925,24 @@ void dspi_bootloader_counts(uint32_t *rp2040, uint32_t *rp2350);
 
 /**
  * Open the demo device, a simulated DSPi, in place of any open device.
+ * It runs a tuned example (a stereo two-way on outputs 1-4, its roles
+ * confirmed).
  */
 bool dspi_open_demo(struct FfiCore *core);
+
+/**
+ * Open the demo device as the bundled capture left it (no filters, nothing
+ * named, no speaker layout), in place of any open device: for tests of a
+ * new board.
+ */
+bool dspi_open_demo_blank(struct FfiCore *core);
+
+/**
+ * "Reset Demo": the open demo device runs the settings it opened with again,
+ * with nothing unsaved and its roles the example's again; the device stays
+ * open. False, with the error kept, on anything but the demo device.
+ */
+bool dspi_reset_demo(struct FfiCore *core);
 
 /**
  * What the extension channel offers on the open device, in JSON:
@@ -8492,7 +8508,8 @@ void dspi_core_set_free(struct FfiCoreSet *set);
 
 /**
  * Open the device `target` names on a core of its own and add it to the set.
- * `target` is JSON: `{"kind": "demo"}`, `{"kind": "usb", "serial"}`,
+ * `target` is JSON: `{"kind": "demo"}` (the tuned example), `{"kind":
+ * "demoBlank"}` (the demo as a new board), `{"kind": "usb", "serial"}`,
  * `{"kind": "document", "text", "fileName"}`, or (with Link) `{"kind": "hub",
  * "url", "hubId", "serial", "clientName", "appVersion", "credential",
  * "tlsAdvertised"}`: a unit behind a hub on its own session, with a credential

@@ -517,10 +517,22 @@ function useOpenStatus(session: Session | null): Session["state"]["status"] | nu
   return session?.state.status ?? null;
 }
 
+// -- WP UB12 -- The e2e tests' pages were written for a new board: their browser holds this key
+// (playwright.config.ts), and the demo opens as the blank capture, not the tuned example.
+const BLANK_DEMO_KEY = "dspi.test.blankDemo";
+
+function blankDemo(): boolean {
+  try {
+    return globalThis.localStorage?.getItem(BLANK_DEMO_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 function targetFor(source: Source): DeviceTarget {
   switch (source.kind) {
     case "demo":
-      return { kind: "demo" };
+      return blankDemo() ? { kind: "demo", blank: true } : { kind: "demo" }; // -- WP UB12 --
     case "usb":
       // -- WP WB4a --
       return source.serial ? { kind: "usb", serial: source.serial } : { kind: "usb" };

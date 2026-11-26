@@ -190,6 +190,8 @@ fun AppScaffold(
     switchAlerts: AlertHost? = null,
     // -- WP P1AN2 -- where the chosen UI mode is kept (per device)
     modeStore: UiModeStore = remember { InMemoryUiModeStore() },
+    // -- WP UB12 -- (UXP B12) the demo strip's "Reset demo"
+    onResetDemo: () -> Unit = {},
     overlay: @Composable () -> Unit = {}
 ) {
     // -- WP AN35 --
@@ -297,7 +299,8 @@ fun AppScaffold(
                         onSnapshots = openSnapshots.takeUnless { locked },
                         modeEntry = modeEntry, // -- WP P1AN2 --
                         installerBadge = uiMode == UiModes.INSTALLER && lockState?.pinSet == true, // -- WP P1AN2 --
-                        identifyEntry = identifyEntry // -- WP P2AN --
+                        identifyEntry = identifyEntry, // -- WP P2AN --
+                        onResetDemo = onResetDemo // -- WP UB12 --
                     ) { c ->
                         if (c == DeviceChoice.Network) onConnectNetwork() else onChooseDevice(c)
                     }
@@ -496,6 +499,10 @@ private fun NavGraphBuilder.screen(
 /** The app bar's entry to the Snapshots screen. */
 internal const val SNAPSHOTS_ENTRY = "Snapshots"
 
+// -- WP UB12 --
+/** The demo strip's action that opens the demo's tuned example again. */
+internal const val RESET_DEMO = "Reset demo"
+
 /** Test tag of the wide strip's Snapshots button. */
 internal const val SNAPSHOTS_ENTRY_TAG = "strip-snapshots"
 
@@ -520,6 +527,7 @@ private fun ConnectionStripBar(
     installerBadge: Boolean = false,
     // -- WP P2AN -- Identify: in the overflow (phone) or the Devices menu (wide), no new button on the bar
     identifyEntry: Pair<String, () -> Unit>? = null,
+    onResetDemo: () -> Unit = {}, // -- WP UB12 --
     onChooseDevice: (DeviceChoice) -> Unit
 ) {
     // -- WP AN5 -- the owner's lost-connection banner; this bar is above every route, so it is on every screen
@@ -555,7 +563,8 @@ private fun ConnectionStripBar(
     val ink = tint?.content ?: colors.onSurface
     val actions: List<Pair<String, () -> Unit>> =
         when (strip) {
-            ConnectionStrip.Demo -> listOf("Exit demo" to onExitDemo)
+            // -- WP UB12 -- (UXP B12) its tuned example again, as Qt's and the web's strip
+            ConnectionStrip.Demo -> listOf(RESET_DEMO to onResetDemo, "Exit demo" to onExitDemo)
             is ConnectionStrip.Document -> listOf("Close file" to onExitDemo) // -- WP P1AN1 --
             is ConnectionStrip.Remote -> strip.actions.map { a -> a.label to { onRemoteAction(a) } }
             is ConnectionStrip.NeedsPermission -> listOf("Allow USB access" to onRequestPermission)

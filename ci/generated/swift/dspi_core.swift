@@ -5155,7 +5155,11 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
     /**
      * Open the built-in demo device (`dspi_transport::FakeDevice::demo`):
      * a simulated RP2350 that answers reads and writes and notifies.
-     * Replaces any open device.
+     * It runs a tuned example (a stereo two-way on outputs 1-4, LR4 at
+     * 2.2 kHz, a few cuts, named outputs) with its roles confirmed: the
+     * speaker layout kept for the demo's serial becomes the example's.
+     * [`DspiCore::open_demo_blank`] opens the capture as it is. Replaces any
+     * open device.
      */
     func openDemo() throws 
     
@@ -5588,6 +5592,21 @@ public protocol DspiCoreProtocol: AnyObject, Sendable {
      * [`DspiError::Disconnected`] or [`DspiError::Transfer`] otherwise.
      */
     func resetBufferStats() throws 
+    
+    /**
+     * "Reset demo": the open demo device runs the settings it opened with
+     * again (the example, for [`DspiCore::open_demo`]'s) as preset slot 1's
+     * and the active slot, the mirror is read again with nothing unsaved,
+     * and the example's speaker layout is kept again. The device stays
+     * open. The history is a preset load's ("Preset 1 loaded"): what came
+     * before it is gone with the state, as after a factory reset.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device;
+     * [`DspiError::Unsupported`], with no traffic, on anything but a
+     * simulated device; the refusals of every write (read-only, an
+     * installer's lock, another actor) and the transfer errors of the read.
+     */
+    func resetDemo() throws 
     
     /**
      * The reset readout as the connect probe found it, without traffic:
@@ -13084,7 +13103,11 @@ open func offlineDocument() -> String  {
     /**
      * Open the built-in demo device (`dspi_transport::FakeDevice::demo`):
      * a simulated RP2350 that answers reads and writes and notifies.
-     * Replaces any open device.
+     * It runs a tuned example (a stereo two-way on outputs 1-4, LR4 at
+     * 2.2 kHz, a few cuts, named outputs) with its roles confirmed: the
+     * speaker layout kept for the demo's serial becomes the example's.
+     * [`DspiCore::open_demo_blank`] opens the capture as it is. Replaces any
+     * open device.
      */
 open func openDemo()throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_open_demo(self.uniffiClonePointer(),$0
@@ -13678,6 +13701,25 @@ open func resetAlinkStats()throws   {try rustCallWithError(FfiConverterTypeDspiE
      */
 open func resetBufferStats()throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
     uniffi_dspi_core_fn_method_dspicore_reset_buffer_stats(self.uniffiClonePointer(),$0
+    )
+}
+}
+    
+    /**
+     * "Reset demo": the open demo device runs the settings it opened with
+     * again (the example, for [`DspiCore::open_demo`]'s) as preset slot 1's
+     * and the active slot, the mirror is read again with nothing unsaved,
+     * and the example's speaker layout is kept again. The device stays
+     * open. The history is a preset load's ("Preset 1 loaded"): what came
+     * before it is gone with the state, as after a factory reset.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device;
+     * [`DspiError::Unsupported`], with no traffic, on anything but a
+     * simulated device; the refusals of every write (read-only, an
+     * installer's lock, another actor) and the transfer errors of the read.
+     */
+open func resetDemo()throws   {try rustCallWithError(FfiConverterTypeDspiError_lift) {
+    uniffi_dspi_core_fn_method_dspicore_reset_demo(self.uniffiClonePointer(),$0
     )
 }
 }
@@ -75644,7 +75686,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_dspi_core_checksum_method_dspicore_offline_document() != 20879) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_dspi_core_checksum_method_dspicore_open_demo() != 35962) {
+    if (uniffi_dspi_core_checksum_method_dspicore_open_demo() != 49242) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_open_demo_alink() != 47520) {
@@ -75729,6 +75771,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_reset_buffer_stats() != 19713) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_dspi_core_checksum_method_dspicore_reset_demo() != 11514) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_dspi_core_checksum_method_dspicore_reset_info_at_connect() != 57433) {

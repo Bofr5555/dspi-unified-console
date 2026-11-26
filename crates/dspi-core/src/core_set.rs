@@ -207,8 +207,12 @@ fn id_text<S: serde::Serializer>(id: &DeviceId, s: S) -> std::result::Result<S::
 /// What to open.
 #[derive(Debug, Clone, PartialEq)]
 pub enum DeviceTarget {
-    /// A new demo device.
+    /// A new demo device: the tuned example ([`DspiCore::open_demo`]).
     Demo,
+    // -- WP UB12 --
+    /// A new demo device as the bundled capture left it
+    /// ([`DspiCore::open_demo_blank`]): for tests of a new board.
+    DemoBlank,
     /// The USB unit with this serial.
     Usb {
         /// Its serial.
@@ -816,6 +820,11 @@ impl CoreSet {
             DeviceTarget::Demo => {
                 let id = DeviceId::demo(self.take_number(false));
                 self.open_entry(id, String::new(), extra, |c| c.open_demo())
+            }
+            // -- WP UB12 --
+            DeviceTarget::DemoBlank => {
+                let id = DeviceId::demo(self.take_number(false));
+                self.open_entry(id, String::new(), extra, |c| c.open_demo_blank())
             }
             DeviceTarget::Usb { serial } => {
                 self.open_entry(DeviceId::usb(&serial), String::new(), extra, |c| {

@@ -1188,11 +1188,11 @@ pub(crate) mod tests {
         dir
     }
 
-    /// A prepared core on the demo device with stores in `scratch(name)`.
+    /// A prepared core on the blank demo device with stores in `scratch(name)`.
     pub(crate) fn demo(name: &str) -> (Arc<DspiCore>, PathBuf) {
         let dir = scratch(name);
         let core = prepare(&Stores::under(&dir)).unwrap();
-        core.open_demo().unwrap();
+        core.open_demo_blank().unwrap(); // -- WP UB12 -- a new board, not the example
         (core, dir)
     }
 

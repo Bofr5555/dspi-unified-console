@@ -212,6 +212,15 @@ pub(crate) fn open_core(
             };
             (serial, caps, descriptor, Some(reached))
         }
+        // -- WP UB12 -- the demo as every client opens it: the core's tuned
+        // example, its roles confirmed (UXP B12)
+        Target::Demo => {
+            let probe = dspi_transport::FakeDevice::demo();
+            let descriptor = probe.descriptor().clone();
+            let caps = probe.caps();
+            core.open_demo()?;
+            (descriptor.serial.clone(), caps, descriptor, None)
+        }
         _ => {
             let transport = target.open(pin)?;
             let descriptor = transport.descriptor().clone();
@@ -1523,6 +1532,35 @@ mod tests_wp_tmcore {
 
     fn routed(o: &OpenedCore, confirm: Confirm) -> Session {
         session_on(o, confirm, PinSource::Nobody).expect("a routed session")
+    }
+
+    // -- WP UB12 --
+    #[test]
+    fn wp_ub12_the_demo_opens_on_the_tuned_example() {
+        let dir = scratch("ub12_demo");
+        let o = opened(&dir);
+        let core = &o.handle.core;
+        let s = core.get_state();
+        let n_in = usize::from(s.num_input_channels);
+        assert_eq!(s.channel_names[n_in], "Left woofer");
+        assert_eq!(s.channel_names[n_in.saturating_add(3)], "Right tweeter");
+        assert_ne!(s.xover[n_in][0].filter_type, 0, "crossed over");
+        assert!(core.speaker_layout().unwrap().unwrap().confirmed_by_user);
+        assert_eq!(o.handle.caps.kind, TransportKind::Fake);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // -- WP UB12 -- `:reset-demo` on the interface's own core
+    #[test]
+    fn wp_ub12_reset_demo_runs_on_the_interfaces_demo() {
+        let dir = scratch("ub12_reset");
+        let o = opened(&dir);
+        let _interface = connected_on(&o).expect("the interface's session");
+        o.handle.core.set_output_gain(2, -9.0).unwrap();
+        let code = on_interface_core(|| crate::reset_demo(&Target::Demo)).unwrap();
+        assert_eq!(code, crate::exit::OK);
+        assert_eq!(gain(&o, 2), -3.0, "the example's tweeter level");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     fn profile(max_gain_db: f32, locked: bool) -> String {

@@ -11,7 +11,7 @@ use crate::records::{I2cConfig, SiggenConfig, UartConfig};
 
 fn demo() -> Arc<DspiCore> {
     let core = DspiCore::new();
-    core.open_demo().unwrap();
+    core.open_demo_blank().unwrap(); // -- WP UB12 --
     core
 }
 
@@ -810,7 +810,7 @@ fn wp_p0w_a_reconnect_starts_a_new_history() {
     assert!(matches!(core.undo(), Err(DspiError::Disconnected)));
     assert_ne!(core.process_notifications().flags & NOTIFY_HISTORY, 0);
 
-    core.open_demo().unwrap();
+    core.open_demo_blank().unwrap(); // -- WP UB12 --
     assert!(
         core.history(10).is_empty(),
         "no history crosses a reconnect"

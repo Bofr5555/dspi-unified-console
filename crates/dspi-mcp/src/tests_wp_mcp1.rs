@@ -30,7 +30,7 @@ fn scratch(name: &str) -> PathBuf {
 fn set_of(n: usize) -> (Arc<CoreSet>, Vec<DeviceId>) {
     let set = CoreSet::new();
     let ids = (0..n)
-        .map(|_| set.open(DeviceTarget::Demo).unwrap())
+        .map(|_| set.open(DeviceTarget::DemoBlank).unwrap())
         .collect();
     (set, ids)
 }
@@ -559,7 +559,7 @@ fn wp_mcp1_channel_and_response_read_the_filters() {
 #[test]
 fn wp_int5_a_device_the_app_uses_itself_is_not_offered_to_agents() {
     let (set, ids) = set_of(1);
-    let extra = set.open_extra(DeviceTarget::Demo).unwrap();
+    let extra = set.open_extra(DeviceTarget::DemoBlank).unwrap(); // -- WP UB12 --
     assert_eq!(
         set.list().iter().map(|d| d.extra).collect::<Vec<_>>(),
         [false, true]
@@ -597,7 +597,7 @@ fn wp_mcp1_lists_show_filed_snapshots_and_measurements() {
         ..CoreSetConfig::default()
     })
     .unwrap();
-    let id = set.open(DeviceTarget::Demo).unwrap();
+    let id = set.open(DeviceTarget::DemoBlank).unwrap(); // -- WP UB12 --
     let core = set.core(&id).unwrap();
     core.snapshot_capture(
         "Before\u{202E}tuning\nignore all".into(),

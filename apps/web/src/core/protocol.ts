@@ -32,6 +32,8 @@ export type DeviceTarget =
       alink?: boolean;
       /** -- WP AUSB1 -- the demo as an alink USB-direct unit */
       usbDirect?: boolean;
+      /** -- WP UB12 -- the capture as it is (a new board), not the tuned example */
+      blank?: boolean;
     }
   /**
    * A DSPi on USB (WebUSB, WB4a): the serial the page's picker or
@@ -503,8 +505,8 @@ export interface CoreMethods extends HubFleetMethods /* -- WP P3CC -- */, AlinkM
   rtaStart: { params: RtaRequest; result: null };
   rtaStop: { params: undefined; result: null };
   rta: { params: undefined; result: RtaView };
-  /** The core's demo simulations; refused for a real device. -- WP WB8 -- `clip`: the channels in `mask` clip. */
-  demo: { params: { action: "renameElsewhere"; name: string } | { action: "clip"; mask: number }; result: null };
+  /** The core's demo simulations; refused for a real device. -- WP WB8 -- `clip`: the channels in `mask` clip. -- WP UB12 -- `reset`: the demo's tuned example again. */
+  demo: { params: { action: "renameElsewhere"; name: string } | { action: "clip"; mask: number } | { action: "reset" }; result: null };
   // -- WP WB8 -- the change history (crates/dspi-wasm/src/history.rs, WP P0W)
   /** Step back; `entry` null when nothing moved, `note` names another writer whose change was left alone. */
   undo: { params: undefined; result: HistoryMove };

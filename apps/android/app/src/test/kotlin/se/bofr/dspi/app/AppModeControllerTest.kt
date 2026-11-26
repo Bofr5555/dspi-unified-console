@@ -140,6 +140,22 @@ class AppModeControllerTest {
     }
 
     // -- WP AN7 -- (was: demo refused while a DSPi is attached)
+    // -- WP UB12 --
+    @Test
+    fun ub12ResetDemoBuildsANewDemoStackAndNothingElse() = runTest {
+        val c = controller()
+        c.resetDemo() // device mode: nothing
+        assertEquals(AppMode.DEVICE, c.mode.value)
+        assertTrue(demos.isEmpty())
+        c.enterDemo()
+        c.resetDemo()
+        assertEquals(AppMode.DEMO, c.mode.value)
+        assertEquals(2, demos.size)
+        assertEquals(1, demos[0].closed)
+        assertEquals(0, demos[1].closed)
+        assertSame(demos[1].bridge, c.bridge.value)
+    }
+
     @Test
     fun an7DemoIsReachableWhileAnyDspiIsAttached() = runTest {
         val c = controller()

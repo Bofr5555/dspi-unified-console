@@ -210,6 +210,14 @@
       ]
     },
     {
+      "id": "device.resetDemo",
+      "text": "Reset Demo",
+      "menu": "Device",
+      "places": [
+        "palette"
+      ]
+    },
+    {
       "id": "device.preset1",
       "text": "Preset 1",
       "menu": "Device",

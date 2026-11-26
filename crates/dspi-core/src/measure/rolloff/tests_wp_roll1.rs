@@ -410,7 +410,7 @@ fn hp(freq: f32) -> FilterParams {
 /// LR4; `None` leaves a flat crossover).
 fn demo(mid_hp: Option<f32>, tweeter_hp: Option<f32>) -> Arc<DspiCore> {
     let core = DspiCore::new();
-    core.open_demo().unwrap();
+    core.open_demo_blank().unwrap(); // -- WP UB12 --
     core.fetch_all().unwrap();
     core.set_user_volume(-20.0).unwrap();
     let s = core.get_state();

@@ -2214,6 +2214,8 @@ internal open class UniffiVTableCallbackInterfaceRtaListener(
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -3130,6 +3132,8 @@ fun uniffi_dspi_core_checksum_method_dspicore_refresh_params(
 fun uniffi_dspi_core_checksum_method_dspicore_reset_alink_stats(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_reset_buffer_stats(
+): Short
+fun uniffi_dspi_core_checksum_method_dspicore_reset_demo(
 ): Short
 fun uniffi_dspi_core_checksum_method_dspicore_reset_info_at_connect(
 ): Short
@@ -4295,6 +4299,8 @@ fun uniffi_dspi_core_fn_method_dspicore_refresh_params(`ptr`: Pointer,uniffi_out
 fun uniffi_dspi_core_fn_method_dspicore_reset_alink_stats(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_reset_buffer_stats(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_dspi_core_fn_method_dspicore_reset_demo(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_dspi_core_fn_method_dspicore_reset_info_at_connect(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -6208,7 +6214,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_dspi_core_checksum_method_dspicore_offline_document() != 20879.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_dspi_core_checksum_method_dspicore_open_demo() != 35962.toShort()) {
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_open_demo() != 49242.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_open_demo_alink() != 47520.toShort()) {
@@ -6293,6 +6299,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_reset_buffer_stats() != 19713.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_dspi_core_checksum_method_dspicore_reset_demo() != 11514.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_dspi_core_checksum_method_dspicore_reset_info_at_connect() != 57433.toShort()) {
@@ -12197,7 +12206,11 @@ public interface DspiCoreInterface {
     /**
      * Open the built-in demo device (`dspi_transport::FakeDevice::demo`):
      * a simulated RP2350 that answers reads and writes and notifies.
-     * Replaces any open device.
+     * It runs a tuned example (a stereo two-way on outputs 1-4, LR4 at
+     * 2.2 kHz, a few cuts, named outputs) with its roles confirmed: the
+     * speaker layout kept for the demo's serial becomes the example's.
+     * [`DspiCore::open_demo_blank`] opens the capture as it is. Replaces any
+     * open device.
      */
     fun `openDemo`()
     
@@ -12630,6 +12643,21 @@ public interface DspiCoreInterface {
      * [`DspiError::Disconnected`] or [`DspiError::Transfer`] otherwise.
      */
     fun `resetBufferStats`()
+    
+    /**
+     * "Reset demo": the open demo device runs the settings it opened with
+     * again (the example, for [`DspiCore::open_demo`]'s) as preset slot 1's
+     * and the active slot, the mirror is read again with nothing unsaved,
+     * and the example's speaker layout is kept again. The device stays
+     * open. The history is a preset load's ("Preset 1 loaded"): what came
+     * before it is gone with the state, as after a factory reset.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device;
+     * [`DspiError::Unsupported`], with no traffic, on anything but a
+     * simulated device; the refusals of every write (read-only, an
+     * installer's lock, another actor) and the transfer errors of the read.
+     */
+    fun `resetDemo`()
     
     /**
      * The reset readout as the connect probe found it, without traffic:
@@ -21810,7 +21838,11 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     /**
      * Open the built-in demo device (`dspi_transport::FakeDevice::demo`):
      * a simulated RP2350 that answers reads and writes and notifies.
-     * Replaces any open device.
+     * It runs a tuned example (a stereo two-way on outputs 1-4, LR4 at
+     * 2.2 kHz, a few cuts, named outputs) with its roles confirmed: the
+     * speaker layout kept for the demo's serial becomes the example's.
+     * [`DspiCore::open_demo_blank`] opens the capture as it is. Replaces any
+     * open device.
      */
     @Throws(DspiException::class)override fun `openDemo`()
         = 
@@ -22531,6 +22563,31 @@ open class DspiCore: Disposable, AutoCloseable, DspiCoreInterface
     callWithPointer {
     uniffiRustCallWithError(DspiException) { _status ->
     UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_reset_buffer_stats(
+        it, _status)
+}
+    }
+    
+    
+
+    
+    /**
+     * "Reset demo": the open demo device runs the settings it opened with
+     * again (the example, for [`DspiCore::open_demo`]'s) as preset slot 1's
+     * and the active slot, the mirror is read again with nothing unsaved,
+     * and the example's speaker layout is kept again. The device stays
+     * open. The history is a preset load's ("Preset 1 loaded"): what came
+     * before it is gone with the state, as after a factory reset.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device;
+     * [`DspiError::Unsupported`], with no traffic, on anything but a
+     * simulated device; the refusals of every write (read-only, an
+     * installer's lock, another actor) and the transfer errors of the read.
+     */
+    @Throws(DspiException::class)override fun `resetDemo`()
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(DspiException) { _status ->
+    UniffiLib.INSTANCE.uniffi_dspi_core_fn_method_dspicore_reset_demo(
         it, _status)
 }
     }
