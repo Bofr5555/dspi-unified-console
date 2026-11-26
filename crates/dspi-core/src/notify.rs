@@ -580,6 +580,7 @@ fn apply_queued(
                     if matches!(source, Source::Preset | Source::Factory) {
                         follow.rebaseline = true;
                     }
+                    crate::solo::state_replaced(conn); // -- WP GAP2 --
                 }
             }
             Event::PresetLoaded { slot } => {
@@ -686,6 +687,8 @@ fn apply_queued(
             follow.refresh = true;
         }
     }
+    // -- WP GAP2 -- the solo's own echoes leave the user's mutes in the mirror
+    crate::solo::overlay(&conn.solo, &mut inner.state);
     if ended {
         r.flags |= NOTIFY_DISCONNECTED;
         follow = FollowUp::default();

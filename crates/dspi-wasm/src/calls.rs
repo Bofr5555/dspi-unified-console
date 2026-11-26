@@ -507,6 +507,13 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         "abKeep" => crate::ab::keep(&core, params(req.params)?),
         "abState" => Ok(crate::ab::state(&core)),
         "abStartSaved" => crate::ab::start_saved(&core), // -- WP UB34 --
+        // -- WP GAP2 -- solo one output: a listening state, never saved
+        "soloOutput" => solo_output(&core, params(req.params)?),
+        "soloEnd" => core
+            .solo_end()
+            .map(|()| solo_state(&core))
+            .map_err(Into::into),
+        "soloState" => Ok(solo_state(&core)),
         // -- WP P5SES -- the measurement session (src/measure.rs)
         "measurePreflight" => crate::measure::preflight(&core, params(req.params)?),
         "measureStart" => crate::measure::start(&core, params(req.params)?),
@@ -961,6 +968,25 @@ fn rta_start(core: &DspiCore, p: RtaParams) -> CallResult {
     Ok(Value::Null)
 }
 
+// -- WP GAP2 --
+/// `soloOutput`'s parameters: the output to solo, 0-based.
+#[derive(Deserialize)]
+struct SoloParams {
+    output: u8,
+}
+
+/// `soloOutput`: only `output` plays until `soloEnd` (`DspiCore::solo_output`);
+/// answers as `soloState`.
+fn solo_output(core: &DspiCore, p: SoloParams) -> CallResult {
+    core.solo_output(p.output)?;
+    Ok(solo_state(core))
+}
+
+/// `soloState`: `{output}`, the soloed output (0-based) or null. No I/O.
+fn solo_state(core: &DspiCore) -> Value {
+    json!({ "output": core.solo_state() })
+}
+
 /// `rta_tick`: one turn of the analyser, as its thread takes natively. The
 /// wait before the next, in ms, or null when there is nothing to tick.
 fn rta_tick(core: &DspiCore) -> CallResult {
@@ -1054,6 +1080,9 @@ fn demo_action(core: &DspiCore, demo: bool, a: DemoAction) -> CallResult {
 // -- WP P1NT --
 #[cfg(test)]
 mod tests_wp_p1nt;
+
+#[cfg(test)]
+mod tests_wp_gap2; // -- WP GAP2 --
 // -- WP P1TK --
 #[cfg(test)]
 mod tests_wp_p1tk;

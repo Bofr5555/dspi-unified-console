@@ -10,7 +10,8 @@ import UConsole
 //   a crosspoint (the grid's current cell)  From → To; Connected, Gain,
 //       Invert phase; what else the input feeds (chips); the output in a line
 //   an output (its header)  the channel's inspector (crossover, limiter,
-//       Linkwitz) with Enabled, Gain, Delay, Mute, Polarity and what feeds it
+//       Linkwitz) with Enabled, Gain, Delay, Mute, Solo (-- WP GAP2 --),
+//       Polarity and what feeds it
 //   an input (its row)  the channel's inspector (feeds, headphone profile)
 //       with its trim
 //   nothing  the device's routing in words
@@ -408,6 +409,17 @@ Inspector {
                         isOn: outSection.col ? outSection.col.muted === true : false
                         Accessible.name: qsTr("Mute")
                         onAsked: MatrixController.toggleMute(info.number)
+                    }
+                }
+                // -- WP GAP2 -- only this output plays, until it is switched off (not saved)
+                Line {
+                    label: qsTr("Solo")
+                    StateSwitch {
+                        objectName: "RoutingInspector.solo"
+                        isOn: SoloController.output >= 0 && SoloController.output === info.number
+                        enabled: SoloController.available && (outSection.col ? outSection.col.enabled === true : false)
+                        Accessible.name: qsTr("Solo")
+                        onAsked: SoloController.toggle(info.number)
                     }
                 }
                 Line {

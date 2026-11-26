@@ -135,6 +135,8 @@ pub mod notice_text;
 pub mod confirm;
 // -- WP P1SN --
 mod snapshot;
+// -- WP GAP2 -- solo one output: a listening state, not a setting
+mod solo;
 // -- WP P1OF --
 pub mod offline;
 // -- WP P1AB --
@@ -758,6 +760,10 @@ pub(crate) struct Connection {
     /// knows (`stats::SiggenOutputs`): an unused output it plays on is not
     /// hidden (`OutputLabel::hidden`, REVF R1).
     pub(crate) siggen: stats::SiggenOutputs,
+    // -- WP GAP2 --
+    /// The output soloed on this connection, and what the solo holds muted
+    /// (`solo.rs`): it ends with the connection.
+    pub(crate) solo: solo::Solo,
 }
 
 /// A remote device reached without the [`Inner`] lock (WP C15).
@@ -889,6 +895,7 @@ impl Connection {
             board_seen: None, // -- WP LKFAST --
             // -- WP FIN015 --
             siggen: stats::SiggenOutputs::default(),
+            solo: solo::Solo::default(), // -- WP GAP2 --
         }
     }
 

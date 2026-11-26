@@ -103,6 +103,13 @@ QtObject {
                 on: t => ChannelController.output(t.number).muted === true,
                 run: t => ChannelController.setOutputMute(t.number, ChannelController.output(t.number).muted !== true)
             },
+            // -- WP GAP2 -- only this output plays, until End Solo (not saved)
+            "channel.solo": {
+                shown: t => t.isOutput,
+                enabled: t => SoloController.available && ChannelController.output(t.number).enabled === true,
+                on: t => SoloController.output === t.number,
+                run: t => SoloController.toggle(t.number)
+            },
             "channel.routing": { shown: t => t.isOutput },
             "channel.headphone": {
                 shown: t => !t.isOutput,

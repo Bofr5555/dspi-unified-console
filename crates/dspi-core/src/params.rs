@@ -956,6 +956,10 @@ fn send(inner: &mut Inner, path: &str, indices: &[u8], value: Value) -> Result<(
     }
     let mut w = inner.writable_conn()?;
     w.conn().fresh_image = false;
+    // -- WP GAP2 -- while soloed the device keeps the other outputs muted
+    if crate::solo::holds_write(w.conn(), path, indices, &value) {
+        return Ok(());
+    }
     w.session()?.send(path, indices, value)?;
     Ok(())
 }

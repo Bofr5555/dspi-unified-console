@@ -1,0 +1,2 @@
+# -- WP GAP2 -- Solo one output (see ../manifest.txt for the format)
+headphones          status strip: the solo banner

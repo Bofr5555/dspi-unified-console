@@ -500,6 +500,7 @@ impl DspiCore {
     /// reconnects (WP C1b). Blocks until the notification reader has stopped
     /// (at most about a quarter of a second).
     pub fn disconnect(&self) {
+        let _ = self.solo_end(); // -- WP GAP2 -- the solo's mutes go back first
         self.close_connection()
     }
 
