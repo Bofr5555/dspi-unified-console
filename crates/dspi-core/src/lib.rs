@@ -563,6 +563,10 @@ pub(crate) struct Inner {
     /// The device (serial) and active preset slot `baseline` was captured
     /// for: a re-read of the same device on the same preset keeps it.
     pub(crate) baseline_of: Option<(String, u8)>,
+    // -- WP UB34 --
+    /// Counts the baselines captured: an A/B compare of "as saved" against
+    /// "now" ends when the baseline it was made from is replaced.
+    pub(crate) baseline_epoch: u64,
     /// The notification monitor's log (WP C7).
     pub(crate) monitor: monitor::MonitorLog,
     /// The analyser's state and worker (WP C9).
@@ -1029,6 +1033,7 @@ impl Inner {
             state: state::default_state(),
             baseline: None,
             baseline_of: None,
+            baseline_epoch: 0,
             monitor: monitor::MonitorLog::default(),
             rta: rta::RtaState::default(),
             cs: cs::CsState::default(),

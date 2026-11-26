@@ -1091,6 +1091,7 @@ const char *b_doc,
 char *buf,
 uint32_t len);
 uint32_t dspi_ab_toggle(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_ab_start_saved(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_ab_diff(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_ab_keep(struct FfiCore *core, const char *side, char *buf, uint32_t len);
 uint32_t dspi_ab_state(struct FfiCore *core, char *buf, uint32_t len);

@@ -4817,6 +4817,15 @@ uint32_t dspi_ab_start_documents(struct FfiCore *core,
 uint32_t dspi_ab_toggle(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
+ * Start an A/B compare of the active preset as saved on the device (A)
+ * against the device now (B), and recall A: only what a preset holds
+ * differs, the listening volume stays as it is. JSON: the compare
+ * (`saved` true), or a failure (`invalid` when the saved settings are not
+ * known).
+ */
+uint32_t dspi_ab_start_saved(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
  * What differs from A to B: `dspi_config_diff`'s JSON for the pair, or a
  * failure with no compare running.
  */

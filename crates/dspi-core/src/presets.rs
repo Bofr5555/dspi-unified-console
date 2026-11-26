@@ -1049,6 +1049,7 @@ fn name_within(name: &str) -> &str {
 
 /// [`DspiCore::capture_baseline`] with the core lock held.
 pub(crate) fn capture_baseline_locked(inner: &mut Inner) {
+    inner.baseline_epoch = inner.baseline_epoch.wrapping_add(1); // -- WP UB34 --
     inner.baseline =
         (inner.conn.is_some() && inner.state.bulk_valid).then(|| inner.state.bulk_raw.clone());
     // -- WP SWAPFIX --

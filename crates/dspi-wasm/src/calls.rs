@@ -502,6 +502,7 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         "abDiff" => crate::ab::diff(&core),
         "abKeep" => crate::ab::keep(&core, params(req.params)?),
         "abState" => Ok(crate::ab::state(&core)),
+        "abStartSaved" => crate::ab::start_saved(&core), // -- WP UB34 --
         // -- WP P5SES -- the measurement session (src/measure.rs)
         "measurePreflight" => crate::measure::preflight(&core, params(req.params)?),
         "measureStart" => crate::measure::start(&core, params(req.params)?),
