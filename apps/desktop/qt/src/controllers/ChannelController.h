@@ -107,7 +107,9 @@ public:
     // crossover band 0..3, otherwise PEQ band 0..9. A staged edit wins.
     Q_INVOKABLE QVariantMap band(int channel, int band, bool crossover) const;
     // Edits of one band; a linked input pair gets the same edit on both halves
-    Q_INVOKABLE void setBandType(int channel, int band, bool crossover, int type);
+    // -- WP UB1 -- `freq` > 0: the band opens there too, in the same write
+    // (the Crossover page's partner default: one edit, one undo step)
+    Q_INVOKABLE void setBandType(int channel, int band, bool crossover, int type, double freq = 0);
     Q_INVOKABLE void setBandValue(int channel, int band, bool crossover, const QString &field, double value);
     Q_INVOKABLE void setBandBypass(int channel, int band, bool crossover, bool bypass);
     // The Linkwitz panel's Apply: the whole transform at once

@@ -12,6 +12,8 @@ import UConsole
 // words or kept, ROLES' and ADETQ's stamp); Confirm is the blue
 // primary only while it can act. The notice and the table's pills are ROLEQ's,
 // ADETQ's and ROLES' as they are.
+// -- WP UB1 -- (UXP B1) a confirmed layout offers "Crossovers and Routing…":
+// both from this layout, one undo step (CrossoverFromLayout).
 SettingsPage {
     id: page
     objectName: "SpeakersPage"
@@ -94,6 +96,15 @@ SettingsPage {
                 toolTip: page.sc.detectBlocker.length ? page.sc.detectBlocker
                          : qsTr("Find out which outputs reach a driver and which drive a tweeter, with quiet test sweeps and the microphone")
                 onClicked: detectQuestion.open()
+            }
+            // -- WP UB1 -- the next step once the layout is confirmed
+            AppButton {
+                objectName: "SpeakersPage.fromLayout"
+                visible: page.confirmed
+                text: qsTr("Crossovers and Routing…")
+                enabled: LayoutSetupController.writable
+                toolTip: qsTr("Starting crossovers and routes from this layout, in one undo step")
+                onClicked: fromLayout.open()
             }
             Text {
                 objectName: "SpeakersPage.state"
@@ -205,6 +216,14 @@ SettingsPage {
             color: page.sc.saidError ? Theme.dangerText : Theme.textMuted
             wrapMode: Text.Wrap
         }
+    }
+
+    // -- WP UB1 --
+    CrossoverFromLayout {
+        id: fromLayout
+        parent: page.Window.window ? page.Window.window.contentItem : null
+        crossoversWanted: true
+        routingWanted: true
     }
 
     // -- WP ADETQ -- the one question before the app's own detection (AUTODES 4.4)
