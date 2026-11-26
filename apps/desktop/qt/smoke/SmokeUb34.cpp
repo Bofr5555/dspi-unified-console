@@ -266,7 +266,7 @@ void dockSection(SmokeDriver &d) {
         return std::fabs(volumeOf(a) + 27.0f) < 0.05f && std::fabs(volumeOf(b) + 35.0f) < 0.05f && std::fabs(volumeOf(c) + 15.0f) < 0.05f;
     }));
     link->setUserVolume(-55.0);
-    t.check("one held at the floor", d.waitFor(3000, [&] { return std::fabs(volumeOf(b) + 60.0f) < 0.05f && std::fabs(volumeOf(c) + 50.0f) < 0.05f; }));
+    t.check("one held at the floor", d.waitFor(3000, [&] { return std::fabs(volumeOf(b) + 60.0f) < 0.05f && std::fabs(volumeOf(c) + 43.0f) < 0.05f; }));
     link->setUserVolume(-22.0);
     t.check("and its difference back when the volume comes back", d.waitFor(3000, [&] {
         return std::fabs(volumeOf(a) + 22.0f) < 0.05f && std::fabs(volumeOf(b) + 30.0f) < 0.05f && std::fabs(volumeOf(c) + 10.0f) < 0.05f;
