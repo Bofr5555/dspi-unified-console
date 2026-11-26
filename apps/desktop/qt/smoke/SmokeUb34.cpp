@@ -168,7 +168,8 @@ void abSection(SmokeDriver &d) {
     t.settle();
     t.check("the device has the saved gain", std::fabs(t.gain() - savedGain) < 0.01f);
     t.check("and the listening volume where it was", std::fabs(t.volume() + 18.0f) < 0.01f);
-    t.check("nothing unsaved on A", d.waitFor(3000, [&] { return !sidebar->unsaved(); }));
+    // -- FIX016 -- (REVG R3) B's edit still counts as unsaved on A
+    t.check("B's edit is unsaved on A", d.waitFor(3000, [&] { return sidebar->unsaved(); }));
     t.check("A chosen, in this app's words", ab->property("current").toInt() == 0 && snaps->abAName() == QStringLiteral("As saved")
                                                   && snaps->abBName() == QStringLiteral("Now"));
     t.check("the tooltip says A is heard", ab->property("toolTip").toString().contains(QStringLiteral("you hear A")));

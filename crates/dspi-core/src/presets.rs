@@ -216,6 +216,7 @@ impl DspiCore {
     pub fn load_preset(&self, slot: u8) -> Result<()> {
         let _lock = crate::limits::LockScope::allow(); // -- WP P1LK -- allowed while locked
         slot_in_range(slot)?;
+        self.ab_end_saved(); // -- FIX016 -- (REVG R3) B goes with the other unsaved changes
         let guard = self.load_guard_begin();
         let done = load_preset_unguarded(self, slot);
         if let Some(g) = guard {
@@ -417,7 +418,14 @@ impl DspiCore {
     /// What differs from the active preset, one sentence each, in the Mac
     /// console's words and order. Empty without a device or a baseline. No
     /// I/O: input source titles come from the names the core keeps.
+    ///
+    /// -- FIX016 -- (REVG R3) While a compare of "as saved" against "now"
+    /// stands on A, B's changes are listed too (after the live ones): they
+    /// are unsaved edits the person left on B, so every client's question
+    /// before a switch, a close or a quit asks for them.
     pub fn preset_changes(&self) -> Vec<String> {
+        let live = self.lock().state.clone();
+        let b = self.ab_saved_b_on_a(&live); // -- FIX016 -- (REVG R3)
         let inner = self.lock();
         let (Some(conn), Some(base)) = (inner.conn.as_ref(), inner.baseline.as_deref()) else {
             return Vec::new();
@@ -432,7 +440,16 @@ impl DspiCore {
             log::debug!("the preset baseline does not decode: {e}");
             return Vec::new();
         }
-        changes(&saved, &inner.state, &conn.source_names)
+        let mut out = changes(&saved, &inner.state, &conn.source_names);
+        // -- FIX016 -- (REVG R3) and B's, each once
+        if let Some(b) = b {
+            for c in changes(&saved, &b, &conn.source_names) {
+                if !out.contains(&c) {
+                    out.push(c);
+                }
+            }
+        }
+        out
     }
 }
 
@@ -538,6 +555,7 @@ impl DspiCore {
     pub(crate) fn save_preset_with(&self, slot: u8, token: Option<&str>) -> Result<()> {
         slot_in_range(slot)?;
         let ticket = self.confirm_gate(ConfirmOp::SavePreset, token)?;
+        self.ab_save_b_first()?; // -- FIX016 -- (REVG R3) B is what is saved
         self.with_device_lock(SAVE_REASON, |inner| {
             ticket.still_on(inner)?;
             crate::solo::lift(inner)?; // -- WP GAP2 -- a solo is never saved
@@ -559,6 +577,7 @@ impl DspiCore {
         slot_in_range(dest)?;
         source_is_active(&mut self.lock(), source)?; // -- WP REVEFIX --
         let ticket = self.confirm_gate(ConfirmOp::CopyPreset, token)?;
+        self.ab_save_b_first()?; // -- FIX016 -- (REVG R3) B is what is copied
         self.with_device_lock(COPY_REASON, |inner| {
             ticket.still_on(inner)?;
             crate::solo::lift(inner)?; // -- WP GAP2 -- a solo is never saved
@@ -613,6 +632,7 @@ impl DspiCore {
     /// The body of [`DspiCore::save_params_confirmed`] (WP P1TK).
     pub(crate) fn save_params_with(&self, token: Option<&str>) -> Result<()> {
         let ticket = self.confirm_gate(ConfirmOp::SaveParams, token)?;
+        self.ab_save_b_first()?; // -- FIX016 -- (REVG R3) B is what is saved
         self.with_device_lock(SAVE_PARAMS_REASON, |inner| {
             ticket.still_on(inner)?;
             crate::solo::lift(inner)?; // -- WP GAP2 -- a solo is never saved
@@ -630,6 +650,7 @@ impl DspiCore {
     /// The body of [`DspiCore::factory_reset_confirmed`] (WP P1TK).
     pub(crate) fn factory_reset_with(&self, token: Option<&str>) -> Result<()> {
         let ticket = self.confirm_gate(ConfirmOp::FactoryReset, token)?;
+        self.ab_end_saved(); // -- FIX016 -- (REVG R3) a reset drops every unsaved edit
         let lock = self.acquire_device_lock(RESET_REASON)?;
         let began = Instant::now(); // -- WP ECHO1 --
         let sent = {

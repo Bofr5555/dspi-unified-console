@@ -60,11 +60,8 @@ fn wp_ub34_a_is_as_saved_and_b_is_now() {
     assert_eq!((c.a_name.as_str(), c.b_name.as_str()), ("As saved", "Now"));
     assert!(core.ab_is_saved());
     assert_eq!(band(&core), saved, "A is the saved band");
-    assert!(
-        core.preset_changes().is_empty(),
-        "{:?}",
-        core.preset_changes()
-    );
+    // -- FIX016 -- (REVG R3) on A, B's edit is still unsaved
+    assert!(core.preset_dirty(), "{:?}", core.preset_changes());
 
     let c = core.ab_toggle().unwrap();
     assert_eq!(c.side, Some(AbSide::B));
@@ -140,22 +137,22 @@ fn wp_ub34_a_save_on_b_ends_it() {
     assert!(!core.preset_dirty());
 }
 
-/// A save (or a revert) of the same preset while on A keeps the compare:
-/// A is still what is saved, and B's edit comes back on the next toggle.
+/// -- FIX016 -- (REVG R3) A save while on A saves B: B is put back first
+/// and the compare ends, so B's edit is what is saved, never lost. (It was:
+/// a save or a revert on A kept the compare.) A revert on A drops B, as
+/// every unsaved change: tests_fix016_r3.
 #[test]
 fn wp_ub34_a_save_on_a_keeps_b() {
     let core = demo();
-    let saved = band(&core);
     edit(&core);
     let now = band(&core);
     core.ab_start_saved().unwrap();
     save(&core);
-    assert!(core.ab_is_saved(), "still comparing");
+    assert!(!core.ab_is_saved(), "the save ended the compare on B");
+    assert_eq!(band(&core), now, "B's edit is what plays");
+    assert!(!core.preset_dirty(), "{:?}", core.preset_changes());
     core.load_params().unwrap();
-    assert!(core.ab_is_saved(), "a revert on A keeps it too");
-    assert_eq!(band(&core), saved);
-    core.ab_toggle().unwrap();
-    assert_eq!(band(&core), now, "B's edit is not lost");
+    assert_eq!(band(&core), now, "and what is saved");
 }
 
 /// Another preset loaded, or a revert on B, makes "as saved" another thing:

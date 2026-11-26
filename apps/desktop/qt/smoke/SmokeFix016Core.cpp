@@ -2,22 +2,32 @@
 // - "fix016-locksrc" (LOCKSRC): under the installer's lock Home's source (and
 //   the dock's) is a working control (the core lets a locked user change the source), and a
 //   gain is still refused.
+// - "fix016-ab" (R3): on side A of "as saved" against "now" B's edit is
+//   unsaved: Save to Device counts it, a preset switch asks (and a discard
+//   drops B as asked), a Save on A saves B.
 // Each section leaves the layout, the mode, the lock and the device as it
 // found them.
 #include "SmokeDriver.h"
 
+#include "Confirm.h"
 #include "DeviceModel.h"
+#include "DeviceRegistry.h"
+#include "DeviceSession.h"
+#include "FilesController.h"
 #include "LimitsController.h"
+#include "PresetModel.h"
 #include "ModeController.h"
 #include "Registrar.h"
 #include "Shell.h"
 #include "SidebarController.h"
+#include "SnapshotsController.h"
 
 extern "C" {
 #include "dspi_core.h"
 }
 
 #include <QQuickItem>
+#include <QSignalSpy>
 #include <QQuickWindow>
 #include <QTest>
 #include <cmath>
@@ -148,6 +158,95 @@ void lockSourceSection(SmokeDriver &d) {
     d.spin(200);
 }
 
+// ---- R3 ------------------------------------------------------------------------------------------
+void abSection(SmokeDriver &d) {
+    d.allowSectionTime(120);
+    Fix t{ d, "ab" };
+    DeviceModel *device = d.app().device;
+    auto *snaps = Registrar::instance<SnapshotsController>();
+    auto *sidebar = Registrar::instance<SidebarController>();
+    auto *files = Registrar::instance<FilesController>();
+    DeviceRegistry *r = DeviceRegistry::instance();
+    QQuickWindow *w = d.mainWindow();
+    t.check("the controllers", snaps && sidebar && files && r && w);
+    if (!snaps || !sidebar || !files || !r || !w) return;
+    if (!device->connected() || !device->demo() || device->remote()) device->openDemo();
+    t.check("the demo is open", d.waitFor(10000, [&] { return device->connected() && device->demo(); }) && d.waitIdle());
+    while (r->sessions().size() > 1) {
+        DeviceSession *other = r->sessions().last();
+        r->close(other->id());
+        d.waitFor(5000, [&] { return !r->sessions().contains(other); });
+    }
+    const bool wasModern = d.app().shell->pageHost() != nullptr;
+    t.check("Modern", d.switchLayout("modern"));
+    if (snaps->abActive()) snaps->abKeep(QStringLiteral("b"));
+    if (sidebar->unsaved()) t.write("fix016 revert", [](FfiCore *c) { return dspi_load_params(c) == 0; });
+    t.check("nothing unsaved", d.waitFor(5000, [&] { return !sidebar->unsaved() && !snaps->abActive(); }));
+    const int first = device->presets()->property("activeSlot").toInt();
+    const int other = (first + 1) % MAX_PRESETS;
+    // The other slot holds a preset to switch to
+    t.check("another preset", t.write("fix016 other", [first, other](FfiCore *c) {
+        return Confirm::savePreset(c, uint8_t(other)) == 0 && Confirm::loadPreset(c, uint8_t(first)) == 0;
+    }));
+    const float saved = device->state() ? device->state()->output_gain_db[0] : 0.0f;
+
+    // ---- An edit, then A: B's edit is unsaved there
+    t.check("an edit", t.write("fix016 edit", [g = saved](FfiCore *c) { return dspi_set_output_gain(c, 0, g - 7.0f); }));
+    const float edited = saved - 7.0f;
+    t.check("is unsaved", d.waitFor(5000, [&] { return sidebar->unsaved() && snaps->canStartSaved(); }));
+    const int onB = sidebar->unsavedChanges().size();
+    snaps->abStartSaved();
+    t.check("on A of as saved against now", d.waitFor(5000, [&] { return snaps->abActive() && snaps->abSaved() && snaps->abSide() == QLatin1String("a"); })
+                                                 && d.waitIdle());
+    t.settle();
+    t.check("the device plays A", device->state() && std::fabs(device->state()->output_gain_db[0] - saved) < 0.01f);
+    t.check(QStringLiteral("B's edit is unsaved on A (%1 change(s), %2 on B)").arg(sidebar->unsavedChanges().size()).arg(onB),
+            d.waitFor(3000, [&] { return sidebar->unsaved() && sidebar->unsavedChanges().size() >= onB; }));
+    t.check("the device counts as unsaved (Save All, the link, the close and quit guard)",
+            d.waitFor(3000, [&] { return r->dirty(r->active()); }));
+    QQuickItem *save = fixShown(w->contentItem(), QStringLiteral("TopBar.save"));
+    t.check(QStringLiteral("Save to Device shows the count (%1)").arg(save ? save->property("count").toInt() : -1),
+            save && save->property("count").toInt() == sidebar->unsavedChanges().size() && save->property("count").toInt() > 0);
+    d.grab(w, QStringLiteral("fix016-ab-on-a.png"));
+
+    // ---- A preset switch on A asks; "discard" drops B as asked
+    QSignalSpy asked(sidebar, &SidebarController::unsavedQuestion);
+    sidebar->requestPresetSwitch(other);
+    t.check("a preset switch on A asks", d.waitFor(3000, [&] { return !asked.isEmpty(); })
+                                             && asked.first().at(0).toString() == QLatin1String("switch"));
+    t.check("nothing loaded before the answer", device->presets()->property("activeSlot").toInt() == first && snaps->abActive());
+    sidebar->resolveUnsaved(QStringLiteral("switch"), other, QStringLiteral("alternative"));
+    t.check("the discard loads the other preset and ends the compare",
+            d.waitFor(8000, [&] { return device->presets()->property("activeSlot").toInt() == other && !snaps->abActive(); }) && d.waitIdle());
+    sidebar->requestPresetSwitch(first);
+    t.check("back on the first, with nothing to ask", d.waitFor(8000, [&] { return device->presets()->property("activeSlot").toInt() == first; })
+                                                          && d.waitIdle());
+    t.check("B is gone, as asked", device->state() && std::fabs(device->state()->output_gain_db[0] - saved) < 0.01f && !sidebar->unsaved());
+
+    // ---- A Save on A saves B
+    t.check("the edit again", t.write("fix016 edit 2", [g = saved](FfiCore *c) { return dspi_set_output_gain(c, 0, g - 7.0f); })
+                                  && d.waitFor(5000, [&] { return snaps->canStartSaved(); }));
+    snaps->abStartSaved();
+    t.check("on A again", d.waitFor(5000, [&] { return snaps->abSaved() && snaps->abSide() == QLatin1String("a"); }) && d.waitIdle());
+    QObject *question = files->host() ? files->host()->findChild<QObject *>(QStringLiteral("FilesHost.deviceQuestion")) : nullptr;
+    d.app().shell->trigger(QStringLiteral("device.commit"));
+    t.check("Save to Device asks", question && d.waitFor(2000, [&] { return question->property("opened").toBool(); }));
+    if (question) QMetaObject::invokeMethod(question, "finish", Q_ARG(QVariant, QStringLiteral("accept")));
+    t.check("the save ends the compare with nothing unsaved", d.waitFor(8000, [&] { return !snaps->abActive() && !sidebar->unsaved(); }) && d.waitIdle());
+    t.check("and B is what plays", device->state() && std::fabs(device->state()->output_gain_db[0] - edited) < 0.01f);
+    t.write("fix016 revert 2", [](FfiCore *c) { return dspi_load_params(c) == 0; });
+    t.check("and what is saved", device->state() && std::fabs(device->state()->output_gain_db[0] - edited) < 0.01f);
+
+    // ---- As found: the saved gain saved again
+    t.write("fix016 gain back", [first, g = saved](FfiCore *c) {
+        return dspi_set_output_gain(c, 0, g) && Confirm::savePreset(c, uint8_t(first)) == 0;
+    });
+    d.waitFor(5000, [&] { return !sidebar->unsaved(); });
+    d.switchLayout(wasModern ? "modern" : "classic");
+    d.spin(200);
+}
+
 } // namespace
 
+const SmokeDriver::Section fix016Ab("fix016-ab", 1001, &abSection);
 const SmokeDriver::Section fix016LockSource("fix016-locksrc", 1001, &lockSourceSection);

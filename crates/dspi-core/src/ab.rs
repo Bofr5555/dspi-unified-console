@@ -37,9 +37,18 @@
 //! external mute, the master volume (-- FIX016 -- also in "with preset"
 //! mode: master volume is not compared), the output configuration outside
 //! "with preset" mode and the settings outside the image stay as they are
-//! live on every toggle (a toggle never jumps the volume). It ends when its baseline is replaced (a load, a save, a revert,
-//! a factory reset), except that a save or revert of the same preset while
-//! on A keeps it, so the edits on B are not lost by a save on A.
+//! live on every toggle (a toggle never jumps the volume). It ends when its
+//! baseline is replaced (a load, a save, a revert, a factory reset).
+//!
+//! -- FIX016 -- (REVG R3) B's edits are never dropped without a question:
+//! while the compare stands on A, [`DspiCore::preset_changes`] (and so
+//! [`DspiCore::preset_dirty`], which every client's unsaved question, Save
+//! count and close or quit guard reads) lists B's changes too, so a preset
+//! switch, a close, a quit or a linked recall asks as for any unsaved edit.
+//! A save (to the active preset, another slot or a copy) while on A puts B
+//! back first and ends the compare, so it saves B, never A without B. A load
+//! (a switch or a revert, the person having said to drop the changes) ends
+//! the compare and B with it.
 
 use std::sync::Mutex;
 
@@ -198,6 +207,8 @@ impl Compare {
 pub(crate) struct AbSlot {
     compare: Mutex<Option<Compare>>,
     epochs: Mutex<u64>,
+    // -- FIX016 -- (REVG R3) B's document and its settings, read once
+    b_cache: Mutex<Option<(String, DspState)>>,
 }
 
 impl AbSlot {
@@ -304,8 +315,10 @@ impl DspiCore {
             && mark.epoch != base.epoch
         {
             if c.side == AbSide::A && mark.slot == base.slot {
-                // A save or revert of this preset while on A: A is still
-                // what is saved, and B keeps its edits.
+                // The same preset saved again while on A by someone else
+                // (-- FIX016 -- this console's saves put B back first and
+                // its loads end the compare): A is still what is saved,
+                // and B keeps its edits.
                 c.saved = Some(base);
             } else {
                 *slot = None;
@@ -677,6 +690,45 @@ impl DspiCore {
     pub fn ab_is_saved(&self) -> bool {
         self.ab_current().is_some_and(|c| c.saved.is_some())
     }
+
+    // -- FIX016 -- (REVG R3)
+    /// B's settings while a compare of "as saved" against "now" stands on A
+    /// (the side the person left, edits included), laid onto `live` as a
+    /// toggle would ([`preset_on_live`]); `None` otherwise. No I/O.
+    pub(crate) fn ab_saved_b_on_a(&self, live: &DspState) -> Option<DspState> {
+        let c = self
+            .ab_current()
+            .filter(|c| c.saved.is_some() && c.side == AbSide::A)?;
+        let mut cache = self.ab.b_cache.lock().unwrap_or_else(|p| p.into_inner());
+        if cache.as_ref().is_none_or(|(text, _)| *text != c.b) {
+            let doc = crate::files::parse_config(&c.b).ok()?;
+            let b = crate::snapshot::state_of_document(live, &doc)?;
+            *cache = Some((c.b.clone(), b));
+        }
+        cache.as_ref().map(|(_, b)| preset_on_live(b, live))
+    }
+
+    // -- FIX016 -- (REVG R3)
+    /// Before a save: a compare of "as saved" against "now" ends on B (B
+    /// recalled when the device is on A), so what is saved is B, the
+    /// person's edits, never A without them. Nothing with no such compare.
+    pub(crate) fn ab_save_b_first(&self) -> Result<()> {
+        if self.ab_current().is_some_and(|c| c.saved.is_some()) {
+            self.ab_keep(AbSide::B)?;
+        }
+        Ok(())
+    }
+
+    // -- FIX016 -- (REVG R3)
+    /// Before a load (a switch or a revert, whose question the person
+    /// answered with the unsaved changes, B's among them): a compare of "as
+    /// saved" against "now" ends, B with it. Nothing sent.
+    pub(crate) fn ab_end_saved(&self) {
+        let mut slot = self.ab.slot();
+        if slot.as_ref().is_some_and(|c| c.saved.is_some()) {
+            *slot = None;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -690,3 +742,5 @@ mod tests_wp_ub34;
 // -- FIX016 --
 #[cfg(test)]
 mod tests_fix016_f1;
+#[cfg(test)]
+mod tests_fix016_r3;
