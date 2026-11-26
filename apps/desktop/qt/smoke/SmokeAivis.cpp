@@ -370,7 +370,10 @@ void aivisSection(SmokeDriver &d) {
     d.check("aivis: the agent hears paused, not an error",
             !r.value(QLatin1String("isError")).toBool(true)
                 && r.value(QLatin1String("structuredContent")).toObject().value(QLatin1String("status")).toString() == QLatin1String("paused"));
-    d.check("aivis: the strip stays while they are paused", d.waitFor(2000, [&] { return s.strip().contains(QLatin1String("paused")); })
+    // -- FIX016 -- (R1-QT) the refusal just above is said first for kRefusalMs: under
+    // a loaded CI it was still there after 2 s (part-3 failed it twice in five runs)
+    d.check("aivis: the strip stays while they are paused",
+            d.waitFor(AiController::kRefusalMs + 2000, [&] { return s.strip().contains(QLatin1String("paused")); })
             && textOf(s.item(QStringLiteral("AiWorkBanner.pause"))) == QLatin1String("Resume"));
     d.grab(d.mainWindow(), QStringLiteral("aivis-paused.png"));
     if (trayPause) trayPause->trigger();
