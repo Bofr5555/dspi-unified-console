@@ -7,24 +7,47 @@ import UConsole
 // proposal). The Getting Started step and Settings › Speakers show it.
 // -- WP UA4 -- (UXP A4, Q11) Column headings; groups counted from 1 (the
 // layout keeps 0..15); a speaker named like another row's joins its group.
+// -- WP UB7 -- (UXP B7) The one speaker table: Settings › Speakers and the
+// Getting Started step show it; Measure and Auto-tune show its summary
+// (SpeakersSummary). Headings Output · Role · Speaker · Measured together; the
+// group follows the speaker's name (SpeakersController) and shows as the names
+// measured together; "Choose which outputs are measured together" is the
+// override (on by itself while the groups are not the names'), and off again
+// puts the groups back to the names.
 ColumnLayout {
     id: table
     readonly property var sc: SpeakersController
     property bool editable: sc.editable
+    // -- WP UB7 -- the person chose to pick the groups; the table shows the
+    // pickers also while the groups are not the names'
+    property bool groupsAsked: false
+    readonly property bool byHand: groupsAsked || !sc.groupsFollowNames
+    // The groups to pick from: each group of the layout by its names, in output
+    // order, then a group of its own
+    readonly property var groupChoices: {
+        const out = [], seen = []
+        for (const r of sc.rows) {
+            if (!r.included || seen.indexOf(r.group) >= 0) continue
+            seen.push(r.group)
+            out.push({ group: r.group, text: r.groupName })
+        }
+        let free = 0
+        while (seen.indexOf(free) >= 0 && free < 15) ++free
+        //: The speaker table's choice of an output measured alone, in a group of its own
+        out.push({ group: free, text: qsTr("On its own"), alone: true })
+        return out
+    }
+    function groupIndex(group) {
+        for (let i = 0; i < groupChoices.length; ++i) if (groupChoices[i].group === group && !groupChoices[i].alone) return i
+        return groupChoices.length - 1
+    }
     // -- WP UA4 -- the person changed a row (not a reload)
     signal changedByUser()
-    // The group of the other included row whose speaker is `name`, -1 for none
-    function groupOfSpeaker(name, except) {
-        const want = (name || "").trim().toLowerCase()
-        if (!want.length) return -1
-        for (const r of sc.rows)
-            if (r.output !== except && r.included && (r.speaker || "").trim().toLowerCase() === want) return r.group
-        return -1
-    }
+    // -- WP UB7 -- the glossary's words (A10): woofer, mid driver, tweeter
     readonly property var roles: [
         { id: "full", text: qsTr("Full range") }, { id: "sub", text: qsTr("Subwoofer") },
-        { id: "low", text: qsTr("Low (woofer)") }, { id: "mid", text: qsTr("Mid") },
-        { id: "high", text: qsTr("High (tweeter)") }
+        { id: "low", text: qsTr("Woofer") }, { id: "mid", text: qsTr("Mid driver") },
+        { id: "high", text: qsTr("Tweeter") }
     ]
     function indexOf(id) {
         for (let i = 0; i < roles.length; ++i) if (roles[i].id === id) return i
@@ -49,8 +72,15 @@ ColumnLayout {
         Heading { Layout.preferredWidth: 140; text: qsTr("ROLE") }
         Item { Layout.preferredWidth: 104 }
         Heading { Layout.preferredWidth: 72; text: qsTr("SPEAKER") }
-        //: The speaker table's column of groups: outputs in one group are measured together
-        Heading { Layout.preferredWidth: 90; text: qsTr("GROUP") }
+        //: The speaker table's column of groups: the outputs measured in one run and aligned to each other
+        // -- WP UB7 -- (GROUP) the rest of the row; two lines where it is narrow
+        Heading {
+            Layout.fillWidth: true
+            Layout.minimumWidth: 72
+            text: qsTr("MEASURED TOGETHER")
+            wrapMode: Text.WordWrap
+            elide: Text.ElideNone
+        }
     }
     Rectangle {
         Layout.fillWidth: true
@@ -142,37 +172,69 @@ ColumnLayout {
                 placeholderText: qsTr("Not set")   // -- INTC (DL7 fold) -- Measure's placeholder (was "Speaker")
                 text: row.modelData.speaker
                 onCommitted: t => {
-                    // -- WP UA4 -- the same speaker is one group: it joins the other row's.
-                    // Read before the first edit, which rebuilds this row
-                    const owner = table, output = row.modelData.output, was = row.modelData.group
-                    const group = owner.groupOfSpeaker(t, output)
+                    // -- WP UA4 -- read before the first edit, which rebuilds this row
+                    // -- WP UB7 -- the controller puts it in its name's group
+                    const owner = table, output = row.modelData.output
                     owner.changedByUser()
                     owner.sc.setSpeaker(output, t)
-                    if (group >= 0 && group !== was) owner.sc.setGroup(output, group)
                 }
             }
-            AppSpinBox {
+            // -- WP UB7 -- (UXP B7) measured together: the names, or the picker
+            Text {
+                objectName: "Speakers.together." + row.modelData.output
+                visible: !table.byHand
+                Layout.fillWidth: true
+                Layout.minimumWidth: 72
+                textFormat: Text.PlainText
+                text: row.modelData.included ? row.modelData.groupName : ""
+                font: Theme.fontBody
+                color: Theme.text
+                elide: Text.ElideRight
+                Accessible.role: Accessible.StaticText
+                //: %1 an output ("Out 1"), %2 the speakers measured with it ("L", "L + Sub")
+                Accessible.name: qsTr("%1 is measured with %2").arg(row.modelData.label).arg(text)
+            }
+            AppComboBox {
                 objectName: "Speakers.group." + row.modelData.output
-                label: qsTr("Group of %1").arg(row.modelData.label)
-                Layout.preferredWidth: 90
+                visible: table.byHand
+                //: %1 an output ("Out 1")
+                label: qsTr("%1 is measured with").arg(row.modelData.label)
+                Layout.fillWidth: true
+                Layout.minimumWidth: 72
+                Layout.maximumWidth: 200
                 enabled: table.editable && row.modelData.included
-                // -- WP UA4 -- counted from 1 here; the layout keeps 0..15
-                realFrom: 1
-                realTo: 16
-                realValue: row.modelData.group + 1
-                onCommitted: value => {
-                    table.changedByUser()   // first: the edit rebuilds this row
-                    table.sc.setGroup(row.modelData.output, Math.round(value) - 1)
+                model: table.groupChoices
+                textRole: "text"
+                currentIndex: table.groupIndex(row.modelData.group)
+                onActivated: index => {
+                    const owner = table, output = row.modelData.output, group = owner.groupChoices[index].group
+                    owner.changedByUser()   // first: the edit rebuilds this row
+                    owner.sc.setGroup(output, group)
                 }
             }
         }
     }
     Text {
         Layout.fillWidth: true
-        text: qsTr("The outputs of one speaker share a group: they are measured in one run and aligned to each other.")
+        // -- WP UB7 --
+        text: qsTr("Outputs with the same speaker name are measured together in one run and aligned to each other.")
         font: Theme.fontSmall
         color: Theme.textMuted
         wrapMode: Text.WordWrap
+    }
+    // -- WP UB7 -- (UXP B7) the advanced override; off puts the groups back to the names
+    AppCheckBox {
+        objectName: "Speakers.byHand"
+        text: qsTr("Choose which outputs are measured together")
+        enabled: table.editable
+        checked: table.byHand
+        onToggled: {
+            table.groupsAsked = checked
+            checked = Qt.binding(() => table.byHand)   // the click broke it
+            if (table.groupsAsked || table.sc.groupsFollowNames) return
+            table.changedByUser()
+            table.sc.followNames()
+        }
     }
     // The proposal's remarks, while nothing is stored
     Repeater {

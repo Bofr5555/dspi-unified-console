@@ -325,6 +325,24 @@ export function proposalSeries(p: TuneProposalRecord | null): Series[] {
   return out;
 }
 
+// -- WP UB7 -- (UXP B7) the speaker layout is the one place the roles are set
+/** The rows of a speaker layout the tune takes (`SpeakerLayoutRecord`'s). */
+export interface SpeakerRoles {
+  outputs: { output: number; role: MeasureRole; speaker: string; group: number }[];
+}
+
+/** `l` with each output's role, speaker and group as `speakers` has them; `l` itself when nothing changes. */
+export function withSpeakerRoles(l: TuneLayoutRecord, speakers: SpeakerRoles): TuneLayoutRecord {
+  let changed = false;
+  const outputs = l.outputs.map((o) => {
+    const s = speakers.outputs.find((x) => x.output === o.output);
+    if (!s || (s.role === o.role && s.speaker === o.speaker && s.group === o.group)) return o;
+    changed = true;
+    return { ...o, role: s.role, speaker: s.speaker, group: s.group };
+  });
+  return changed ? { ...l, outputs } : l;
+}
+
 // ---- the layout's measurement ----
 
 /** The layout the user confirmed: only the outputs left on. */
@@ -496,7 +514,10 @@ export class TuneDesk {
     if (st) this.state = st;
     this.proposal = p;
     this.ab = ab?.active ? ab : null;
+    // -- WP UB7 -- (was the button "Propose from the Device") the feeds read again each time the tab
+    // shows, before a proposal; the outputs left out of this tune stay out
     if (!this.layout) await this.loadLayout();
+    else if (!this.proposal && !this.applied && !this.running) await this.loadLayout(true);
     this.changed();
   }
 
@@ -511,13 +532,22 @@ export class TuneDesk {
     await this.closeMic();
   }
 
-  async loadLayout(): Promise<void> {
+  async loadLayout(keepOff = false): Promise<void> {
     try {
       this.layout = await this.call("measureLayoutProposal", undefined);
-      this.off = new Set();
+      if (!keepOff) this.off = new Set(); // -- WP UB7 --
     } catch (e) {
       this.fail(e);
     }
+    this.changed();
+  }
+
+  /** -- WP UB7 -- (UXP B7) The speaker layout's roles, speakers and groups over the layout's (Qt's TuneSession::takeLayout). */
+  takeRoles(speakers: SpeakerRoles | null): void {
+    if (!this.layout || !speakers) return;
+    const next = withSpeakerRoles(this.layout, speakers);
+    if (next === this.layout) return;
+    this.layout = next;
     this.changed();
   }
 

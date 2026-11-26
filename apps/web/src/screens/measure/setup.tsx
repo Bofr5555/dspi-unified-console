@@ -2,17 +2,17 @@
 // and its calibration file, the placement and the coupler, the outputs with their ways, speakers
 // and alignment groups, the sweep; then the core's preflight in words. Nothing is played here.
 
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
 import { Glyph, NoticeRow } from "../../ui/design"; // -- WP WEB4 --
 import { measureCall } from "../../core/measure-protocol";
 import { noticeRow } from "../../ui/texts";
 import type { MeasureTabProps } from "./MeasureScreen";
-import { COUPLERS, PLACEMENTS, ROLES, TWO_PASSES_HINT, countRange, draftProblem, initialDraft, layoutKey, micSummary, preflightLines, setupOf, withLayout, withOutputs, withProposal, type MeasureDraft, type OutputDraft } from "./model";
+import { COUPLERS, PLACEMENTS, TWO_PASSES_HINT, countRange, draftProblem, initialDraft, layoutKey, micSummary, preflightLines, setupOf, withLayout, withOutputs, type MeasureDraft, type OutputDraft } from "./model";
 import { Stepper } from "./parts"; // -- WP WEB7 --
-import "./tune-model"; // -- WP WEB7 -- the layout proposal's call (measureLayoutProposal)
-// -- WP ROLEW -- the rows from the speaker layout, an edit written back, the banner
-import { SAVED_TO_LAYOUT, bannerOf, baseOf, withRow } from "../settings/speakers/model";
+// -- WP ROLEW -- the rows from the speaker layout, the banner
+import { bannerOf, baseOf } from "../settings/speakers/model";
 import { useSpeakerLayout } from "../settings/speakers/use-layout";
+import { LayoutSummary } from "../settings/speakers/LayoutSummary"; // -- WP UB7 --
 
 /** A file's text, at most `max` bytes (the core bounds it again). */
 export async function readTextFile(input: HTMLInputElement, max = 1 << 20): Promise<{ name: string; text: string } | null> {
@@ -38,7 +38,6 @@ export function SetupPanel(props: MeasureTabProps) {
   // -- WP ROLEW --
   const layout = useSpeakerLayout(session);
   const base = baseOf(layout.view);
-  const [saved, setSaved] = useState<{ error: boolean; text: string } | null>(null);
   useEffect(() => {
     const cur = withOutputs(desk.draft ?? initialDraft(outputs), outputs);
     const next = layout.loaded && !desk.running ? withLayout(cur, base) : cur;
@@ -46,15 +45,6 @@ export function SetupPanel(props: MeasureTabProps) {
   }, [outputs.join(","), layout.loaded, layoutKey(base)]);
   const set = (patch: Partial<MeasureDraft>) => desk.setDraft({ ...d, ...patch });
   const setOut = (o: number, patch: Partial<OutputDraft>) => set({ outputs: d.outputs.map((x) => (x.output === o ? { ...x, ...patch } : x)) });
-  /** An edit of a row's way, speaker or group, kept in the speaker layout too (confirmed as it was). */
-  const writeBack = async (o: number, patch: Partial<OutputDraft>) => {
-    const row = d.outputs.find((x) => x.output === o);
-    if (!row || session.readOnlyReason) return;
-    const r = { ...row, ...patch };
-    // -- WP WEBM3 -- (RB C3) on the layout as last kept, not as rendered
-    const why = await layout.update((v) => ({ layout: withRow(v.stored ?? v.proposal, o, { role: r.role, speaker: r.speaker.trim(), group: r.group }), confirmed: !!v.stored?.confirmedByUser }));
-    setSaved(why ? { error: true, text: `Not saved to your speaker layout: ${why}` } : { error: false, text: SAVED_TO_LAYOUT });
-  };
   const banner = layout.loaded ? bannerOf(layout.view) : null;
   const running = desk.running;
   const problem = draftProblem(d);
@@ -85,13 +75,6 @@ export function SetupPanel(props: MeasureTabProps) {
   // core's label, Way, Speaker, a Group stepper; no header row) with "Propose from the Device", the
   // sweep's steppers, the preflight's lines in Qt's words.
   const calField = useRef<HTMLInputElement>(null);
-  const proposeFromDevice = async () => {
-    try {
-      set(withProposal(d, await measureCall(desk.core, "measureLayoutProposal", undefined)));
-    } catch (e) {
-      desk.fail(e);
-    }
-  };
   return (
     <section class="measure-setup measure-column" aria-label="Measurement setup">
       {banner ? (
@@ -196,54 +179,19 @@ export function SetupPanel(props: MeasureTabProps) {
 
       <fieldset class="m-sec" disabled={running}>
         <legend class="section-label">Outputs</legend>
-        <p class="m-caption">The outputs measured together in one walked run are an alignment group: their delays and polarity are compared within the run only.</p>
-        <ul class="measure-outputs m-rowlist m-outrows" aria-label="Outputs to measure">
+        {/* -- WP UB7 -- (UXP B7) the speaker layout in one line, edited in Settings › Speakers; this run's outputs are the tick boxes */}
+        <LayoutSummary view={layout.view} loaded={layout.loaded} onEdit={props.openSpeakers} />
+        <p class="m-caption">Tick the outputs to measure in this run. Their roles, and which of them are measured together, come from the speaker layout.</p>
+        <ul class="measure-outputs m-checks" aria-label="Outputs to measure">
           {d.outputs.map((o) => (
             <li key={o.output} class={o.on ? undefined : "off"} data-output={o.output}>
               <label class="m-check m-outname">
                 <input type="checkbox" aria-label={`Measure ${outputName(o.output)}`} checked={o.on} onChange={(e) => setOut(o.output, { on: (e.currentTarget as HTMLInputElement).checked })} /> {outputName(o.output)}
               </label>
-              <select
-                aria-label={`Way of ${outputName(o.output)}`}
-                class="m-combo m-way"
-                value={o.role}
-                disabled={!o.on}
-                onChange={(e) => {
-                  const role = (e.currentTarget as HTMLSelectElement).value as OutputDraft["role"];
-                  setOut(o.output, { role });
-                  void writeBack(o.output, { role });
-                }}
-              >
-                {ROLES.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.label}
-                  </option>
-                ))}
-              </select>
-              <input type="text" class="m-speaker" aria-label={`Speaker of ${outputName(o.output)}`} size={4} maxLength={16} value={o.speaker} placeholder="Not set" disabled={!o.on} onInput={(e) => setOut(o.output, { speaker: (e.currentTarget as HTMLInputElement).value })} onChange={(e) => void writeBack(o.output, { speaker: (e.currentTarget as HTMLInputElement).value })} />
-              <Stepper
-                label={`Group of ${outputName(o.output)}`}
-                value={o.group}
-                min={0}
-                max={15}
-                disabled={!o.on}
-                onValue={(v) => setOut(o.output, { group: Math.max(0, Math.min(15, Math.trunc(v) || 0)) })}
-                onCommit={(v) => void writeBack(o.output, { group: Math.max(0, Math.min(15, Math.trunc(v) || 0)) })}
-              />
             </li>
           ))}
         </ul>
-        <p class="m-caption">A mid or a tweeter is measured only through an active high-pass; the core checks it (the tweeter rule).</p>
-        {saved ? (
-          <p class={saved.error ? "error" : "m-caption"} role="status" aria-label="Speaker layout saved">
-            {saved.text}
-          </p>
-        ) : null}
-        <div class="m-actions">
-          <button type="button" onClick={() => void proposeFromDevice()}>
-            Propose from the Device
-          </button>
-        </div>
+        <p class="m-caption">A mid driver or a tweeter is measured only through an active high-pass; the core checks it (the tweeter rule).</p>
       </fieldset>
 
       <fieldset class="m-sec" disabled={running}>

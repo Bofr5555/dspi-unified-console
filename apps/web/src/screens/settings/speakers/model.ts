@@ -147,13 +147,17 @@ export interface LayoutCaller {
 
 // ---- words ----
 
+// -- WP UB7 -- (UXP B7) the glossary's words (A10): woofer, mid driver, tweeter
 export const ROLE_WORDS: Record<MeasureRole, string> = {
   full: "Full range",
   sub: "Subwoofer",
-  low: "Low (woofer)",
-  mid: "Mid",
-  high: "High (tweeter)",
+  low: "Woofer",
+  mid: "Mid driver",
+  high: "Tweeter",
 };
+
+// -- WP UB7 -- the one word for the suggestion (was "Use the suggestion", "Propose from the Device")
+export const SUGGEST = "Suggest from Routing and Filters";
 
 export const SAVED_TO_LAYOUT = "Saved to your speaker layout.";
 export const TWEETER_RULE = "An output with an active high-pass at 1 kHz or above is measured as a tweeter, whatever its role here.";
@@ -420,6 +424,116 @@ export function withRow(layout: SpeakerLayoutRecord | null, o: number, patch: Pa
   if (!patch.source && (!had || (patch.role !== undefined && patch.role !== had.role))) row.source = "user"; // -- WP ADETW --
   const outputs = [...base.outputs.filter((x) => x.output !== o), row].sort((a, b) => a.output - b.output);
   return { ...base, outputs };
+}
+
+// -- WP UB7 -- (UXP B7) the group follows the speaker's name, as Qt's SpeakersController
+
+/** A speaker's name as the groups compare it ("" for none). */
+function nameKey(r: SpeakerLayoutOutputRecord): string {
+  return r.speaker.trim().toLowerCase();
+}
+
+/** The lowest group none of `used` has. */
+function freeGroup(used: Set<number>): number {
+  let g = 0;
+  while (used.has(g) && g < 15) g++;
+  return g;
+}
+
+/**
+ * `layout` with output `o` in the group its speaker's name says: the group of another output with
+ * the name, else its own (a new one when the group it has is another speaker's). An unnamed output,
+ * or one the layout leaves out, keeps its group.
+ */
+export function settleGroup(layout: SpeakerLayoutRecord, o: number): SpeakerLayoutRecord {
+  const row = layout.outputs.find((x) => x.output === o);
+  const key = row ? nameKey(row) : "";
+  if (!row || !key) return layout;
+  const others = layout.outputs.filter((x) => x.output !== o);
+  const same = others.find((x) => nameKey(x) === key);
+  const shared = others.some((x) => x.group === row.group);
+  const group = same ? same.group : shared ? freeGroup(new Set(others.map((x) => x.group))) : row.group;
+  return group === row.group ? layout : withRow(layout, o, { group });
+}
+
+/** `layout` with output `o` named `name`, in the group the name says (`settleGroup`). */
+export function withSpeaker(layout: SpeakerLayoutRecord | null, o: number, name: string): SpeakerLayoutRecord {
+  return settleGroup(withRow(layout, o, { speaker: name }), o);
+}
+
+/** Every output's group as the names say, in output order (unnamed ones keep theirs where it is free). */
+export function followNames(layout: SpeakerLayoutRecord): SpeakerLayoutRecord {
+  const groups = new Map<string, number>();
+  const used = new Set<number>();
+  const next = new Map<number, number>();
+  for (const named of [true, false])
+    for (const r of layout.outputs) {
+      const key = nameKey(r);
+      if (!!key !== named) continue;
+      let g = groups.get(key);
+      if (g === undefined) {
+        g = used.has(r.group) ? freeGroup(used) : r.group;
+        used.add(g);
+        if (named) groups.set(key, g);
+      }
+      next.set(r.output, g);
+    }
+  if (layout.outputs.every((r) => next.get(r.output) === r.group)) return layout;
+  return { ...layout, outputs: layout.outputs.map((r) => ({ ...r, group: next.get(r.output) ?? r.group })) };
+}
+
+/** The same name is one group and another name another group (unnamed outputs aside). */
+export function groupsFollowNames(layout: SpeakerLayoutRecord | null): boolean {
+  const rows = layout?.outputs ?? [];
+  return rows.every((a, i) =>
+    rows.slice(i + 1).every((b) => {
+      const ka = nameKey(a);
+      const kb = nameKey(b);
+      return (!ka && !kb) || (ka === kb) === (a.group === b.group);
+    }),
+  );
+}
+
+/** The speakers output `o` is measured with, by name ("L", "L + Sub"; an unnamed one by `label`); "" when left out. */
+export function groupName(layout: SpeakerLayoutRecord | null, o: number, label: (o: number) => string): string {
+  const row = layout?.outputs.find((x) => x.output === o);
+  if (!layout || !row) return "";
+  const words: string[] = [];
+  for (const r of layout.outputs) {
+    if (r.group !== row.group) continue;
+    const w = r.speaker.trim() || label(r.output);
+    if (!words.some((x) => x.toLowerCase() === w.toLowerCase())) words.push(w);
+  }
+  return words.join(" + ");
+}
+
+/** A role in the summary's words. */
+const SUMMARY_ROLE: Record<MeasureRole, string> = { full: "full range", sub: "subwoofer", low: "woofer", mid: "mid driver", high: "tweeter" };
+
+/**
+ * The layout Measure and Auto-tune use, in one line (Qt's SpeakersController.summary): each speaker
+ * with its outputs and their roles, then whether it is confirmed: "L: woofer Out 1, tweeter Out 2 ·
+ * R: … · confirmed". `stored` false: the suggestion, nothing kept.
+ */
+export function layoutSummary(layout: SpeakerLayoutRecord | null, stored: boolean): string {
+  if (!layout) return "";
+  const order: string[] = [];
+  const parts = new Map<string, string[]>();
+  const names = new Map<string, string>();
+  for (const r of [...layout.outputs].sort((a, b) => a.output - b.output)) {
+    const name = r.speaker.trim();
+    const key = name ? name.toLowerCase() : `\u0001${r.output}`;
+    if (!parts.has(key)) {
+      order.push(key);
+      parts.set(key, []);
+      names.set(key, name);
+    }
+    parts.get(key)!.push(`${SUMMARY_ROLE[r.role] ?? r.role} Out ${r.output + 1}`);
+  }
+  if (!order.length) return "No output is in the speaker layout yet.";
+  const speakers = order.map((k) => (names.get(k) ? `${names.get(k)}: ${parts.get(k)!.join(", ")}` : parts.get(k)!.join(", ")));
+  const state = !stored ? "suggested, not confirmed" : layout.confirmedByUser ? "confirmed" : "not confirmed";
+  return `${speakers.join(" · ")} · ${state}`;
 }
 
 /** `layout` without output `o`. */

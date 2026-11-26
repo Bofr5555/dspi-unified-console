@@ -84,7 +84,7 @@ SettingsPage {
             }
             AppButton {
                 objectName: "SpeakersPage.suggestion"
-                text: qsTr("Use the Suggestion")
+                text: qsTr("Suggest from Routing and Filters")   // -- WP UB7 -- (UXP B7) one word
                 enabled: page.sc.editable && page.sc.loaded
                 onClicked: page.sc.useSuggestion()
             }
@@ -120,6 +120,17 @@ SettingsPage {
                 color: page.modern && page.sc.saidError && page.ownSaid.length ? Theme.dangerText : Theme.textMuted
                 wrapMode: Text.Wrap
             }
+        }
+        // -- WP UB7 -- (UXP B7) a Detect… that cannot start says why, not only in its tooltip
+        Text {
+            objectName: "SpeakersPage.detectWhy"
+            visible: text.length > 0 && !page.sc.detecting
+            Layout.fillWidth: true
+            textFormat: Text.PlainText
+            text: page.sc.loaded ? page.sc.detectBlocker : ""
+            font: Theme.fontSmall
+            color: Theme.textMuted
+            wrapMode: Text.Wrap
         }
         // -- WP ADETQ -- while the detection runs: where it is, and Stop
         RowLayout {

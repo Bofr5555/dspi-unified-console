@@ -94,16 +94,19 @@ test("ROLEW: the suggestion confirmed in Settings › Speakers; Measure pre-fill
   expect(stored.confirmedByUser).toBe(true);
   expect(stored.outputs.find((o) => o.output === 0)?.role).toBe("low");
 
-  // Measure: the rows come from the layout, with no banner; an edit is kept in the layout.
+  // Measure: the layout in one line, with no banner (-- WP UB7 -- no role to edit there).
   let setup = await measureSetup(session);
   await expect(setup.getByRole("status", { name: "Speaker layout", exact: true })).toHaveCount(0);
-  const way = setup.getByRole("combobox", { name: /^Way of Out 1 / });
-  await expect(way).toHaveValue("low");
-  await setup.getByRole("combobox", { name: /^Way of Out 2 / }).selectOption("high");
-  await expect(setup.getByRole("status", { name: "Speaker layout saved" })).toHaveText("Saved to your speaker layout.");
+  await expect(setup.getByRole("status", { name: "Speaker layout summary" })).toContainText(/woofer Out 1\b.* · confirmed/);
+  await expect(setup.getByRole("combobox", { name: /^Way of / })).toHaveCount(0);
   await noSidewaysScroll(page);
+  // The one place the roles change: Settings › Speakers.
+  sp = await speakersPage(session);
+  await sp.getByRole("combobox", { name: /^Role of OUT2 / }).selectOption("high");
+  await sp.getByRole("button", { name: "Confirm" }).click();
+  await expect(sp.getByRole("status", { name: "Speaker layout saved" })).toContainText("Confirmed");
   const after = await call<{ confirmedByUser: boolean; outputs: { output: number; role: string }[] }>(page, "speakerLayout");
-  expect(after.confirmedByUser, "the person's own edit keeps it confirmed").toBe(true);
+  expect(after.confirmedByUser).toBe(true);
   expect(after.outputs.find((o) => o.output === 1)?.role).toBe("high");
 
   // A reload: a fresh core, the page's copy set again when the device opens.
@@ -111,7 +114,7 @@ test("ROLEW: the suggestion confirmed in Settings › Speakers; Measure pre-fill
   session = await openDemo(page);
   await expect.poll(async () => (await call<{ confirmedByUser: boolean } | null>(page, "speakerLayout"))?.confirmedByUser).toBe(true);
   setup = await measureSetup(session);
-  await expect(setup.getByRole("combobox", { name: /^Way of Out 2 / })).toHaveValue("high");
+  await expect(setup.getByRole("status", { name: "Speaker layout summary" })).toContainText("tweeter Out 2");
   await expect(setup.getByRole("status", { name: "Speaker layout", exact: true })).toHaveCount(0);
   sp = await speakersPage(session);
   await expect(sp.getByRole("combobox", { name: /^Role of OUT1 / })).toHaveValue("low");
@@ -135,7 +138,7 @@ test("ROLEW: an imported layout is not confirmed: its banner on Measure and Sett
   const banner = setup.getByRole("status", { name: "Speaker layout", exact: true });
   await expect(banner).toContainText("Imported speaker layout");
   await expect(banner).toContainText("Settings › Speakers");
-  await expect(setup.getByRole("combobox", { name: /^Way of Out 1 / })).toHaveValue("sub");
+  await expect(setup.getByRole("status", { name: "Speaker layout summary" })).toContainText(/subwoofer Out 1\b.* · not confirmed/);
   await noSidewaysScroll(page);
   if (test.info().project.name === "narrow") {
     await setup.screenshot({ path: test.info().outputPath("measure-imported-light.png") });

@@ -106,7 +106,8 @@ public:
     QString error() const { return m_error; }
     bool busy() const { return m_busy > 0; }
 
-    void reloadLayout();
+    // -- WP UB7 -- keepChoices: the outputs left out of this tune stay out (the tab shown again)
+    void reloadLayout(bool keepChoices = false);
     void takeLayout(const QJsonObject &layout);   // -- WP RCFIX --
     void setOutputOn(int output, bool on);
     void setOutputRole(int output, const QString &role);
