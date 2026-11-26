@@ -29,7 +29,7 @@ AbstractButton {
     property bool exclusive: false
     property int chipRadius: Theme.radiusChip
 
-    implicitHeight: Theme.controlHeight
+    implicitHeight: Theme.chipHeight   // -- WP UB13 --
     implicitWidth: Math.max(implicitHeight, contentItem.implicitWidth + leftPadding + rightPadding)
     leftPadding: 10
     rightPadding: 10
@@ -70,8 +70,8 @@ AbstractButton {
              : chip.down ? Theme.controlPressed
              : chip.hovered && chip.enabled ? Theme.controlHover : Theme.control
         opacity: chip.enabled ? 1 : 0.6
-        border.width: chip.visualFocus ? Theme.focusRingWidth : 0
-        border.color: Theme.focusRing
+        border.width: chip.visualFocus ? Theme.focusRingWidth : Theme.chipLineWidth   // -- WP UB13 --
+        border.color: chip.visualFocus ? Theme.focusRing : Theme.controlOutline
     }
 
     HelpTip {

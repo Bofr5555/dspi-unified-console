@@ -148,8 +148,8 @@ FocusScope {
         // -- WP DL0 -- Modern: no outline but the focus ring and the held-to-range one
         radius: Theme.radiusControl
         color: Theme.control
-        border.width: input.activeFocus ? Theme.focusRingWidth : field.limited ? 1 : Theme.lineWidth
-        border.color: input.activeFocus ? Theme.focusRing : (field.limited ? Theme.warning : Theme.border)
+        border.width: input.activeFocus ? Theme.focusRingWidth : field.limited ? 1 : Theme.controlLineWidth
+        border.color: input.activeFocus ? Theme.focusRing : (field.limited ? Theme.warning : Theme.controlLine)   // -- WP UB13 --
     }
 
     // The limit badge: the entry was outside the range and was held to it

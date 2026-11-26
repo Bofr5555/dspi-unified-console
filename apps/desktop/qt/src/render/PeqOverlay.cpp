@@ -25,7 +25,6 @@ static const GraphController::Slot peqDockSlot(GraphController::PeqDock, "PeqBan
 namespace {
 
 // The Mac editor's tuning
-constexpr double kDotHit = 10;
 constexpr double kCurveHit = 6;
 constexpr double kDragThreshold = 2;
 constexpr double kZoomZone = 40;
@@ -402,7 +401,7 @@ int PeqOverlay::dotUnder(const QPointF &p) const {
     double score = 0;
     for (int b : graphBands()) {
         const double d = distance(dotOf(m_shown[b]), p);
-        if (d > kDotHit) continue;
+        if (d > m_dotHit) continue;
         const double s = d - (selection().contains(b) ? 3 : 0) - (m_hovered == b ? 2 : 0);
         if (best < 0 || s < score) {
             best = b;

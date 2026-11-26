@@ -44,9 +44,24 @@ class LayoutController : public QObject {
     // -- WP LAY3 -- "system" (the default), "light" or "dark" (ui/theme): the
     // colour scheme of both layouts. DSPI_COLOR_SCHEME wins at the start.
     Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY themeChanged)
+    // -- WP UB13 -- (UXP B13, D11) Settings > Appearance > Accessibility, both
+    // off on a mouse desktop. `outlineControls` (ui/outlineControls, false): a
+    // 1 px line of Theme.controlOutline round fields, combo boxes, steppers,
+    // buttons, segments and chips, for those who cannot tell them from the page
+    // by tone alone. `density` (ui/density): "automatic" (the default),
+    // "standard" or "comfortable"; `comfortable` is what it comes to, automatic
+    // being comfortable on a computer with a touch screen (`touchScreen`, read at
+    // the start; DSPI_TOUCH_SCREEN=1|0 says it instead). Theme applies the
+    // density in Modern only: Classic keeps the Mac console's sizes.
+    Q_PROPERTY(bool outlineControls READ outlineControls WRITE setOutlineControls NOTIFY outlineControlsChanged)
+    Q_PROPERTY(QString density READ density WRITE setDensity NOTIFY densityChanged)
+    Q_PROPERTY(bool touchScreen READ touchScreen CONSTANT)
+    Q_PROPERTY(bool comfortable READ comfortable NOTIFY densityChanged)
 public:
     static constexpr const char *kLayoutKey = "ui/layout";
     static constexpr const char *kThemeKey = "ui/theme";
+    static constexpr const char *kOutlineKey = "ui/outlineControls";   // -- WP UB13 --
+    static constexpr const char *kDensityKey = "ui/density";           // -- WP UB13 --
 
     LayoutController(const AppContext &ctx, QObject *parent);
     static LayoutController *create(QQmlEngine *, QJSEngine *) { return Registrar::instance<LayoutController>(); }
@@ -61,18 +76,34 @@ public:
     QString theme() const { return m_theme; }
     // "system", "light" or "dark"; anything else is ignored
     void setTheme(const QString &theme);
+    // -- WP UB13 --
+    bool outlineControls() const { return m_outlineControls; }
+    void setOutlineControls(bool on);
+    QString density() const { return m_density; }
+    // "automatic", "standard" or "comfortable"; anything else is ignored
+    void setDensity(const QString &density);
+    bool touchScreen() const { return m_touchScreen; }
+    bool comfortable() const { return comfortableFor(m_density, m_touchScreen); }
+    static bool comfortableFor(const QString &density, bool touchScreen) {
+        return density == QLatin1String("comfortable") || (density == QLatin1String("automatic") && touchScreen);
+    }
 
 signals:
     void layoutChanging();   // -- WP LAY3 -- the loaded shell is about to go
     void layoutChanged();
     void switchBlockerChanged();   // -- WP RBFIX --
     void themeChanged();   // -- WP LAY3 --
+    void outlineControlsChanged();   // -- WP UB13 --
+    void densityChanged();           // -- WP UB13 --
 
 private:
     AppContext m_ctx;
     QString m_layout;
     QString m_theme = QStringLiteral("system");
     PrefsMap *m_arrangement;
+    bool m_outlineControls = false;                         // -- WP UB13 --
+    QString m_density = QStringLiteral("automatic");        // -- WP UB13 --
+    bool m_touchScreen = false;                             // -- WP UB13 --
 };
 
 #endif // LAYOUTCONTROLLER_H

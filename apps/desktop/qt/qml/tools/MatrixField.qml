@@ -66,8 +66,8 @@ BorderedField {
     background: Rectangle {
         radius: field.bare ? Theme.radiusSmall : Theme.radiusControl
         color: field.bare && !field.activeFocus ? "transparent" : Theme.control
-        border.width: field.activeFocus ? Theme.focusRingWidth : field.bare ? 0 : Theme.lineWidth
-        border.color: field.activeFocus ? Theme.focusRing : Theme.border
+        border.width: field.activeFocus ? Theme.focusRingWidth : field.bare ? 0 : Theme.controlLineWidth
+        border.color: field.activeFocus ? Theme.focusRing : Theme.controlLine   // -- WP UB13 --
     }
 
     onActiveFocusChanged: {

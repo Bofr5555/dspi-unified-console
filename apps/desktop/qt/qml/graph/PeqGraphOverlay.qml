@@ -28,6 +28,7 @@ Item {
         bandColors: PeqSelection.colors
         backdrop: Theme.panel
         ink: Theme.text
+        dotHit: Theme.peqHitRadius   // -- WP UB13 --
 
         Accessible.role: Accessible.Graphic
         Accessible.name: qsTr("Band editor")

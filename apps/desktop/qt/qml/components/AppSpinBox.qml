@@ -84,8 +84,8 @@ SpinBox {
     background: Rectangle {
         radius: Theme.radiusControl   // -- WP DL0 -- Modern: no outline but the focus ring
         color: Theme.control
-        border.width: control.activeFocus ? Theme.focusRingWidth : Theme.lineWidth
-        border.color: control.activeFocus ? Theme.focusRing : Theme.border
+        border.width: control.activeFocus ? Theme.focusRingWidth : Theme.controlLineWidth
+        border.color: control.activeFocus ? Theme.focusRing : Theme.controlLine   // -- WP UB13 --
     }
 
     Accessible.role: Accessible.SpinBox
