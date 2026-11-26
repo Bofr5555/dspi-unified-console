@@ -66,10 +66,10 @@
 
 .dspi-web .hub-settings-screen input::placeholder, .dspi-web .hub-settings-screen textarea::placeholder { color: var(--muted); opacity: 0.8; }
 
-/* -- WP UB6 -- (UXP B6) the page's one unsaved bar: a notice row (§14) that stays in view at the top while scrolling,
+/* -- WP UB6 -- (UXP B6) the page's one unsaved bar: a notice row (§14) that stays in view under the top bar while scrolling (as the inspector),
    the count, then Discard and the primary Save at the right */
 .dspi-web .hub-unsaved-bar {
-  position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px; min-height: 32px; margin: 4px 0 12px;
+  position: sticky; top: calc(var(--top-h, 0px) + var(--bar-h, 0px) + 4px); z-index: 5; display: flex; align-items: center; gap: 8px; min-height: 32px; margin: 4px 0 12px;
   padding: 0.3rem 0.4rem 0.3rem 0.65rem; border-left: 3px solid var(--accent); border-radius: var(--radius-control);
   background: color-mix(in srgb, var(--accent) 12%, var(--panel)); color: var(--text);
 }
