@@ -165,7 +165,8 @@ ScrollView {
             spacing: Theme.spacingSmall
             AppButton {
                 objectName: "MeasureResults.save"
-                text: qsTr("Save in This Console")
+                // -- WP UA2 -- (A2) the person's words for this console's store
+                text: qsTr("Keep on This Computer")
                 enabled: !mc.busy
                 onClicked: mc.saveResult()
             }

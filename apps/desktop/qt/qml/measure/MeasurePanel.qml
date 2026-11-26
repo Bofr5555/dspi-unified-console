@@ -20,6 +20,8 @@ Panel {
 
     readonly property bool blocked: MeasureController.playBlocker.length > 0
     readonly property bool modern: LayoutController.modern   // -- WP DL2 --
+    // -- WP UA2 -- a refused Measure names its problems one by one (MeasureRefusalRow)
+    readonly property bool refused: MeasureController.refusals.length > 0
 
     // Closing the window stops what it started (the guard of an applied tune runs on)
     // (review P5-D: always, so a start still on its way is withdrawn too)
@@ -103,7 +105,13 @@ Panel {
     }
     // Leaving the passive RTA's tab stops it (it gives the microphone back);
     // not a panel that is not shown: the other host's may be on it
-    onIndexChanged: leavePassive()
+    onIndexChanged: {
+        leavePassive()
+        // -- WP UA2 -- (A2) "The measurement is complete: see Results." (and
+        // "Opened …: see Results.") is done with once Results or the Auto-tune show
+        if (shown && (index === 1 || index === 3) && MeasureController.error.length === 0 && MeasureController.said.length > 0)
+            MeasureController.clearError()
+    }
     function leavePassive() { if (shown && index !== 5 && MeasureController.passiveActive) MeasureController.passiveStop() }
 
     // The tabs that play go when the connection may no longer play; the
@@ -119,59 +127,13 @@ Panel {
         anchors.margins: Theme.spacing
         spacing: Theme.spacingSmall
 
-        // The Stop bar
-        // -- WP DL2 -- Modern: a notice row (below); Classic keeps this bar
-        Rectangle {
-            objectName: panel.modern ? "" : "Measure.stopBar"
-            visible: MeasureController.running && !panel.modern
+        // -- WP UA2 -- (A2) the action bar of the job under way, both layouts:
+        // progress and Stop while something plays or listens (it was the Stop
+        // bar), a proposal's actions on the Auto-tune tab, and Keep and Revert
+        // with the countdown while an applied tune waits, on every tab
+        MeasureActionBar {
             Layout.fillWidth: true
-            implicitHeight: stopRow.implicitHeight + 12
-            radius: Theme.radius
-            color: Theme.selection
-            RowLayout {
-                id: stopRow
-                anchors.fill: parent
-                anchors.margins: 6
-                Text {
-                    objectName: panel.modern ? "" : "Measure.runningText"
-                    Layout.fillWidth: true
-                    // -- WP MDQT2c -- with several devices open, on which
-                    textFormat: Text.PlainText
-                    text: MeasureController.runningOn.length
-                          ? qsTr("Running on %1. %2").arg(MeasureController.runningOn).arg(MeasureController.runningText)
-                          : MeasureController.runningText
-                    font: Theme.fontBody
-                    color: Theme.text
-                    wrapMode: Text.WordWrap
-                }
-                AppButton {
-                    objectName: panel.modern ? "" : "Measure.stop"
-                    text: qsTr("Stop")
-                    destructive: true
-                    onClicked: MeasureController.stop()
-                }
-            }
-        }
-        // -- WP DL2 -- Modern: what plays or listens as a notice row, with its Stop
-        Item {
-            objectName: panel.modern ? "Measure.stopBar" : ""
-            visible: MeasureController.running && panel.modern
-            Layout.fillWidth: true
-            implicitHeight: runNotice.implicitHeight
-            NoticeRow {
-                id: runNotice
-                objectName: panel.modern ? "Measure.runningText" : ""
-                anchors.fill: parent
-                iconName: "audio-lines"
-                text: MeasureController.runningOn.length
-                      ? qsTr("Running on %1. %2").arg(MeasureController.runningOn).arg(MeasureController.runningText)
-                      : MeasureController.runningText
-                AppButton {
-                    objectName: panel.modern ? "Measure.stop" : ""
-                    text: qsTr("Stop")
-                    onClicked: MeasureController.stop()
-                }
-            }
+            onTune: panel.index === 3
         }
         // -- WP MDQT2c -- what runs on the other open devices, each with its Stop
         Repeater {
@@ -213,7 +175,7 @@ Panel {
         }
         Text {
             objectName: panel.modern ? "" : "Measure.error"
-            visible: text.length > 0 && !panel.modern
+            visible: text.length > 0 && !panel.modern && !panel.refused   // -- WP UA2 --
             Layout.fillWidth: true
             textFormat: Text.PlainText
             text: MeasureController.error
@@ -244,10 +206,26 @@ Panel {
         // -- WP DL2 -- Modern: the error and why nothing may play as notice rows
         NoticeRow {
             objectName: panel.modern ? "Measure.error" : ""
-            visible: text.length > 0 && panel.modern
+            visible: text.length > 0 && panel.modern && !panel.refused   // -- WP UA2 -- the rows below say it
             Layout.fillWidth: true
             kind: "error"
             text: MeasureController.error
+        }
+        // -- WP UA2 -- (A2) a refused Measure: one row per problem, with the fix
+        // where the app has one (both layouts)
+        Repeater {
+            objectName: "Measure.refusals"
+            model: MeasureController.refusals
+            MeasureRefusalRow {
+                required property var modelData
+                required property int index
+                objectName: "Measure.refusal." + index
+                Layout.fillWidth: true
+                key: modelData.key
+                output: modelData.output
+                text: modelData.text
+                onShowTune: panel.showPart("tune")
+            }
         }
         NoticeRow {
             objectName: "Measure.blocked"
