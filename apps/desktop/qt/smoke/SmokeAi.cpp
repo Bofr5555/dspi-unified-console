@@ -331,9 +331,13 @@ void aiSection(SmokeDriver &d) {
     armed();
     d.check("mcp4: Allow makes it, and the agent gets its result", click(overlay("AiConfirmSheet.allow")) && !failed(agent.result(*e))
             && d.waitFor(3000, [&] { return gainIs(-3); }));
-    // Two at once: one answer does not answer the next
+    // Two waiting: one answer does not answer the next
+    // -- WP UAG -- (UXP D2) asked apart; two asked together are one sheet (below, "uag: two raises …")
     setGain(-12);
-    auto first = agent.gain(-9), second = agent.gain(-8);
+    auto first = agent.gain(-9);
+    sheetOpen();
+    d.spin(1600);
+    auto second = agent.gain(-8);
     sheetOpen();
     d.waitFor(3000, [&] { return ai->confirmations().size() == 2; });
     armed();
@@ -427,6 +431,48 @@ void aiSection(SmokeDriver &d) {
         d.grab(main, QStringLiteral("uag-flash-question.png"));
         click(overlay("AiConfirmSheet.deny"));
         agent.result(*e);
+        // -- WP UAG -- (UXP D2) two questions one agent raises together are one sheet; one Allow answers
+        // exactly those; Answer One by One splits them
+        {
+            const auto userGain = [&](int o, float db) {
+                device->write(QStringLiteral("uag gain"), [o, db](FfiCore *c) { return dspi_set_output_gain(c, uint8_t(o), db); });
+                d.waitIdle();
+            };
+            const auto gainOf = [&](int o) { return device->state() ? double(device->state()->output_gain_db[o]) : 99.0; };
+            const auto raise = [&](int o, double db) {
+                return agent.call("dspi_set_gain", { { QStringLiteral("output"), o + 1 }, { QStringLiteral("gain_db"), db } });
+            };
+            userGain(6, -20);
+            userGain(7, -20);
+            auto first = raise(6, -10);
+            auto second = raise(7, -10);
+            QObject *confirm = d.object(QStringLiteral("AiConfirmSheet"));
+            d.check("uag: two raises sent together are one sheet", d.waitFor(5000, [&] {
+                return ai->confirmations().size() == 2 && confirm->property("heading").toString().contains(QLatin1String("wants to make 2 changes"));
+            }));
+            armed();
+            d.grab(main, QStringLiteral("uag-grouped-question.png"));
+            click(overlay("AiConfirmSheet.allow"));
+            d.check("uag: one Allow answers both", !failed(agent.result(*first)) && !failed(agent.result(*second))
+                    && d.waitFor(3000, [&] { return std::abs(gainOf(6) + 10) < 0.05 && std::abs(gainOf(7) + 10) < 0.05; }));
+            // (other outputs: those the agent set and the person then set are the person's)
+            userGain(4, -20);
+            userGain(5, -20);
+            first = raise(4, -12);
+            second = raise(5, -12);
+            d.waitFor(5000, [&] { return ai->confirmations().size() == 2; });
+            armed();
+            click(overlay("AiConfirmSheet.oneByOne"));
+            d.check("uag: Answer One by One shows one question", d.waitFor(2000, [&] {
+                return !confirm->property("heading").toString().contains(QLatin1String("changes"));
+            }));
+            armed();
+            click(overlay("AiConfirmSheet.deny"));
+            d.check("uag: Deny answers that one only", failed(agent.result(*first)) && ai->confirmations().size() == 1 && opened(confirm));
+            armed();
+            click(overlay("AiConfirmSheet.deny"));
+            agent.result(*second);
+        }
         // -- WP LAY8 -- The AI button and its popover, on the real server
         {
             QQuickItem *button = d.item(QStringLiteral("TopBar.ai"));

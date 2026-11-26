@@ -441,6 +441,7 @@ private:
         QString heading;
         QVariantList batch;      // {said, risky} per row, the asked ones first
         bool flash = false;      // written to the device's memory: no Undo
+        qint64 askedMs = 0;      // -- WP UAG -- (UXP D2) when, on the server's clock: questions raised together are one sheet
         QDateTime ends;
         bool operator==(const Waiting &o) const { return id == o.id; }   // a question never changes
     };

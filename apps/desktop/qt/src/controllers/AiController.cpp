@@ -749,6 +749,7 @@ void AiController::readConfirmations() {
                      w.client = str(c, "client_name");
                      w.title = str(c, "title");
                      w.device = str(c, "device");
+                     w.askedMs = c.value(QLatin1String("asked_ms")).toInteger();   // -- WP UAG --
                      for (const QJsonValue &r : c.value(QLatin1String("risks")).toArray()) {
                          // -- WP UAG -- (UXP A6) the change in the screen's words: the first asked one heads the sheet
                          if (w.heading.isEmpty())
@@ -836,6 +837,7 @@ QVariantList AiController::confirmations() const {
             { QStringLiteral("batch"), w.batch },
             { QStringLiteral("flash"), w.flash },
             { QStringLiteral("agent"), agentName(w.client) },
+            { QStringLiteral("askedMs"), double(w.askedMs) },   // -- WP UAG -- (UXP D2)
         });
     }
     return out;
