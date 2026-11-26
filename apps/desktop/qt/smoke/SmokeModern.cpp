@@ -98,7 +98,8 @@ void shellPart(Modern &m) {
     auto *registry = DeviceRegistry::instance();
     // -- WP INT3 -- KEEPOPEN is on: MDQT2a-c rebound every controller
     m.check("choosing a device opens it beside the others (keepOpen)", registry && registry->keepOpen());
-    for (const char *name : { "AppMenuButton", "DeviceTabs", "TopBar.preset", "TopBar.ab", "TopBar.search", "TopBar.ai", "TopBar.theme",
+    // -- WP UA3 -- TopBar.ab shows while a compare runs only (ua3-savestate)
+    for (const char *name : { "AppMenuButton", "DeviceTabs", "TopBar.preset", "TopBar.search", "TopBar.ai", "TopBar.theme",
                               "TopBar.undo", "TopBar.redo", "TopBar.save", "TopBar.bell", "NavRail", "Dock.source",
                               "Dock.mode", "Dock.volume", "Dock.mute", "Dock.bypass", "Dock.meters" })
         m.d.check(QStringLiteral("lay3: %1 shows").arg(QLatin1String(name)), m.visible(QString::fromLatin1(name)));

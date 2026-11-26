@@ -140,15 +140,49 @@ FilesController::FilesController(const AppContext &ctx, QObject *parent) : QObje
     // -- WP QPI2 -- the Device menu's flash rows (the Mac's ToolsMenuActions):
     // each asks first, then works on the active preset
     shell->addHandler(QStringLiteral("device.commit"), this, [this] {
-        if (!needDevice()) return;
+        // -- WP UA3 -- With no device there is nothing to save: nothing happens
+        // (the top bar's Save is greyed), not an error
+        if (!m_ctx.device->connected()) return;
         const int slot = m_ctx.device->presets()->activeSlot();
         if (slot < 0) {
             showError(tr("Still identifying the device. Try again in a moment."));
             return;
         }
         m_askedOf = m_ctx.activeSession();   // -- WP MDQT2b --
-        emit deviceQuestion(QStringLiteral("commit"), tr("Save Preset"),
-                            tr("Save current parameters to preset slot %1?").arg(slot + 1), tr("Save"), false);
+        const LayoutController *layout = Registrar::instance<LayoutController>();
+        if (!layout || !layout->modern()) {
+            emit deviceQuestion(QStringLiteral("commit"), tr("Save Preset"),
+                                tr("Save current parameters to preset slot %1?").arg(slot + 1), tr("Save"), false);
+            return;
+        }
+        // -- WP UA3 -- Modern: the device, the slot and the preset by name, and
+        // the changes it saves (UnsavedGuard's list)
+        const QPointer<DeviceSession> asked = m_ctx.activeSession();
+        m_ctx.core->worker()->call(
+            this,
+            [slot](FfiCore *c) {
+                QStringList lines;
+                for (const QJsonValue &v : QJsonDocument::fromJson(readSized([c](char *b, uint32_t n) { return dspi_preset_changes(c, b, n); })).array())
+                    lines.append(v.toString());
+                char name[CHANNEL_NAME_LEN] = {};
+                const QString preset = dspi_get_preset_name(c, uint8_t(slot), name, sizeof name) ? QString::fromUtf8(name) : QString();
+                return std::make_pair(dspi_preset_dirty(c) ? lines : QStringList(), preset);
+            },
+            [this, asked, slot](const std::pair<QStringList, QString> &r) {
+                if (!asked || asked != m_ctx.activeSession() || !m_ctx.device->connected()) return;
+                const QString device = asked->title();
+                const QString preset = UnsavedGuard::presetText(slot, r.second);
+                const int n = int(r.first.size());
+                QString head;
+                //: %1 is a device's name, %2 "preset 1 “Demo”"
+                if (n == 0) head = tr("Save the current settings to %1, %2? Nothing has changed since the last save.").arg(device, preset);
+                //: %1 is a device's name, %2 "preset 1 “Demo”"
+                else if (n == 1) head = tr("Save 1 change to %1, %2?").arg(device, preset);
+                //: %1 is a number of changes, %2 a device's name, %3 "preset 1 “Demo”"
+                else head = tr("Save %1 changes to %2, %3?").arg(QString::number(n), device, preset);
+                emit deviceQuestion(QStringLiteral("commit"), tr("Save to Device"),
+                                    n == 0 ? head : head + QStringLiteral("\n\n") + UnsavedGuard::summary(r.first), tr("Save"), false);
+            });
     });
     shell->addHandler(QStringLiteral("device.revert"), this, [this] {
         m_askedOf = m_ctx.activeSession();   // -- WP MDQT2b --

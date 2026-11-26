@@ -41,6 +41,13 @@ class QQuickWindow;
 // window ask about every open device in turn, the active one first (a Cancel
 // stops there). `deviceTitle` names the device asked about while more than one
 // is open.
+//
+// -- WP UA3 -- Save All (the Modern top bar's Save ▾): one question about
+// every open device with unsaved changes, each named with its preset, then a
+// save into each one's active slot (askSaveAll(), saveAllQuestion(),
+// answerSaveAll()). And after a Keep (a safe apply's, an auto-tune's) on a
+// device with unsaved changes, a notice says that it is not saved on the
+// device yet and offers Save to Device.
 class UnsavedGuard : public QObject {
     Q_OBJECT
     QML_ELEMENT
@@ -89,6 +96,14 @@ public:
     // The core's lines as the question lists them: at most 15, then a count
     static QString summary(const QStringList &lines);
 
+    // -- WP UA3 -- Save All: reads every open device, then saveAllQuestion()
+    // with those that have unsaved changes (none: a notice says so)
+    Q_INVOKABLE void askSaveAll();
+    // Its answer: "accept" saves each one into its active slot
+    Q_INVOKABLE void answerSaveAll(const QString &answer);
+    // "preset 1 “Demo”", or "preset 1" for a slot without a name
+    static QString presetText(int slot, const QString &name);
+
 signals:
     void askingChanged();
     void askOnCloseChanged();
@@ -107,6 +122,10 @@ signals:
     // (DevicesController::pinnedBy), which quitting breaks off; answered with
     // answerBusy()
     void busyQuestion(const QString &title, const QString &text);
+    // -- WP UA3 -- Save All's question (TopBar shows it), answered with answerSaveAll()
+    void saveAllQuestion(const QString &title, const QString &text);
+    // Save All ended: how many devices were saved, and the failures in words
+    void savedAll(int saved, const QStringList &failed);
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -125,6 +144,17 @@ private:
     void wire(QQuickWindow *window);
     void bringBack();
     bool cleanForSure() const;
+    // -- WP UA3 --
+    struct SaveTarget {
+        QPointer<DeviceSession> session;
+        int slot = -1;
+        QString name;
+        QStringList changes;
+    };
+    void collectSaveAll(QList<QPointer<DeviceSession>> left);
+    void saveNext();
+    void watchKeeps();
+    void keptOn(DeviceSession *session);
 
     AppContext m_ctx;
     bool m_asking = false;
@@ -142,6 +172,11 @@ private:
     QString m_title;
     // -- WP LAY7 -- a question is on show (not settling, not saving)
     bool m_shown = false;
+    // -- WP UA3 -- Save All: the devices read so far, then those still to save
+    QList<SaveTarget> m_saveAll;
+    int m_savedAll = 0;
+    QStringList m_saveAllFailed;
+    QString m_guardPhase;   // the safe apply's phase last seen
 };
 
 #endif // UNSAVEDGUARD_H
