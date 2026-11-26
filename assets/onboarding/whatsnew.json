@@ -1,6 +1,21 @@
 [
   {
     "when": "windows_or_linux",
+    "version": "0.16",
+    "app": true,
+    "headline": "Crossovers from your speakers, a home for listening, and A/B against what is saved",
+    "items": [
+      "Crossovers from your speakers: once Settings > Speakers is confirmed, Equaliser > Crossover > From Speaker Layout… sets every crossover in one step (Routing has the same for the routes), and one Undo puts it all back. A tweeter's high-pass never goes below 1 kHz, and a tweeter is never fed without one.",
+      "A/B in the top bar compares the preset as it is saved on the device with what you hear now, from your first edit: click A or press B. While you listen to A, your edits still count as unsaved, so nothing is lost without a question.",
+      "The Overview lists what is left to set up, the tab of each DSPi shows its unsaved changes, and Save All saves every open device at once. Simple mode and a DSPi locked by its installer open on Home: volume, mute, source and presets.",
+      "Also new: Solo an output from the Routing inspector or a channel's menu; the demo is a tuned two-way speaker (Reset Demo starts it again); outputs are named as your speakers everywhere; an agent's questions raised together come as one sheet."
+    ],
+    "actions": [
+      { "page": "speakers", "text": "Speakers…" }
+    ]
+  },
+  {
+    "when": "windows_or_linux",
     "version": "0.15",
     "app": true,
     "headline": "A new layout, AI agents, and several DSPis at once",
