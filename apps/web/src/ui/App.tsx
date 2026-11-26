@@ -26,7 +26,7 @@ import { OpenFiles } from "../screens/snapshots/OpenFile";
 import { ActionBoard, type PaletteEntry } from "./menus/board";
 import { menuItems, ownRow, type Handler, type MenuItem } from "./menus/actions";
 import { Palette } from "./palette/Palette";
-import { paletteEntries } from "./palette/entries";
+import { DOCS_URL, helpEntries, noDeviceEntries, paletteEntries } from "./palette/entries"; // -- WP UFW -- Help, no device
 import { deviceName, NoticeLog } from "./drawer/notices";
 import { BellButton, Drawer, useNotices } from "./drawer/Drawer";
 import { deviceTabsInRail, inspectorShown, loadArrangement, saveArrangement, setInspectorShown, type Arrangement } from "./arrangement/arrangement";
@@ -307,6 +307,7 @@ export function App(props: { options: ConsoleOptions }) {
     "device.devices": { run: () => onPicking(true) },
     "edit.settings": { run: () => setAppearance(true) },
     "help.about": { run: () => setAboutOpen(true), text: `About ${short}` },
+    "help.manual": { run: () => void window.open(`${DOCS_URL}manual/README.md`, "_blank", "noopener") }, // -- WP UFW -- (UXP A8)
   };
   const handlers = () => board.handlers(current?.id ?? null);
   const mac = appleKeys(typeof navigator === "undefined" ? "" : (navigator.platform ?? ""));
@@ -330,6 +331,9 @@ export function App(props: { options: ConsoleOptions }) {
     // A tab not on show has no view, so only the page's rows
     const mine = board.session(s.id)?.handlers["device.firmwareUpdate"];
     if (mine && s === current) h["device.firmwareUpdate"] = mine;
+    // -- WP UFW -- (UXP A10, C1) Factory Reset is the device's, as Qt's tab menu, not Save ▾'s
+    const reset = board.session(s.id)?.handlers["device.factoryReset"];
+    if (reset && s === current) h["device.factoryReset"] = reset;
     return menuItems("device", h);
   };
   const openPalette = () => {
@@ -343,6 +347,9 @@ export function App(props: { options: ConsoleOptions }) {
     if (onShortcutList) extra.push({ id: "web.shortcuts", kind: "action", title: "Keyboard Shortcuts", where: "Help", keys: "Shift+?", enabled: true, run: onShortcutList });
     if (!mine?.entries.some((e) => e.id === "settings:appearance"))
       extra.push({ id: "settings:appearance", kind: "settings", title: "Appearance", where: "Settings", keywords: ["Settings"], keys: "", enabled: true, run: () => setAppearance(true) });
+    // -- WP UFW -- (UXP A8) with no DSPi, the ways to one; and the manual's answers
+    if (!current) extra.push(...noDeviceEntries({ openDemo, devices: () => onPicking(true), addHub: addHub ? () => onPicking(true) : null }));
+    extra.push(...helpEntries((url) => void window.open(url, "_blank", "noopener")));
     setDrawerOpen(false);
     setPalette({
       entries: paletteEntries({ current, session: mine, handlers: handlers(), others, extra }),

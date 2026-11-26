@@ -219,7 +219,7 @@ pub(crate) fn judge(
         block(
             "measure.guard_pending",
             None,
-            "a safe apply is waiting for Keep or Revert".into(),
+            "a trial is waiting for Keep or Revert".into(), // -- WP UFW -- (UXP D10)
         );
     }
     if facts.ab_running {
@@ -308,19 +308,22 @@ pub(crate) fn judge(
         if let Some((hz, slope)) = tweeter_rule(role, o, profile) {
             let bands: Vec<BandSpec> = chain.peq.iter().chain(&chain.crossover).copied().collect();
             if !has_highpass(&bands, hz, slope) {
-                let way = if role == MeasureRole::High {
-                    "high"
+                // -- WP UFW -- the Speakers page's role words, not "high way"
+                let driver = if role == MeasureRole::High {
+                    "tweeter"
                 } else {
-                    "middle"
+                    "mid driver"
                 };
                 // -- WP ROLL1 -- the caller's role (the plan's is resolved)
                 let why = if role == spec.declared {
-                    format!("Out {n} is a {way} way")
+                    format!("Out {n} is a {driver}")
                 } else if super::effective_role(spec.declared, &chain) != role {
                     // -- WP RCFIX -- raised by the user's confirmed layout
-                    format!("Out {n} is a {way} way in the speaker layout")
+                    format!("Out {n} is a {driver} in the speaker layout")
                 } else {
-                    format!("Out {n} has a high-pass at 1 kHz or above, so it is a {way} way,")
+                    format!(
+                        "Out {n} has a high-pass at 1 kHz or above, so it is measured as a {driver},"
+                    )
                 };
                 block(
                     "measure.tweeter_highpass",

@@ -379,7 +379,7 @@ fn wp_p5tune_the_proposal_aligns_flips_the_mid_and_keeps_the_common_delay() {
     assert!(
         c.notes
             .iter()
-            .any(|n| n.contains("outputs 1 and 2: no corner is clearly better")),
+            .any(|n| n.contains("outputs 2 and 3: no corner is clearly better")), // -- WP UFW -- from 1
         "{:#?}",
         c.notes
     );

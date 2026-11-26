@@ -272,8 +272,6 @@ void buttonMenusPart(Menus &m) {
                 const QVariantMap r = call(table, "row", id).toMap();
                 if (r.value(QStringLiteral("optional")).toBool() && !m.shell->handles(id)) continue;
                 if (r.value(QStringLiteral("dynamic")).toBool()) continue;
-                // -- WP UA3 -- (UXP C1) Factory Reset is on Devices, not in Save ▾
-                if (id == QLatin1String("device.factoryReset") && QLatin1String(menuName) == QLatin1String("TopBar.save.menu")) continue;
                 m.d.check(QStringLiteral("lay3b: %1 is in %2").arg(id, QLatin1String(menuName)), m.row(menuName, qPrintable(id)) != nullptr);
             }
     };
@@ -372,8 +370,19 @@ void devicePart(Menus &m) {
         return item && !item->isVisible() && item->height() < 1;
     };
     m.check("a right-click on a device tab opens its menu", tab && openMenu());
-    for (const char *which : { "device.identify", "device.reconnect", "device.firmwareUpdate", "device.close" })
+    for (const char *which : { "device.identify", "device.reconnect", "device.firmwareUpdate", "device.factoryReset", "device.close" })
         m.d.check(QStringLiteral("lay3b: %1 is in it").arg(QLatin1String(which)), row(which) != nullptr);
+    // -- WP UFW -- (UXP A3, C1) Factory Reset is the device's, and asks first
+    auto *reset = qobject_cast<QQuickItem *>(row("device.factoryReset"));
+    m.check("Factory Reset is there for the shown device", reset && reset->isEnabled());
+    m.settle();   // the menu in place before the click
+    if (reset) QTest::mouseClick(m.main, Qt::LeftButton, Qt::NoModifier, m.point(reset));
+    m.settle();
+    QObject *question = m.d.object(QStringLiteral("FilesHost.deviceQuestion"));
+    m.check("Factory Reset asks", question && m.d.waitFor(3000, [&] { return question->property("opened").toBool(); }));
+    if (question) QMetaObject::invokeMethod(question, "finish", Q_ARG(QVariant, QStringLiteral("reject")));
+    m.settle();
+    m.check("the tab's menu opens again", openMenu());
     m.check("Close works while nothing pins the device", row("device.close") && row("device.close")->property("enabled").toBool() && noReason());
     shut();
     firmware->pretendRunForTest(session);
@@ -400,6 +409,7 @@ void devicePart(Menus &m) {
     for (const char *which : { "device.identify", "device.reconnect", "device.firmwareUpdate" })
         m.d.check(QStringLiteral("lay3b: the switcher has %1").arg(QLatin1String(which)), m.shown(QStringLiteral("DeviceSwitcher.") + QLatin1String(which)) != nullptr);
     m.check("and not a tab's Close", !m.shown(QStringLiteral("DeviceSwitcher.device.close")));
+    m.check("nor Factory Reset", !m.shown(QStringLiteral("DeviceSwitcher.device.factoryReset")));   // -- WP UFW --
     if (switcher) QMetaObject::invokeMethod(switcher, "close");
     m.settle();
 }
