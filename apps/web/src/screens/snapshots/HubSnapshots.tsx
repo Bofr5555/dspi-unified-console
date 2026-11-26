@@ -7,7 +7,7 @@
 // - Recall: the hub recalls it (WP P2WB3); where this session's recalls are guarded (DSPi Link to a
 //   hub with the guard) the hub guards it and the core adopts the guard: the bar's Keep or Revert.
 // - The list follows the hub's `snapshot.changed` (WP P2WB3), whichever console changed it.
-// - Copy here: the hub's document held in this visit's list (download it from there).
+// - Copy here: the hub's document held in this browser's list (-- WP UB14 -- kept; Export… from there).
 // - Rename (Control, Admin), Delete (Admin): the hub refuses below in its words.
 
 import { useEffect, useState } from "preact/hooks";
@@ -112,7 +112,8 @@ export function HubSnapshots(props: { desk: SnapshotDesk; ask: ScreenProps["ask"
     act(async () => {
       const doc = await session.core.call("hubSnapshotsGet", { id: r.snapshot.id });
       const held = await desk.addFile(doc.document, fileNameFor(doc.snapshot.name || r.snapshot.name));
-      return held ? `“${held.name}” is in this visit's list: download it from there.` : "";
+      // -- WP UB14 -- kept in this browser (or for this visit, as the list's line says)
+      return held ? `“${held.name}” is in the Snapshots list above.` : "";
     });
   const rename = (r: MergedSnapshotRecord, name: string) =>
     act(async () => {
