@@ -1251,12 +1251,34 @@ fn shell_verb(words: &[String], target: Option<&Target>) -> u8 {
         Some("lock") => pro::installer::cmd_lock(&target, &flags, false),
         Some("status") => pro::cmd_status(&target, &flags, false),
         Some("measure") => measure::run(&target, &flags, false),
+        Some("reset-demo") => reset_demo(&target), // -- WP UB12 --
         _ => exit::USAGE,
     };
     core_route::on_interface_core(run).unwrap_or_else(|| {
         eprintln!("{COMMAND}: the interface has no device open");
         exit::NO_DEVICE
     })
+}
+
+// -- WP UB12 --
+/// `:reset-demo`: the interface's demo runs its tuned example again, with
+/// nothing unsaved and its roles the example's (UXP B12).
+fn reset_demo(target: &Target) -> u8 {
+    let opened = match core_route::open_core(target, &pro::Stores::default_dirs(), &prompt_pin) {
+        Ok(o) => o,
+        Err(e) => return e.report(),
+    };
+    match opened.handle.core.reset_demo() {
+        Ok(()) => {
+            println!("The demo runs its example again.");
+            exit::OK
+        }
+        Err(dspi_core::DspiError::Unsupported) => {
+            eprintln!("{COMMAND}: only the demo device can be reset; this is a real DSPi");
+            exit::USAGE
+        }
+        Err(e) => pro::fail(&e),
+    }
 }
 
 // -- WP TM26 --

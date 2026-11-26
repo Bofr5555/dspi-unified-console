@@ -22,6 +22,8 @@ import type { ComponentChildren } from "preact";
 import { Frame } from "./shell/Frame";
 import { CONNECT, sectionsFor, type Page, type SectionId } from "./shell/sections";
 import type { ActionBoard } from "./menus/board"; // -- WP WEBM4 --
+import { actionText } from "./menus/actions"; // -- WP UB12 --
+import { resetDemo } from "./menus/session-actions"; // -- WP UB12 --
 import { EmptyState, Glyph } from "./design"; // -- WP WEB --
 import { NoDeviceEmpty, NoDeviceFrame, NoDeviceStrip } from "./shell/NoDevice"; // -- WP REVEFIX --
 
@@ -301,6 +303,10 @@ export function SessionView(props: { session: Session; onClose: () => void; shel
         <div class="banner banner-info demo-strip" role="note">
           <Glyph name="info" class="banner-icon" />
           <span>This is the demo DSPi, a simulated device: nothing you change here reaches a real DSPi.</span>
+          {/* -- WP UB12 -- (UXP B12) as Qt's strip: its tuned example again */}
+          <button type="button" class="demo-reset" disabled={!!s.readOnlyReason} onClick={() => void resetDemo(s)}>
+            {actionText("device.resetDemo")}
+          </button>
         </div>
       ) : null}
       {st.link && st.link.phase !== "bound" ? <LostLinkBanner phase={st.link} session={s} otherHub={!!st.otherHub && st.link.phase === "reconnecting"} onClose={props.onClose} /> : null}

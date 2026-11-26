@@ -67,7 +67,8 @@ mod tests_wp_role0 {
         guard::reset_for_test();
         let h = session_new().unwrap();
         ok(h, "open", json!({ "kind": "demo" }));
-        assert_eq!(ok(h, "speakerLayout", Value::Null), Value::Null);
+        // -- WP UB12 -- the demo comes with its example's roles confirmed
+        assert_eq!(ok(h, "speakerLayout", Value::Null)["confirmedByUser"], true);
         let mut p = ok(h, "speakerLayoutPropose", Value::Null);
         assert_eq!(p["confirmedByUser"], false, "{p}");
         p["confirmedByUser"] = Value::Bool(true);

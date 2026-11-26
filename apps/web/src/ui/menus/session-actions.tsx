@@ -58,6 +58,12 @@ export async function factoryReset(session: Session, ask: Ask): Promise<void> {
   if (a === "yes") await session.change("factoryReset", { token: await session.token("factory_reset") });
 }
 
+// -- WP UB12 --
+/** Reset Demo: the demo's tuned example, its saved preset and its roles again, with nothing unsaved (no question: it is the demo). */
+export function resetDemo(session: Session): Promise<boolean> {
+  return session.change("demo", { action: "reset" });
+}
+
 export function sessionHandlers(c: SessionContext): Handlers {
   const { session, desk, ask, unsaved } = c;
   const st = session.state;
@@ -84,6 +90,8 @@ export function sessionHandlers(c: SessionContext): Handlers {
   out["device.commit"] = write(key({ action: "commit" }));
   out["device.revert"] = write(key({ action: "revert" }));
   out["device.factoryReset"] = write(() => factoryReset(session, ask), { danger: true });
+  // -- WP UB12 -- (UXP B12) the demo's tuned example again; only the demo has the row
+  if (session.source.kind === "demo") out["device.resetDemo"] = write(() => resetDemo(session));
   out["device.bypass"] = write(key({ action: "bypass" }), { on: s.bypass });
   const ab = mayToggle(desk.state, !!ro);
   out["device.abToggle"] = { run: () => void runKey({ action: "ab" }, session, desk, ask, unsaved), enabled: ab, reason: ab ? undefined : ro || "No A/B compare runs (Library › Snapshots)" };

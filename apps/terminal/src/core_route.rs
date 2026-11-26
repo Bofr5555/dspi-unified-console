@@ -1517,6 +1517,19 @@ mod tests_wp_tmcore {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    // -- WP UB12 -- `:reset-demo` on the interface's own core
+    #[test]
+    fn wp_ub12_reset_demo_runs_on_the_interfaces_demo() {
+        let dir = scratch("ub12_reset");
+        let o = opened(&dir);
+        let _interface = connected_on(&o).expect("the interface's session");
+        o.handle.core.set_output_gain(2, -9.0).unwrap();
+        let code = on_interface_core(|| crate::reset_demo(&Target::Demo)).unwrap();
+        assert_eq!(code, crate::exit::OK);
+        assert_eq!(gain(&o, 2), -3.0, "the example's tweeter level");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     fn profile(max_gain_db: f32, locked: bool) -> String {
         LimitsProfile {
             outputs: vec![OutputLimits {

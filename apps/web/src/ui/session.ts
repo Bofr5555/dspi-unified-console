@@ -103,6 +103,8 @@ export interface SessionState {
 // -- WP WB6a --
 /** The calls `Session.change` makes. */
 export type ChangeMethod = "presetCopy" | "presetRevert" | "factoryReset"
+  // -- WP UB12 -- "Reset Demo" (`demo` with `reset`)
+  | "demo"
   // -- WP WB6c --
   | "crossoverType"
   | "crosspoint"

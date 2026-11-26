@@ -1024,6 +1024,10 @@ enum DemoAction {
     /// The device clips on the channels in `mask`: the next meter read
     /// shows it and the event log records it.
     Clip { mask: u32 },
+    // -- WP UB12 --
+    /// "Reset Demo": the demo's own settings again (`reset_demo`); the page
+    /// reads the state after it.
+    Reset,
 }
 
 /// `demo_rename_elsewhere`'s target for the device name (input sources are
@@ -1039,6 +1043,7 @@ fn demo_action(core: &DspiCore, demo: bool, a: DemoAction) -> CallResult {
             core.demo_rename_elsewhere(DEVICE_NAME_TARGET, name)?;
         }
         DemoAction::Clip { mask } => core.demo_clip(mask)?,
+        DemoAction::Reset => core.reset_demo()?, // -- WP UB12 --
     }
     Ok(Value::Null)
 }
@@ -1433,6 +1438,28 @@ mod tests {
         session_free(h).unwrap();
     }
 
+    // -- WP UB12 --
+    #[test]
+    fn wp_ub12_the_demo_resets_to_its_example() {
+        guard::reset_for_test();
+        let h = session_new().unwrap();
+        let snap = ok(h, "open", json!({ "kind": "demo" }));
+        let gain = |s: &Value| s["state"]["outputGainDb"][2].as_f64().unwrap();
+        assert_eq!(gain(&snap), -3.0, "the example's tweeter level");
+        let core = core_of(h).unwrap();
+        core.set_output_gain(2, -9.0).unwrap();
+        assert_eq!(gain(&ok(h, "state", Value::Null)), -9.0);
+        assert_eq!(ok(h, "demo", json!({ "action": "reset" })), Value::Null);
+        assert_eq!(gain(&ok(h, "state", Value::Null)), -3.0);
+        assert_eq!(ok(h, "speakerLayout", Value::Null)["confirmedByUser"], true);
+        // Not on a document: only the demo DSPi does that
+        let doc = include_str!("../../../tests/fixtures/preset/k340-bug1.dspipreset");
+        ok(h, "documentOpen", json!({ "text": doc, "fileName": "k340.dspipreset" }));
+        let r = run(h, "demo", json!({ "action": "reset" }));
+        assert_eq!(r["ok"], false, "{r}");
+        session_free(h).unwrap();
+    }
+
     #[test]
     fn wb3_meters_and_the_analyser_answer_in_the_cores_shapes() {
         guard::reset_for_test();
@@ -1594,8 +1621,9 @@ mod tests {
         let snap = ok(h, "open", json!({ "kind": "demo" }));
         let n = snap["state"]["numOutputChannels"].as_u64().unwrap() as usize;
         assert_eq!(snap["outputLabels"].as_array().unwrap().len(), n);
+        // -- WP UB12 -- the demo's tuned example names its outputs
         assert_eq!(
-            snap["outputLabels"][0]["label"], "Out 1 · L",
+            snap["outputLabels"][0]["label"], "Left woofer",
             "{}",
             snap["outputLabels"]
         );

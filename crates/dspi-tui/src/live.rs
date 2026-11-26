@@ -290,6 +290,7 @@ pub const SHELL_VERBS: &[(&str, &str)] = &[
     ("limits", "The installer's limits: show, set FILE, clear"),
     ("status", "The device, its link and its lock"),
     ("measure", "Measurement documents: docs, show ID, export ID"),
+    ("reset-demo", "The demo's tuned example again"), // -- WP UB12 --
 ];
 
 // -- WP UTM --
