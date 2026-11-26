@@ -664,6 +664,60 @@ void sumNoLouder(SmokeDriver &d) {
 }
 // ==== end F6 ====
 
+// ==== F7 ====
+// ---- F7: the layout's outputs, and those with a band, are never folded as unused
+void layoutOutputsNotFolded(SmokeDriver &d) {
+    auto *ls = Registrar::instance<LayoutSetupController>();
+    auto *cc = Registrar::instance<ChannelController>();
+    DeviceModel *device = d.app().device;
+    QQuickWindow *main = d.mainWindow();
+    if (!ls || !cc || !main || !device->state() || device->state()->num_output_channels < 5) {
+        d.check("fix016 F7: the controllers and five outputs", false);
+        return;
+    }
+    DeviceSetup setup(d);
+    setup.layout(kTwoWays);
+    setup.bare({ 0, 1, 2, 3, 4 });
+    ChannelListModel *rows = device->channels();
+    const auto hidden = [&](int o) { return rows->get(rows->rowOfChannel(cc->outputChannel(o)), QStringLiteral("hidden")).toBool(); };
+    const QSize sizeWas = main->size();
+    d.switchLayout("modern");
+    main->resize(1600, 1000);
+    d.goTo(QStringLiteral("equaliser/crossover"), 400);
+    const auto shown = [&] {
+        QList<int> list;
+        QObject *page = d.object(QStringLiteral("EqualiserCrossover"));
+        QVariant v = page ? page->property("shownOutputs") : QVariant();
+        if (v.canConvert<QJSValue>()) v = v.value<QJSValue>().toVariant();
+        for (const QVariant &o : v.toList()) list << o.toInt();
+        return list;
+    };
+    const auto all = [&](std::initializer_list<int> outs) {
+        const QList<int> s = shown();
+        return std::all_of(outs.begin(), outs.end(), [&](int o) { return s.contains(o) && !hidden(o); });
+    };
+    d.check(QStringLiteral("fix016 F7: confirmed, nothing routed: the Crossover table shows the layout's four outputs (%1)")
+                .arg([&] { QStringList t; for (int o : shown()) t << QString::number(o + 1); return t.join(QLatin1Char(',')); }()),
+            d.waitFor(2000, [&] { return all({ 0, 1, 2, 3 }); }));
+    d.check("fix016 F7: an output in no role and with no band stays folded", hidden(4) && !shown().contains(4));
+    d.grab(main, QStringLiteral("fix016-f7-crossover-confirmed.png"));
+    // From Speaker Layout's Apply, crossovers only: the four with their fresh bands show
+    const QString refusal = ls->apply(offered(ls->plan()), true, false);
+    d.waitIdle();
+    device->refresh();
+    d.waitIdle();
+    d.check(QStringLiteral("fix016 F7: after From Speaker Layout's Apply the four show (%1)").arg(refusal),
+            refusal.isEmpty() && d.waitFor(2000, [&] { return all({ 0, 1, 2, 3 }); }));
+    // With no layout at all, a band alone keeps them
+    setup.layout(QJsonArray{}, false);
+    device->refresh();
+    d.waitIdle();
+    d.check("fix016 F7: with no speaker layout, an unrouted output with a crossover band is not folded",
+            d.waitFor(2000, [&] { return all({ 0, 1, 2, 3 }); }) && hidden(4));
+    main->resize(sizeWas);
+    d.switchLayout("classic");
+}
+// ==== end F7 ====
 
 void fix016Section(SmokeDriver &d) {
     d.allowSectionTime(240);
@@ -673,6 +727,7 @@ void fix016Section(SmokeDriver &d) {
     modernUnderTheLock(d);   // F8
     routingToABareTweeter(d);   // F5
     sumNoLouder(d);   // F6
+    layoutOutputsNotFolded(d);   // F7
 }
 
 const SmokeDriver::Section fix016("fix016-qt", 1000, &fix016Section);

@@ -34,7 +34,9 @@
 #include <QQmlComponent>
 #include <QQuickItem>
 #include <QQuickWindow>
+#include <array>        // -- FIX016 --
 #include <functional>
+#include <vector>       // -- FIX016 --
 
 namespace {
 
@@ -119,6 +121,31 @@ void namesSection(SmokeDriver &d) {
         for (int i = 0; i < inputs; ++i)
             if (was[o][i].on != wanted(i, o)) cc->setRoute(i, o, wanted(i, o), 0, false);
     d.waitIdle();
+    // -- FIX016 -- (REVG F7) an output with a band on is not folded: outputs 5 on
+    // start with none (an earlier section's band would keep one in view), put
+    // back at the end
+    const int base = s() ? int(s()->num_input_channels) : 0;
+    std::vector<std::pair<int, std::pair<std::array<FilterParams, BANDS_PER_CHANNEL>, std::array<FilterParams, MAX_XOVER_BANDS>>>> bandsWas;
+    for (int o = 4; o < outputs && s(); ++o) {
+        std::array<FilterParams, BANDS_PER_CHANNEL> peq{};
+        std::array<FilterParams, MAX_XOVER_BANDS> xo{};
+        for (int b = 0; b < BANDS_PER_CHANNEL; ++b) peq[b] = s()->filters[base + o][b];
+        for (int b = 0; b < MAX_XOVER_BANDS; ++b) xo[b] = s()->xover[base + o][b];
+        bandsWas.push_back({ base + o, { peq, xo } });
+    }
+    const auto writeBands = [&](bool back) {
+        const auto list = bandsWas;
+        device->write(QStringLiteral("ua1 bands"), [list, back](FfiCore *c) {
+            bool ok = true;
+            for (const auto &[ch, bands] : list) {
+                for (int b = 0; b < BANDS_PER_CHANNEL; ++b) ok = dspi_set_filter(c, uint8_t(ch), uint8_t(b), back ? bands.first[b] : FilterParams{}) && ok;
+                for (int b = 0; b < MAX_XOVER_BANDS; ++b) ok = dspi_set_crossover(c, uint8_t(ch), uint8_t(b), back ? bands.second[b] : FilterParams{}) && ok;
+            }
+            return ok;
+        });
+        d.waitIdle();
+    };
+    writeBands(false);
 
     // The speaker layout: a stereo two-way pair, the user's
     const QJsonValue stored = onWorker(d, [](FfiCore *c) {
@@ -303,6 +330,7 @@ void namesSection(SmokeDriver &d) {
     }
 
     // As it was: the layout, then the routes
+    writeBands(true);   // -- FIX016 --
     if (stored.isObject()) setLayout(stored.toObject());
     for (int o = 0; o < outputs; ++o)
         for (int i = 0; i < inputs; ++i)
