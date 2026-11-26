@@ -177,3 +177,7 @@ mod tests_fix016_r2;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
 mod tests_fix016_r4;
+// -- FIX016 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+mod tests_fix016_f4;

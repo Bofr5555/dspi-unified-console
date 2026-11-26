@@ -971,10 +971,26 @@ fn summary(st: &DspState, writes: &[WriteKey]) -> String {
 
 // -- WP UAG -- (UXP A6) ------------------------------------ the app's words
 
-/// The device's names as its screens show them.
+/// The device's names as its screens show them, for a question: -- FIX016
+/// -- (REVG F4) an output's name stands alone only from the speaker layout
+/// the user confirmed ([`question_output_name`]), so `said`, `channel` (the
+/// sheet's heading), the unasked rows, `held_said` and `refusal_words` all
+/// name it so.
 fn screen_words(core: &DspiCore) -> ScreenWords {
+    let mut channels = core.channel_words();
+    let confirmed = core
+        .speaker_layout()
+        .ok()
+        .flatten()
+        .is_some_and(|l| l.state() == dspi_core::LayoutState::Confirmed);
+    if !confirmed {
+        channels.from_layout.clear();
+    }
+    for (o, name) in channels.outputs.iter_mut().enumerate() {
+        *name = question_output_name(name, o, &channels.from_layout);
+    }
     ScreenWords {
-        channels: core.channel_words(),
+        channels,
         presets: core
             .get_state()
             .preset_names
@@ -1208,6 +1224,22 @@ fn channel_first(s: &str) -> String {
         .get(ch.len().saturating_add(n.len()).saturating_add(1)..)
         .unwrap_or_default();
     format!("{ch} {n}:{rest}")
+}
+
+// -- FIX016 -- (REVG F4)
+/// Output `o`'s (0-based) `name` as a question says it: a name from the
+/// confirmed speaker layout (`from_layout`) stands alone ("Left tweeter"),
+/// and so does the core's own label ("Out 3", "3 · None"); any other name,
+/// a channel name an agent may set without a question, keeps the output's
+/// number: "Sub (quieter) · Out 3".
+pub(crate) fn question_output_name(name: &str, o: usize, from_layout: &[u8]) -> String {
+    let n = o.saturating_add(1);
+    let trusted = u8::try_from(o).is_ok_and(|o| from_layout.contains(&o));
+    if trusted || name == format!("Out {n}") || name == format!("{n} \u{b7} None") {
+        name.to_owned()
+    } else {
+        format!("{name} \u{b7} Out {n}")
+    }
 }
 
 /// `s` with "Out N", "In N" and "preset N" named as the screens name them.
