@@ -7,12 +7,17 @@
 #                         (docs/RELEASE.md; part of `all`, ~2 min cold, mostly the Rust release build)
 #
 # Always runs inside the build container (re-executes itself via tools/dev.sh).
+# Before that, on the host, tools/seed-gradle-cache.sh gives a fresh checkout's Gradle home the
+# Robolectric runtime from a seeded volume (-- FIX016 --).
 # See docs/PACKAGES.md for what each package owns.
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$here/.." && pwd)"
 
 if [[ "${DSPI_IN_CONTAINER:-}" != 1 ]]; then
+  # -- FIX016 -- (REVG R1) the Robolectric runtime Maven Central will not hand the CI VM
+  # (429): copied once into this checkout's Gradle home from a seeded one (a no-op after)
+  case "${1:-}" in ""|-h|--help|list) ;; *) "$here/seed-gradle-cache.sh" || true ;; esac
   exec "$here/dev.sh" "$here/ci.sh" "$@"
 fi
 cd "$ROOT"
