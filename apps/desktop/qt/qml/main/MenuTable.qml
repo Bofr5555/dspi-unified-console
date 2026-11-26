@@ -85,7 +85,8 @@ QtObject {
                 { id: "device.events", text: qsTr("Events…") },
                 { id: "device.identify", text: qsTr("Identify"), enabled: () => IdentifyController.available, modern: ["device.act"] },
                 // -- WP MCP4 -- what AI agents do, with Pause and Stop (AiController)
-                { id: "device.aiAgents", text: qsTr("AI Agents…") },
+                // -- INT016 -- (UAG's C4 leftover) the activity, not a second "AI Agents" beside the Settings page
+                { id: "device.aiAgents", text: qsTr("Agent Activity…") },
                 { separator: true },
                 { id: "device.firmwareUpdate", text: qsTr("Firmware Update…"), platformHidden: "STM32H723", modern: ["device.act"] },
                 { separator: true },

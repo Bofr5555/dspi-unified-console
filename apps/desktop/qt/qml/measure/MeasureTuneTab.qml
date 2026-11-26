@@ -42,6 +42,18 @@ ScrollView {
     // plays (the one shown may be an earlier one; its result reads it again).
     // Classic keeps its numbered cards.
     readonly property bool modern: LayoutController.modern
+    // -- INT016 -- (UA1's C5 leftover) Modern folds the outputs nothing is routed to
+    // and nothing plays on (ChannelInfo's `hidden`) under one row; a ticked one stays
+    property bool unusedOpen: false
+    function foldsOutput(row) {
+        if (!modern || unusedOpen || row.on || DeviceModel.revision < 0 || ChannelController.revision < 0) return false
+        const r = DeviceModel.channels.rowOfChannel(ChannelController.outputChannel(row.output))
+        return r >= 0 && DeviceModel.channels.get(r, "hidden") === true
+    }
+    function unusedCount(rows) {
+        if (!modern || DeviceModel.revision < 0 || ChannelController.revision < 0) return 0
+        return rows.filter(row => !row.on && DeviceModel.channels.get(DeviceModel.channels.rowOfChannel(ChannelController.outputChannel(row.output)), "hidden") === true).length
+    }
     readonly property bool afterApply: tc.applied || tc.stage === "kept" || tc.stage === "reverted" || tc.stage === "revertIncomplete" // -- WP REVERTW --
     readonly property bool checking: tc.stage === "sumCheck"
     readonly property int step: afterApply ? 2 : tc.hasProposal || checking ? 1 : 0
@@ -164,6 +176,7 @@ ScrollView {
                 model: tc.layout
                 RowLayout {
                     required property var modelData
+                    visible: !tab.foldsOutput(modelData)   // -- INT016 --
                     spacing: Theme.spacingSmall
                     AppCheckBox {
                         objectName: "MeasureTune.output." + modelData.output
@@ -182,6 +195,13 @@ ScrollView {
                         elide: Text.ElideRight
                     }
                 }
+            }
+            EqualiserUnusedRow {
+                objectName: "MeasureTune.unused"
+                Layout.fillWidth: true
+                count: tab.unusedCount(tc.layout)
+                open: tab.unusedOpen
+                onClicked: tab.unusedOpen = !tab.unusedOpen
             }
             Text {
                 visible: text.length > 0

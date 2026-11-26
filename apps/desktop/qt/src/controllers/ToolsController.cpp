@@ -868,14 +868,19 @@ void ToolsController::readUnprotected() {
         });
 }
 
-QString ToolsController::unprotectedText() const {
+QString ToolsController::unprotectedText() const { return unprotectedTextOf({}); }
+
+QString ToolsController::unprotectedTextOf(const QStringList &names) const {
     const QVariantList unprotected = state()->unprotected;
     if (unprotected.isEmpty()) return QString();
-    QStringList names;
-    for (const QVariant &o : unprotected) names << outputName(o.toInt());
+    QStringList shown;
+    for (int i = 0; i < unprotected.size(); ++i) {
+        const QString given = i < names.size() ? names.at(i) : QString();
+        shown << (given.isEmpty() ? outputName(unprotected.at(i).toInt()) : given);
+    }
     //: PRO1 S2's warning row; %1 the outputs ("Out 1, Out 2"), %2 the gain (-10)
     return tr("No limiter on %1, above %2 dB of gain.")
-        .arg(names.join(QStringLiteral(", ")))
+        .arg(shown.join(QStringLiteral(", ")))
         .arg(int(kUnprotectedAboveDb));
 }
 

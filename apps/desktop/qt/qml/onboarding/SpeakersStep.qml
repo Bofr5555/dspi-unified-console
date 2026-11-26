@@ -70,6 +70,16 @@ ColumnLayout {
                 step.touched = true   // -- WP UA4 -- the person chose it
             }
         }
+        // -- INT016 -- (UB1's follow-up, UXP B1) the next step once the layout
+        // is confirmed, as Settings › Speakers offers it
+        AppButton {
+            objectName: "SpeakersStep.fromLayout"
+            visible: step.confirmed
+            text: qsTr("Crossovers and Routing…")
+            enabled: LayoutSetupController.writable
+            toolTip: qsTr("Starting crossovers and routes from this layout, in one undo step")
+            onClicked: fromLayout.open()
+        }
     }
     Text {
         objectName: "SpeakersStep.later"   // -- WP UA4 --
@@ -79,5 +89,13 @@ ColumnLayout {
         font: Theme.fontSmall
         color: Theme.textMuted
         wrapMode: Text.Wrap
+    }
+
+    // -- INT016 --
+    CrossoverFromLayout {
+        id: fromLayout
+        parent: step.Window.window ? step.Window.window.contentItem : null
+        crossoversWanted: true
+        routingWanted: true
     }
 }

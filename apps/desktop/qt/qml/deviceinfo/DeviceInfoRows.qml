@@ -4,7 +4,7 @@ import UConsole
 
 // -- WP PGQT -- The open device's protocol (DeviceInfoController): board,
 // generation, protocol version, page list and extension envelope, read once
-// per connection, and the notes under them. Settings > About and the alink
+// per connection, and the notes under them. Settings > Advanced (-- INT016 --, UA5 moved it) and the alink
 // sender's page show it.
 ColumnLayout {
     id: rows

@@ -56,6 +56,18 @@ ScrollView {
     // 760 px column, the blocking condition a notice row above the actions,
     // Measure the one primary action; Classic keeps its cards
     readonly property bool modern: LayoutController.modern
+    // -- INT016 -- (UA1's C5 leftover) Modern folds the outputs nothing is routed to
+    // and nothing plays on (ChannelInfo's `hidden`) under one row; a ticked one stays
+    property bool unusedOpen: false
+    function foldsOutput(row) {
+        if (!modern || unusedOpen || row.on || DeviceModel.revision < 0 || ChannelController.revision < 0) return false
+        const r = DeviceModel.channels.rowOfChannel(ChannelController.outputChannel(row.output))
+        return r >= 0 && DeviceModel.channels.get(r, "hidden") === true
+    }
+    function unusedCount(rows) {
+        if (!modern || DeviceModel.revision < 0 || ChannelController.revision < 0) return 0
+        return rows.filter(row => !row.on && DeviceModel.channels.get(DeviceModel.channels.rowOfChannel(ChannelController.outputChannel(row.output)), "hidden") === true).length
+    }
     component Section: Card {
         color: tab.modern ? "transparent" : Theme.panel
         padding: tab.modern ? 0 : Theme.spacing
@@ -222,12 +234,20 @@ ScrollView {
                     AppCheckBox {
                         required property var modelData
                         objectName: "MeasureSetup.output." + modelData.output
+                        visible: !tab.foldsOutput(modelData)   // -- INT016 --
                         text: modelData.label
                         enabled: tab.editable
                         checked: modelData.on
                         onToggled: mc.setOutputOn(modelData.output, checked)
                     }
                 }
+            }
+            EqualiserUnusedRow {
+                objectName: "MeasureSetup.unused"
+                Layout.fillWidth: true
+                count: tab.unusedCount(mc.setupOutputs)
+                open: tab.unusedOpen
+                onClicked: tab.unusedOpen = !tab.unusedOpen
             }
         }
 

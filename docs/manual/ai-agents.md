@@ -40,7 +40,7 @@ time: in Claude Desktop, choose to allow the dspi tools always; in Claude Code, 
 | Where | What |
 |---|---|
 | **Settings › AI Agents** (both layouts) | the switch, the questions setting, the limits profile, how to connect an agent, the clients and their tokens, the activity |
-| **Device › AI Agents…** (Classic), the robot icon beside the device in the status bar (Classic), the **AI** button in the top bar (Modern) | the agents' panel, **Agent Activity**: what they are doing, their questions, Pause and Stop Agents, the activity with Undo |
+| **Device › Agent Activity…** (Classic), the robot icon beside the device in the status bar (Classic), the **AI** button in the top bar (Modern) | the agents' panel, **Agent Activity**: what they are doing, their questions, Pause and Stop Agents, the activity with Undo |
 | **History** | the agents' changes, tagged **AI** with the agent's name |
 
 ## 1. Turning agents on

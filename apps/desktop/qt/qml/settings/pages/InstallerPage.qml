@@ -179,9 +179,14 @@ SettingsPage {
                 size: 14
                 color: Theme.warning
             }
+            // -- INT016 -- (UA1's leftover) Modern names the outputs as its pages do, "Left woofer · 1"
+            ChannelInfo { id: unprotectedNames }
             Text {
                 Layout.fillWidth: true
-                text: ToolsController.unprotectedText
+                text: {
+                    if (!LayoutController.modern || ChannelController.revision < 0) return ToolsController.unprotectedText
+                    return ToolsController.unprotectedTextOf(ToolsController.unprotectedOutputs.map(o => unprotectedNames.titleOf(ChannelController.outputChannel(o))))
+                }
                 // -- WP INT4 -- it names the outputs, which are the user's text
                 textFormat: Text.PlainText
                 font: Theme.fontSmall
