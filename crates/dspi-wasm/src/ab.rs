@@ -173,10 +173,12 @@ mod tests_wp_p1ab {
             (json!(true), json!("a"), json!(true)),
             "{s}"
         );
+        // -- FIX016 R3 -- the device plays A as saved, but B's edit still
+        // counts as unsaved, so nothing ends the compare without a question
         assert_eq!(
             ok(h, "presetChanges", json!({}))["dirty"],
-            false,
-            "A is as saved"
+            true,
+            "on A, B's edit is unsaved"
         );
         let t = ok(h, "abToggle", json!({}));
         assert_eq!(
