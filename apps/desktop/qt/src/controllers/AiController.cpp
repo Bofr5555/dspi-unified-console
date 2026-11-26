@@ -485,6 +485,7 @@ void AiController::stopServer() {
                  m_answered.clear();
                  m_lastCall = QDateTime();
                  m_work = QJsonObject();   // -- WP AIVIS --
+                 m_agentUnsaved.clear();   // -- WP UB5 -- agents off ends their sessions: the tabs still say unsaved
                  setAgents({});   // -- WP LAY8 --
                  setPairing({});
                  emit confirmationsChanged();
@@ -815,7 +816,7 @@ void AiController::readConfirmations() {
                  }
                  m_answered.intersect(there);
                  if (!list.isEmpty()) m_tick.start();
-                 if (sealsIn >= 0) m_sealTimer.start(int(qBound<qint64>(0, sealsIn, 2000)) + 30);   // -- WP UB5 --
+                 if (sealsIn >= 0) m_sealTimer.start(int(std::clamp<qint64>(sealsIn, 0, 2000)) + 30);   // -- WP UB5 --
                  // Only a change: the rows' buttons are armed anew with each
                  if (list == m_waiting) return;
                  m_waiting = list;
@@ -1012,6 +1013,31 @@ void AiController::answer(double id, bool allow) {
                  }
                  readConfirmations();
              });
+}
+
+// -- WP UB5 -- (UXP D2)
+void AiController::answerAll(const QVariantList &ids, bool allow) {
+    QList<quint64> fresh;
+    for (const QVariant &v : ids) {
+        const quint64 n = quint64(v.toDouble());
+        if (!m_answered.contains(n)) fresh << n;
+    }
+    if (fresh.isEmpty()) return;
+    for (quint64 n : std::as_const(fresh)) m_answered.insert(n);
+    followQuestion();
+    emit confirmationsChanged();
+    emit stateChanged();
+    FfiMcp *mcp = m_mcp;
+    for (quint64 n : std::as_const(fresh))
+        onThread([mcp, n, allow] { return dspi_mcp_confirm_answer(mcp, n, allow); },
+                 [this, allow](bool taken) {
+                     if (allow && !taken) {
+                         if (auto *notices = Registrar::instance<NoticeCenter>())
+                             notices->post(tr("The agent's change was not made: it was no longer waiting for your answer."),
+                                           QStringLiteral("warning"));
+                     }
+                     readConfirmations();
+                 });
 }
 
 // ---- The activity ---------------------------------------------------------------------

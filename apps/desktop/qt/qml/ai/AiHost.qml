@@ -142,7 +142,8 @@ Item {
                  : host.front && host.front.heading ? host.front.heading
                  : qsTr("Allow this change?")
         // -- WP UAG -- (UXP D2) exactly the questions shown
-        onAnswered: allow => { for (const c of host.group) AiController.answer(c.id, allow) }
+        // -- WP UB5 -- all of them at once (answering one by one changed `group` under the loop)
+        onAnswered: allow => AiController.answerAll(host.group.map(c => c.id), allow)
 
         // -- WP UAG -- (UXP A6, C11) who asks, where the heading does not say it: the detection's and the roles'
         // questions (the agent's name without the "AI ·" the sheet already shows)

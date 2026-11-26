@@ -17,11 +17,13 @@
 #include "DeviceModel.h"
 #include "DeviceRegistry.h"
 #include "DeviceSession.h"
+#include "SessionModel.h"
 #include "Registrar.h"
 #include "Shell.h"
 
 #include "dspi_core.h"
 
+#include <QDebug>
 #include <QDir>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -30,6 +32,7 @@
 #include <QQuickWindow>
 #include <QTcpServer>
 #include <QTcpSocket>
+#include <cmath>
 #include <functional>
 #include <memory>
 #include <utility>
@@ -174,6 +177,7 @@ void agentSection(SmokeDriver &d) {
         night.push_back(call(port, token, "dspi_set_limiter",
                              { { QStringLiteral("device"), id }, { QStringLiteral("output"), QStringLiteral("all") },
                                { QStringLiteral("enabled"), true }, { QStringLiteral("threshold_db"), -6 } }));
+        d.spin(50);   // (the server takes a few connections at once; a held call gives its own back)
     }
     const bool six = d.waitFor(8000, [&] { return ai->confirmations().size() >= 6 && opened(sheet); });
     armed();
@@ -193,7 +197,10 @@ void agentSection(SmokeDriver &d) {
         return ai->confirmations().isEmpty();
     }));
     bool allMade = true;
-    for (const auto &r : night) allMade = allMade && !r->failed();
+    for (const auto &r : night) {
+        if (r->failed()) qWarning().noquote() << "ub5: not made:" << QJsonDocument(r->body()).toJson(QJsonDocument::Compact).left(600);
+        allMade = allMade && !r->failed();
+    }
     d.check("ub5: and every call is made", allMade);
 
     // ---- A question raised while a sheet is up is not on it
@@ -229,7 +236,7 @@ void agentSection(SmokeDriver &d) {
             && textOf(line).startsWith(QLatin1String("Changed ")) && textOf(line).contains(QLatin1String("on 3 devices")));
     QObject *save = overlay("AiWorkBanner.save");
     if (!save) save = d.item(QStringLiteral("AiWorkBanner.save"));
-    d.check("ub5: with Save All… beside it", save && qobject_cast<QQuickItem *>(save)->isVisible() && textOf(save) == QLatin1String("Save All…"));
+    d.check("ub5: with Save All… beside it", save && qobject_cast<QQuickItem *>(save)->isVisible() && textOf(save) == QStringLiteral("Save All…"));
     grabBoth(d, main, QStringLiteral("3-unsaved-strip"));
     QObject *allQuestion = d.object(QStringLiteral("TopBar.saveAllQuestion"));
     d.check("ub5: which asks the save question", click(save) && d.waitFor(3000, [&] { return opened(allQuestion); })

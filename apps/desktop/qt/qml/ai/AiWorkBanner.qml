@@ -41,8 +41,8 @@ Rectangle {
     readonly property string unsavedText: unsaved.text !== undefined ? unsaved.text : ""
     // -- WP DL5 -- the line it shows: never empty while the strip is
     readonly property string text: refusalText.length ? refusalText
-                                 // -- WP UB5 -- the last line, once the agent rests: not "Last: …"
-                                 : unsavedText.length && !AiController.working ? unsavedText
+                                 // -- WP UB5 -- the last line, once the agent rests: not "Last: …" (a Pause is said first)
+                                 : unsavedText.length && !AiController.working && !AiController.paused ? unsavedText
                                  : workText.length ? workText
                                  : grant ? grantText
                                  : AiController.paused ? qsTr("AI agents are paused. Nothing is changed until Resume.")

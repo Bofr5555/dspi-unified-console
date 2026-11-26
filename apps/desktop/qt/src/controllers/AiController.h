@@ -248,6 +248,9 @@ public:
     static QString riskLabel(const QString &kind);
     // The answer to confirmation `id`. Allow runs the agent's call.
     Q_INVOKABLE void answer(double id, bool allow);
+    // -- WP UB5 -- (UXP D2) one answer for the questions of a sheet: exactly `ids`, each marked
+    // answered before any is sent, so the sheet never shows a part of them meanwhile
+    Q_INVOKABLE void answerAll(const QVariantList &ids, bool allow);
     // Undoes what the activity's row `key` changed, as the user; or every row's,
     // newest first
     Q_INVOKABLE void undo(const QString &key);
