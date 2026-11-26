@@ -19,15 +19,18 @@ export function Rail(props: { sections: Section[]; current: SectionId; onSection
   }, [props.current, props.sections.length]);
   // -- WP WEBM4 -- the open devices' tabs at its top, when so arranged
   const top = useContext(RailTopContext);
+  const stop = props.sections.some((s) => s.id === props.current) ? props.current : props.sections[0]?.id; // -- WP UWN --
   return (
     <nav class="rail" aria-label="Sections" ref={nav}>
       {top ? <div class="rail-devices">{top}</div> : null}
-      <div class="rail-list">
+      {/* -- WP UWN -- (UXP A15) one Tab stop (the section on show) and the arrow keys between sections, as the page tabs */}
+      <div class="rail-list" onKeyDown={railKeys}>
         {props.sections.map((s) => (
           <button
             type="button"
             key={s.id}
             class={s.foot ? "rail-foot" : undefined}
+            tabIndex={s.id === stop ? 0 : -1}
             aria-current={s.id === props.current ? "page" : undefined}
             title={s.title}
             onClick={() => props.onSection(s)}
@@ -39,6 +42,21 @@ export function Rail(props: { sections: Section[]; current: SectionId; onSection
       </div>
     </nav>
   );
+}
+
+// -- WP UWN -- (UXP A15)
+/** The rail's arrow keys: Up/Left and Down/Right move the focus between sections (it wraps), Home and End to the ends; Enter or Space opens one. */
+export function railKeys(e: KeyboardEvent): void {
+  const list = e.currentTarget as HTMLElement;
+  const buttons = [...list.querySelectorAll<HTMLButtonElement>(":scope > button")];
+  const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
+  if (at < 0 || !buttons.length) return;
+  const n = buttons.length;
+  const to =
+    e.key === "ArrowDown" || e.key === "ArrowRight" ? (at + 1) % n : e.key === "ArrowUp" || e.key === "ArrowLeft" ? (at + n - 1) % n : e.key === "Home" ? 0 : e.key === "End" ? n - 1 : -1;
+  if (to < 0) return;
+  e.preventDefault();
+  buttons[to]!.focus();
 }
 
 /** The tabs of a section's pages; none for a section with one. */
