@@ -18,4 +18,11 @@ Banner {
         text: qsTr("Open Demo")
         onClicked: DemoController.openDemo()
     }
+    // -- WP UB12 -- (UXP B12) the tuned example again, as Device > Reset Demo
+    AppButton {
+        objectName: "DemoBanner.reset"
+        visible: DemoController.demoOpen
+        text: MenuTable.textOf("device.resetDemo", false)
+        onClicked: Shell.trigger("device.resetDemo")
+    }
 }

@@ -25,7 +25,7 @@ const MODERN: &str = "2026-07-28";
 fn set_of(n: usize) -> (Arc<CoreSet>, Vec<DeviceId>) {
     let set = CoreSet::new();
     let ids = (0..n)
-        .map(|_| set.open(DeviceTarget::Demo).unwrap())
+        .map(|_| set.open(DeviceTarget::DemoBlank).unwrap())
         .collect();
     (set, ids)
 }

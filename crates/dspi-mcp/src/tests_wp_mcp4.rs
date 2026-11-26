@@ -33,7 +33,7 @@ struct Rig {
 
 fn rig_with(limits: HttpLimits) -> Rig {
     let set = CoreSet::new();
-    let id = set.open(DeviceTarget::Demo).unwrap();
+    let id = set.open(DeviceTarget::DemoBlank).unwrap(); // -- WP UB12 --
     let core = set.core(&id).unwrap();
     let policy = Arc::new(AgentPolicy::new(ConfirmMode::AskRisky));
     let server = Server::new(
@@ -455,7 +455,7 @@ fn wp_mcp4_a_listener_may_answer_and_stop_from_an_event() {
     // The app's listener only queues; a listener that calls back at once must
     // not deadlock either, on whichever thread the event came.
     let set = CoreSet::new();
-    let id = set.open(DeviceTarget::Demo).unwrap();
+    let id = set.open(DeviceTarget::DemoBlank).unwrap(); // -- WP UB12 --
     let core = set.core(&id).unwrap();
     core.set_output_gain(1, -12.0).unwrap();
     let policy = Arc::new(AgentPolicy::new(ConfirmMode::AskRisky));
@@ -549,7 +549,7 @@ fn wp_mcp4_the_changes_in_words() {
 fn wp_mcp4_the_holds_lapse_and_the_released_one_is_pruned() {
     // Sans-IO: release, then the lapse, and nothing left to resume.
     let set = CoreSet::new();
-    set.open(DeviceTarget::Demo).unwrap();
+    set.open(DeviceTarget::DemoBlank).unwrap(); // -- WP UB12 --
     let mut s = Server::new(
         set,
         ServerConfig {

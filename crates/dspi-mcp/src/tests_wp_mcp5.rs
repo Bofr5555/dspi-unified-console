@@ -112,7 +112,7 @@ fn settle(core: &DspiCore) {
 /// 3 kHz), ready to measure, its simulated microphone on.
 pub(crate) fn demo() -> (Arc<CoreSet>, DeviceId, Arc<DspiCore>) {
     let set = CoreSet::new();
-    let id = set.open(DeviceTarget::Demo).unwrap();
+    let id = set.open(DeviceTarget::DemoBlank).unwrap(); // -- WP UB12 --
     let core = set.core(&id).unwrap();
     core.fetch_all().unwrap();
     core.set_user_volume(-20.0).unwrap();
@@ -1091,7 +1091,7 @@ fn wp_ffix_the_status_mark_changes_when_the_app_takes_the_request() {
 fn wp_ffix_a_second_measurement_on_another_device_is_busy() {
     let (set, id1, core) = demo();
     layout(&core, true);
-    let id2 = set.open(DeviceTarget::Demo).unwrap();
+    let id2 = set.open(DeviceTarget::DemoBlank).unwrap(); // -- WP UB12 --
     let core2 = set.core(&id2).unwrap();
     core2.fetch_all().unwrap();
     layout(&core2, true);

@@ -1337,9 +1337,29 @@ pub extern "C" fn dspi_bootloader_counts(rp2040: *mut u32, rp2350: *mut u32) {
 }
 
 /// Open the demo device, a simulated DSPi, in place of any open device.
+/// -- WP UB12 -- It runs a tuned example (a stereo two-way on outputs 1-4,
+/// its roles confirmed).
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_open_demo(core: *mut FfiCore) -> bool {
     flag(core, DspiCore::open_demo)
+}
+
+// -- WP UB12 --
+/// Open the demo device as the bundled capture left it (no filters, nothing
+/// named, no speaker layout), in place of any open device: for tests of a
+/// new board.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_open_demo_blank(core: *mut FfiCore) -> bool {
+    flag(core, DspiCore::open_demo_blank)
+}
+
+// -- WP UB12 --
+/// "Reset Demo": the open demo device runs the settings it opened with again,
+/// with nothing unsaved and its roles the example's again; the device stays
+/// open. False, with the error kept, on anything but the demo device.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_reset_demo(core: *mut FfiCore) -> bool {
+    flag(core, DspiCore::reset_demo)
 }
 
 // ── The extension channel ────────────────────────────────────────────

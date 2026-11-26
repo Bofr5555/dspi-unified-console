@@ -74,6 +74,8 @@ public:
     // core's channel words follow a speaker layout that changed (no state did)
     void reread();
     void openDemo();
+    // -- WP UB12 -- "Reset Demo": the demo's own settings again (dspi_reset_demo)
+    void resetDemo();
     void selectDevice(const QString &serial);
     // Closes and reopens the open device (the device button's right-click)
     void reconnect();

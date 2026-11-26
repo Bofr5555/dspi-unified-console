@@ -65,6 +65,9 @@ QtObject {
                 { id: "device.commit", text: qsTr("Save to Device…"), shortcut: "Ctrl+S", enabled: () => DeviceModel.connected, modern: ["topBar"] },
                 { id: "device.revert", text: qsTr("Revert to Saved…"), shortcut: "Ctrl+Shift+R", modern: ["save.revert"] },
                 { id: "device.factoryReset", text: qsTr("Factory Reset…"), modern: ["device.reset"] },
+                // -- WP UB12 -- (UXP B12) the demo's tuned example again; in Modern
+                // the demo's strip has it (DemoBanner) besides the palette
+                { id: "device.resetDemo", text: qsTr("Reset Demo"), enabled: () => DemoController.demoOpen, modern: ["palette"] },
                 { separator: true },
                 // -- WP QP18 -- presets 1-9, mute and bypass from the keyboard (ShortcutController)
                 {

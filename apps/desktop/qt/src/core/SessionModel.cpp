@@ -132,6 +132,24 @@ void SessionModel::openDemo() {
         });
 }
 
+// -- WP UB12 -- the demo stays open: its settings, its saved preset and its
+// roles are the example's again, with nothing unsaved
+void SessionModel::resetDemo() {
+    if (!m_demo || m_remote) return;
+    track(1);
+    m_session->worker()->call(
+        this,
+        [](FfiCore *c) {
+            const bool ok = dspi_reset_demo(c);
+            return Outcome{ ok, 0, readSnapshot(c) };
+        },
+        [this](Outcome r) {
+            if (!r.ok) qWarning("DeviceModel: the demo device was not reset");
+            apply(r.snap, 0);
+            track(-1);
+        });
+}
+
 void SessionModel::selectDevice(const QString &serial) {
     if (serial.isEmpty()) return;
     if (m_snap.connected && serial != m_serial) emit replacing();   // -- WP MDQT2c --

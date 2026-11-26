@@ -29,6 +29,9 @@ public:
 
     // The device list's demo row does the same (the unsaved-changes question first)
     Q_INVOKABLE void openDemo();
+    // -- WP UB12 -- "Reset Demo" (the banner, Device > Reset Demo): the demo's
+    // tuned example again, with its roles; the demo stays open
+    Q_INVOKABLE void resetDemo();
 
 signals:
     void changed();

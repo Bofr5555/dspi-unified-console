@@ -3,6 +3,7 @@
 #include "DeviceModel.h"
 #include "DevicesController.h"
 #include "LinkController.h"
+#include "Shell.h"   // -- WP UB12 --
 
 #include <QJSEngine>
 
@@ -11,6 +12,8 @@ static const Registrar::Banner demoBanner("DemoBanner", 35, Registrar::Blocking)
 
 DemoController::DemoController(const AppContext &ctx, QObject *parent) : QObject(parent), m_ctx(ctx) {
     connect(ctx.device, &DeviceModel::snapshotApplied, this, &DemoController::changed);
+    // -- WP UB12 -- Device > Reset Demo, the palette and the banner's button
+    ctx.shell->addHandler(QStringLiteral("device.resetDemo"), this, [this] { resetDemo(); });
     // -- WP QPI4 -- a Link session's start ends "nothing connected" before its
     // first snapshot; the Link controller exists once every one is made
     QMetaObject::invokeMethod(
@@ -36,6 +39,10 @@ bool DemoController::nothingConnected() const {
     if (m_ctx.device->connected() || m_ctx.device->remote()) return false;
     LinkController *link = Registrar::instance<LinkController>();
     return !(link && link->inSession());
+}
+
+void DemoController::resetDemo() {
+    if (demoOpen()) m_ctx.device->resetDemo();
 }
 
 void DemoController::openDemo() {

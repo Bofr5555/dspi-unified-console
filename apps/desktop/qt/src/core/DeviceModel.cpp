@@ -101,6 +101,7 @@ void DeviceModel::start(bool demo) {
 }
 
 void DeviceModel::openDemo() { m_active->openDemo(); }
+void DeviceModel::resetDemo() { m_active->resetDemo(); }   // -- WP UB12 --
 void DeviceModel::selectDevice(const QString &serial) { m_active->selectDevice(serial); }
 void DeviceModel::reconnect() { m_active->reconnect(); }
 void DeviceModel::refresh() { m_active->refresh(); }

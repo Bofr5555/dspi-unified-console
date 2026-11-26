@@ -40,7 +40,7 @@ fn device(name: &str) -> (Arc<CoreSet>, DeviceId, Arc<DspiCore>) {
         ..CoreSetConfig::default()
     })
     .unwrap();
-    let id = set.open(DeviceTarget::Demo).unwrap();
+    let id = set.open(DeviceTarget::DemoBlank).unwrap(); // -- WP UB12 --
     let core = set.core(&id).unwrap();
     (set, id, core)
 }

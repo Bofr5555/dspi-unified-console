@@ -126,6 +126,28 @@ fn wp_ub12_the_blank_demo_is_the_capture() {
 }
 
 #[test]
+fn wp_ub12_the_blank_demo_forgets_the_examples_roles() {
+    let dir = std::env::current_exe()
+        .unwrap()
+        .with_file_name(format!("ub12-layouts-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let core = DspiCore::new();
+    core.speaker_layout_set_dir(dir.display().to_string())
+        .unwrap();
+    core.open_demo().unwrap();
+    assert_example_roles(&core);
+    // Kept in its file: a new core with the same folder sees it
+    let other = DspiCore::new();
+    other
+        .speaker_layout_set_dir(dir.display().to_string())
+        .unwrap();
+    other.open_demo_blank().unwrap();
+    assert!(other.speaker_layout().unwrap().is_none());
+    assert!(core.speaker_layout().unwrap().is_none(), "the file is gone");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn wp_ub12_the_tweeters_pass_the_tweeter_floor() {
     // The example never trips the tweeter rule (ROLE0): its high ways are
     // crossed over at or above 1 kHz with at least 12 dB/octave
