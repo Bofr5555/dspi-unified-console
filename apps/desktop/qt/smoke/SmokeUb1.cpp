@@ -281,6 +281,8 @@ void layoutSection(SmokeDriver &d) {
         }
         shoot(QStringLiteral("sheet-crossover"), sn);
         const QVariant before = history->entries().value(0);
+        auto *notices = Registrar::instance<NoticeCenter>();
+        if (notices) notices->clear();
         press(QStringLiteral("CrossoverFromLayout.apply"));
         settle();
         d.check(QStringLiteral("ub1: Apply closes the sheet (%1)").arg(sn), !shown(QStringLiteral("CrossoverFromLayout.apply")));
@@ -291,6 +293,9 @@ void layoutSection(SmokeDriver &d) {
         d.check(QStringLiteral("ub1: Out 1 and 3 low-pass, Out 2 and 4 high-pass at 2 kHz, LR 24 (%1)").arg(sn), set);
         d.check("ub1: the woofers get no high pass, the tweeters no low pass",
                 pass(0, true).band < 0 && pass(1, false).band < 0 && pass(2, true).band < 0 && pass(3, false).band < 0);
+        const QString toast = notices ? notices->current().value(QStringLiteral("text")).toString() : QString();
+        d.check(QStringLiteral("ub1: the toast says what was set (%1)").arg(toast),
+                toast == QStringLiteral("Crossovers set from the speaker layout. Undo puts them back in one step."));
         d.check("ub1: the routing is as it was (not ticked)", s()->matrix_routing[0][0] && !s()->matrix_routing[0][1] && s()->matrix_routing[1][1]);
         d.waitFor(2000, [&] { return history->entries().value(1) == before; });
         d.check(QStringLiteral("ub1: one history step, \"From Speaker Layout\" (%1)")
@@ -316,6 +321,7 @@ void layoutSection(SmokeDriver &d) {
                     words.contains(QStringLiteral("→ Left woofer · 1, Left tweeter · 2")));
         }
         shoot(QStringLiteral("sheet-routing"), sn);
+        if (notices) notices->clear();
         press(QStringLiteral("CrossoverFromLayout.apply"));
         const bool routed = d.waitFor(4000, [&] {
             const DspState *st = s();
