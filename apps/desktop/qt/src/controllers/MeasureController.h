@@ -158,6 +158,8 @@ class MeasureController : public QObject {
     // ---- Words ----
     Q_PROPERTY(QString error READ error NOTIFY errorChanged)
     Q_PROPERTY(QString said READ said NOTIFY errorChanged)
+    // -- WP UA2 -- (A2) a refused start, one row per problem: [{ key, output (-1: none), text }]
+    Q_PROPERTY(QVariantList refusals READ refusals NOTIFY errorChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
 
     // ---- Several devices (-- WP MDQT2c --) ----
@@ -302,6 +304,7 @@ public:
 
     QString error() const { return session()->error(); }
     QString said() const { return session()->said(); }
+    QVariantList refusals() const { return session()->refusals(); }   // -- WP UA2 --
     bool busy() const { return session()->busy(); }
 
     // ---- The microphone ----

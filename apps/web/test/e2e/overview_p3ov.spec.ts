@@ -11,7 +11,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { openPage } from "../nav";
+import { openOnHub, openPage } from "../nav"; // -- WP UB6 -- openOnHub
 
 type State = { numOutputChannels: number; outputGainDb: number[]; outputMuted: boolean[] };
 type Client = { call(m: string, p: unknown): Promise<unknown> };
@@ -219,9 +219,7 @@ async function stopHub(h: OwnHub): Promise<void> {
 
 async function hubOverview(page: Page, hub: OwnHub): Promise<Locator> {
   await page.goto(`http://127.0.0.1:${hub.port}/console/`);
-  const picker = page.getByRole("navigation", { name: "DSPi devices" });
-  await picker.getByRole("listitem").filter({ hasText: "· online" }).getByRole("button", { name: "Connect" }).click();
-  const session = page.getByRole("article").last();
+  const session = await openOnHub(page, { host: `127.0.0.1:${hub.port}`, serial: "DEMO0000DSPI0001" }); // -- WP UB6 -- the Fleet's Open
   await openPage(session, "Overview");
   const overview = session.getByRole("region", { name: "Overview" });
   await expect(overview).toBeVisible();

@@ -91,7 +91,8 @@ Rectangle {
             Heading { visible: list.crossover; text: qsTr("SLOPE"); Layout.preferredWidth: 100 }
             Heading { text: qsTr("FREQ"); Layout.preferredWidth: 104; horizontalAlignment: Text.AlignHCenter }
             Heading { visible: !list.crossover; text: qsTr("GAIN"); Layout.preferredWidth: 84; horizontalAlignment: Text.AlignHCenter }
-            Heading { visible: !list.crossover; text: qsTr("WIDTH"); Layout.preferredWidth: 74; horizontalAlignment: Text.AlignHCenter }
+            // -- INT016 -- (A10 one filter vocabulary) the field is Q on every screen (was WIDTH)
+            Heading { visible: !list.crossover; text: qsTr("Q"); Layout.preferredWidth: 74; horizontalAlignment: Text.AlignHCenter }
             Item { Layout.fillWidth: true }
         }
         Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.separator }

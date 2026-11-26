@@ -32,7 +32,7 @@
 )]
 
 use std::collections::VecDeque;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError, Weak};
 use std::time::Duration;
 
 use dspi_cmd::{COMMAND, Context};
@@ -134,6 +134,25 @@ impl From<DspiError> for OpenFailure {
 }
 
 impl OpenFailure {
+    // -- WP UTM --
+    /// No DSPi on the bus, and none asked for by serial: the interface
+    /// waits for one instead of ending (UXP A13).
+    pub(crate) fn is_no_device(&self) -> bool {
+        matches!(
+            self,
+            Self::Open(OpenError::Transport(TransportError::NotFound))
+        )
+    }
+
+    // -- WP UTM --
+    /// Why, in words, for the page that waits for a device.
+    pub(crate) fn words(&self) -> String {
+        match self {
+            Self::Open(e) => e.to_string(),
+            Self::Core(e) => e.to_string(),
+        }
+    }
+
     /// Say why, with the exit code a script branches on.
     pub(crate) fn report(self) -> u8 {
         match self {
@@ -161,6 +180,17 @@ pub(crate) fn open_core(
     stores: &Stores,
     pin: connect::PinPrompt<'_>,
 ) -> Result<OpenedCore, OpenFailure> {
+    // -- WP UTM -- a shell verb on the interface's `:` line: its core
+    if let Some(handle) = AMBIENT
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone()
+    {
+        return Ok(OpenedCore {
+            handle,
+            reached: None,
+        });
+    }
     let core = crate::pro::prepare(stores).map_err(|_| {
         OpenFailure::Core(DspiError::Io {
             msg: "the console's folders could not be named".into(),
@@ -181,6 +211,15 @@ pub(crate) fn open_core(
                 ..Default::default()
             };
             (serial, caps, descriptor, Some(reached))
+        }
+        // -- WP UB12 -- the demo as every client opens it: the core's tuned
+        // example, its roles confirmed (UXP B12)
+        Target::Demo => {
+            let probe = dspi_transport::FakeDevice::demo();
+            let descriptor = probe.descriptor().clone();
+            let caps = probe.caps();
+            core.open_demo()?;
+            (descriptor.serial.clone(), caps, descriptor, None)
         }
         _ => {
             let transport = target.open(pin)?;
@@ -680,9 +719,49 @@ pub(crate) fn session_on(
     Ok(session)
 }
 
+// -- WP UTM -- (UXP A13)
+/// The core the interface connected last ([`connected_on`]).
+static INTERFACE: Mutex<Option<Weak<CoreHandle>>> = Mutex::new(None);
+
+/// The core [`open_core`] answers instead of opening the device again, while
+/// one of the shell's verbs runs on the interface's `:` line.
+static AMBIENT: Mutex<Option<Arc<CoreHandle>>> = Mutex::new(None);
+
+/// Run `f` (one of the shell's verbs) on the interface's core: the same
+/// session, so a lock it sets or a snapshot it recalls is the interface's,
+/// and the device is not opened a second time. `None` when the interface
+/// has no core open.
+pub(crate) fn on_interface_core<T>(f: impl FnOnce() -> T) -> Option<T> {
+    let handle = INTERFACE
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .as_ref()
+        .and_then(Weak::upgrade)?;
+    *AMBIENT.lock().unwrap_or_else(PoisonError::into_inner) = Some(handle);
+    let out = f();
+    *AMBIENT.lock().unwrap_or_else(PoisonError::into_inner) = None;
+    Some(out)
+}
+
+// -- WP UB11 --
+/// The interface's core as it is now (a device switch or a reconnect opens a
+/// new one): its serial, and whether it is a DSPi Link session. `None` with
+/// none open.
+pub(crate) fn interface_core() -> Option<(Arc<DspiCore>, bool)> {
+    INTERFACE
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .as_ref()
+        .and_then(Weak::upgrade)
+        .map(|h| (Arc::clone(&h.core), h.caps.kind == TransportKind::Link))
+}
+
 /// [`session_on`] for the interface: the whole state read, the writes
 /// routed, every dangerous one already confirmed by its dialog.
 pub(crate) fn connected_on(opened: &OpenedCore) -> Result<Connected, OpenError> {
+    // -- WP UTM --
+    *INTERFACE.lock().unwrap_or_else(PoisonError::into_inner) =
+        Some(Arc::downgrade(&opened.handle));
     let transport = CoreTransport::new(Arc::clone(&opened.handle));
     let mut c = connect::connected_on(Box::new(transport))?;
     let ctx = crate::context_for(&c.session);
@@ -695,6 +774,26 @@ pub(crate) fn connected_on(opened: &OpenedCore) -> Result<Connected, OpenError> 
     c.link = opened.reached.clone();
     // -- WP PGTM -- once per connection (one platform read), for About
     c.protocol = crate::protocol_info::read_view(&opened.handle.core);
+    Ok(c)
+}
+
+// -- WP UB11 -- (UXP B11)
+/// [`connected_on`] for the plain line mode: the shell's verbs run on this
+/// core as on the interface's, and a dangerous write or a locked one asks
+/// as a one-shot command's does (`confirm`, `pins`), there being no dialog.
+pub(crate) fn connected_plain(
+    opened: &OpenedCore,
+    confirm: Confirm,
+    pins: PinSource,
+) -> Result<Connected, OpenError> {
+    let mut c = connected_on(opened)?;
+    let ctx = crate::context_for(&c.session);
+    c.session.set_route(Some(Box::new(CoreRoute::new(
+        Arc::clone(&opened.handle),
+        Some(ctx),
+        confirm,
+        pins,
+    ))));
     Ok(c)
 }
 
@@ -1433,6 +1532,35 @@ mod tests_wp_tmcore {
 
     fn routed(o: &OpenedCore, confirm: Confirm) -> Session {
         session_on(o, confirm, PinSource::Nobody).expect("a routed session")
+    }
+
+    // -- WP UB12 --
+    #[test]
+    fn wp_ub12_the_demo_opens_on_the_tuned_example() {
+        let dir = scratch("ub12_demo");
+        let o = opened(&dir);
+        let core = &o.handle.core;
+        let s = core.get_state();
+        let n_in = usize::from(s.num_input_channels);
+        assert_eq!(s.channel_names[n_in], "Left woofer");
+        assert_eq!(s.channel_names[n_in.saturating_add(3)], "Right tweeter");
+        assert_ne!(s.xover[n_in][0].filter_type, 0, "crossed over");
+        assert!(core.speaker_layout().unwrap().unwrap().confirmed_by_user);
+        assert_eq!(o.handle.caps.kind, TransportKind::Fake);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // -- WP UB12 -- `:reset-demo` on the interface's own core
+    #[test]
+    fn wp_ub12_reset_demo_runs_on_the_interfaces_demo() {
+        let dir = scratch("ub12_reset");
+        let o = opened(&dir);
+        let _interface = connected_on(&o).expect("the interface's session");
+        o.handle.core.set_output_gain(2, -9.0).unwrap();
+        let code = on_interface_core(|| crate::reset_demo(&Target::Demo)).unwrap();
+        assert_eq!(code, crate::exit::OK);
+        assert_eq!(gain(&o, 2), -3.0, "the example's tweeter level");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     fn profile(max_gain_db: f32, locked: bool) -> String {

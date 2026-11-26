@@ -29,12 +29,19 @@ public:
 
     // The device list's demo row does the same (the unsaved-changes question first)
     Q_INVOKABLE void openDemo();
+    // -- WP UB12 -- "Reset Demo" (the banner, Device > Reset Demo): the demo's
+    // tuned example again, with its roles; the demo stays open
+    Q_INVOKABLE void resetDemo();
 
 signals:
     void changed();
 
 private:
+    // -- WP UB12 -- a demo opened again keeps its serial: its roles are read again
+    void onSnapshot();
+
     AppContext m_ctx;
+    uint64_t m_generation = 0;   // -- WP UB12 -- the connection the last snapshot was of
 };
 
 #endif // DEMOCONTROLLER_H

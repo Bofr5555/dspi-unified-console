@@ -462,6 +462,12 @@ interface DspiBridge {
 
     fun setCrossoverBypass(ch: Int, band: Int, bypass: Boolean)
 
+    /**
+     * -- WP UAN -- (UXP B10) "Same for the right side": output [toCh]'s crossover bands become [fromCh]'s
+     * (type, frequency, bypass), one undo step. Nothing unless both are outputs (app ids).
+     */
+    fun copyCrossover(fromCh: Int, toCh: Int) {}
+
     fun setChannelDelay(ch: Int, ms: Float)
 
     fun clearPeq(ch: Int)
@@ -1055,6 +1061,10 @@ interface DspiBridge {
     // -- WP P1AN1 --
     /** Snapshots, A/B, safe apply, import preview and offline documents. Test doubles get [Snapshots.Unavailable]. */
     val snapshots: Snapshots get() = Snapshots.Unavailable
+
+    // -- WP UAN -- (UXP B8)
+    /** The speaker layout (roles) of the open device. Test doubles get [SpeakerLayouts.Unavailable]. */
+    val speakers: SpeakerLayouts get() = SpeakerLayouts.Unavailable
 
     // -- WP P1AN2 --
     /** The installer's lock and limits, the mode manifest, notices, protect all, AutoEQ preview. Test doubles: [Installer.Unavailable]. */

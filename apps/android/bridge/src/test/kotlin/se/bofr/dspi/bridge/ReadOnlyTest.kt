@@ -65,6 +65,7 @@ class ReadOnlyTest {
             "setBandBypass" to { b.setBandBypass(0, 0, true) },
             "setCrossover" to { b.setCrossover(out, 0, 1, 100f) },
             "setCrossoverBypass" to { b.setCrossoverBypass(out, 0, true) },
+            "copyCrossover" to { b.copyCrossover(out, out + 1) }, // -- WP UAN --
             "setChannelDelay" to { b.setChannelDelay(0, 1f) },
             "clearPeq" to { b.clearPeq(0) },
             "clearAllBands" to { b.clearAllBands(out, true) },

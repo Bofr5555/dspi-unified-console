@@ -8,6 +8,10 @@ import UConsole
 // with their roles, speakers and alignment groups, the sweep; the preflight in
 // words; then the run with its progress, the ramp's level and the timing
 // verdict. The core decides everything; Stop is in the window's bar.
+// -- WP UA2 -- (A2) the bar (MeasureActionBar) has the run's step, progress,
+// Stop and Next Position; a refused Measure's problems are rows above the tabs.
+// -- WP UB7 -- (UXP B7) the outputs: the speaker layout's summary and this
+// run's tick boxes; roles and groups are edited in Settings › Speakers only.
 ScrollView {
     id: tab
     signal showResults()
@@ -15,11 +19,6 @@ ScrollView {
     contentWidth: availableWidth
 
     readonly property var mc: MeasureController
-    readonly property var roles: [
-        { id: "full", text: qsTr("Full range") }, { id: "sub", text: qsTr("Subwoofer") },
-        { id: "low", text: qsTr("Low (woofer)") }, { id: "mid", text: qsTr("Mid") },
-        { id: "high", text: qsTr("High (tweeter)") }
-    ]
     readonly property var placements: [
         { id: "listeningPosition", text: qsTr("Listening position"), detail: qsTr("Speakers: one position, with timing (alignment, crossover, EQ).") },
         { id: "multiPosition", text: qsTr("Several positions"), detail: qsTr("Speakers: 3 to 9 positions averaged; position 1 is the timing reference.") },
@@ -57,6 +56,18 @@ ScrollView {
     // 760 px column, the blocking condition a notice row above the actions,
     // Measure the one primary action; Classic keeps its cards
     readonly property bool modern: LayoutController.modern
+    // -- INT016 -- (UA1's C5 leftover) Modern folds the outputs nothing is routed to
+    // and nothing plays on (ChannelInfo's `hidden`) under one row; a ticked one stays
+    property bool unusedOpen: false
+    function foldsOutput(row) {
+        if (!modern || unusedOpen || row.on || DeviceModel.revision < 0 || ChannelController.revision < 0) return false
+        const r = DeviceModel.channels.rowOfChannel(ChannelController.outputChannel(row.output))
+        return r >= 0 && DeviceModel.channels.get(r, "hidden") === true
+    }
+    function unusedCount(rows) {
+        if (!modern || DeviceModel.revision < 0 || ChannelController.revision < 0) return 0
+        return rows.filter(row => !row.on && DeviceModel.channels.get(DeviceModel.channels.rowOfChannel(ChannelController.outputChannel(row.output)), "hidden") === true).length
+    }
     component Section: Card {
         color: tab.modern ? "transparent" : Theme.panel
         padding: tab.modern ? 0 : Theme.spacing
@@ -201,88 +212,42 @@ ScrollView {
         Section {
             title: qsTr("Outputs")
             Layout.fillWidth: true
+            // -- WP UB7 -- (UXP B7) the speaker layout in one line, edited in
+            // Settings › Speakers; this run's outputs are the tick boxes
+            SpeakersSummary {
+                objectName: "MeasureSetup.speakers"
+                Layout.fillWidth: true
+            }
             Text {
                 Layout.fillWidth: true
-                text: qsTr("The outputs measured together in one walked run are an alignment group: their delays and polarity are compared within the run only.")
+                text: qsTr("Tick the outputs to measure in this run. Their roles, and which of them are measured together, come from the speaker layout.")
                 font: Theme.fontSmall
                 color: Theme.textMuted
                 wrapMode: Text.WordWrap
             }
-            Repeater {
-                model: mc.setupOutputs
-                Item {
-                    id: outputRow
-                    required property var modelData
-                    required property int index
-                    Layout.fillWidth: true
-                    implicitWidth: outputCells.implicitWidth
-                    implicitHeight: outputCells.implicitHeight
-                    // -- WP DL2 -- Modern: a list row's stripe
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: Theme.radiusSmall
-                        visible: tab.modern && outputRow.index % 2 === 1
-                        color: Theme.stripe
-                    }
-                    RowLayout {
-                        id: outputCells
-                        spacing: Theme.spacingSmall
-                        AppCheckBox {
-                            objectName: "MeasureSetup.output." + modelData.output
-                            text: modelData.label
-                            Layout.preferredWidth: 200
-                            enabled: tab.editable
-                            checked: modelData.on
-                            onToggled: mc.setOutputOn(modelData.output, checked)
-                        }
-                        AppComboBox {
-                            objectName: "MeasureSetup.role." + modelData.output
-                            label: qsTr("Way")
-                            Layout.preferredWidth: 150
-                            enabled: tab.editable && modelData.on
-                            model: tab.roles
-                            textRole: "text"
-                            currentIndex: tab.indexOf(tab.roles, modelData.role)
-                            onActivated: index => mc.setOutputRole(modelData.output, tab.roles[index].id)
-                        }
-                        BorderedField {
-                            objectName: "MeasureSetup.speaker." + modelData.output
-                            label: qsTr("Speaker")
-                            Layout.preferredWidth: 60
-                            enabled: tab.editable && modelData.on
-                            //: A speaker field with no speaker named (Measure and Settings › Speakers)
-                            placeholderText: qsTr("Not set")   // -- INTC (DL7 fold) --
-                            text: modelData.speaker
-                            onCommitted: t => mc.setOutputSpeaker(modelData.output, t)
-                        }
-                        AppSpinBox {
-                            label: qsTr("Group")
-                            implicitWidth: 90
-                            enabled: tab.editable && modelData.on
-                            realFrom: 0
-                            realTo: 15
-                            realValue: modelData.group
-                            onCommitted: value => mc.setOutputGroup(modelData.output, Math.round(value))
-                        }
+            Flow {
+                objectName: "MeasureSetup.outputs"
+                Layout.fillWidth: true
+                spacing: Theme.spacing
+                Repeater {
+                    model: mc.setupOutputs
+                    AppCheckBox {
+                        required property var modelData
+                        objectName: "MeasureSetup.output." + modelData.output
+                        visible: !tab.foldsOutput(modelData)   // -- INT016 --
+                        text: modelData.label
+                        enabled: tab.editable
+                        checked: modelData.on
+                        onToggled: mc.setOutputOn(modelData.output, checked)
                     }
                 }
             }
-            // -- WP ROLEQ -- a way, speaker or group changed here is kept in
-            // the speaker layout (not confirmed by it)
-            Text {
-                objectName: "MeasureSetup.layoutSaved"
-                visible: text.length > 0
+            EqualiserUnusedRow {
+                objectName: "MeasureSetup.unused"
                 Layout.fillWidth: true
-                textFormat: Text.PlainText
-                text: SpeakersController.saidMeasure   // -- WP LAY5b -- not Confirm's
-                font: Theme.fontSmall
-                color: SpeakersController.saidError ? Theme.dangerText : Theme.textMuted
-                wrapMode: Text.WordWrap
-            }
-            AppButton {
-                text: qsTr("Propose from the Device")
-                enabled: tab.editable
-                onClicked: mc.proposeLayout()
+                count: tab.unusedCount(mc.setupOutputs)
+                open: tab.unusedOpen
+                onClicked: tab.unusedOpen = !tab.unusedOpen
             }
         }
 
@@ -369,13 +334,7 @@ ScrollView {
                 enabled: tab.editable && mc.setupProblem.length === 0
                 onClicked: mc.start()
             }
-            AppButton {
-                objectName: "MeasureSetup.next"
-                visible: mc.waitingPosition
-                text: qsTr("Next Position")
-                primary: true
-                onClicked: mc.nextPosition()
-            }
+            // -- WP UA2 -- (A2) Next Position is the action bar's, with the run's progress
             Text {
                 visible: !tab.modern
                 Layout.fillWidth: true
@@ -425,14 +384,6 @@ ScrollView {
                 color: Theme.text
                 wrapMode: Text.WordWrap
                 Accessible.role: Accessible.StaticText
-            }
-            ProgressBar {
-                objectName: "MeasureSetup.progress"
-                visible: mc.measuring
-                Layout.fillWidth: true
-                from: 0
-                to: 100
-                value: mc.progress
             }
             Text {
                 objectName: "MeasureSetup.issue"

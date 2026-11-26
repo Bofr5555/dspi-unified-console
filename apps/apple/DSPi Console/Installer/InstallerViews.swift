@@ -192,7 +192,7 @@ struct InstallerSettingsTab: View {
                 Button("Lock Now") { installer.lockNow() }
                     .accessibilityIdentifier("installerLockNow")
             } else if !installer.lock.pinSet {
-                Text("No PIN is set: nothing is locked and nothing asks for one. Set a PIN to lock this console's settings for everyday use; volume, mute and presets stay open.")
+                Text("No PIN is set: nothing is locked and nothing asks for one. Set a PIN to lock this console's settings for everyday use; volume, mute, the source and presets stay open.")
                     .font(.callout)
                 newPinFields
             } else {

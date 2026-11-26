@@ -11,11 +11,18 @@ import { ActionMenuButton } from "../menus/ActionMenu";
 import { menuItems } from "../menus/actions";
 import { factoryReset as askFactoryReset } from "../menus/session-actions";
 import { PresetPopover } from "./PresetPopover"; // -- WP INTD --
+import { AbSegment } from "./AbSegment"; // -- WP UB34 --
 import { UndoButtons, appleKeys } from "../undo";
 import { runKey, type Ask, type Unsaved } from "../screens";
 import type { Session, SessionState } from "../session";
 import { LockIcon, SaveIcon } from "./icons";
 import { saveMasterVolume, saveOutputConfig } from "../../screens/files/model"; // -- WP WEB7 --
+
+// -- WP UWN -- (UXP A15)
+/** Save to Device's accessible name: the count in words. */
+export function saveName(n: number): string {
+  return n ? `Save to Device, ${n} unsaved ${n === 1 ? "change" : "changes"}` : "Save to Device";
+}
 
 /**
  * -- WP REVEFIX -- (REVE §3.1, Qt's TopBar) The device's parts of the one top bar: `left` beside its tab (the presets),
@@ -28,7 +35,7 @@ export function useSessionBar(props: {
   desk: SnapshotDesk;
   ask: Ask;
   unsaved: () => Promise<Unsaved>;
-  /** The locked-user state: what the front page allows (volume, mute, presets), and its own Unlock. */
+  /** The locked-user state: what the front page allows (volume, mute, the source, presets), and its own Unlock. */
   locked: boolean;
   onUnlock: () => void;
 }): { left: ComponentChildren; right: ComponentChildren } | undefined {
@@ -37,6 +44,8 @@ export function useSessionBar(props: {
   const s = state.snapshot?.state;
   if (!s) return undefined;
   const off = !!session.readOnlyReason || busy;
+  // -- WP UWN -- (UXP A16) while the link is away nothing is written: Save and its menu wait for it
+  const away = !!state.link && state.link.phase !== "bound";
   const run = async (f: () => Promise<unknown>) => {
     setBusy(true);
     try {
@@ -59,22 +68,37 @@ export function useSessionBar(props: {
   const mod = appleKeys(navigator.platform ?? "") ? "⌘" : "Ctrl+";
   return {
     // -- WP INTD -- the presets as one popover (DL5), in place of the slot picker; -- WP REVEFIX -- (REVE C3) a locked user's Recall only
-    left: <PresetPopover session={session} state={state} ask={ask} unsaved={unsaved} disabled={busy} locked={props.locked} />,
+    // -- WP UB34 -- (UXP B3) then A | B: as saved against now from the first edit
+    left: (
+      <>
+        <PresetPopover session={session} state={state} ask={ask} unsaved={unsaved} disabled={busy} locked={props.locked} />
+        <AbSegment desk={desk} unsaved={n} locked={props.locked} />
+      </>
+    ),
     right: (
       <div class="session-actions" role="group" aria-label="Device actions">
-        <UndoButtons session={session} state={state} />
+        {/* -- WP UB2 -- (UXP B2) the locked user's undo would be refused: not offered, as Save */}
+        {props.locked ? null : <UndoButtons session={session} state={state} />}
         {props.locked ? null : (
           <span class={`save-split${n ? " primary" : ""}`}>
-            <button type="button" class={`bar-save${n ? " primary" : ""}`} disabled={off} title={`Save to the active preset (${mod}S)`} onClick={() => key("commit")}>
+            {/* -- WP UWN -- (UXP A15) one name with the count in words ("Save to Device, 1 unsaved change"), never "Save to Device0" */}
+            <button
+              type="button"
+              class={`bar-save${n ? " primary" : ""}`}
+              disabled={off || away}
+              aria-label={saveName(n)}
+              title={away ? "The DSPi is not connected now" : `Save to the active preset (${mod}S)`}
+              onClick={() => key("commit")}
+            >
               <SaveIcon />
               <span class="bar-save-text">Save to Device</span>
-              <span class={`bar-count${n ? " on" : ""}`} aria-label={n ? `${n} unsaved` : undefined} aria-hidden={!n}>
+              <span class={`bar-count${n ? " on" : ""}`} aria-hidden="true">
                 {n || 0}
               </span>
             </button>
             <ActionMenuButton
               label="Save options"
-              disabled={off}
+              disabled={off || away}
               items={() =>
                 menuItems("save", {
                   "device.revert": { run: () => key("revert") },

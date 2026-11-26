@@ -10,7 +10,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { openPage } from "../nav";
+import { fleetOf, hubDetails, openHubPart, openPage, partsOf } from "../nav"; // -- WP UB6 -- the Fleet, the hub page's parts
 
 const DEMO = "DEMO0000DSPI0001";
 const AWAY = "DEMO-OFFLINE-0042";
@@ -118,13 +118,18 @@ test.describe("P2WB1 on a hub", () => {
     hub = await startHub(seededStore());
     await page.goto(`http://127.0.0.1:${hub.port}/console/`);
 
+    // -- WP UB6 -- (UXP B6, D13) the page starts on the hub's Fleet: the offline DSPi listed, not offered
+    const fleet = fleetOf(page);
+    await expect(fleet.getByRole("row", { name: "Bar" })).toContainText("Offline");
+    await expect(fleet.getByRole("row", { name: "Bar" }).getByRole("button")).toHaveCount(0);
     // The picker: the hub's inventory as an installation of its own; the offline DSPi listed, not offered.
+    await page.getByRole("tablist", { name: "Pages" }).getByRole("tab", { name: "This Computer" }).click();
     const picker = page.getByRole("navigation", { name: "DSPi devices" });
     const away = picker.getByRole("listitem").filter({ hasText: "Bar · offline" });
     await expect(away).toContainText("Not attached to the hub");
     await expect(away.getByRole("button")).toHaveCount(0);
-    // The hub's own entry (Link's choose step) stays in this console's list.
-    await expect(picker.getByRole("listitem").filter({ hasText: `Hub 127.0.0.1:${hub.port}` })).toHaveCount(1);
+    // -- WP UB6 -- the hub listed once: its own entry (Link's choose step) left out beside its DSPis
+    await expect(picker.getByRole("listitem").filter({ hasText: `Hub 127.0.0.1:${hub.port}` })).toHaveCount(0);
     await noSidewaysScroll(page);
 
     // Open the demo DSPi from the inventory: no choose step.
@@ -136,12 +141,13 @@ test.describe("P2WB1 on a hub", () => {
     await setMode(session, page, "Advanced");
     await openPage(session, "Hub");
     const devices = session.getByRole("region", { name: "Devices on the hub" });
-    const awayRow = devices.getByRole("row", { name: "Bar" });
+    const awayRow = devices.getByRole("row", { name: "Bar", exact: true });
     await expect(awayRow).toContainText("Offline");
     await expect(awayRow).toContainText(AWAY);
-    // -- WP P2WB3 -- an offline DSPi is not identified or opened; an Admin edits or forgets it
+    // -- WP P2WB3 -- an offline DSPi is not identified or opened; an Admin edits or forgets it (-- WP UB6 -- in its details)
     await expect(awayRow.getByRole("button", { name: /^(Identify|Open)$/ })).toHaveCount(0);
-    await expect(awayRow.getByRole("button")).toHaveCount(2);
+    const awayBody = await hubDetails(devices, "Bar");
+    await expect(awayBody.getByRole("button", { name: /^(Edit the details of|Forget) Bar$/ })).toHaveCount(2);
     const own = devices.getByRole("row").filter({ hasText: DEMO });
     await expect(own).toContainText("Online (open here)");
     await expect(own).toContainText("1.1.6");
@@ -155,10 +161,16 @@ test.describe("P2WB1 on a hub", () => {
     await expect(said).toBeVisible();
     await expect(said).not.toBeEmpty();
 
-    // An Admin sees the hub's statistics.
+    // An Admin sees the hub's statistics (-- WP UB6 -- the Hub part).
+    await openHubPart(session, "Hub");
     await expect(session.getByRole("region", { name: "Hub statistics" })).toContainText(/session/);
 
-    // The alarm the test's rule raises: on the board, in the banner; acknowledged.
+    // The alarm the test's rule raises: on the board, in the banner; acknowledged. -- WP UB6 -- the banner's Show
+    // Alarms opens the Alarms part
+    const banner0 = session.getByRole("status", { name: "Hub alarms" });
+    await expect(banner0).toContainText("alarm", { timeout: 30_000 });
+    await banner0.getByRole("button", { name: "Show Alarms" }).click();
+    await expect(partsOf(session, "Hub").getByRole("tab", { name: "Alarms", exact: true })).toHaveAttribute("aria-selected", "true");
     const board = session.getByRole("region", { name: "Alarms" });
     const hot = board.getByRole("listitem").filter({ hasText: "Running hot" });
     await expect(hot).toHaveCount(1, { timeout: 30_000 });
@@ -217,15 +229,19 @@ test.describe("P2WB1 on a hub", () => {
     const devices = session.getByRole("region", { name: "Devices on the hub" });
     await expect(devices.locator(".hub-role-tag")).toHaveText("Control");
     await expect(devices.getByRole("row", { name: "Bar" })).toContainText("Offline");
+    await openHubPart(session, "Hub"); // -- WP UB6 --
     await expect(session.getByRole("region", { name: "Hub statistics" })).toHaveCount(0);
+    await openHubPart(session, "Alarms"); // -- WP UB6 --
     const hot = session.getByRole("region", { name: "Alarms" }).getByRole("listitem").filter({ hasText: "Running hot" });
     await expect(hot).toHaveCount(1, { timeout: 30_000 });
     await hot.getByRole("button", { name: "Acknowledge" }).click();
     await expect(hot).toContainText("Acknowledged");
     await noSidewaysScroll(page);
 
-    // Paired now: the page asks the hub with its token, and lists the hub's inventory.
+    // Paired now: the page asks the hub with its token, and lists the hub's inventory (-- WP UB6 -- the Fleet first).
     await page.reload();
+    await expect(fleetOf(page).getByRole("row", { name: "Bar" })).toContainText("Offline");
+    await page.getByRole("tablist", { name: "Pages" }).getByRole("tab", { name: "This Computer" }).click();
     await expect(picker.getByRole("listitem").filter({ hasText: "Bar · offline" })).toContainText("Not attached to the hub");
     await expect(picker.getByRole("listitem").filter({ hasText: "· online" }).getByRole("button", { name: "Connect" })).toBeVisible();
     expect(errors).toEqual([]);

@@ -39,6 +39,7 @@ import { Menu } from "../main/Menu";
 // -- WP WB6J --
 import { identifyOutput } from "../analysis/siggen";
 import { inputRows, liveInputs, outputLabel, type ChannelRow } from "../main/model";
+import { useSolo } from "../../ui/solo"; // -- WP GAP2 --
 import { CROSSPOINT_RANGE } from "../outputs/OutputCard";
 import { clamp, compactGain, delayText, enableConflict, eqWorkerRange, levelText, limiterSupported, outputSlotName, parseLevel, pdmOutput, stepGrid } from "../outputs/model";
 // -- WP WB6G -- the inputs' trims
@@ -46,6 +47,7 @@ import { InputTrimField } from "../inputs/InputsScreen";
 // -- WP WBCLIP -- the column menu's Copy and Paste Parameters (M45)
 import { clipEntries, useClipboard } from "../clipboard/model";
 import type { ChainTarget } from "../system/chain";
+import { polarityLine, polarityOf, setOutputPolarity } from "../outputs/polarity"; // -- WP GAP1 --
 import { CLEAR_ASKS_ABOVE, DENSE_FROM, feedsOf, linkPairsOf, mirrorOf, moveCell, setLinkPairs, sourcesOf, stepGain, stepSign, summaryText, tailText, tileGain, type CellAt } from "./model";
 
 /** The output gain's range until the registry says (`describe out.gain`). */
@@ -882,6 +884,7 @@ function MatrixInspector(props: {
   openEq: (wire: number) => void;
 }) {
   const { session, s, ro, inputs, outs, sel } = props;
+  const solo = useSolo(session); // -- WP GAP2 --
   const nIn = inputs.length;
   const nOut = outs.length;
   const outLine = (o: Out) =>
@@ -905,7 +908,8 @@ function MatrixInspector(props: {
     const gain = s.matrixGain[i]?.[o] ?? 0;
     const inv = s.matrixInvert[i]?.[o] ?? false;
     const m = props.link ? mirrorOf(i, o, nIn, nOut) : null;
-    const more = [crossover(out.wire), limiter(o)].filter(Boolean).join(" · ");
+    // -- WP GAP1 -- the output's polarity before its limiter, as Qt's line
+    const more = [crossover(out.wire), polarityLine(polarityOf(session.state.snapshot, o)), limiter(o)].filter(Boolean).join(" · ");
     return (
       <div class="mx-insp" aria-label={`${inp.name} to ${out.name}`}>
         <div class="insp-head mx-insp-head">
@@ -987,6 +991,26 @@ function MatrixInspector(props: {
             />
           </Row>
           <Switch label="Mute" on={out.muted} disabled={ro} toggle={() => props.mute(o)} />
+          {/* -- WP GAP2 -- only this output plays, until it is switched off (not saved) */}
+          <Switch label="Solo" on={solo.output === o} disabled={!!solo.reason || !out.enabled} toggle={() => void solo.toggle(o)} />
+          {/* -- WP GAP1 -- Qt's Polarity: Normal or Inverted on every route that feeds it (mixed: neither lit) */}
+          {(() => {
+            const pol = polarityOf(session.state.snapshot, o);
+            const off = ro || pol === "none";
+            return (
+              <Row label="Polarity">
+                <ChipGroup
+                  label="Polarity"
+                  class="mx-polarity"
+                  chips={[
+                    { key: "normal", text: "Normal", on: pol === "normal", disabled: off, title: pol === "none" ? `No input is connected to ${out.name}` : undefined },
+                    { key: "inverted", text: "Inverted", on: pol === "inverted", disabled: off, title: pol === "none" ? `No input is connected to ${out.name}` : undefined },
+                  ]}
+                  onToggle={(k) => void setOutputPolarity(session, o, k === "inverted")}
+                />
+              </Row>
+            );
+          })()}
         </InspectorSection>
         <InspectorSection title="Fed by" summary={from.length === 1 ? "1 input" : `${from.length} inputs`}>
           <ChipGroup

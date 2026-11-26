@@ -166,8 +166,8 @@ test("WB6b: values read and type as on the Console: 2k, note names, units", () =
   assert.equal(parseNumber("", ""), null);
   // -- WP CG34 -- the names are the core's, loaded by the screen; before that a band reads by its code.
   assert.equal(typeName(1), "Type 1");
-  setTypeNames([{ code: 1, name: "Peaking" }]);
-  assert.equal(bandLabel(2, { ...bell(1000, 3), bypass: true }), "Band 3: Peaking, 1.000 kHz, +3.00 dB, Q 1.000, bypassed");
+  setTypeNames([{ code: 1, name: "Bell" }]); // -- INT016 -- (A10 one filter vocabulary) the core's word
+  assert.equal(bandLabel(2, { ...bell(1000, 3), bypass: true }), "Band 3: Bell, 1.000 kHz, +3.00 dB, Q 1.000, bypassed");
 });
 
 // -- On the real core (as wasm.test.ts) --
@@ -218,10 +218,11 @@ test("CG34: the type names are the core's table, the Console's band-list names",
   const { session } = await sessionOn("control");
   const table = await session.core.call("filterTypeNames", undefined);
   setTypeNames(table);
-  const want = ["Off", "Peaking", "Low Shelf (12dB)", "High Shelf (12dB)", "High Cut (12dB)", "Low Cut (12dB)", "Notch",
+  // -- INT016 -- (A10 one filter vocabulary) Bell for the Console's Peaking; a crossover's pass in sentence case
+  const want = ["Off", "Bell", "Low Shelf (12dB)", "High Shelf (12dB)", "High Cut (12dB)", "Low Cut (12dB)", "Notch",
     "All Pass (360°)", "All Pass (180°)", "Low Shelf (6dB)", "High Shelf (6dB)", "Linkwitz Transform", "High Cut (6dB)", "Low Cut (6dB)"];
   assert.deepEqual(Array.from({ length: 14 }, (_, t) => typeName(t)), want);
-  assert.equal(typeName(34), "LR4 Low Pass");
+  assert.equal(typeName(34), "LR4 Low pass");
   assert.equal(typeName(14), "Type 14");
 });
 

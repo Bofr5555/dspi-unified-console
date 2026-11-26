@@ -11,9 +11,14 @@
 //!   channel its own curve with its bypass ignored (for its fill and the
 //!   graph's hit tests), its level at its own frequency, and for the types
 //!   with gain the level per dB of gain there (where its dot sits).
+//!   -- WP GAP1 -- With `phase`, the first chain's (the edited channel's)
+//!   phase in degrees too (`unwrap`: continuous, else within +-180), and
+//!   with `groupDelay` its group delay in ms: `dspi_core::compute_phase_curve`
+//!   and `compute_group_delay_curve`, the numbers Qt's graph draws.
 
 use dspi_core::{
-    CURVE_POINTS, FilterParams, compute_magnitude_curve, compute_response, curve_freq,
+    CURVE_POINTS, FilterParams, compute_group_delay_curve, compute_magnitude_curve,
+    compute_phase_curve, compute_response, curve_freq,
 };
 use dspi_proto::FilterType;
 use serde::Deserialize;
@@ -60,6 +65,16 @@ pub struct CurvesParams {
     pub chains: Vec<Vec<Band>>,
     #[serde(default)]
     pub bands: Vec<Band>,
+    // -- WP GAP1 --
+    /// Add the first chain's phase.
+    #[serde(default)]
+    pub phase: bool,
+    /// That phase continuous rather than within +-180.
+    #[serde(default)]
+    pub unwrap: bool,
+    /// Add the first chain's group delay.
+    #[serde(default, rename = "groupDelay")]
+    pub group_delay: bool,
 }
 
 /// `curveGrid`: the frequency (Hz) of each curve point.
@@ -88,13 +103,38 @@ pub fn curves(p: CurvesParams) -> Result<Value, CallError> {
             format!("at most {MAX_CHAINS} chains of {MAX_BANDS} bands"),
         ));
     }
+    // -- WP GAP1 -- the edited channel's phase and group delay (an empty
+    // chain, or none, is flat: zeros)
+    let first: Vec<FilterParams> = p
+        .chains
+        .first()
+        .map(|c| c.iter().copied().map(FilterParams::from).collect())
+        .unwrap_or_default();
     let chains: Vec<Vec<f64>> = p
         .chains
         .into_iter()
         .map(|c| compute_magnitude_curve(c.into_iter().map(FilterParams::from).collect()))
         .collect();
     let bands: Vec<Value> = p.bands.into_iter().map(band).collect();
-    Ok(json!({ "chains": round(&chains), "bands": bands }))
+    let mut out = serde_json::Map::new();
+    out.insert("chains".into(), json!(round(&chains)));
+    out.insert("bands".into(), json!(bands));
+    if p.phase {
+        let phase = compute_phase_curve(first.clone(), p.unwrap);
+        out.insert(
+            "phase".into(),
+            json!(round(&[phase]).pop().unwrap_or_default()),
+        );
+    }
+    if p.group_delay {
+        // To a tenth of a microsecond
+        let gd: Vec<f64> = compute_group_delay_curve(first)
+            .iter()
+            .map(|v| (v * 10_000.0).round() / 10_000.0)
+            .collect();
+        out.insert("groupDelay".into(), json!(gd));
+    }
+    Ok(Value::Object(out))
 }
 
 /// One band of the edited channel, its bypass ignored: an off band has no
@@ -237,6 +277,12 @@ mod tests_wp_wb6b {
         assert_eq!(t.len(), 46);
         assert_eq!(t[0], json!({ "code": 0, "name": "Off" }));
         assert_eq!(t[12], json!({ "code": 12, "name": "High Cut (6dB)" }));
-        assert_eq!(t[14], json!({ "code": 32, "name": "LR2 Low Pass" }));
+        assert_eq!(t[14], json!({ "code": 32, "name": "LR2 Low pass" })); // -- INT016 -- (A10)
     }
 }
+
+// -- WP GAP1 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+#[path = "curves/tests_wp_gap1.rs"]
+mod tests_wp_gap1;

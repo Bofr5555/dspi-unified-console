@@ -20,6 +20,7 @@ on your computer (Claude, Cursor and other MCP clients) can work with you, under
 - **AI agents, safely.** Turn them on in Settings › AI Agents and an agent such as Claude Desktop, Claude Code or
   Cursor can read and change your DSPi, measure and tune it. Risky changes wait for your answer, every change can be
   undone, and a tweeter's protection holds whatever the agent is told ([manual](docs/manual/ai-agents.md)).
+  To start: [connect Claude in three steps](docs/manual/ai-agents.md#connect-claude-in-three-steps). <!-- WP UAG -->
 - **Your speaker setup.** Settings › Speakers says which output drives what (woofer, midrange, tweeter, sub); the
   console can detect it with quiet test sweeps, and measurement and agents follow it.
 - **Multi-unit systems over the alink** †. A sender, fan-outs and receivers, USB-direct units and S/PDIF followers on
@@ -37,7 +38,7 @@ on your computer (Claude, Cursor and other MCP clients) can work with you, under
   or the web console.
 - **Simple, Advanced and Installer modes.** A front page for listening; the full tools for tuning; and an Installer
   mode with limits profiles (gain, high-pass, delay, limiter ceiling, EQ boost, volume) and an installer PIN that
-  leaves the user volume, mute and presets.
+  leaves the user volume, mute, source and presets.
 - **Safe changes.** Snapshots and A/B compare, safe apply with a way back, document diffs and partial imports, undo
   and redo, and confirmation for every dangerous write. A revert that cannot put everything back says so.
 - **Firmware updates that check first.** The update check reads the board before anything is written and refuses an
@@ -78,12 +79,15 @@ simulated home theatre (three DSPi units, a simulated microphone), the web conso
   auto-tune, speaker detection and roles from your words, installation setup, with questions, undo and hard limits.
 - **Several devices at once** (Modern layout, web console), the redrawn matrix mixer, presets in one popover, and
   outputs nothing plays to left out of the views that only show.
+- **Everyday use** (new in 0.16.0): crossovers and routes from your confirmed speakers in one step, A/B of what is
+  saved against what you hear, a setup list on the Overview, Save All, a Home page for Simple mode and locked
+  installations, Solo, and a tuned demo.
 
 Which feature works in which client, and on which firmware, is in [**Features**](docs/FEATURES.md).
 
 ## Get it
 
-Release **0.15.0**, one version for every client ([install guide](docs/INSTALL.md),
+Release **0.16.0**, one version for every client ([install guide](docs/INSTALL.md),
 [Releases page](https://github.com/Bofr5555/dspi-unified-console/releases)):
 
 - **Windows** 10/11: installer or portable zip ([how](docs/INSTALL.md#windows))

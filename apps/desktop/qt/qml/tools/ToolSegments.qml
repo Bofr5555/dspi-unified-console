@@ -44,8 +44,8 @@ Item {
         height: segments.height
         radius: Theme.radiusControl
         color: segments.track
-        border.width: Theme.lineWidth
-        border.color: Theme.border
+        border.width: Theme.controlLineWidth   // -- WP UB13 --
+        border.color: Theme.controlLine
 
         RowLayout {
             id: row

@@ -410,7 +410,7 @@ fn hp(freq: f32) -> FilterParams {
 /// LR4; `None` leaves a flat crossover).
 fn demo(mid_hp: Option<f32>, tweeter_hp: Option<f32>) -> Arc<DspiCore> {
     let core = DspiCore::new();
-    core.open_demo().unwrap();
+    core.open_demo_blank().unwrap(); // -- WP UB12 --
     core.fetch_all().unwrap();
     core.set_user_volume(-20.0).unwrap();
     let s = core.get_state();
@@ -967,7 +967,7 @@ fn wp_rcfix_a_stale_full_on_a_confirmed_tweeter_gets_the_1khz_floor() {
         .measure_start(setup(MeasureRunKind::LiveSweep, one))
         .unwrap_err()
         .to_string();
-    assert!(e.contains("is a high way in the speaker layout"), "{e}");
+    assert!(e.contains("is a tweeter in the speaker layout"), "{e}"); // -- WP UFW --
     assert!(!core.measure_state().active);
     // The tune takes the layout's role over the caller's copy of it.
     let lo = |output, role| crate::measure::MeasureLayoutOutput {

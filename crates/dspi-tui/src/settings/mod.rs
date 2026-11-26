@@ -36,6 +36,8 @@ pub mod macros;
 pub mod outputs;
 pub mod overview;
 pub mod spectrum;
+// -- WP UB11 -- (UXP B11) the speaker layout
+pub mod speakers;
 pub mod surfaces;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -1023,6 +1025,8 @@ pub enum Page {
     Groups,
     Macros,
     Aux,
+    // -- WP UB11 --
+    Speakers,
 }
 
 impl Page {
@@ -1054,6 +1058,7 @@ impl Page {
             Page::Groups => "Channel Groups",
             Page::Macros => "Macros",
             Page::Aux => "Auxiliary Outputs",
+            Page::Speakers => "Speakers",
         }
     }
 
@@ -1081,6 +1086,7 @@ const GROUPS: [(&str, &[Page]); 4] = [
             Page::Overview,
             Page::Inputs,
             Page::Outputs,
+            Page::Speakers, // -- WP UB11 --
             Page::I2s,
             Page::Global,
         ],
@@ -1413,6 +1419,7 @@ struct Pages {
     groups: groups::GroupsPage,
     macros: macros::MacrosPage,
     aux: surfaces::SurfacesPage,
+    speakers: speakers::SpeakersPage, // -- WP UB11 --
 }
 
 pub struct SettingsScreen {
@@ -1466,6 +1473,7 @@ impl SettingsScreen {
                 groups: groups::GroupsPage::new(&data),
                 macros: macros::MacrosPage::new(&data),
                 aux: surfaces::SurfacesPage::aux(&data),
+                speakers: speakers::SpeakersPage::new(None),
             },
             data,
             config,
@@ -1491,6 +1499,13 @@ impl SettingsScreen {
 
     pub fn connected(mut self, c: bool) -> Self {
         self.connected = c;
+        self
+    }
+
+    // -- WP UB11 --
+    /// The console core's calls, for the Speakers page.
+    pub fn host(mut self, host: Option<std::rc::Rc<dyn crate::host::ProHost>>) -> Self {
+        self.pages.speakers = speakers::SpeakersPage::new(host);
         self
     }
 
@@ -1541,6 +1556,8 @@ impl SettingsScreen {
                 n if n == "groups" || n == "channelgroups" => Page::Groups,
                 n if n == "macros" => Page::Macros,
                 n if n == "aux" || n == "auxoutputs" || n == "auxiliaryoutputs" => Page::Aux,
+                // -- WP UB11 --
+                n if n == "speakers" || n == "speakerlayout" || n == "roles" => Page::Speakers,
                 _ => return None,
             },
         )
@@ -1588,6 +1605,7 @@ impl SettingsScreen {
             Page::Groups => self.pages.groups.observe(&cx),
             Page::Macros => self.pages.macros.observe(&cx),
             Page::Aux => self.pages.aux.observe(&cx),
+            Page::Speakers => self.pages.speakers.observe(&cx), // -- WP UB11 --
             _ => {}
         }
     }
@@ -1608,6 +1626,7 @@ impl SettingsScreen {
             Page::Groups => &mut self.pages.groups,
             Page::Macros => &mut self.pages.macros,
             Page::Aux => &mut self.pages.aux,
+            Page::Speakers => &mut self.pages.speakers,
         }
     }
 
@@ -1627,6 +1646,7 @@ impl SettingsScreen {
             Page::Groups => &self.pages.groups,
             Page::Macros => &self.pages.macros,
             Page::Aux => &self.pages.aux,
+            Page::Speakers => &self.pages.speakers,
         }
     }
 
@@ -2188,6 +2208,7 @@ impl Screen for SettingsScreen {
                 Page::Groups => self.pages.groups.popup_result(choice, &cx),
                 Page::Macros => self.pages.macros.popup_result(choice, &cx),
                 Page::Aux => self.pages.aux.popup_result(choice, &cx),
+                Page::Speakers => self.pages.speakers.popup_result(choice, &cx),
             }
         };
         self.absorb(ev, state)
@@ -2279,6 +2300,7 @@ impl Screen for SettingsScreen {
                         Page::Groups => self.pages.groups.dialog_result(outcome, &cx),
                         Page::Macros => self.pages.macros.dialog_result(outcome, &cx),
                         Page::Aux => self.pages.aux.dialog_result(outcome, &cx),
+                        Page::Speakers => self.pages.speakers.dialog_result(outcome, &cx),
                     }
                 };
                 self.absorb(ev, state)
@@ -2428,6 +2450,7 @@ impl SettingsScreen {
                     Page::Groups => self.pages.groups.act(cursor, action, &cx),
                     Page::Macros => self.pages.macros.act(cursor, action, &cx),
                     Page::Aux => self.pages.aux.act(cursor, action, &cx),
+                    Page::Speakers => self.pages.speakers.act(cursor, action, &cx),
                 }
             };
             return self.absorb(ev, state);
@@ -2451,6 +2474,7 @@ impl SettingsScreen {
                 Page::Groups => self.pages.groups.key(key, &cx),
                 Page::Macros => self.pages.macros.key(key, &cx),
                 Page::Aux => self.pages.aux.key(key, &cx),
+                Page::Speakers => self.pages.speakers.key(key, &cx),
                 _ => PageEvent::Unhandled,
             }
         };
@@ -2610,7 +2634,8 @@ pub(crate) mod tests {
     fn every_page_is_in_a_sidebar_group() {
         // `Page` has no reflection, so the count is the guard: a variant added
         // without a group would leave this stale.
-        assert_eq!(every_page().len(), 14);
+        // -- WP UB11 -- 15 with Speakers
+        assert_eq!(every_page().len(), 15);
         for page in every_page() {
             assert!(!page.title().is_empty());
             assert!(!page.short().is_empty());

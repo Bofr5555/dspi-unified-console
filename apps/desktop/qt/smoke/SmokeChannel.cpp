@@ -95,6 +95,10 @@ void filterTypes(Pages &p) {
             shelf.value(QStringLiteral("name")).toString() == QLatin1String("Low Shelf") &&
                 shelf.value(QStringLiteral("variants")).toList().size() == 2);
     d.check(QStringLiteral("qp2: type names come from the core"), p.cc->typeName(FILTER_LOWPASS) == QLatin1String("High Cut (12dB)"));
+    // -- INT016 -- (A10 one filter vocabulary) Bell in the menu and the row, never Peaking
+    d.check(QStringLiteral("int016: the bell is Bell in the type menu and the core's names"),
+            menu.value(1).toMap().value(QStringLiteral("name")).toString() == QLatin1String("Bell") &&
+                p.cc->typeName(FILTER_PEAKING) == QLatin1String("Bell"));
     d.check(QStringLiteral("qp2: crossover codes: LR4 high pass is 35, BW1 low pass 40, BES8 high pass 63"),
             ChannelController::crossoverType(1, 4, false) == 35 && ChannelController::crossoverType(2, 1, true) == 40 &&
                 ChannelController::crossoverType(3, 8, false) == 63 && ChannelController::crossoverType(1, 3, true) == -1);

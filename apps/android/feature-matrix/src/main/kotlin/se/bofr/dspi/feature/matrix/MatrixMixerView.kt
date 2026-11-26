@@ -59,6 +59,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
@@ -559,7 +560,10 @@ private fun OutputPage(ui: MatrixUi, out: MatrixOutput) {
                 )
             }
             Box {
-                TextButton(onClick = { menu = true }) { Text("•••") }
+                // -- WP UAN -- (UXP A12) named: TalkBack read the dots
+                TextButton(onClick = { menu = true }, Modifier.semantics { contentDescription = "More for ${out.descriptor}" }) {
+                    Text("•••", Modifier.clearAndSetSemantics {})
+                }
                 OutputHeaderMenu(ui, out.index, menu) { menu = false }
             }
         }

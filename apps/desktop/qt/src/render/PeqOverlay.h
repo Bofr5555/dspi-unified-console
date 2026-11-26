@@ -62,6 +62,9 @@ class PeqOverlay : public QQuickPaintedItem {
     // dot and the marquee
     Q_PROPERTY(QColor backdrop READ backdrop WRITE setBackdrop NOTIFY backdropChanged)
     Q_PROPERTY(QColor ink READ ink WRITE setInk NOTIFY inkChanged)
+    // -- WP UB13 -- How near a dot a press or the pointer must be to take it, in
+    // px (Theme.peqHitRadius: 10, 20 in the Comfortable density)
+    Q_PROPERTY(double dotHit MEMBER m_dotHit NOTIFY dotHitChanged)
 
     // State for QML (all NOTIFY viewChanged)
     Q_PROPERTY(bool editing READ editing NOTIFY viewChanged)
@@ -179,6 +182,7 @@ signals:
     void bandColorsChanged();
     void backdropChanged();
     void inkChanged();
+    void dotHitChanged();   // -- WP UB13 --
     void viewChanged();
     // Typing begins in the chip's `field`
     void editRequested(int field);
@@ -352,6 +356,7 @@ private:
     QVector<QColor> m_bandColors;
     QColor m_backdrop{ Qt::black };
     QColor m_ink{ Qt::white };
+    double m_dotHit = 10;   // -- WP UB13 -- was kDotHit
     int m_writing = 0;
     bool m_inReconfigure = false;
     bool m_reconfigurePending = false;

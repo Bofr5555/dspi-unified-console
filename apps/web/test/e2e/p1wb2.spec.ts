@@ -211,7 +211,7 @@ test("P1WB2 tokens and groups: tokens on, Save asks and saves; an EQ Clear All i
   await call(page, "write", { path: "out.gain", indices: [0], value: { float: -2 } });
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await page.keyboard.press("Control+s");
-  await page.getByRole("dialog", { name: "Save Preset" }).getByRole("button", { name: "Save" }).click();
+  await page.getByRole("dialog", { name: "Save to Device" }).getByRole("button", { name: "Save" }).click();
   await expect(presetsButton(session)).not.toHaveAccessibleName(/unsaved/); // -- WP INTD --
   await expect(session.locator("p.error")).toHaveCount(0);
 
@@ -234,7 +234,7 @@ test("P1WB2 AutoEQ: a profile previewed on the graph writes nothing; Apply write
   const errors = errorsOf(page);
   const session = await openDemo(page);
   await openPage(session, "EQ");
-  await session.getByRole("button", { name: "Headphone Profile…" }).click(); // -- WP WEB6 -- Qt's tool on an input's page (was AutoEQ…)
+  await session.getByRole("button", { name: "AutoEQ…" }).click(); // -- WP UWN -- (UXP A17) AutoEQ… again, as the docs say
   const panel = session.getByRole("region", { name: "AutoEQ" });
   const profile = { id: "o/Sony A", manufacturer: "Sony", model: "A", preamp: -4, filters: [{ type: "PK", freq: 105, q: 0.7, gain: 3 }] };
   await panel.getByLabel("AutoEQ profile").setInputFiles({ name: "sony-a.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(profile)) });
@@ -336,7 +336,7 @@ test.describe("P1WB2 on a hub", () => {
     hub = undefined;
   });
 
-  test("P1WB2 lock: the locked-user view, a refused write in the hub's words, the one prompt naming the hub; unlocked, the pinned mode", async ({ page }) => {
+  test("P1WB2 lock: the locked-user view (-- WP UB2 -- Home, nothing refused), the one prompt naming the hub; unlocked, the pinned mode", async ({ page }) => {
     test.setTimeout(90_000);
     const errors = errorsOf(page);
     const serial = "DEMO-ALINK-A";
@@ -345,7 +345,7 @@ test.describe("P1WB2 on a hub", () => {
     const rail = session.getByRole("complementary", { name: "Status" });
     await expect(rail.getByRole("button", { name: "Mode: Locked" })).toBeVisible();
     const banner = session.getByRole("region", { name: "Locked" });
-    await expect(banner).toContainText("Locked by the installer: only volume, mute and presets can be changed.");
+    await expect(banner).toContainText("Locked by the installer: only volume, mute, source and presets can be changed.");
     await expect(banner).toContainText("Venue A: volume and presets only, please.");
     await expect(sections(session).getByRole("button")).toHaveText(["Overview", "Devices"]);
     await expect(session.getByRole("tablist", { name: "Pages" })).toHaveCount(0); // -- WP REVEFIX -- the device's own tab is in the bar
@@ -360,18 +360,32 @@ test.describe("P1WB2 on a hub", () => {
       await expect(activeRow.getByRole("menuitem", { name: item })).toBeDisabled();
     await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");
-    // Volume passes; Bypass is refused, by the hub, in its notice row's words (-- WP INTD -- the
-    // Overview's output trims are gone; the dock's Bypass is the write the lock leaves out there).
-    const volume = session.getByRole("slider", { name: "Volume" });
-    const shown = await session.locator(".volume-value").textContent();
+    // Volume passes (-- WP UB2 -- on Home, the remote, the locked user's page).
+    const home = session.locator(".home-screen");
+    await expect(home.getByRole("region", { name: "Presets" })).toBeVisible();
+    const volume = home.getByRole("slider", { name: "Volume" });
+    const shown = await home.locator(".home-volume-value").textContent();
     await volume.fill("100");
     await volume.dispatchEvent("change");
-    await expect(session.locator(".volume-value")).not.toHaveText(shown!);
+    await expect(home.locator(".home-volume-value")).not.toHaveText(shown!);
     await expect(session.locator("p.error")).toHaveCount(0);
-    await session.getByRole("button", { name: "Bypass EQ", exact: true }).click();
-    const refused = session.locator("p.error.notice");
-    await expect(refused).toHaveAttribute("data-key", /^installer_lock/);
-    await shot(page, "locked-refused", refused);
+    // -- WP UB2 -- (UXP B2) nothing that the lock refuses is offered: no Bypass EQ, no Master, no undo
+    await expect(session.getByRole("button", { name: "Bypass EQ", exact: true })).toHaveCount(0);
+    await expect(session.getByRole("button", { name: "Master", exact: true })).toHaveCount(0);
+    await expect(session.getByRole("button", { name: "Undo", exact: true })).toHaveCount(0);
+    // -- FIX016 -- (LOCKSRC, owner D4) the lock lets the source through: Home and the dock offer it as a control
+    const source = home.getByRole("group", { name: "Source" });
+    await expect(source).toBeVisible();
+    await expect(home.locator(".home-source")).toHaveCount(0);
+    await expect(session.locator(".dock-source")).toBeEnabled();
+    await expect(source.getByRole("button").first()).toBeEnabled();
+    // A choice plays the other source: the lock lets `in.source` through, nothing is refused
+    const other = source.locator("button[aria-pressed=false]").first();
+    const otherName = (await other.textContent())!.trim();
+    await other.click();
+    await expect(source.getByRole("button", { name: otherName, exact: true })).toHaveAttribute("aria-pressed", "true", { timeout: 10_000 });
+    await expect(session.locator("p.error")).toHaveCount(0);
+    await expect(banner).toBeVisible();
     // The mode switch says why it is not switchable.
     await rail.getByRole("button", { name: "Mode: Locked" }).click();
     const modes = page.getByRole("dialog", { name: "Mode" });
@@ -396,9 +410,8 @@ test.describe("P1WB2 on a hub", () => {
     await rail.getByRole("button", { name: /^Mode:/ }).click();
     await expect(page.getByRole("dialog", { name: "Mode" })).toContainText("This console is pinned to Simple for this DSPi.");
     await page.getByRole("dialog", { name: "Mode" }).getByRole("button", { name: "Cancel" }).click();
-    // -- WP INTD -- unlocked, the Bypass the lock refused goes through
-    await session.getByRole("button", { name: "Bypass EQ", exact: true }).click();
-    await expect(session.getByRole("button", { name: "Bypass EQ", exact: true })).toHaveAttribute("aria-pressed", "true");
+    // -- WP UB2 -- unlocked and pinned to Simple: Home, its source a control again (the lock no longer refuses it)
+    await expect(session.locator(".home-screen").getByRole("group", { name: "Source" })).toBeVisible();
     await expect(session.locator("p.error")).toHaveCount(0);
     await shot(page, "unlocked-pinned");
     expect(errors).toEqual([]);

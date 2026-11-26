@@ -2,6 +2,8 @@
 
 *WP P0U, 2026-11-12. The source of truth for the words every client shows.*
 
+*For users: the words page is [`docs/manual/words.md`](manual/words.md) (WP UFW); this file is the writers' list.*
+
 The parameter registry (`crates/dspi-proto/src/registry.rs`) gives each parameter a `label`, a `plain` line of help, a unit
 and a range. This file explains the words in it. Clients take labels, help lines, units and ranges from the core (the registry
 through `describe` on the web, `by_path(..)` in the Terminal) and follow this file where they still write their own text.
@@ -232,8 +234,8 @@ From `docs/UI-MODES.md`; the words a client shows.
 
 | Term | Meaning |
 |---|---|
-| **Simple** | The front page first; the default on phones. It hides nothing permanently |
-| **Advanced** | Today's screens; the default on desktops and the web |
+| **Simple** | The front page first; a phone's default until owner D9 (2026-11-25: phones open in Advanced too). It hides nothing permanently |
+| **Advanced** | Today's screens; the default everywhere: desktops, the web and (since owner D9) phones |
 | **Installer** | Advanced plus limits, power-on state, firmware, factory reset and core voltage; behind the PIN when one is set |
 | **Locked user** | A state, not a mode: what an installer has left a user to change (volume, mute, preset) |
 | **Installer PIN** | A UI lock an installer sets; not a security boundary |

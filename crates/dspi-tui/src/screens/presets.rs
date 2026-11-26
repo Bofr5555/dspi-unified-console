@@ -18,6 +18,10 @@ pub const SLOTS: usize = 10;
 /// name (REVF S1).
 pub const ACTIVE_UNKNOWN: &str = "The device has not said which preset is active";
 
+// -- WP UTM -- (UXP A14)
+/// The label over the menu's actions, below the slots.
+pub const ACTIONS: &str = "Preset actions";
+
 /// What the person picked out of the Preset menu.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PresetChoice {
@@ -91,12 +95,13 @@ impl PresetMenu {
             items.push(label);
             choices.push(choice);
         };
-        // A header with no text is the rule between the slots and the actions.
-        push("#".into(), None);
+        // -- WP UTM -- (UXP A14) the actions under a label of their own, and a
+        // disabled one drawn as an item, not as a heading ("SET AS DEFAULT")
+        push(format!("#{ACTIONS}"), None);
         let Some(active) = known else {
             push(format!("#{ACTIVE_UNKNOWN}"), None);
             for row in ["Save", "Rename...", "Set as Default", "Copy to..."] {
-                push(format!("#{row}"), None);
+                push(format!("{}{row}", PopupList::DISABLED), None);
             }
             if shared.occupied != 0 {
                 push("Clear All Slots...".into(), Some(PresetChoice::ClearAll));
@@ -110,7 +115,7 @@ impl PresetMenu {
         // only in that mode. A leading `#` is the popup's un-pickable, dimmed
         // form, which is what a disabled menu item looks like.
         if shared.default_slot == Some(active) {
-            push("#Set as Default".into(), None);
+            push(format!("{}Set as Default", PopupList::DISABLED), None);
         } else {
             push("Set as Default".into(), Some(PresetChoice::SetDefault));
         }
@@ -199,7 +204,10 @@ mod tests {
         assert_eq!(p.items[0], "1: Studio");
         assert_eq!(p.items[1], "2: Empty");
         assert_eq!(p.items[2], "3: Living Room*", "the dirty marker");
-        assert_eq!(p.items[10], "#", "a rule, which cannot be picked");
+        assert_eq!(
+            p.items[10], "#Preset actions",
+            "a label, which cannot be picked"
+        );
         assert_eq!(p.items[11], "Save");
         assert_eq!(p.items[12], "Rename...");
         assert_eq!(p.items[13], "Set as Default");
@@ -207,6 +215,23 @@ mod tests {
         assert_eq!(p.items[15], "Clear \"3: Living Room\"...");
         assert_eq!(p.items[16], "Clear All Slots...");
         assert_eq!(p.cursor, 2, "opens on the active slot");
+    }
+
+    // -- WP UTM -- (UXP A14) a disabled item drew as an all-caps heading
+    #[test]
+    fn utm_a_disabled_action_draws_as_an_item_under_the_actions_label() {
+        let mut s = shared();
+        s.default_slot = Some(2);
+        let (p, _) = PresetMenu::popup(&s, Some(2), false);
+        let t = crate::theme::Theme::console(
+            crate::theme::ColorDepth::TrueColor,
+            crate::theme::Glyphs::Braille,
+        );
+        let (w, h) = p.size(60, 30);
+        let f = crate::render_frame(w, h, |area, buf| p.draw(area, buf, &t));
+        assert!(f.contains("PRESET ACTIONS"), "{f}");
+        assert!(f.contains("  Set as Default"), "{f}");
+        assert!(!f.contains("SET AS DEFAULT"), "{f}");
     }
 
     #[test]
@@ -224,7 +249,7 @@ mod tests {
         let mut s = shared();
         s.default_slot = Some(2);
         let (p, _) = PresetMenu::popup(&s, Some(2), false);
-        assert_eq!(p.items[13], "#Set as Default", "dimmed and unpickable");
+        assert_eq!(p.items[13], "#  Set as Default", "dimmed and unpickable");
         // The rest of the menu keeps its indices.
         assert_eq!(p.items[12], "Rename...");
         assert_eq!(p.items[14], "Copy to...");
@@ -278,7 +303,13 @@ mod tests {
             assert_eq!(p.items[0], "1: Studio", "no slot is marked");
             assert!(!p.items.iter().any(|i| i.ends_with('*')), "{:?}", p.items);
             assert_eq!(p.items[11], format!("#{ACTIVE_UNKNOWN}"), "the reason");
-            for row in ["#Save", "#Rename...", "#Set as Default", "#Copy to..."] {
+            // -- WP UTM -- drawn as disabled items, not headings
+            for row in [
+                "#  Save",
+                "#  Rename...",
+                "#  Set as Default",
+                "#  Copy to...",
+            ] {
                 assert!(p.items.iter().any(|i| i == row), "{row}: {:?}", p.items);
             }
             assert!(!p.items.iter().any(|i| i.starts_with("Clear \"")));

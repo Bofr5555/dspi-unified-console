@@ -403,3 +403,62 @@ export function mqttStateText(state: string): string {
 // ---------------------------------------------------------------- API keys
 
 export const KEY_ROLES = ["viewer", "control", "admin"] as const;
+
+// -- WP UB6 -- (UXP B6, W10) One unsaved bar for the page ("3 changes · Discard · Save") in place of a Save per
+// section: what each section has changed against the hub's copy, counted as the user sees it.
+
+/** Whether `a` and `b` agree on `keys` (a list or an object compared as a whole). */
+function sameOn<T extends object>(a: T, b: T, keys: readonly (keyof T)[]): boolean {
+  return keys.every((k) => (typeof a[k] === "object" && a[k] !== null ? JSON.stringify(a[k]) === JSON.stringify(b[k]) : a[k] === b[k]));
+}
+
+/** The keys a rule has on either side. */
+function ruleKeys(a: HubAlarmRuleRecord, b: HubAlarmRuleRecord): (keyof HubAlarmRuleRecord)[] {
+  return [...new Set([...Object.keys(a), ...Object.keys(b)])] as (keyof HubAlarmRuleRecord)[];
+}
+
+/** The alarm rules changed against the hub's: one per rule. */
+export function ruleChanges(saved: readonly HubAlarmRuleRecord[] | null, now: readonly HubAlarmRuleRecord[] | null): number {
+  if (!saved || !now) return 0;
+  const by = new Map(saved.map((r) => [r.code, r]));
+  return now.filter((r) => {
+    const was = by.get(r.code);
+    return !was || !sameOn(was, r, ruleKeys(was, r));
+  }).length;
+}
+
+/** What the user edits of a notification target (the rest is the hub's report). */
+const TARGET_KEYS = ["name", "kind", "url", "enabled", "kinds", "secret", "plaintext", "caPem", "pinSha256"] as const;
+
+/** The notification targets changed against the hub's: one per target added, removed or edited. */
+export function targetChanges(saved: readonly HubOutboundTargetRecord[] | null, now: readonly HubOutboundTargetRecord[] | null): number {
+  if (!saved || !now) return 0;
+  const by = new Map(saved.map((t) => [t.id, t]));
+  const kept = new Set(now.map((t) => t.id).filter((id) => id));
+  const edited = now.filter((t) => {
+    const was = t.id ? by.get(t.id) : undefined;
+    return !was || !sameOn(was, t, TARGET_KEYS);
+  }).length;
+  return edited + saved.filter((t) => !kept.has(t.id)).length;
+}
+
+const MQTT_KEYS = ["enabled", "broker", "port", "clientId", "username", "baseTopic", "haEnabled", "haKey"] as const;
+const MQTT_TLS_KEYS = ["mode", "caPem", "pinSha256", "clientCertPem", "clientCertFile", "clientKeyFile", "allowPlaintextPassword"] as const;
+
+/** The MQTT settings changed against the hub's: one per field, the password and the client key each one when typed or cleared. */
+export function mqttChanges(
+  saved: HubMqttSettingsRecord | null,
+  now: HubMqttSettingsRecord | null,
+  password: { typed: string; clear: boolean },
+  clientKey: { typed: string; clear: boolean },
+): number {
+  if (!saved || !now) return 0;
+  const fields = MQTT_KEYS.filter((k) => !sameOn(saved, now, [k])).length;
+  const tls = MQTT_TLS_KEYS.filter((k) => !sameOn(saved.tls, now.tls, [k])).length;
+  return fields + tls + (password.typed || password.clear ? 1 : 0) + (clientKey.typed || clientKey.clear ? 1 : 0);
+}
+
+/** "1 change", "3 changes". */
+export function changesText(n: number): string {
+  return `${n} ${n === 1 ? "change" : "changes"}`;
+}

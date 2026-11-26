@@ -50,6 +50,10 @@ use dspi_session::meters::Ballistics;
 const REVEAL: Duration = Duration::from_millis(400);
 /// How long a remotely changed value takes to reach its new position.
 const EASE: Duration = Duration::from_millis(120);
+// -- WP UB11 --
+/// How long after the core wrote for the interface (`Live::host_wrote`) the
+/// device's notice of it is taken as that write's, not as another's.
+const HOST_ECHO: Duration = Duration::from_secs(2);
 
 /// Makes the screens the shell shows. The default makes placeholders; later
 /// phases replace it.
@@ -87,6 +91,11 @@ pub trait Screens {
     /// The open device's protocol for Settings > About, as the embedder read
     /// it at connect; `None` clears it. Kept until the next connection.
     fn set_protocol(&self, _protocol: Option<crate::settings::about::DeviceProtocolView>) {}
+
+    // -- WP UB11 --
+    /// The console core's PRO calls, for the Snapshots panel and Settings ›
+    /// Speakers; `None` without a core.
+    fn set_host(&self, _host: Option<std::rc::Rc<dyn crate::host::ProHost>>) {}
 }
 
 /// The Console's screens: the dashboard, the input and output pages, every
@@ -106,6 +115,9 @@ pub struct ConsoleScreens {
     // -- WP TM18 --
     /// Where that file is, when it is not the platform's own location.
     config_path: Option<std::path::PathBuf>,
+    // -- WP UB11 --
+    /// The console core's PRO calls, once the embedder gave them.
+    host: crate::host::HostCell,
 }
 
 // -- WP TM18 --
@@ -155,6 +167,7 @@ impl ConsoleScreens {
             settings: std::rc::Rc::new(std::cell::RefCell::new(SettingsData::default())),
             config: std::rc::Rc::new(std::cell::RefCell::new(config)),
             config_path,
+            host: crate::host::HostCell::default(), // -- WP UB11 --
         }
     }
 }
@@ -193,6 +206,10 @@ impl Screens for ConsoleScreens {
             }
             Tool::Subharm => Box::new(SubharmPanel::new()),
             Tool::Spectrum => Box::new(SpectrumPanel::open(self.shared.clone(), state)),
+            // -- WP UB11 --
+            Tool::Snapshots => Box::new(crate::screens::SnapshotsPanel::new(
+                self.host.borrow().clone(),
+            )),
         }
     }
 
@@ -201,12 +218,12 @@ impl Screens for ConsoleScreens {
         config.spectrum = self.shared.borrow().spectrum.settings.clone();
         let shared = self.shared.clone();
         let kept = self.config.clone();
-        let screen = SettingsScreen::new(state, self.settings.borrow().clone(), config).on_config(
-            move |c: &AppConfig| {
+        let screen = SettingsScreen::new(state, self.settings.borrow().clone(), config)
+            .host(self.host.borrow().clone()) // -- WP UB11 --
+            .on_config(move |c: &AppConfig| {
                 shared.borrow_mut().spectrum.adopt_settings(&c.spectrum);
                 *kept.borrow_mut() = c.clone();
-            },
-        );
+            });
         // -- WP TM18 --
         Box::new(match &self.config_path {
             Some(p) => screen.config_path(p.clone()),
@@ -236,6 +253,10 @@ impl Screens for ConsoleScreens {
     }
 
     // -- WP PGTM --
+    fn set_host(&self, host: Option<std::rc::Rc<dyn crate::host::ProHost>>) {
+        *self.host.borrow_mut() = host;
+    }
+
     fn set_protocol(&self, protocol: Option<crate::settings::about::DeviceProtocolView>) {
         self.settings.borrow_mut().protocol = protocol;
     }
@@ -257,7 +278,7 @@ pub const APP_VERBS: &[(&str, &str)] = &[
     ("autoeq", "AutoEQ: browse profiles, or `autoeq update`"),
     ("save-master", "Save Master Volume"),
     ("save-output-config", "Save Output Configuration"),
-    ("commit", "Commit Parameters..."),
+    ("commit", "Save to Device..."), // -- INT016 -- (owner D1) the name every menu uses
     ("revert", "Revert to Saved..."),
     ("factory-reset", "Factory Reset..."),
     ("bootloader", "Reboot into Bootloader..."),
@@ -268,7 +289,48 @@ pub const APP_VERBS: &[(&str, &str)] = &[
     ("subharm", "Subharmonic Synthesizer"),
     // -- WP TMCOREF --
     ("unlock", "Unlock with the installer's PIN"),
+    // -- WP UTM -- (UXP A13)
+    ("help", "The keys here and everywhere (?)"),
 ];
+
+// -- WP UTM -- (UXP A13, C10)
+/// The shell's own verbs the `:` line runs too, on this interface's device,
+/// instead of telling the person to leave and run them (UXP C10). The
+/// embedder runs them ([`Live::set_shell_verbs`]): they are the binary's.
+pub const SHELL_VERBS: &[(&str, &str)] = &[
+    (
+        "snapshot",
+        "Snapshots: save NAME, list, recall ID, diff ID, delete ID",
+    ),
+    ("ab", "A/B: [A] B, two snapshots or the device now and one"),
+    ("diff", "What differs from the saved preset or a snapshot"),
+    (
+        "lock",
+        "The installer lock: status, unlock, set-pin, clear-pin",
+    ),
+    ("limits", "The installer's limits: show, set FILE, clear"),
+    ("status", "The device, its link and its lock"),
+    ("measure", "Measurement documents: docs, show ID, export ID"),
+    ("reset-demo", "The demo's tuned example again"), // -- WP UB12 --
+];
+
+// -- WP UTM --
+/// The `measure` words the `:` line runs: the documents only. Measuring and
+/// the auto-tune stay one-shot commands (UXP A13).
+const MEASURE_HERE: &[&str] = &["docs", "show", "export"];
+
+// -- WP UTM --
+/// Whether `verb` needs more words before it can run, so the palette puts it
+/// on the `:` line rather than running it.
+pub fn verb_takes_words(verb: &str) -> bool {
+    matches!(verb, "snapshot" | "ab" | "lock" | "limits" | "measure")
+}
+
+// -- WP UTM --
+/// Runs one of [`SHELL_VERBS`] (its words, the verb first) on the device of
+/// `target`, with the interface's terminal handed back for the time it runs:
+/// its output and its questions are the shell's. Answers the exit code.
+pub type ShellVerbs = dyn Fn(&[String], Option<&Target>) -> u8;
 
 /// The sub meter's poll period: the Console's 10 Hz
 /// (`SubharmonicSynthView.swift:101`), and the brief's ceiling.
@@ -303,6 +365,9 @@ pub struct Prompt {
     pub input: String,
     pub candidates: Vec<Candidate>,
     pub index: usize,
+    // -- WP UTM --
+    /// The palette's finds, one per candidate (empty on the `:` line).
+    pub hits: Vec<crate::search::Hit>,
 }
 
 impl Prompt {
@@ -312,12 +377,40 @@ impl Prompt {
             input: String::new(),
             candidates: Vec::new(),
             index: 0,
+            hits: Vec::new(),
         };
         p.refresh(ctx);
         p
     }
 
     pub fn refresh(&mut self, ctx: &Context) {
+        // -- WP UTM -- (UXP A13) the palette searches words; the `:` line completes
+        if self.palette {
+            self.hits = crate::search::search(&self.input, ctx);
+            self.candidates = self
+                .hits
+                .iter()
+                .map(|h| Candidate {
+                    value: h.value.clone(),
+                    detail: h.detail.clone(),
+                    kind: match h.rank {
+                        crate::search::Rank::Parameter => {
+                            dspi_cmd::complete::CandidateKind::Parameter
+                        }
+                        _ => dspi_cmd::complete::CandidateKind::Verb,
+                    },
+                })
+                .collect();
+            if self.hits.is_empty() && !self.input.trim().is_empty() {
+                self.candidates.push(Candidate {
+                    value: String::new(),
+                    detail: crate::search::no_match(&self.input),
+                    kind: dspi_cmd::complete::CandidateKind::Hint,
+                });
+            }
+            self.index = 0;
+            return;
+        }
         let ends_with_space = self.input.ends_with(' ');
         let mut tokens: Vec<&str> = self.input.split_whitespace().collect();
         let partial = if ends_with_space {
@@ -332,6 +425,7 @@ impl Prompt {
         if tokens.is_empty() {
             let mine: Vec<Candidate> = APP_VERBS
                 .iter()
+                .chain(SHELL_VERBS) // -- WP UTM --
                 .filter(|(name, _)| name.starts_with(partial))
                 .map(|(name, detail)| Candidate {
                     value: (*name).to_string(),
@@ -347,11 +441,41 @@ impl Prompt {
         self.index = 0;
     }
 
+    // -- WP UTM --
+    /// What Enter does in the palette: the chosen find's action, or `None`
+    /// to run the line as typed (a whole command typed into the palette
+    /// still runs, as it always has).
+    pub fn chosen(&self, ctx: &Context) -> Option<crate::search::Action> {
+        let tokens = dspi_cmd::tokenize(&self.input);
+        let refs: Vec<&str> = tokens.iter().map(String::as_str).collect();
+        let command = refs.len() > 1
+            && (dspi_cmd::parse(&refs, ctx).is_ok()
+                || APP_VERBS
+                    .iter()
+                    .chain(SHELL_VERBS)
+                    .any(|(n, _)| *n == refs[0]));
+        if command {
+            return None;
+        }
+        self.hits.get(self.index).map(|h| h.action.clone())
+    }
+
     /// Returns `Some(line)` on Enter, `Some("")` on Escape.
     pub fn handle(&mut self, key: KeyEvent, ctx: &Context) -> Option<String> {
         match key.code {
             KeyCode::Esc => Some(String::new()),
             KeyCode::Enter => Some(std::mem::take(&mut self.input)),
+            // -- WP UTM -- a find that goes to the `:` line goes there on Tab too
+            KeyCode::Tab if self.palette => {
+                if let Some(crate::search::Action::Complete(text)) =
+                    self.hits.get(self.index).map(|h| h.action.clone())
+                {
+                    self.palette = false;
+                    self.input = text;
+                    self.refresh(ctx);
+                }
+                None
+            }
             KeyCode::Tab => {
                 if let Some(c) = self.candidates.get(self.index)
                     && !c.value.is_empty()
@@ -787,6 +911,19 @@ pub struct Live {
     /// embedder opens it otherwise than [`Target::connect`]: the Terminal
     /// puts it on a console core and routes the session's writes there.
     opener: Option<std::sync::Arc<connect::TargetOpener>>,
+    // -- WP UTM --
+    /// Runs the shell's verbs on this device; `None`: the `:` line says they
+    /// are the shell's.
+    shell_verbs: Option<std::rc::Rc<ShellVerbs>>,
+    // -- WP UB11 --
+    /// The console core's PRO calls ([`Live::set_host`]).
+    host: Option<std::rc::Rc<dyn crate::host::ProHost>>,
+    /// When the core last wrote for the interface (a recall, an A/B switch,
+    /// a way back): the device's notice of it is not "changed elsewhere".
+    host_wrote: Option<Instant>,
+    /// A shell verb's words, for the run loop to run with the terminal
+    /// handed back.
+    pub shell_run: Option<Vec<String>>,
 }
 
 impl Live {
@@ -853,9 +990,107 @@ impl Live {
             clock: None,
             // -- WP TMCORE --
             opener: None,
+            shell_verbs: None, // -- WP UTM --
+            host: None,        // -- WP UB11 --
+            host_wrote: None,
+            shell_run: None,
         };
         live.sync_model();
         live
+    }
+
+    // -- WP UTM --
+    /// Run the shell's verbs ([`SHELL_VERBS`]) on the `:` line with `run`.
+    pub fn set_shell_verbs(&mut self, run: std::rc::Rc<ShellVerbs>) {
+        self.shell_verbs = Some(run);
+    }
+
+    // -- WP UB11 --
+    /// The console core's PRO calls: the Snapshots panel (`N`), Recall and
+    /// A/B from the `:` line, and Settings › Speakers.
+    pub fn set_host(&mut self, host: std::rc::Rc<dyn crate::host::ProHost>) {
+        self.screens.set_host(Some(host.clone()));
+        self.host = Some(host);
+    }
+
+    // -- WP UB11 -- (UXP B11)
+    /// `:snapshot`, `:snapshot recall ID`, `:ab` and `:ab ID` in the
+    /// interface itself: the panel, the core's recall (its way back over
+    /// DSPi Link counts down in the panel) and its compare. The shell's
+    /// forms that wait on standard input (a guard's countdown, the `ab`
+    /// loop) never run under the interface. False: not one of these.
+    fn snapshot_verb(&mut self, session: &mut Session, tokens: &[String]) -> bool {
+        use crate::host::{Recalled, find_snapshot};
+        let Some(host) = self.host.clone() else {
+            return false;
+        };
+        let words: Vec<&str> = tokens.iter().map(String::as_str).collect();
+        let named = |wanted: &str| {
+            host.snapshots()
+                .and_then(|rows| find_snapshot(&rows, wanted))
+        };
+        match words.as_slice() {
+            ["snapshot"] | ["ab"] => self.open_tool(Tool::Snapshots),
+            ["snapshot", "recall", wanted] => match named(wanted) {
+                Err(e) => self.note(e),
+                Ok(row) => {
+                    self.host_wrote = Some(Instant::now());
+                    match host.snapshot_recall(&row.id) {
+                        Ok(Recalled::Done { changes, .. }) => {
+                            self.refresh(session);
+                            self.note(match changes.len() {
+                                0 => format!("Recalled “{}”: nothing differed", row.name),
+                                1 => format!("Recalled “{}”: 1 change", row.name),
+                                n => format!("Recalled “{}”: {n} changes", row.name),
+                            });
+                        }
+                        Ok(Recalled::Guarded(_)) => {
+                            self.refresh(session);
+                            self.open_tool(Tool::Snapshots);
+                        }
+                        Err(e) => self.note(format!("Not recalled: {e}")),
+                    }
+                }
+            },
+            ["snapshot", "recall", ..] => self.note(
+                ":snapshot recall takes a name, a number or an id here; --guard and --no-guard \
+                 are the shell's",
+            ),
+            ["ab", wanted] => match named(wanted).and_then(|row| host.ab_start(&row.id)) {
+                Ok(_) => self.open_tool(Tool::Snapshots),
+                Err(e) => self.note(e),
+            },
+            ["ab", ..] if !words.iter().any(|w| w.starts_with("--keep")) => self.note(
+                "Two snapshots against each other: `uconsole ab A B` in the shell; here N, \
+                 then a, compares the device now with one",
+            ),
+            _ => return false,
+        }
+        true
+    }
+
+    // -- WP UTM --
+    /// Run the shell verb [`Live::shell_run`] holds, with the terminal already
+    /// handed back by the run loop. Answers its exit code.
+    pub fn run_shell_verb(&mut self, words: &[String]) -> u8 {
+        match self.shell_verbs.clone() {
+            Some(run) => run(words, self.target.as_ref()),
+            None => 0,
+        }
+    }
+
+    // -- WP UTM --
+    /// Back from a shell verb: re-read what it may have changed, and say how
+    /// it ended.
+    pub fn shell_verb_done(&mut self, session: &mut Session, words: &[String], code: u8) {
+        self.refresh(session);
+        self.refresh_presets(session);
+        let line = words.join(" ");
+        self.note(if code == 0 {
+            format!("Ran :{line}")
+        } else {
+            format!(":{line} ended with code {code}")
+        });
     }
 
     // -- WP TMCORE --
@@ -927,6 +1162,9 @@ impl Live {
                 clipped: s.is_clipped(ch),
                 inactive,
                 index: ch as u8,
+                // -- WP UTM -- folded as the views that show levels hide it: an
+                // unused output a test signal plays on stays (FIN015 R1)
+                unused: screens::channel_hidden(s, ch),
             };
         let active_inputs = s.meters.active_inputs as usize;
         m.inputs = (0..ni)
@@ -1621,9 +1859,27 @@ impl Live {
             self.app_verb(session, first, &args);
             return;
         }
+        // -- WP UTM -- (UXP A13, C10)
+        if let Some(first) = tokens.first()
+            && SHELL_VERBS.iter().any(|(n, _)| n == first)
+        {
+            // -- WP UB11 -- recall and A/B in the Snapshots panel
+            if self.snapshot_verb(session, &tokens) {
+                return;
+            }
+            self.shell_verb(tokens);
+            return;
+        }
         let refs: Vec<&str> = tokens.iter().map(String::as_str).collect();
         let cmd = match dspi_cmd::parse(&refs, &self.ctx) {
             Ok(c) => c,
+            // -- WP UTM -- (UXP C10) the way on is in here, not in the shell
+            Err(dspi_cmd::ParseError::Unknown(word)) => {
+                self.note(format!(
+                    "No parameter or command called `{word}` · Ctrl-P searches, ? lists the keys"
+                ));
+                return;
+            }
             Err(e) => {
                 self.note(e.to_string());
                 return;
@@ -1697,6 +1953,88 @@ impl Live {
         }
     }
 
+    // -- WP UTM --
+    /// One of the shell's verbs: handed to the run loop, which gives the
+    /// terminal back while it runs. `measure` runs its documents only.
+    fn shell_verb(&mut self, tokens: Vec<String>) {
+        if self.shell_verbs.is_none() {
+            self.note(format!("`{}` only works from the shell", tokens[0]));
+            return;
+        }
+        if tokens[0] == "measure"
+            && !tokens
+                .get(1)
+                .is_some_and(|w| MEASURE_HERE.contains(&w.as_str()))
+        {
+            self.note(format!(
+                ":measure takes {} here; measuring and the auto-tune run as `{} measure`",
+                MEASURE_HERE.join(", "),
+                dspi_cmd::COMMAND
+            ));
+            return;
+        }
+        if tokens.len() == 1 && verb_takes_words(&tokens[0]) && tokens[0] != "ab" {
+            let words = SHELL_VERBS
+                .iter()
+                .find(|(n, _)| *n == tokens[0])
+                .map_or("", |(_, d)| d);
+            self.note(format!(":{} takes words: {words}", tokens[0]));
+            return;
+        }
+        self.shell_run = Some(tokens);
+    }
+
+    // -- WP UTM --
+    /// What a palette find does when it is chosen.
+    fn palette_action(&mut self, session: &mut Session, action: crate::search::Action) {
+        use crate::search::Action;
+        match action {
+            Action::Event(ev) => self.handle_event(session, ev),
+            Action::Line(line) => {
+                self.flush_writes(session, true);
+                self.run_command(session, &line);
+            }
+            Action::Complete(text) => {
+                let mut p = Prompt::new(false, &self.ctx);
+                p.input = text;
+                p.refresh(&self.ctx);
+                self.prompt = Some(p);
+            }
+            Action::Help => self.shell.help = true,
+            Action::Volume => {
+                self.shell.focus = crate::shell::Focus::Footer(crate::shell::FooterRow::Volume)
+            }
+            Action::Crossover => self.open_crossover(session),
+        }
+    }
+
+    // -- WP UTM --
+    /// The selected output's page on its XO tab; the first output in use
+    /// when no output is selected.
+    fn open_crossover(&mut self, session: &mut Session) {
+        let outputs = self.shell.model.outputs.len();
+        if outputs == 0 {
+            self.note("No outputs: no device is open");
+            return;
+        }
+        let o = match self.shell.model.selection {
+            Selection::Output(o) => o,
+            _ => {
+                let ni = usize::from(self.state.caps.num_inputs);
+                (0..outputs)
+                    .find(|o| !screens::channel_unused(&self.state, ni + o))
+                    .unwrap_or(0)
+            }
+        };
+        self.handle_event(session, ShellEvent::Select(Selection::Output(o)));
+        self.shell.focus = crate::shell::Focus::Screen;
+        let x = KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE);
+        let ev = self.shell.detail.handle(x, &self.state);
+        if ev == crate::shell::ScreenEvent::Unhandled {
+            self.note("This device has no crossover tab");
+        }
+    }
+
     /// One of the interface's own verbs: the Console's File, Tools and AutoEQ
     /// menus.
     ///
@@ -1731,6 +2069,8 @@ impl Live {
             },
             // -- WP TMCOREF --
             "unlock" => self.ask_unlock(session),
+            // -- WP UTM --
+            "help" => self.shell.help = true,
             "device" => self.open_device_picker(),
             "subharm" => self.open_tool(Tool::Subharm),
             "autoeq" => match args.first().copied() {
@@ -2162,6 +2502,10 @@ impl Live {
             ShellEvent::Command(c) => self.run_screen_commands(session, &c),
             ShellEvent::Session(req, owner) => {
                 let reply = (req.run)(session);
+                // -- WP UB11 -- the Snapshots panel's writes are the core's
+                if matches!(self.shell.tool, Some((Tool::Snapshots, _))) {
+                    self.host_wrote = Some(Instant::now());
+                }
                 self.refresh(session);
                 let follow = self.shell.deliver(owner, req.tag, reply, &self.state);
                 for ev in follow {
@@ -2342,6 +2686,7 @@ impl Live {
             "autoeq" => self.open_tool(Tool::AutoEq),
             "subharm" => self.open_tool(Tool::Subharm),
             "tube" => self.open_tool(Tool::Tube),
+            "snapshots" => self.open_tool(Tool::Snapshots), // -- WP UB11 --
             "spectrum" => {
                 if !self.shared.borrow().spectrum.engine.supported() {
                     self.connect_analyser(session);
@@ -3079,6 +3424,27 @@ impl Live {
             self.abort_reconnect();
             return;
         }
+        // -- WP UTM -- (UXP A13) Enter in the palette does what the find is
+        if let Some(p) = &self.prompt
+            && p.palette
+            && key.code == KeyCode::Enter
+        {
+            match p.chosen(&self.ctx) {
+                Some(action) => {
+                    self.prompt = None;
+                    self.palette_action(session, action);
+                    return;
+                }
+                // Nothing found and not a command: the no-match line stays.
+                None if p.hits.is_empty() && dspi_cmd::tokenize(&p.input).len() < 2 => {
+                    if p.input.trim().is_empty() {
+                        self.prompt = None;
+                    }
+                    return;
+                }
+                None => {}
+            }
+        }
         if let Some(p) = &mut self.prompt {
             if let Some(line) = p.handle(key, &self.ctx) {
                 self.prompt = None;
@@ -3255,6 +3621,11 @@ impl Live {
             self.refresh_cs_aux(session);
         } else if let Some((_, s)) = self.shell.tool.as_mut() {
             s.poll(session, &self.state);
+            // -- WP UB11 --
+            if s.wants_refresh() {
+                self.host_wrote = Some(Instant::now());
+                self.refresh(session);
+            }
         }
     }
 
@@ -3470,7 +3841,12 @@ impl Live {
             None if fresh && fx.preset_bulk => self.state.mark_saved(),
             _ => {}
         }
-        if let Some((name, words)) = fx.changed_elsewhere {
+        // -- WP UB11 -- not the core writing for the interface just now
+        if let Some((name, words)) = fx.changed_elsewhere
+            && !self
+                .host_wrote
+                .is_some_and(|t| now.saturating_duration_since(t) < HOST_ECHO)
+        {
             self.echo(format!("{} {words}", name.replace('_', " ")));
         }
         // -- WP FIN015 -- an unused output the generator plays on keeps its
@@ -3797,6 +4173,18 @@ pub fn run(mut live: Live, session: &mut Session) -> io::Result<()> {
                 }
                 live.handle_key(session, key);
             }
+            // -- WP UTM -- (UXP A13) a shell verb from the `:` line runs with the
+            // terminal handed back, so its output and its questions are the shell's
+            if let Some(words) = live.shell_run.take() {
+                live.flush_writes(session, true);
+                ratatui::restore();
+                println!("\r\n:{}", words.join(" "));
+                let code = live.run_shell_verb(&words);
+                back_to_the_interface(code)?;
+                terminal = ratatui::try_init()?;
+                terminal.clear()?;
+                live.shell_verb_done(session, &words, code);
+            }
             // The event wait is shorter than the write interval, so a held
             // write goes out on time.
             live.flush_writes(session, false);
@@ -3831,6 +4219,22 @@ pub fn run(mut live: Live, session: &mut Session) -> io::Result<()> {
     })();
     ratatui::restore();
     result
+}
+
+// -- WP UTM --
+/// After a shell verb: wait for Enter, so its output can be read before the
+/// interface covers it.
+fn back_to_the_interface(code: u8) -> io::Result<()> {
+    use std::io::Write;
+    let mut out = io::stdout();
+    if code != 0 {
+        writeln!(out, "(exit code {code})")?;
+    }
+    write!(out, "\nPress Enter to go back to the interface ")?;
+    out.flush()?;
+    let mut line = String::new();
+    io::stdin().read_line(&mut line)?;
+    Ok(())
 }
 
 /// The connect animation: the curve draws left to right over `REVEAL`, the
@@ -4028,6 +4432,24 @@ mod tests_wp_r1 {
             std::thread::sleep(Duration::from_millis(10));
         }
         assert_eq!(l.shell.model.echo, "settings changed elsewhere");
+    }
+
+    // -- WP UB11 --
+    /// The core's write for the interface (a recall, an A/B switch from the
+    /// Snapshots panel) comes back as a bulk apply: it is not someone else's.
+    #[test]
+    fn ub11_the_cores_write_for_the_interface_is_not_a_change_elsewhere() {
+        let (mut l, mut s, r) = on_demo();
+        l.host_wrote = Some(Instant::now());
+        r.load_image(r.image(), nfy::PARAM_SRC_BULK_SET as u8);
+        let deadline = Instant::now() + Duration::from_millis(800);
+        while Instant::now() < deadline {
+            let notes = l.notes.take();
+            l.tick(&mut s, notes.as_ref());
+            l.notes = notes;
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_ne!(l.shell.model.echo, "settings changed elsewhere");
     }
 
     #[test]
@@ -4873,6 +5295,203 @@ mod tests {
         p.refresh(&l.ctx);
         let offered: Vec<&str> = p.candidates.iter().map(|c| c.value.as_str()).collect();
         assert!(offered.contains(&"import") && offered.contains(&"import-config"));
+    }
+
+    // -- WP UTM -- (UXP A13)
+    fn palette(l: &mut Live, s: &mut Session, query: &str) {
+        l.handle_key(s, KeyEvent::new(KeyCode::Char('p'), KeyModifiers::CONTROL));
+        assert!(l.prompt.as_ref().is_some_and(|p| p.palette));
+        for c in query.chars() {
+            l.handle_key(s, key(KeyCode::Char(c)));
+        }
+    }
+
+    /// "crossover" in the palette, Enter: an output's page on its XO tab.
+    #[test]
+    fn utm_the_palette_opens_the_crossover() {
+        let (mut l, mut s, _) = console();
+        palette(&mut l, &mut s, "crossover");
+        l.handle_key(&mut s, key(KeyCode::Enter));
+        assert!(l.prompt.is_none());
+        assert!(matches!(l.shell.model.selection, Selection::Output(_)));
+        assert_eq!(l.shell.focus, crate::shell::Focus::Screen);
+        let tabs = l.shell.detail.actions(&l.state);
+        assert!(
+            tabs.contains(&("XO".to_string(), false)),
+            "the XO tab is the one showing: {tabs:?}"
+        );
+    }
+
+    /// "mute" in the palette, Enter: the listening volume's mute.
+    #[test]
+    fn utm_the_palette_mutes() {
+        let (mut l, mut s, log) = live();
+        palette(&mut l, &mut s, "mute");
+        l.handle_key(&mut s, key(KeyCode::Enter));
+        assert!(
+            log.lock()
+                .unwrap()
+                .iter()
+                .any(|e| e.opcode == op::REQ_SET_USER_MUTE),
+            "a mute on the wire"
+        );
+    }
+
+    /// Nothing found: the palette says so and stays open on Enter.
+    #[test]
+    fn utm_the_palette_says_when_nothing_matches() {
+        let (mut l, mut s, _) = live();
+        palette(&mut l, &mut s, "zzzz");
+        let p = l.prompt.as_ref().unwrap();
+        assert_eq!(p.candidates.len(), 1);
+        assert!(p.candidates[0].detail.starts_with("No match for"), "{p:?}");
+        l.handle_key(&mut s, key(KeyCode::Enter));
+        assert!(l.prompt.is_some(), "Enter on nothing keeps the palette");
+    }
+
+    /// A whole command typed into the palette still runs.
+    #[test]
+    fn utm_a_command_typed_into_the_palette_still_runs() {
+        let (mut l, mut s, log) = live();
+        palette(&mut l, &mut s, "bypass on");
+        l.handle_key(&mut s, key(KeyCode::Enter));
+        assert!(
+            log.lock()
+                .unwrap()
+                .iter()
+                .any(|e| e.opcode == op::REQ_SET_BYPASS)
+        );
+    }
+
+    /// A parameter goes to the `:` line for its value.
+    #[test]
+    fn utm_a_parameter_found_goes_to_the_command_line() {
+        let (mut l, mut s, _) = live();
+        palette(&mut l, &mut s, "vol.mute");
+        l.handle_key(&mut s, key(KeyCode::Enter));
+        let p = l.prompt.as_ref().expect("the : line");
+        assert!(!p.palette);
+        assert_eq!(p.input, "vol.mute ");
+    }
+
+    /// UXP A14 with FIN015 R1: an unused output folds in the sidebar, unless
+    /// a test signal plays on it (an output that plays is never hidden).
+    #[test]
+    fn utm_the_sidebar_folds_an_unused_output_unless_it_plays() {
+        let (mut l, _, _) = live();
+        let ni = usize::from(l.state.caps.num_inputs);
+        let o = (0..l.shell.model.outputs.len())
+            .find(|o| screens::channel_unused(&l.state, ni + o))
+            .expect("the packet has an unused output");
+        assert!(l.shell.model.outputs[o].unused);
+        l.state.siggen_outputs = 1 << o;
+        l.sync_model();
+        assert!(!l.shell.model.outputs[o].unused, "it plays: not folded");
+    }
+
+    /// `:help` is `?`.
+    #[test]
+    fn utm_help_on_the_command_line_opens_the_keys() {
+        let (mut l, mut s, _) = live();
+        l.run_command(&mut s, "help");
+        assert!(l.shell.help);
+    }
+
+    /// UXP C10: the shell's verbs run on this device, through the embedder,
+    /// instead of "Try `uconsole params`".
+    #[test]
+    fn utm_the_shell_verbs_run_inside_the_interface() {
+        let (mut l, mut s, _) = live();
+        l.run_command(&mut s, "snapshot list");
+        assert!(l.shell_run.is_none());
+        assert_eq!(
+            l.shell.model.status.as_deref(),
+            Some("`snapshot` only works from the shell"),
+            "no embedder, no verb"
+        );
+        let ran = std::rc::Rc::new(std::cell::RefCell::new(Vec::<String>::new()));
+        let seen = std::rc::Rc::clone(&ran);
+        l.set_shell_verbs(std::rc::Rc::new(move |w: &[String], _: Option<&Target>| {
+            seen.borrow_mut().extend(w.iter().cloned());
+            0
+        }));
+        l.run_command(&mut s, "snapshot list");
+        let words = l.shell_run.take().expect("handed to the run loop");
+        assert_eq!(words, ["snapshot", "list"]);
+        assert_eq!(l.run_shell_verb(&words), 0);
+        assert_eq!(*ran.borrow(), ["snapshot", "list"]);
+        l.shell_verb_done(&mut s, &words, 0);
+        assert_eq!(l.shell.model.status.as_deref(), Some("Ran :snapshot list"));
+        // Measuring stays a one-shot; the documents run here.
+        l.run_command(&mut s, "measure run");
+        assert!(l.shell_run.is_none());
+        l.run_command(&mut s, "measure docs");
+        assert!(l.shell_run.is_some());
+    }
+
+    /// UXP B11: recall and A/B on the `:` line run in the interface (the
+    /// Snapshots panel, the core's calls), never as the shell's verbs that
+    /// wait on standard input under the interface.
+    #[test]
+    fn ub11_recall_and_ab_on_the_command_line_stay_in_the_interface() {
+        use crate::screens::snapshots::tests::FakeHost;
+        let (mut l, mut s, _) = console();
+        l.set_shell_verbs(std::rc::Rc::new(|_: &[String], _: Option<&Target>| 0));
+        let host = std::rc::Rc::new(FakeHost::two());
+        l.set_host(host.clone());
+        l.run_command(&mut s, "snapshot recall s1");
+        assert!(l.shell_run.is_none(), "not the shell's recall");
+        assert_eq!(*host.recalled.borrow(), ["s1"]);
+        assert_eq!(
+            l.shell.model.status.as_deref(),
+            Some("Recalled “Before tuning”: 2 changes")
+        );
+        l.run_command(&mut s, "snapshot recall Nowhere");
+        assert!(l.shell_run.is_none());
+        let said = l.shell.model.status.clone().unwrap_or_default();
+        assert!(said.starts_with("No snapshot called “Nowhere”"), "{said}");
+        // `ab N`: the device now against the first in the list, in the panel
+        l.run_command(&mut s, "ab 1");
+        assert!(l.shell_run.is_none());
+        assert!(host.ab.borrow().active);
+        assert_eq!(host.ab.borrow().b_name, "After EQ");
+        assert!(matches!(l.shell.tool, Some((Tool::Snapshots, _))));
+        // two snapshots against each other: said, not run
+        l.run_command(&mut s, "ab s1 s2");
+        assert!(l.shell_run.is_none());
+        // the forms that print and end are still the shell's
+        l.run_command(&mut s, "snapshot list");
+        assert_eq!(
+            l.shell_run.take().as_deref(),
+            Some(&["snapshot".to_string(), "list".to_string()][..])
+        );
+        // and N opens the panel
+        assert_eq!(Tool::from_key('N'), Some(Tool::Snapshots));
+    }
+
+    /// UXP C10: an unknown word points inside, not at the shell.
+    #[test]
+    fn utm_an_unknown_word_points_to_search_and_help() {
+        let (mut l, mut s, _) = live();
+        l.run_command(&mut s, "speakers");
+        let said = l.shell.model.status.clone().unwrap_or_default();
+        assert!(said.contains("Ctrl-P searches"), "{said}");
+        assert!(!said.contains("params"), "{said}");
+    }
+
+    /// UXP A13: `1k` on the `:` line.
+    #[test]
+    fn utm_the_command_line_takes_k() {
+        let (mut l, mut s, log) = live();
+        l.run_command(&mut s, "eq in.1 1 peak 1k 1.4 -3");
+        assert!(
+            log.lock()
+                .unwrap()
+                .iter()
+                .any(|e| e.opcode == op::REQ_SET_EQ_PARAM),
+            "{:?}",
+            l.shell.model.status
+        );
     }
 
     #[test]
@@ -6292,6 +6911,10 @@ mod tests {
             q
         };
         let delay = Duration::from_millis(200);
+        // -- INT016 -- (FIN015's load flake) the clock starts before the pusher
+        // does: the event comes at least `delay` after `start`, however late
+        // this thread gets to the reset
+        let start = Instant::now();
         let pusher = std::thread::spawn(move || {
             std::thread::sleep(delay);
             queue
@@ -6300,7 +6923,6 @@ mod tests {
                 .push_back(event(BULK_INVALIDATED, 1, FROM_FACTORY));
         });
         dirty(&mut l);
-        let start = Instant::now();
         l.factory_reset(&mut s);
         assert!(start.elapsed() >= delay, "returned before the reset ended");
         pusher.join().unwrap();

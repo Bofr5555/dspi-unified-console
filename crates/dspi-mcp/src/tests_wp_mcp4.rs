@@ -33,7 +33,7 @@ struct Rig {
 
 fn rig_with(limits: HttpLimits) -> Rig {
     let set = CoreSet::new();
-    let id = set.open(DeviceTarget::Demo).unwrap();
+    let id = set.open(DeviceTarget::DemoBlank).unwrap(); // -- WP UB12 --
     let core = set.core(&id).unwrap();
     let policy = Arc::new(AgentPolicy::new(ConfirmMode::AskRisky));
     let server = Server::new(
@@ -142,17 +142,17 @@ fn until(what: &str, mut f: impl FnMut() -> bool) {
     }
 }
 
-/// Wait for `n` confirmations; their ids.
+/// Wait for `n` confirmations, sealed as the app shows them (-- FIX016 --:
+/// an answer before that is refused); their ids.
 fn waiting(r: &Rig, n: usize) -> Vec<u64> {
     let mut ids = Vec::new();
     until(&format!("{n} confirmations"), || {
-        ids = r
-            .http
-            .confirmations()
+        let rows = r.http.confirmations();
+        ids = rows
             .iter()
             .map(|c| c["confirmation_id"].as_u64().unwrap())
             .collect();
-        ids.len() == n
+        ids.len() == n && rows.iter().all(|c| c["sealed"] == json!(true))
     });
     ids
 }
@@ -192,8 +192,12 @@ fn wp_mcp4_a_held_call_is_answered_by_allow_and_deny_and_blocks_no_connection() 
         let (status, body) = reply(send(&r, &json!(1), "tools/list", json!({})));
         assert_eq!(status, 200, "{body}");
     }
-    // A fourth question of the same agent's is refused, not asked.
-    let (_, body) = reply(louder(&r, -8.5));
+    // -- WP UB5 -- A fourth question of the same agent's is asked too (8 wait
+    // at most, tests_wp_mcp2a); denied, it ends with nothing changed.
+    let fourth = louder(&r, -8.5);
+    let ids = waiting(&r, 4);
+    r.http.answer_confirmation(ids[3], false).unwrap();
+    let (_, body) = reply(fourth);
     assert_eq!(body["result"]["isError"], json!(true), "{body}");
 
     let ids = waiting(&r, 3);
@@ -455,7 +459,7 @@ fn wp_mcp4_a_listener_may_answer_and_stop_from_an_event() {
     // The app's listener only queues; a listener that calls back at once must
     // not deadlock either, on whichever thread the event came.
     let set = CoreSet::new();
-    let id = set.open(DeviceTarget::Demo).unwrap();
+    let id = set.open(DeviceTarget::DemoBlank).unwrap(); // -- WP UB12 --
     let core = set.core(&id).unwrap();
     core.set_output_gain(1, -12.0).unwrap();
     let policy = Arc::new(AgentPolicy::new(ConfirmMode::AskRisky));
@@ -475,6 +479,9 @@ fn wp_mcp4_a_listener_may_answer_and_stop_from_an_event() {
             if let (Event::ConfirmationsChanged, Some(http)) = (e, http) {
                 for c in http.confirmations() {
                     let id = c["confirmation_id"].as_u64().unwrap();
+                    // -- FIX016 -- (R2) once its sheet may show: sealed
+                    let seals = c["seals_in_ms"].as_u64().unwrap_or(0);
+                    std::thread::sleep(Duration::from_millis(seals + 20));
                     let _ = http.answer_confirmation(id, true);
                 }
                 if seen.fetch_add(1, Ordering::SeqCst) >= 1 {
@@ -549,7 +556,7 @@ fn wp_mcp4_the_changes_in_words() {
 fn wp_mcp4_the_holds_lapse_and_the_released_one_is_pruned() {
     // Sans-IO: release, then the lapse, and nothing left to resume.
     let set = CoreSet::new();
-    set.open(DeviceTarget::Demo).unwrap();
+    set.open(DeviceTarget::DemoBlank).unwrap(); // -- WP UB12 --
     let mut s = Server::new(
         set,
         ServerConfig {

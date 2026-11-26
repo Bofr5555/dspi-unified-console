@@ -13,11 +13,16 @@ export interface Curves {
   chains: number[][];
   /** The edited channel's bands, each alone. */
   bands: BandCurve[];
+  /** -- WP GAP1 -- The edited channel's phase in degrees, when asked. */
+  phase?: number[];
 }
 
 export interface CurveRequest {
   chains: FilterParams[][];
   bands: FilterParams[];
+  /** -- WP GAP1 -- Ask for the first chain's phase too (continuous with `unwrap`). */
+  phase?: boolean;
+  unwrap?: boolean;
 }
 
 /** The core's grid, once per session. */

@@ -4151,6 +4151,23 @@ bool dspi_set_output_gain(struct FfiCore *core, uint8_t output, float db);
 bool dspi_set_output_mute(struct FfiCore *core, uint8_t output, bool muted);
 
 /**
+ * Solo an output (0-based): every other output is muted on the device only,
+ * until `dspi_solo_end`. A listening state: never saved, not an undo step;
+ * the state's mutes stay the user's. Another output moves the solo.
+ */
+bool dspi_solo_output(struct FfiCore *core, uint8_t output);
+
+/**
+ * End the solo: unmute what it muted. True with no solo.
+ */
+bool dspi_solo_end(struct FfiCore *core);
+
+/**
+ * The soloed output (0-based), -1 with none. No I/O.
+ */
+int32_t dspi_solo_state(struct FfiCore *core);
+
+/**
  * Set an output's delay, in ms.
  */
 bool dspi_set_output_delay(struct FfiCore *core, uint8_t output, float ms);
@@ -4817,6 +4834,15 @@ uint32_t dspi_ab_start_documents(struct FfiCore *core,
 uint32_t dspi_ab_toggle(struct FfiCore *core, char *buf, uint32_t len);
 
 /**
+ * Start an A/B compare of the active preset as saved on the device (A)
+ * against the device now (B), and recall A: only what a preset holds
+ * differs, the listening volume stays as it is. JSON: the compare
+ * (`saved` true), or a failure (`invalid` when the saved settings are not
+ * known).
+ */
+uint32_t dspi_ab_start_saved(struct FfiCore *core, char *buf, uint32_t len);
+
+/**
  * What differs from A to B: `dspi_config_diff`'s JSON for the pair, or a
  * failure with no compare running.
  */
@@ -4899,8 +4925,24 @@ void dspi_bootloader_counts(uint32_t *rp2040, uint32_t *rp2350);
 
 /**
  * Open the demo device, a simulated DSPi, in place of any open device.
+ * It runs a tuned example (a stereo two-way on outputs 1-4, its roles
+ * confirmed).
  */
 bool dspi_open_demo(struct FfiCore *core);
+
+/**
+ * Open the demo device as the bundled capture left it (no filters, nothing
+ * named, no speaker layout), in place of any open device: for tests of a
+ * new board.
+ */
+bool dspi_open_demo_blank(struct FfiCore *core);
+
+/**
+ * "Reset Demo": the open demo device runs the settings it opened with again,
+ * with nothing unsaved and its roles the example's again; the device stays
+ * open. False, with the error kept, on anything but the demo device.
+ */
+bool dspi_reset_demo(struct FfiCore *core);
 
 /**
  * What the extension channel offers on the open device, in JSON:
@@ -8466,7 +8508,8 @@ void dspi_core_set_free(struct FfiCoreSet *set);
 
 /**
  * Open the device `target` names on a core of its own and add it to the set.
- * `target` is JSON: `{"kind": "demo"}`, `{"kind": "usb", "serial"}`,
+ * `target` is JSON: `{"kind": "demo"}` (the tuned example), `{"kind":
+ * "demoBlank"}` (the demo as a new board), `{"kind": "usb", "serial"}`,
  * `{"kind": "document", "text", "fileName"}`, or (with Link) `{"kind": "hub",
  * "url", "hubId", "serial", "clientName", "appVersion", "credential",
  * "tlsAdvertised"}`: a unit behind a hub on its own session, with a credential
@@ -8597,7 +8640,7 @@ void dspi_mcp_free(struct FfiMcp *mcp);
 
 /**
  * Start listening for AI agents. `config_json`: `{"port": 47860, "storeDir":
- * "<the app's folder>", "appVersion": "0.15.0", "templateDir": "<the user's
+ * "<the app's folder>", "appVersion": "0.16.0", "templateDir": "<the user's
  * templates>", "measuring": true}`, each optional (without a folder the
  * clients last only for this run; -- WP MCP5 -- `measuring`: the app runs
  * the agents' measurement requests, `dspi_mcp_measure_*`; -- WP FEAT2 --

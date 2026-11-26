@@ -611,6 +611,20 @@ impl LayoutSlot {
         store.memory.push(layout.clone());
         Ok(())
     }
+
+    // -- WP UB12 --
+    /// Keep no layout for `serial` (the blank demo's: the example's roles do
+    /// not stand on it). A file that cannot be removed is logged.
+    pub(crate) fn forget(&self, serial: &str) {
+        let mut store = self.store();
+        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+        if let Some(dir) = &store.dir
+            && let Err(e) = files::remove(dir, serial)
+        {
+            log::warn!("the speaker layout could not be removed: {e}");
+        }
+        store.memory.retain(|l| l.serial != serial);
+    }
 }
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
@@ -654,6 +668,14 @@ mod files {
                 let _ = fs::rename(&path, path.with_extension("json.bad"));
                 None
             }
+        }
+    }
+
+    // -- WP UB12 --
+    pub(super) fn remove(root: &Path, serial: &str) -> io::Result<()> {
+        match fs::remove_file(root.join(dir_name(serial)).join(FILE)) {
+            Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
+            _ => Ok(()),
         }
     }
 
@@ -772,12 +794,16 @@ impl DspiCore {
     /// lacks, more than 16, or a speaker name over 64 characters (nothing
     /// kept); [`DspiError::Io`] when the file cannot be written;
     /// [`DspiError::ConfirmationRequired`] `user_only` inside another actor's
-    /// [`crate::actor::ActorScope`] (WP INT1).
+    /// [`crate::actor::ActorScope`] (WP INT1); -- FIX016 -- (REVG R4)
+    /// [`DspiError::InstallerLock`] in the locked-user state (the console's
+    /// lock or the hub's), as any write but those the lock lets through: the
+    /// roles are what the tweeter guards trust.
     pub fn speaker_layout_set(&self, layout: SpeakerLayout) -> Result<SpeakerLayout> {
         // -- WP INT1 -- only the user sets it (also on an agent's import)
         crate::actor::user_only(self, "The speaker layout")?;
         let (serial, outputs) = {
             let mut inner = self.lock();
+            crate::limits::lock_check_any(&mut inner)?; // -- FIX016 -- (REVG R4)
             let serial = inner.conn()?.serial.clone();
             (serial, inner.state.num_output_channels)
         };
@@ -896,7 +922,9 @@ impl DspiCore {
     /// [`DspiError::InvalidArgument`] for no rows, no words, words over
     /// [`MAX_WORDS_CHARS`], a confirmed layout without `what_changed`, or
     /// the rows' faults of [`DspiCore::speaker_layout_set`] (nothing kept);
-    /// [`DspiError::Io`] when the file cannot be written.
+    /// [`DspiError::Io`] when the file cannot be written;
+    /// [`DspiError::InstallerLock`] in the locked-user state, as
+    /// [`DspiCore::speaker_layout_set`] (-- FIX016 -- REVG R4).
     pub fn speaker_roles_state(
         &self,
         rows: Vec<SpeakerLayoutOutput>,
@@ -906,6 +934,7 @@ impl DspiCore {
         let actor = crate::actor::JobActor::capture(self).actor();
         let (serial, outputs) = {
             let mut inner = self.lock();
+            crate::limits::lock_check_any(&mut inner)?; // -- FIX016 -- (REVG R4)
             let serial = inner.conn()?.serial.clone();
             (serial, inner.state.num_output_channels)
         };
@@ -1177,3 +1206,6 @@ mod tests_wp_adets;
 // -- WP REVDFIX --
 #[cfg(test)]
 mod tests_wp_revdfix;
+// -- FIX016 --
+#[cfg(test)]
+mod tests_fix016_r4;

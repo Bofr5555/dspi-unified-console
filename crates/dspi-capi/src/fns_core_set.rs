@@ -127,6 +127,7 @@ fn field(v: &Value, name: &str) -> String {
 fn target(v: &Value) -> Result<DeviceTarget, String> {
     match v.get("kind").and_then(Value::as_str) {
         Some("demo") => Ok(DeviceTarget::Demo),
+        Some("demoBlank") => Ok(DeviceTarget::DemoBlank), // -- WP UB12 --
         Some("usb") => match field(v, "serial") {
             s if s.is_empty() => Err("a USB target needs its serial".into()),
             serial => Ok(DeviceTarget::Usb { serial }),
@@ -248,7 +249,8 @@ fn close(s: &FfiCoreSet, id: &DeviceId) -> Result<(), CoreSetError> {
 }
 
 /// Open the device `target` names on a core of its own and add it to the set.
-/// `target` is JSON: `{"kind": "demo"}`, `{"kind": "usb", "serial"}`,
+/// `target` is JSON: `{"kind": "demo"}` (the tuned example), `{"kind":
+/// "demoBlank"}` (the demo as a new board), `{"kind": "usb", "serial"}`,
 /// `{"kind": "document", "text", "fileName"}`, or (with Link) `{"kind": "hub",
 /// "url", "hubId", "serial", "clientName", "appVersion", "credential",
 /// "tlsAdvertised"}`: a unit behind a hub on its own session, with a credential

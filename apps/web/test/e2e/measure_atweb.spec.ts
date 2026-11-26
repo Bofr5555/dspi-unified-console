@@ -17,7 +17,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { expectPage, openPage, partsOf, rail as sections } from "../nav"; // -- WP WEBM3 -- partsOf; -- WP INTD -- expectPage
+import { expectPage, openPage, partsOf, rail as sections, openOnHub } from "../nav"; // -- WP WEBM3 -- partsOf; -- WP INTD -- expectPage; -- WP UB6 -- openOnHub
 
 test.skip(({ browserName }) => browserName === "webkit", "Chromium and Firefox only");
 // Chromium's headless shell has no getUserMedia: the full Chromium, headless (as P5WMS).
@@ -54,22 +54,12 @@ async function measureHub(extra: string[], pairing = false): Promise<OwnHub> {
   return { port, pin, child };
 }
 
-const picker = (page: Page) => page.getByRole("navigation", { name: "DSPi devices" });
 
 /** Connect the serving hub, pair (`pair`), open unit `serial`'s session. */
 async function openUnit(page: Page, hub: OwnHub, serial: string, pair = !!hub.pin): Promise<Locator> {
   await page.goto(`http://127.0.0.1:${hub.port}/console/`);
-  const row = picker(page).getByRole("listitem").filter({ hasText: `Hub 127.0.0.1:${hub.port}` });
-  await row.getByRole("button", { name: "Connect" }).click();
-  const session = page.getByRole("article").last();
-  if (pair) {
-    await session.getByLabel("PIN").fill(hub.pin);
-    await session.getByRole("button", { name: "Pair" }).click();
-  }
-  // The list shows a serial's last 8 characters.
-  const entry = session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: serial.slice(-8) });
-  await entry.getByRole("button", { name: "Open" }).click();
-  await expect(session).toHaveAttribute("data-serial", new RegExp(serial));
+  // -- WP UB6 -- the Fleet's Open, or (a hub that wants its PIN) its entry, the PIN and its list
+  const session = await openOnHub(page, { host: `127.0.0.1:${hub.port}`, serial: serial, pin: pair ? hub.pin : undefined });
   const rail = session.getByRole("complementary", { name: "Status" });
   await expect(rail.getByLabel("Connection")).toHaveText(/^Connected/);
   await expect(session.locator(".banner")).toHaveCount(0);

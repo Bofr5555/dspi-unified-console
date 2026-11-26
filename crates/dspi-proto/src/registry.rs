@@ -4363,7 +4363,7 @@ mod tests {
         );
         assert!(eq_field_fits("eq.gain", 0, bell).is_ok());
         let e = eq_field_fits("eq.fp", 0, bell).unwrap_err();
-        assert!(e.contains("Peaking") && e.contains("eq.type"), "{e}");
+        assert!(e.contains("Bell") && e.contains("eq.type"), "{e}"); // -- INT016 -- (A10)
         assert!(eq_field_fits("eq.qp", 20, FilterType::from_raw(34)).is_err());
         for path in ["eq.type", "eq.freq", "eq.q", "eq.bypass"] {
             assert!(eq_field_fits(path, 0, lt).is_ok() && eq_field_fits(path, 0, bell).is_ok());

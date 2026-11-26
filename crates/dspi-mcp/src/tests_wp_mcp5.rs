@@ -17,6 +17,7 @@ use dspi_core::{
 };
 use serde_json::{Value, json};
 
+use crate::confirm::GROUP_QUIET_MS; // -- FIX016 -- (R2) an answer waits for the sheet
 use crate::policy::{AgentPolicy, ConfirmMode};
 use crate::rate::RateLimit;
 use crate::tools::measure::{self, LAYOUT_TEXT, REQUEST_TTL_MS};
@@ -70,7 +71,8 @@ pub(crate) fn held_at(s: &mut Server, c: ClientId, now: u64, tool: &str, args: V
 fn allowed(s: &mut Server, c: ClientId, now: u64, tool: &str, args: Value) -> Value {
     let id = held_at(s, c, now, tool, args);
     let risks = s.confirmation(id).unwrap().to_json();
-    s.answer_confirmation(id, true, now).unwrap();
+    s.answer_confirmation(id, true, now + GROUP_QUIET_MS)
+        .unwrap();
     let r = ok_at(
         s,
         c,
@@ -112,7 +114,7 @@ fn settle(core: &DspiCore) {
 /// 3 kHz), ready to measure, its simulated microphone on.
 pub(crate) fn demo() -> (Arc<CoreSet>, DeviceId, Arc<DspiCore>) {
     let set = CoreSet::new();
-    let id = set.open(DeviceTarget::Demo).unwrap();
+    let id = set.open(DeviceTarget::DemoBlank).unwrap(); // -- WP UB12 --
     let core = set.core(&id).unwrap();
     core.fetch_all().unwrap();
     core.set_user_volume(-20.0).unwrap();
@@ -338,7 +340,8 @@ fn wp_mcp5_the_demo_simulation_end_to_end() {
         let cid = apply["structuredContent"]["confirmation_id"]
             .as_u64()
             .unwrap();
-        s.answer_confirmation(cid, true, now).unwrap();
+        s.answer_confirmation(cid, true, now + GROUP_QUIET_MS)
+            .unwrap();
         let r = ok_at(
             &mut s,
             c,
@@ -724,7 +727,7 @@ fn wp_mcp5_test_signals_follow_the_setting_and_the_hard_rules_stay() {
         let id = held_at(&mut s, c, 0, "dspi_measure_start", args.clone());
         let risks = s.confirmation(id).unwrap().to_json();
         assert_eq!(risks["risks"][0]["kind"], json!("test_signal"), "{risks}");
-        s.answer_confirmation(id, false, 0).unwrap();
+        s.answer_confirmation(id, false, GROUP_QUIET_MS).unwrap();
         assert!(
             s.measure_requests().is_empty(),
             "Deny asks nothing of the app"
@@ -1091,7 +1094,7 @@ fn wp_ffix_the_status_mark_changes_when_the_app_takes_the_request() {
 fn wp_ffix_a_second_measurement_on_another_device_is_busy() {
     let (set, id1, core) = demo();
     layout(&core, true);
-    let id2 = set.open(DeviceTarget::Demo).unwrap();
+    let id2 = set.open(DeviceTarget::DemoBlank).unwrap(); // -- WP UB12 --
     let core2 = set.core(&id2).unwrap();
     core2.fetch_all().unwrap();
     layout(&core2, true);

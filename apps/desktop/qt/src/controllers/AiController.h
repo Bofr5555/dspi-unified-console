@@ -73,7 +73,9 @@ class AiController : public QObject {
     // The relay that asks to pair: { id, name, code, secondsLeft }, {} for none
     Q_PROPERTY(QVariantMap pairing READ pairing NOTIFY pairingChanged)
     // The changes that wait for the user, oldest first: [{ id, client, title,
-    // device, risks: [text], riskLines: [text with its kind's label] }]
+    // device, risks: [text], riskLines: [text with its kind's label], group (-- WP UB5 --
+    // the server's group: the questions one agent raised together, one sheet) }]; only
+    // groups the server has sealed, which take no more questions
     Q_PROPERTY(QVariantList confirmations READ confirmations NOTIFY confirmationsChanged)
     // How long the oldest of them waits for the answer still
     Q_PROPERTY(int confirmationSecondsLeft READ confirmationSecondsLeft NOTIFY secondsChanged)
@@ -98,6 +100,14 @@ class AiController : public QObject {
     // Centre · Demo"), device (the title), deviceId, elsewhere (that device is open
     // but not the one shown), job (a measurement of an agent's plays) }
     Q_PROPERTY(QVariantMap work READ work NOTIFY workChanged)
+    // -- WP UAG -- (UXP A7) the console's newest refusal of an agent's call, for a few
+    // seconds: { agent, text ("Kept Right tweeter's high-pass at 1 kHz"), device }; {} for none
+    Q_PROPERTY(QVariantMap refusal READ refusal NOTIFY refusalChanged)
+    // -- WP UB5 -- (UXP B5) What agents changed that is not saved on the device yet, while
+    // agents are on: { agent, count (settings), devices (how many), text ("Changed 12
+    // settings, not saved yet"), save (the button's word) }; {} for none. It goes when the
+    // device is saved, its preset loaded or its changes put back, or the device closes.
+    Q_PROPERTY(QVariantMap unsaved READ unsaved NOTIFY unsavedChanged)
     // What agents changed in the last moments: [{ device, path, indices }]
     Q_PROPERTY(QVariantList recentTouches READ recentTouches NOTIFY recentTouchesChanged)
     Q_PROPERTY(QString url READ url NOTIFY settingsChanged)
@@ -238,6 +248,9 @@ public:
     static QString riskLabel(const QString &kind);
     // The answer to confirmation `id`. Allow runs the agent's call.
     Q_INVOKABLE void answer(double id, bool allow);
+    // -- WP UB5 -- (UXP D2) one answer for the questions of a sheet: exactly `ids`, each marked
+    // answered before any is sent, so the sheet never shows a part of them meanwhile
+    Q_INVOKABLE void answerAll(const QVariantList &ids, bool allow);
     // Undoes what the activity's row `key` changed, as the user; or every row's,
     // newest first
     Q_INVOKABLE void undo(const QString &key);
@@ -256,6 +269,12 @@ public:
     // -- WP AIVIS --
     bool working() const { return m_working; }
     QVariantMap work() const { return m_workShown; }
+    QVariantMap refusal() const { return m_refusal; }   // -- WP UAG --
+    QVariantMap unsaved() const;   // -- WP UB5 --
+    // -- WP UB5 -- Save to Device for `unsaved`: that device's save question, or Save All's
+    // with more than one
+    Q_INVOKABLE void saveUnsaved();
+    static constexpr int kRefusalMs = 4000;               // -- WP UAG -- how long the strip says it
     QVariantList recentTouches() const;
     // The device the strip is about becomes the one shown; its agent's measurement
     // stops (as the Measure view's Stop does)
@@ -323,6 +342,7 @@ public:
 
 signals:
     void rememberedChanged();   // -- WP FEATUI --
+    void unsavedChanged();      // -- WP UB5 --
     void stateChanged();
     void settingsChanged();
     void clientsChanged();
@@ -340,6 +360,7 @@ signals:
     void deviceRequested(const QJsonObject &ticket);
     // -- WP AIVIS --
     void workChanged();
+    void refusalChanged();   // -- WP UAG --
     void recentTouchesChanged();
     // An agent changed `path` at `indices` on `device` (a DeviceRegistry id)
     void touched(const QString &device, const QString &path, const QVariantList &indices);
@@ -431,12 +452,30 @@ private:
         QString warning;         // -- WP ADETQ -- the server's warning on the mechanism, "" for none
         QVariantList roleCells;  // -- WP ROLES -- speaker roles from the person's words: output, speaker, role per row
         QString rolesAfter;      // -- WP ROLES -- the question's words after the table
+        // -- WP UAG -- (UXP A6) the change in the screen's words: the heading, the whole call, a flash write
+        QString heading;
+        QVariantList batch;      // {said, risky} per row, the asked ones first
+        bool flash = false;      // written to the device's memory: no Undo
+        qint64 askedMs = 0;      // -- WP UAG -- (UXP D2) when, on the server's clock
+        quint64 group = 0;       // -- WP UB5 -- (UXP D2) the server's group: one sheet, sealed before it is read
         QDateTime ends;
         bool operator==(const Waiting &o) const { return id == o.id; }   // a question never changes
     };
     QList<Waiting> m_waiting;
     QString grantText(const Waiting &w) const;   // -- WP ODEC --, ADETQ
+    static QString questionHeading(const QString &client, const QString &kind, const QString &channel,
+                                   const QString &device);   // -- WP UAG --
     QSet<quint64> m_answered;   // answered here, not read as ended yet
+    QTimer m_sealTimer;         // -- WP UB5 -- reads the questions again once their group seals
+    // -- WP UB5 -- (UXP B5) by device id: the settings agents changed there since it was last
+    // clean (path and indices), the newest agent's name, and whether its preset was seen unsaved
+    struct AgentUnsaved {
+        QString agent;
+        QSet<QString> keys;
+        bool dirtySeen = false;
+    };
+    QHash<QString, AgentUnsaved> m_agentUnsaved;
+    void noteUnsaved();
     QJsonArray m_activity;      // oldest first, as the server gives it
     QHash<QString, QPair<QString, QString>> m_undo;   // row key: its undo state and note
     QStringList m_undoQueue;
@@ -468,6 +507,9 @@ private:
     QJsonObject m_work;         // dspi_mcp_work's last
     bool m_working = false;
     QVariantMap m_workShown;
+    QVariantMap m_refusal;    // -- WP UAG --
+    QTimer m_refusalTimer;    // -- WP UAG -- ends m_refusal
+    void clearRefusal();      // -- WP UAG --
     QTimer m_workTimer;         // lets `work` fade
     qint64 m_activityRun = 0;   // the newest activity row seen: its run and id
     qint64 m_activityId = 0;

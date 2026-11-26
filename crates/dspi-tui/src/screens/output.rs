@@ -759,6 +759,11 @@ impl Screen for OutputPage {
             KeyCode::Enter | KeyCode::Char(' ') => match item {
                 Item::Route(input) => {
                     let c = state.crosspoint(input, self.output);
+                    // -- WP UTM -- (UXP A14) Enter edits the route's gain, never
+                    // connects: an unasked connection is audible. Space connects.
+                    if key.code == KeyCode::Enter {
+                        self.column = 1;
+                    }
                     match self.column {
                         1 => {
                             self.edit = Some(NumberEdit {
@@ -849,6 +854,16 @@ impl Screen for OutputPage {
             KeyCode::Char('0'..='9') => {
                 self.header = None;
                 self.list.handle(key, state)
+            }
+            // -- WP UTM -- (UXP A14) the tab switched and the cursor in its bands,
+            // so the next Down or Enter is a band's, not a routing row's
+            KeyCode::Char('x') => {
+                let mode = self.list.mode;
+                let ev = self.list.handle(key, state);
+                if self.list.mode != mode {
+                    self.header = None;
+                }
+                ev
             }
             _ => {
                 let ev = self.list.handle(key, state);
@@ -1149,6 +1164,32 @@ mod tests {
             p.handle(key(KeyCode::Right), &state),
             ScreenEvent::Command("mix 0 0 on 0.5".into())
         );
+    }
+
+    // -- WP UTM -- (UXP A14) Enter on "○ USB 2" wrote `mix 1 0 on 0`
+    #[test]
+    fn utm_enter_on_a_routing_row_edits_its_gain_and_never_connects() {
+        let (mut p, state) = page(0);
+        p.header = Some(1); // the second input's route, not connected
+        assert!(!state.crosspoint(1, 0).enabled);
+        assert_eq!(p.handle(key(KeyCode::Enter), &state), ScreenEvent::Handled);
+        assert_eq!(p.column, 1, "on the gain");
+        assert!(p.edit.is_some(), "editing the gain");
+        // Space is what connects.
+        p.edit = None;
+        p.column = 0;
+        assert_eq!(
+            p.handle(key(KeyCode::Char(' ')), &state),
+            ScreenEvent::Command("mix 1 0 on 0".into())
+        );
+        // `x` switches the tab and puts the cursor in its bands.
+        p.header = Some(1);
+        assert_eq!(
+            p.handle(key(KeyCode::Char('x')), &state),
+            ScreenEvent::Handled
+        );
+        assert_eq!(p.list.mode, FilterMode::Xo);
+        assert_eq!(p.header, None, "in the XO bands, off the routing rows");
     }
 
     #[test]

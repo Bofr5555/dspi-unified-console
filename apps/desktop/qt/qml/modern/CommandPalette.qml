@@ -16,6 +16,9 @@ import UConsole
 //
 // An entry: { id, kind, arg, title, where, icon, keys, aliases, keywords,
 // enabled }; PaletteController.search() adds `matched`.
+// -- WP UFW -- (UXP A8) and found by the words a user types for it: other
+// names for a page (`synonyms`), each channel by its speaker's name, role
+// and number, and "Help: …" entries that open the manual where it answers.
 Popup {
     id: commands
     objectName: "CommandPalette"
@@ -81,15 +84,57 @@ Popup {
 
     // ---- What there is to find ------------------------------------------------
 
+    // -- WP UFW -- one channel's names and words, read for each in turn
+    ChannelInfo { id: channelInfo }
+
     // The names Modern shows for a row besides its own
     readonly property var aliases: ({
-        "device.commit": [qsTr("Save to Device")],
+        "device.commit": [qsTr("Commit Parameters")],   // -- WP UFW -- its old name finds it
         "device.devices": [qsTr("Open a Device…"), qsTr("Switch Device")],
         "autoeq.browse": [qsTr("Headphone Profile…"), qsTr("AutoEQ")],
         "window.minimiseToTray": [qsTr("Minimize to Tray")],
         "window.popOutGraph": [qsTr("Open Graph in Window")],
         "tools.spectrum": [qsTr("Spectrum Analyzer")]
     })
+    // -- WP UFW -- (UXP A8) The words users type for an entry that are not on
+    // it: keywords by entry id
+    readonly property var synonyms: ({
+        "page:equaliser/crossover": [qsTr("high-pass"), qsTr("low-pass"), "HPF", "LPF", qsTr("tweeter"), qsTr("woofer"),
+                                     qsTr("xover"), qsTr("slope"), "Linkwitz-Riley", "Butterworth"],
+        "page:equaliser/peq": [qsTr("EQ"), qsTr("equalizer"), qsTr("bell"), qsTr("peaking"), qsTr("shelf"), qsTr("filter"), qsTr("band")],
+        "page:equaliser/delay": [qsTr("time alignment"), qsTr("distance"), qsTr("level"), qsTr("trim"), qsTr("polarity")],
+        "settings:installer": [qsTr("protection"), qsTr("tweeter floor"), qsTr("limits"), qsTr("lock"), "PIN"],
+        "settings:speakers": [qsTr("roles"), qsTr("tweeter"), qsTr("woofer"), qsTr("mid driver"), qsTr("subwoofer")],
+        "settings:global": [qsTr("rename"), qsTr("name"), qsTr("device name"), qsTr("latency")],
+        "settings:ai": [qsTr("agent"), "Claude", "MCP", qsTr("pairing code")],
+        "device.aiAgents": [qsTr("AI activity"), qsTr("undo agent"), qsTr("stop agent"), qsTr("pause agent")],
+        "edit.history": [qsTr("undo"), qsTr("changes"), qsTr("history")],
+        "edit.undo": [qsTr("history")],
+        "device.commit": [qsTr("store"), qsTr("write"), qsTr("keep")],
+        "help.shortcuts": [qsTr("keys"), qsTr("keyboard"), qsTr("hotkeys")],
+        "page:measure/tune": [qsTr("auto-tune"), qsTr("autotune"), qsTr("alignment"), qsTr("trial"), qsTr("room correction")],
+        "page:measure/measure": [qsTr("microphone"), qsTr("mic"), qsTr("sweep"), qsTr("measurement")]
+    })
+    // -- WP UFW -- (UXP A8) The manual's answers: title, page and anchor of
+    // docs/manual (on the project's page), and the words that find them
+    readonly property string manual: AppIdentity.projectUrl + "/blob/main/docs/"
+    readonly property var help: [
+        { id: "connect", title: qsTr("Help: Connect an AI Agent"), url: "manual/ai-agents.md",
+          keywords: [qsTr("connect"), "Claude", "MCP", qsTr("agent"), qsTr("pairing")] },
+        { id: "questions", title: qsTr("Help: The Questions an Agent Asks"), url: "manual/ai-agents.md#4-questions-what-is-asked-before-a-change",
+          keywords: [qsTr("question"), qsTr("ask"), qsTr("allow"), qsTr("deny"), qsTr("confirm")] },
+        { id: "undo", title: qsTr("Help: Watching and Undoing an Agent"), url: "manual/ai-agents.md#5-watching-and-undoing",
+          keywords: [qsTr("undo"), qsTr("stop"), qsTr("pause"), qsTr("revert")] },
+        { id: "refused", title: qsTr("Help: Why Was My Measurement Refused?"), url: "manual/measurement.md#4-the-safety-rules-and-what-they-mean-for-you",
+          keywords: [qsTr("refused"), qsTr("blocked"), qsTr("safety"), qsTr("measure"), qsTr("tweeter")] },
+        { id: "keep", title: qsTr("Help: Auto-tune's Trial, Keep or Revert"), url: "manual/measurement.md#72-apply-verify-and-keep",
+          keywords: [qsTr("keep"), qsTr("revert"), qsTr("trial"), qsTr("countdown"), qsTr("auto-tune")] },
+        { id: "usb", title: qsTr("Help: USB Access on Linux"), url: "INSTALL.md#usb-access-on-linux",
+          keywords: [qsTr("USB"), qsTr("rule"), "udev", qsTr("permission"), qsTr("not found")] },
+        { id: "words", title: qsTr("Help: The Words the App Uses"), url: "manual/words.md",
+          keywords: [qsTr("words"), qsTr("glossary"), qsTr("meaning"), qsTr("what is")] }
+    ]
+
     // Rows that depend on more than MenuTable.can() says
     readonly property var conditions: ({
         "autoeq.clearFavorites": () => AutoEqController.favouriteList.length > 0,
@@ -98,7 +143,11 @@ Popup {
 
     function makeEntries() {
         const list = []
-        const add = e => list.push(Object.assign({ arg: e.id, icon: "", keys: "", aliases: [], keywords: [], enabled: true }, e))
+        const add = e => {
+            const entry = Object.assign({ arg: e.id, icon: "", keys: "", aliases: [], keywords: [], enabled: true }, e)
+            entry.keywords = entry.keywords.concat(synonyms[e.id] || [])   // -- WP UFW --
+            list.push(entry)
+        }
         const sender = DeviceInfoController.sender
 
         // ---- The other open devices
@@ -139,6 +188,7 @@ Popup {
         for (const r of MenuTable.flatRows()) {
             if (r.optional && !Shell.handles(r.id)) continue
             if (r.platformHidden && DeviceModel.platformName === r.platformHidden) continue
+            if (LimitsController.locked && LimitsController.lockRefuses(r.id)) continue   // -- FIX016 -- (REVG F8) not offered
             const panel = PanelTable.row(r.id)
             const section = panel ? SectionTable.section(panel.section) : null
             const tab = panel ? panel.tabTitle || panel.title : ""
@@ -159,16 +209,24 @@ Popup {
         add({ id: classic.id, kind: "action", title: classic.text, where: qsTr("Layout"), enabled: LayoutController.switchBlocker.length === 0 })
 
         // ---- The channels
+        // -- WP UFW -- (UXP A8, A1) as Modern names them, the speaker's name
+        // first and its number second ("Left tweeter · 2"), and found by
+        // ChannelInfo's keywords: name, side, role, "Out 2", "2"
         for (let i = 0; i < DeviceModel.channels.count; ++i) {
             const channel = DeviceModel.channels.get(i, "channel")
             const label = DeviceModel.channels.get(i, "label")
             const descriptor = DeviceModel.channels.get(i, "descriptor")
+            channelInfo.channel = channel
+            const title = channelInfo.title || label
             add({
                 id: "channel:" + channel, kind: "channel", arg: channel, icon: "sliders-vertical", enabled: free && !sender,
-                title: label, where: descriptor.length && descriptor !== label ? qsTr("Channel") + " · " + descriptor : qsTr("Channel"),
-                keywords: [descriptor]
+                title: title,
+                where: title !== label ? qsTr("Channel") + " · " + label
+                     : descriptor.length && descriptor !== label ? qsTr("Channel") + " · " + descriptor : qsTr("Channel"),
+                keywords: channelInfo.keywords.length ? channelInfo.keywords.slice() : [descriptor]
             })
         }
+        channelInfo.channel = -1
 
         // ---- Settings, by what is on each page
         for (const s of SettingsController.searchEntries())
@@ -176,6 +234,10 @@ Popup {
                 id: "settings:" + s.id, kind: "settings", arg: s.id, icon: s.icon, enabled: s.enabled,
                 title: s.title, where: qsTr("Settings") + " › " + s.group, keywords: s.terms.concat([qsTr("Settings")])
             })
+
+        // ---- -- WP UFW -- The manual's answers
+        for (const h of help)
+            add({ id: "help:" + h.id, kind: "help", arg: manual + h.url, icon: "circle-question-mark", title: h.title, where: qsTr("Help"), keywords: h.keywords })
         return list
     }
 
@@ -235,6 +297,7 @@ Popup {
         else if (entry.kind === "section") pages.go(entry.arg, "")
         else if (entry.kind === "page") pages.go(entry.arg.split("/")[0], entry.arg.split("/")[1])
         else if (entry.kind === "settings") SettingsController.showPage(entry.arg)
+        else if (entry.kind === "help") Shell.openUrl(entry.arg)   // -- WP UFW --
         else if (entry.kind === "channel") {
             SidebarController.select(entry.arg)
             pages.go("equaliser", "")

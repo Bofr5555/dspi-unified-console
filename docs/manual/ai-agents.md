@@ -1,6 +1,6 @@
 # AI agents
 
-*User manual of uConsole for DSPi 0.15.0: AI agents in the desktop app (both layouts). How the owner checks it
+*User manual of uConsole for DSPi 0.16.0: AI agents in the desktop app (both layouts). How the owner checks it
 on real agent hosts before a release: [`docs/testing/ai-agents-checklist.md`](../testing/ai-agents-checklist.md).*
 
 An AI agent on your computer, such as Claude Desktop, Claude Code, Cursor or VS Code, can read the settings of the DSPi
@@ -12,12 +12,35 @@ AI agents are **off** until you turn them on. Nothing on your network can reach 
 only. The web console and the Android app run no agents; the web console shows when an agent works on a hub's devices
 through another console (section 5).
 
+<!-- WP UAG (UXP A9) -->
+## Connect Claude in three steps
+
+1. **Turn agents on.** In uConsole for DSPi, open **Settings › AI Agents** and switch on **Allow AI agents to control
+   uConsole for DSPi**. Read what it allows, then click **Allow**.
+2. **Add it to the agent app.** Under **Connect an Agent** (right under the switch until an agent is connected), choose
+   **Claude Desktop** or **Claude Code**.
+   - Claude Desktop: click **Install in Claude Desktop…**. Claude Desktop opens and shows the extension "uConsole for
+     DSPi": click **Install** there. (Or add the connection by hand, section 2.1.)
+   - Claude Code: click **Copy**, paste the command into a terminal and run it.
+3. **Allow it.** The first time the agent connects, uConsole for DSPi asks **Allow this AI agent?** and shows a
+   four-digit code. The agent app shows the same code: in its log of the dspi server (Claude Desktop: Settings ›
+   Developer; Claude Code: start it with `claude --debug`), and in the chat when the question comes up while the agent
+   is already working. Click **Allow** only if you have just added an agent and the codes match.
+
+Then ask the agent something, such as "What is connected to my DSPi?" or "Make the left woofer 2 dB quieter".
+
+**Two kinds of questions.** Your agent app may ask you before each tool it uses ("Allow dspi_set_gain?"): that is the
+agent app's own question. uConsole for DSPi asks its own before risky changes (section 4), and its limits and speaker
+rules hold whatever you answer in the agent app. So you can let the agent app allow the dspi tools without asking each
+time: in Claude Desktop, choose to allow the dspi tools always; in Claude Code, add the allow rule `mcp__dspi__*` (with
+`/permissions`, or in `.claude/settings.json`: `"permissions": {"allow": ["mcp__dspi__*"]}`).
+
 **Where to find it**
 
 | Where | What |
 |---|---|
 | **Settings › AI Agents** (both layouts) | the switch, the questions setting, the limits profile, how to connect an agent, the clients and their tokens, the activity |
-| **Device › AI Agents…** (Classic), the robot icon beside the device in the status bar (Classic), the **AI** button in the top bar (Modern) | the agents' panel: what they are doing, their questions, Pause and Stop, the activity with Undo |
+| **Device › Agent Activity…** (Classic), the robot icon beside the device in the status bar (Classic), the **AI** button in the top bar (Modern) | the agents' panel, **Agent Activity**: what they are doing, their questions, Pause and Stop Agents, the activity with Undo |
 | **History** | the agents' changes, tagged **AI** with the agent's name |
 
 ## 1. Turning agents on
@@ -29,7 +52,7 @@ through another console (section 5).
 3. The page shows **Listening on** with the addresses (`127.0.0.1` and `[::1]`, port 47860). Change the **Port** only if
    another program uses 47860; then use the same port in the agent's configuration below.
 
-Turning the switch off (or pressing **Stop**) disconnects every agent at once.
+Turning the switch off (or pressing **Stop Agents**) disconnects every agent at once.
 
 ## 2. Connecting an agent
 
@@ -38,8 +61,9 @@ computer, with a **Copy** button. Use that text rather than typing it from here:
 
 - **Agents that start a program** (Claude Desktop, and most IDE agents) start the app with `--mcp`. That copy of the
   app does not open a window: it relays the agent's messages to the app you have open. The first time, the
-  app asks **Allow this AI agent?** with a four-digit code. The agent's log (or the terminal) shows the same code.
-  Click **Allow** only if you have just connected an agent and the codes match. The relay keeps a token for each agent
+  app asks **Allow this AI agent?** with a four-digit code. The agent app shows the same code in its log, and in the
+  chat when it asks for a tool while the question waits (the agent then says the code and asks you to allow it).
+  Click **Allow** only if you have just added an agent and the codes match. The relay keeps a token for each agent
   program (by the name the program gives itself), so this is asked once per program: a second program on the same
   computer, say Cursor beside Claude Desktop, is asked about and named on its own. (A version from before this kept one
   token for all; each program is then asked once more.)
@@ -55,8 +79,19 @@ running, or AI agents are turned off in it."
 
 ### 2.1 Claude Desktop
 
-Add this to `claude_desktop_config.json` (Claude Desktop: Settings › Developer › Edit Config), then quit and start Claude
-Desktop again:
+<!-- WP UB15 (UXP B15) -->
+**In one click.** In Settings › AI Agents, Claude Desktop, click **Install in Claude Desktop…**. The app writes a Claude
+Desktop extension (`uConsole for DSPi.mcpb`, in the app's own data folder) that starts this copy of the app with
+`--mcp`, and opens it: Claude Desktop shows its install sheet, and you click **Install**. Nothing else to edit or
+restart. If nothing opens it (Claude Desktop is not installed, or it is a version without extensions), the page says so
+and **Show File** shows where the file is: open it with Claude Desktop, or add the connection by hand as below. The
+extension names the program where it is now: after you move the app, or after an AppImage update with a new file name,
+click the button again. Use the extension or the hand-written entry, not both (Claude Desktop would start the app twice).
+Claude Desktop lists the extension in Settings › Extensions, where you can turn it off or remove it.
+
+**By hand.** Add this to `claude_desktop_config.json`, then quit and start Claude Desktop again. If the file already has
+an `"mcpServers"` section, put the `"dspi"` entry inside it, beside the others. The page shows where the file is on your
+computer, and **Open Config Folder** opens its folder (in Claude Desktop: Settings › Developer › Edit Config):
 
 ```json
 {
@@ -71,11 +106,19 @@ The program is:
 | System | Program |
 |---|---|
 | Windows | `C:\Users\<you>\AppData\Local\Programs\uConsole for DSPi\uconsole-for-dspi.exe` (in JSON, write each `\` as `\\`) |
-| macOS | `/Applications/uConsole for DSPi.app/Contents/MacOS/uconsole-for-dspi` |
+| macOS | `/Applications/uConsole for DSPi.app/Contents/MacOS/uConsole for DSPi` |
 | Linux (AppImage) | the AppImage file itself, such as `/home/<you>/Applications/uConsole-for-DSPi-<version>-x86_64.AppImage` (after an update, the new file's name) |
 | Linux (installed) | `uconsole-for-dspi` |
 
 If you have the DSPi Terminal installed, `"command": "uconsole", "args": ["mcp"]` does the same.
+
+The file is in:
+
+| System | `claude_desktop_config.json` |
+|---|---|
+| Windows | `%APPDATA%\Claude\` (Claude Desktop from the Microsoft Store: `%LOCALAPPDATA%\Packages\Claude_…\LocalCache\Roaming\Claude\`) |
+| macOS | `~/Library/Application Support/Claude/` |
+| Linux | `~/.config/Claude/` |
 
 ### 2.2 Claude Code
 
@@ -272,10 +315,24 @@ quietest first: the agent can protect the tweeter and route it in one go. If you
 high-pass yourself, an agent may still turn it down or mute it, but not feed it more: no higher gain, trim or volume, no
 new route, no effect that adds level and no EQ boost on it (or on an input that feeds it), also not through a preset.
 
-**The question.** The app shows what the agent wants to change, on which device, with **Allow** and **Deny**. If the
+**The question.** <!-- WP UAG (UXP A6) --> The heading says the change in one line, in the app's words: "Claude Code
+wants to make Right tweeter louder (Fronts)". Below it is the whole call, the outputs and presets named as the app
+names them: the rows that are asked about marked ▲ ("Right tweeter: gain −5.0 dB → −2.0 dB"), then what the same
+**Allow** also does ("Sub: gain 0 → −6 dB"). The same row on several outputs is one row ("Left woofer, Right woofer:
+limiter off"). The last line says what you can do afterwards: undo it in the activity; for a preset save and other
+writes to the device's memory, that **Undo cannot take it back**; for test signals, that **Stop Measuring** ends them.
+The speaker detection's question lists what you do first (the microphone, the volume, staying by **Stop Measuring**,
+checking Settings › Speakers afterwards); how it works is under **Details**. **Allow** and **Deny** answer it. If the
 app is in the tray, the question brings its window back. The agent waits up to 45 s for your answer; after that it is
 told the question is still open and can ask again with `dspi_get_confirmation`. A question nobody answers lapses after
 2 minutes, and nothing is changed. Several questions queue up ("2 more waiting").
+<!-- WP UB5 (UXP B5, D2) --> Questions one agent raises together (calls sent at once, within about 1.5 s; night mode on
+three devices) are one sheet: "Claude Code wants to make 6 changes", each device once with its rows. **Allow** and
+**Deny** answer exactly the rows shown; a question raised while the sheet is up comes as the next sheet, never onto it.
+<!-- FIX016 R2 --> A sheet takes another question only while everything fits its 12 rows (each device's heading, the
+changes asked about first, then the call's other changes); what does not fit is the next sheet. One call with more than
+12 changes is a sheet of its own, its changes asked about first; if those do not all fit, its Allow is off and you
+answer it **One by One**. **Answer One by One** splits the sheet. (Through the relay, `--mcp`, an agent's calls come one at a time: see section 7.)
 
 **Test signals for 10 minutes.** <!-- WP ODEC --> A question about test signals says that **Allow** also lets that agent
 play test signals on that device for the next 10 minutes, for the task it is doing: its next measurements, low-end
@@ -285,15 +342,23 @@ panel and the AI page show each such permission with the device, the agent and t
 once (the agent is told, and asked again next time). The permission belongs to the agent's pairing (the token it was
 paired with), not to one connection: an agent that reconnects or restarts within the 10 minutes keeps it, and so does
 any program paired under the same name. It ends after 10 minutes, on **Revoke**, when that pairing is removed, when the
-device is closed, and with **Stop**. It covers that one device: a measurement, verify or sum check across several units
+device is closed, and with **Stop Agents**. It covers that one device: a measurement, verify or sum check across several units
 of a hub is still asked each time. Under **Never** nothing is asked, so nothing is granted.
 
 ## 5. Watching and undoing
 
 - **The strip under the top bar** (both layouts) says which agent works, what it does now and on which device ("Claude Code
-  Changing the gain: Out 3 Centre"), with **Pause** and **Stop**, and **Stop Measuring** while its measurement plays.
+  Changing the gain: Out 3 Centre"), with **Pause** and **Stop Agents**, and **Stop Measuring** while its measurement plays.
+- **When the app refuses an agent's change** <!-- WP UAG (UXP A7) --> (a tweeter's or midrange's high-pass, the installer
+  lock, a control you took back, your limits), the strip says why for a few seconds: "Refused: Kept Right tweeter's
+  high-pass at 1 kHz · Fronts", and the activity keeps it under **Not done**. Nothing is changed, no question is asked
+  and no sound plays. The agent gets the rule in its own words, so what it tells you can be checked here.
   **Show** brings the device to the front when it is another one. The strip is there while a call or a job runs, while a
   question waits for you or a timed preview waits for Keep, for 20 s after the last call, and as long as agents are paused.
+- **What an agent left unsaved.** <!-- WP UB5 (UXP B5) --> Agents' changes are live at once but kept only once saved on
+  the device. When an agent's work rests, the strip's last line says so: "Claude Code Changed 12 settings, not saved yet"
+  with **Save to Device** (**Save All…** when it changed several devices), and it stays until the changes are saved, put
+  back or the agents are turned off. Agents are told to say this at the end of a task and to offer to save.
 - **The AI button** (Modern) and the **robot icon** (Classic) turn while an agent works. In the tray, the icon has a blue dot,
   and its tooltip and menu say what the agent does, with **Pause AI Agents**.
 - **What an agent changes** is marked for a moment: the control, its section in the rail, and the tab of a device that is
@@ -303,7 +368,7 @@ of a hub is still asked each time. Under **Never** nothing is asked, so nothing 
 - **The History** shows agents' changes with an **AI** tag and the agent's name; you undo them there like your own.
 - **An agent can undo only its own changes.** It never undoes yours.
 - **Pause** holds the agents' tool calls off until **Resume**: nothing is changed meanwhile, and the agents are told that
-  you paused them. **Stop** turns agents off,
+  you paused them. **Stop Agents** turns agents off,
   disconnects them and puts back any timed preview an agent started. Changes already made stay, and you can undo them.
   When you turn agents on again, each agent that was working is told with its next call that you stopped it.
 - **The screen follows the agent.** <!-- WP ODEC --> When an agent changes something, the Modern layout shows that
@@ -398,7 +463,7 @@ muted are not probed. The question says so, with a warning: nothing is known abo
 wired where the probe expects a woofer could receive a few seconds of sweep below its floor at −50 dBFS (more with a
 raised floor): below 1 kHz less than a hundredth of what a 1 kHz crossover lets through from music, but not nothing.
 Only a driver still playing flat at 177 Hz under that quiet sweep, as no tweeter does, is then swept down to 20 Hz at up
-to −24 dBFS. Keep the volume where it is and stay by **Stop**. **Allow** also
+to −24 dBFS. Keep the volume where it is and stay by **Stop Measuring**. **Allow** also
 lets that agent play test signals and detect again on that device for 10 minutes (section 4); **Revoke** stops a running
 detection at once. <!-- WP INTK --> A higher floor in the limits profile belongs on tweeter outputs only: an output's
 high-pass minimum also holds its music's high-pass there, so on a woofer's output it would take away the bass (on the
@@ -522,7 +587,12 @@ a headphone **coupler**, the headphones' lower limits apply, in the low-end sear
   are the same output, and "saved to preset 1" is the preset 1 of the app's list. Codes are not counts and stay as they
   are: an input source (0 is USB), the audio link's channels and slots (0 to 63), ids and masks.
 - **What Undo can undo.** The activity offers **Undo** only for changes Undo can reverse: a preset save, a flash write or a
-  preset load have none.
+  preset load have none. An agent's preset load is one notice: "Claude Code: Loaded preset 2 “Lunch”: your limits kept
+  Left tweeter and Right tweeter at 1 kHz" when the limits profile held part of it. <!-- WP UAG (UXP A7) -->
+- **Forget Agent** in the AI popover (Modern) stops that agent's token: it has to be allowed again. **Pause** and
+  **Stop Agents** keep its token. <!-- WP UAG (UXP A7) -->
+- **The guide.** <!-- WP UB5 (UXP B5) --> Agents are told to read the server's guide first: the `dspi://guide` resource,
+  or the `dspi_get_guide` tool in agent apps that cannot read resources.
 - **The relay handles one message at a time.** An agent that starts the app with `--mcp` waits for each answer: while a
   question waits for you (up to 45 s), that agent's other requests wait too. HTTP agents do not have this limit.
 - **A computer shared with other people.** Anyone signed in to this computer can reach the agents' port, as with any

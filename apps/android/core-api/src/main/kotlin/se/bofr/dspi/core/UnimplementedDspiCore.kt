@@ -138,6 +138,8 @@ open class UnimplementedDspiCore : DspiCoreApi {
 
     override fun csDemoLearn(protocol: Int, code: Long): Boolean = throw NotImplementedError("cs_demo_learn")
 
+    override fun resetDemo(): Unit = throw NotImplementedError("reset_demo")
+
     override fun openFd(fd: Int, serial: String, vid: Int): Unit = throw NotImplementedError("open_fd")
 
     override fun closeFd(): Unit = throw NotImplementedError("close_fd")

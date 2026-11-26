@@ -11,7 +11,9 @@ import UConsole
 // A row: { id, text, shortcut (optional), optional (shown only while
 // Shell.handles(id)), platformHidden (a platform name it is hidden on),
 // enabled (optional: a function, bound to the row's and shortcut's enabled),
-// modern (optional: its places in the Modern layout, see `places`) }.
+// modern (optional: its places in the Modern layout, see `places`),
+// modernOnly (-- INT016 --: not in Classic's menu bar, for a row only Modern
+// answers) }.
 // { separator: true } is a line; { submenu: "<title>", rows: [...] } nests.
 // Work packages add rows under their own marker; ids are "<menu>.<name>".
 QtObject {
@@ -58,9 +60,16 @@ QtObject {
             title: qsTr("&Device"),
             rows: [
                 // -- WP QP18 -- Commit and Revert get shortcuts (owner, 2026-11-12)
-                { id: "device.commit", text: qsTr("Commit Parameters…"), shortcut: "Ctrl+S", modern: ["topBar"] },
+                // -- WP UFW -- (UXP A10, D1) one word on every layout and client:
+                // Save to Device, as the top bar's button; nothing to save
+                // without a device. Factory Reset is the device's (its tab's
+                // menu), not one slip away from Save (UXP A3, C1)
+                { id: "device.commit", text: qsTr("Save to Device…"), shortcut: "Ctrl+S", enabled: () => DeviceModel.connected, modern: ["topBar"] },
                 { id: "device.revert", text: qsTr("Revert to Saved…"), shortcut: "Ctrl+Shift+R", modern: ["save.revert"] },
-                { id: "device.factoryReset", text: qsTr("Factory Reset…"), modern: ["save.reset"] },
+                { id: "device.factoryReset", text: qsTr("Factory Reset…"), modern: ["device.reset"] },
+                // -- WP UB12 -- (UXP B12) the demo's tuned example again; in Modern
+                // the demo's strip has it (DemoBanner) besides the palette
+                { id: "device.resetDemo", text: qsTr("Reset Demo"), enabled: () => DemoController.demoOpen, modern: ["palette"] },
                 { separator: true },
                 // -- WP QP18 -- presets 1-9, mute and bypass from the keyboard (ShortcutController)
                 {
@@ -76,12 +85,13 @@ QtObject {
                 { separator: true },
                 { id: "device.snapshots", text: qsTr("Snapshots…") },
                 // -- WP P1DCFIX -- a bare B (never while typing or while a dialog asks)
-                { id: "device.abToggle", text: qsTr("Toggle A/B"), shortcut: "B", enabled: () => SnapshotsController.canToggle, modern: ["topBar"] },
+                { id: "device.abToggle", text: qsTr("Toggle A/B"), shortcut: "B", enabled: () => SnapshotsController.canToggle || SnapshotsController.canStartSaved, modern: ["topBar"] },   // -- WP UB34 -- also as saved against now
                 // -- WP P2QT -- the device's events (this console's and the hub's) and Identify
                 { id: "device.events", text: qsTr("Events…") },
                 { id: "device.identify", text: qsTr("Identify"), enabled: () => IdentifyController.available, modern: ["device.act"] },
                 // -- WP MCP4 -- what AI agents do, with Pause and Stop (AiController)
-                { id: "device.aiAgents", text: qsTr("AI Agents…") },
+                // -- INT016 -- (UAG's C4 leftover) the activity, not a second "AI Agents" beside the Settings page
+                { id: "device.aiAgents", text: qsTr("Agent Activity…") },
                 { separator: true },
                 { id: "device.firmwareUpdate", text: qsTr("Firmware Update…"), platformHidden: "STM32H723", modern: ["device.act"] },
                 { separator: true },
@@ -130,7 +140,10 @@ QtObject {
                 { id: "window.popOutGraph", text: qsTr("Pop Out Graph"), modern: ["graph.view"] },
                 // -- WP LKUI1 -- the hub's audio link installation (SystemController)
                 { separator: true },
-                { id: "window.system", text: qsTr("System…"), optional: true }
+                { id: "window.system", text: qsTr("System…"), optional: true },
+                // -- WP UB2 -- (UXP B2, D4) the modes have come: Simple is Home, a remote, first
+                { separator: true },
+                { id: "window.mode", text: qsTr("Mode…"), modern: ["appMenu.settings"] }
                 // -- WP QP18 -- docs/UI-MODES.md §5 (ModeController)
                 // -- WP QPI5 -- hidden until the modes come (owner, 2026-11-13);
                 // ModeController and ModeWindow stay, and the rows come back as
@@ -141,6 +154,10 @@ QtObject {
             title: qsTr("&Help"),
             rows: [
                 { id: "help.gettingStarted", text: qsTr("Getting Started…"), modern: ["appMenu.help"] },
+                // -- WP UFW -- (UXP A8) the manual, and the shortcut list (its
+                // dialog is UXP A5's: the row shows once it handles the id)
+                { id: "help.manual", text: qsTr("User Manual"), modern: ["appMenu.help"] },
+                { id: "help.shortcuts", text: qsTr("Keyboard Shortcuts"), optional: true, modernOnly: true, modern: ["appMenu.help"] },   // -- INT016 -- the list is Modern's (Classic's menu bar names every key)
                 { separator: true },
                 //: %1 is the app's name
                 { id: "help.whatsNew", text: qsTr("What's New in %1").arg(AppIdentity.displayName), modern: ["appMenu.help"] },
@@ -169,7 +186,8 @@ QtObject {
     //   appMenu  the app button's menu: the few global actions
     //   save     Save to Device ▾
     //   history  Undo ▾
-    //   device   the device switcher and a device tab's right-click menu
+    //   device   the device switcher and a device tab's right-click menu (the
+    //            switcher and Devices › This Computer show its first group)
     //   autoeq   Library > AutoEQ's ▾
     //   files    the Equaliser's Files ▾ (-- INTC (DL8 fold) --)
     //   channel, band, graph, slot   the right-click menu of a channel, a band
@@ -178,7 +196,7 @@ QtObject {
         appMenu: ["file", "transfer", "settings", "help", "end", "quit"],
         save: ["revert", "store", "reset"],
         history: ["step", "recent", "all"],
-        device: ["act", "tab"],
+        device: ["act", "reset", "tab"],   // -- WP UFW -- reset: Factory Reset, under a line
         autoeq: ["favorites", "database"],
         files: ["filters"],   // -- INTC --
         channel: ["name", "copy", "act", "clear"],
@@ -211,6 +229,7 @@ QtObject {
         { id: "channel.paste", of: "edit.paste", text: qsTr("Paste Parameters"), modern: ["channel.copy"] },
         { id: "channel.identify", text: qsTr("Identify"), modern: ["channel.act"] },
         { id: "channel.mute", text: qsTr("Mute"), on: qsTr("Unmute"), modern: ["channel.act"] },
+        { id: "channel.solo", text: qsTr("Solo"), on: qsTr("End Solo"), modern: ["channel.act"] },   // -- WP GAP2 --
         { id: "channel.routing", of: "tools.matrix", text: qsTr("Edit Routing…"), modern: ["channel.act"] },
         { id: "channel.headphone", of: "autoeq.browse", text: qsTr("Load Headphone Profile…"), modern: ["channel.act"] },
         { id: "channel.clear", text: qsTr("Clear PEQ…"), modern: ["channel.clear"] },
@@ -335,6 +354,8 @@ QtObject {
     // Edit rows that act on a focused text field. Menus and TableShortcuts
     // bind a row's enabled to it (greyed, not hidden); Shell refuses the rest.
     function available(id) {
+        // -- FIX016 -- (REVG F8) nor, in Modern under the installer's lock, a write the top bar hides
+        if (LayoutController.modern && LimitsController.locked && LimitsController.lockRefuses(id)) return false
         return !DeviceInfoController.sender || textEdits[id] !== undefined || DeviceInfoController.senderKeeps(id)
     }
 

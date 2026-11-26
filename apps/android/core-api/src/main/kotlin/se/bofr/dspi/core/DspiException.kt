@@ -85,7 +85,7 @@ sealed class DspiException(message: String) : Exception(message) {
 
     /**
      * WP P1LK: the installer's lock on this console; nothing was sent. [code]:
-     * `locked` (the locked-user state allows only volume, mute and preset),
+     * `locked` (the locked-user state allows only volume, mute, source and preset),
      * `pin_required`, `wrong_pin`, `wait` (too many wrong PINs; see
      * `installerLockState().retryAfterMs`), `no_pin`, or `hub` (WP MERGEP1D:
      * the hub holds the lock and refused the write; notice `installer_lock.hub`).

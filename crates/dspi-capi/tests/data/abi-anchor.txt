@@ -921,6 +921,9 @@ bool invert);
 int8_t dspi_set_output_enable(struct FfiCore *core, uint8_t output, bool enabled);
 bool dspi_set_output_gain(struct FfiCore *core, uint8_t output, float db);
 bool dspi_set_output_mute(struct FfiCore *core, uint8_t output, bool muted);
+bool dspi_solo_output(struct FfiCore *core, uint8_t output);
+bool dspi_solo_end(struct FfiCore *core);
+int32_t dspi_solo_state(struct FfiCore *core);
 bool dspi_set_output_delay(struct FfiCore *core, uint8_t output, float ms);
 bool dspi_set_limiter_param(struct FfiCore *core, uint8_t output, uint8_t param, float value);
 bool dspi_fetch_limiter_meter(struct FfiCore *core, float *out_gr);
@@ -1091,6 +1094,7 @@ const char *b_doc,
 char *buf,
 uint32_t len);
 uint32_t dspi_ab_toggle(struct FfiCore *core, char *buf, uint32_t len);
+uint32_t dspi_ab_start_saved(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_ab_diff(struct FfiCore *core, char *buf, uint32_t len);
 uint32_t dspi_ab_keep(struct FfiCore *core, const char *side, char *buf, uint32_t len);
 uint32_t dspi_ab_state(struct FfiCore *core, char *buf, uint32_t len);
@@ -1116,6 +1120,8 @@ uint32_t dspi_cs_apply(struct FfiCore *core, const char *op, char *buf, uint32_t
 uint32_t dspi_cs_pin_uses(struct FfiCore *core, uint8_t *pins, uint8_t *slots, uint32_t max);
 void dspi_bootloader_counts(uint32_t *rp2040, uint32_t *rp2350);
 bool dspi_open_demo(struct FfiCore *core);
+bool dspi_open_demo_blank(struct FfiCore *core);
+bool dspi_reset_demo(struct FfiCore *core);
 uint32_t dspi_ext_status(struct FfiCore *core, char *buf, uint32_t len);
 bool dspi_fetch_crossfeed_pair_map(struct FfiCore *core, uint8_t *out, uint32_t out_len);
 uint8_t dspi_set_crossfeed_pair_map(struct FfiCore *core, const uint8_t *map, uint32_t map_len);

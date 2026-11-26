@@ -330,13 +330,13 @@ private fun CrossoverFamilyPicker(p: BandFields, availableTypes: List<FilterType
     )
 }
 
-/** XO row: Low/High Pass, slope ("24 dB/oct"), frequency. */
+/** XO row: Low/High pass, slope ("24 dB/oct"), frequency. */
 @Composable
 private fun CrossoverControls(p: BandFields, onChange: (BandFields) -> Unit) {
     PopUpButton(
         items = listOf(true, false),
         selection = p.type.crossoverIsLowPass ?: true,
-        titleForItem = { if (it) "Low Pass" else "High Pass" },
+        titleForItem = { if (it) "Low pass" else "High pass" },
         onSelect = { lp -> p.withLowPass(lp)?.let(onChange) },
         textStyle = DspiType.body.copy(fontSize = 14.sp)
     )

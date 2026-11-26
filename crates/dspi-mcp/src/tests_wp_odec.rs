@@ -8,6 +8,7 @@
 use dspi_core::measure::{MeasureTuneStage, MeasureTuneState, MeasureTuneVerify};
 use serde_json::json;
 
+use crate::confirm::GROUP_QUIET_MS; // -- FIX016 -- (R2) an answer waits for the sheet
 use crate::policy::ConfirmMode;
 use crate::tests_wp_ffix::{blank, confirm, demo as ffix_demo, err, n_in, ok, server_of};
 use crate::tests_wp_mcp5::{call_at, demo, err_at, held_at, layout, ok_at, server};
@@ -187,6 +188,7 @@ fn wp_odec_one_question_grants_test_signals_on_a_device_for_ten_minutes() {
         assert_eq!(sheet["grant"]["kind"], json!("test_signals"), "{sheet}");
         assert_eq!(sheet["grant"]["minutes"], json!(10));
         assert_eq!(sheet["grant"]["device"], json!(id.as_str()));
+        now += GROUP_QUIET_MS; // -- FIX016 -- (R2) answered once its sheet sealed
         s.answer_confirmation(cid, true, now).unwrap();
         let grants = s.grants();
         assert_eq!(grants.len(), 1, "{grants:?}");
@@ -236,7 +238,8 @@ fn wp_odec_the_user_revokes_a_grant_and_never_ask_grants_nothing() {
     let c = s.connect();
     let now = 1_000;
     let cid = held_at(&mut s, c, now, START, start_args());
-    s.answer_confirmation(cid, true, now).unwrap();
+    s.answer_confirmation(cid, true, now + GROUP_QUIET_MS)
+        .unwrap();
     ok_at(&mut s, c, now, "dspi_measure_stop", json!({}));
     let gid = s.grants()[0]["id"].as_u64().unwrap();
     assert!(s.revoke_grant(gid));
@@ -262,7 +265,8 @@ fn wp_odec_the_user_revokes_a_grant_and_never_ask_grants_nothing() {
         json!({"output": 1, "gain_db": -6}),
     );
     assert_eq!(s.confirmation(cid).unwrap().to_json()["grant"], json!(null));
-    s.answer_confirmation(cid, true, now).unwrap();
+    s.answer_confirmation(cid, true, now + GROUP_QUIET_MS)
+        .unwrap();
     assert!(s.grants().is_empty());
     // Never ask: nothing is asked, so nothing is granted.
     let mut s = server(&set, ConfirmMode::NeverAsk, true);

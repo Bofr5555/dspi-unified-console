@@ -469,16 +469,23 @@ void inspector(Mx &m) {
             && !m.shown(QStringLiteral("ChannelInspector.title")));
     QQuickItem *gain = m.shown(QStringLiteral("RoutingInspector.gain"));
     m.check(QStringLiteral("page: with its gain"), gain && gain->property("value").toDouble() == -3);
-    QQuickItem *chips = m.shown(QStringLiteral("RoutingInspector.alsoFeeds.chips"));
-    m.check(QStringLiteral("page: and what else the input feeds, as chips"), chips != nullptr);
-    if (chips) {
-        QQuickItem *chip = m.shown(QStringLiteral("RoutingInspector.alsoFeeds.chips.chip.1"));
-        if (chip) {
-            QTest::mouseClick(m.w, Qt::LeftButton, Qt::NoModifier, Mx::centre(chip));
+    // -- WP UA1 -- (UXP A1) the chips are the outputs it feeds; "+" offers the rest
+    QQuickItem *add = m.shown(QStringLiteral("RoutingInspector.alsoFeeds.add"));
+    m.check(QStringLiteral("page: and \"+\" for what else the input could feed"), add != nullptr && !m.connected(0, 2));
+    if (add) {
+        QTest::mouseClick(m.w, Qt::LeftButton, Qt::NoModifier, Mx::centre(add));
+        m.settle();
+        QQuickItem *row = m.d.item(QStringLiteral("RoutingInspector.alsoFeeds.menu.2"));
+        if (row && row->isVisible()) {
+            QTest::mouseClick(m.w, Qt::LeftButton, Qt::NoModifier, Mx::centre(row));
             m.settle();
         }
-        m.check(QStringLiteral("page: a chip connects the input to that output"), m.connected(0, 2));
+        m.check(QStringLiteral("page: its menu connects the input to that output"), m.connected(0, 2));
     }
+    QQuickItem *chips = m.shown(QStringLiteral("RoutingInspector.alsoFeeds.chips"));
+    const QVariantList fed = chips ? chips->property("model").toList() : QVariantList();
+    m.check(QStringLiteral("page: then a chip shows what else the input feeds (%1)").arg(fed.size()),
+            chips && !fed.isEmpty() && m.shown(QStringLiteral("RoutingInspector.alsoFeeds.chips.chip.0")));
     QQuickItem *invert = m.shown(QStringLiteral("RoutingInspector.invert"));
     if (invert) {
         QTest::mouseClick(m.w, Qt::LeftButton, Qt::NoModifier, Mx::centre(invert));

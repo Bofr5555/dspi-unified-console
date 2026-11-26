@@ -156,7 +156,7 @@ test("SW3: the mode is remembered per device, or for every device, Advanced by d
   assert.equal(loadMode(null, "S1"), "advanced");
   // -- WP WB6H -- the effects after the matrix, in every mode; -- WP WB6I -- settings last
   // -- WP P3OV -- the Overview after the effects, in every mode
-  assert.deepEqual(screensFor("simple", true).map((s) => s.id), ["main", "eq", "inputs", "matrix", "effects", "overview", "presets", "snapshots", "autoeq", "settings"]); // -- WP WEB7 -- Presets and AutoEQ in every mode -- WP P1DCFIX -- recall and A/B only (-- WP WB6G -- Inputs after EQ)
+  assert.deepEqual(screensFor("simple", true).map((s) => s.id), ["home", "main", "eq", "inputs", "matrix", "effects", "overview", "presets", "snapshots", "autoeq", "settings"]); // -- WP WEB7 -- Presets and AutoEQ in every mode -- WP P1DCFIX -- recall and A/B only (-- WP WB6G -- Inputs after EQ) -- WP UB2 -- Home first
   // -- WP P1WB1 -- Snapshots and Files in Advanced and Installer
   // -- WP WB6J -- the tool screens before the event log; -- WP WB6L -- Control Surfaces after Files; -- WP WB6H -- Effects; -- WP WB6I -- Settings last
   assert.deepEqual(screensFor("advanced", true).map((s) => s.id), ["system", "system-clock", "system-installation", "chain", "main", "eq", "xover", "delays", "inputs", "matrix", "effects", "overview", "presets", "snapshots", "history", "files", "autoeq", "generator", "analyser", "stats", "monitor", "measure", "events", "settings"]); // -- WP P5WMS -- Measure with the tools -- WP WEBM2 -- Crossover, Delay & gain -- WP WEBM3 -- History

@@ -40,6 +40,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import se.bofr.dspi.bridge.DspiBridge
 import se.bofr.dspi.ui.writesAllowed
@@ -77,7 +79,12 @@ fun AutoEQBrowser(
             placeholder = { Text("Search headphones...") },
             singleLine = true,
             trailingIcon = {
-                if (searchText.isNotEmpty()) TextButton(onClick = { searchText = "" }) { Text("✕") }
+                // -- WP UAN -- (UXP A12) named
+                if (searchText.isNotEmpty()) {
+                    TextButton(onClick = { searchText = "" }, Modifier.semantics { contentDescription = "Clear search" }) {
+                        Text("✕", Modifier.clearAndSetSemantics {})
+                    }
+                }
             },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
         )

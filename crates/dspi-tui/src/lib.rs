@@ -5,12 +5,20 @@ pub mod actions;
 pub mod autoeq_fetch;
 pub mod curves;
 pub mod graph;
+// -- WP UB11 -- the core's snapshots, A/B and speaker layout, from the embedder
+pub mod host;
 pub mod live;
 pub mod perf;
+// -- WP UB11 -- the plain line mode's sentences (UXP B11)
+pub mod plain;
 pub mod screens;
+// -- WP UTM -- the palette's search (UXP A13)
+pub mod search;
 pub mod settings;
 pub mod shell;
 pub mod theme;
+// -- WP UTM -- the interface before there is a device (UXP A13)
+pub mod waiting;
 pub mod widgets;
 
 /// The terminal's current size, or `None` when stdout is not a terminal.

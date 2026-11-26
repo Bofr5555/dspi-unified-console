@@ -1,0 +1,7 @@
+# -- WP UA4 -- first run and the Overview's setup list
+circle-check        Overview setup list: a step done; Getting Started: the setup list row
+circle-dashed       Overview setup list: a step not done
+play                Getting Started: try the demo
+bot                 Getting Started: ask an AI agent
+mic                 Getting Started: measure
+x                   Overview setup list: close

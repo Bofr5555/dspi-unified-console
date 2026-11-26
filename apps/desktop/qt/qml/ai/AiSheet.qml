@@ -12,6 +12,7 @@ Dialog {
     property var question           // what the buttons are for; it arms them anew
     property bool wanted: false
     property string prefix
+    property bool allowEnabled: true   // -- FIX016 -- (R2) Allow off: the question cannot be allowed as shown
     // -- WP SHOWFIX -- (finding 10) an agent's question: AiController may bring its
     // device's tab to the front under it
     readonly property bool aiQuestion: true
@@ -76,6 +77,7 @@ Dialog {
             y: Theme.spacing
             prefix: sheet.prefix
             question: sheet.question
+            allowEnabled: sheet.allowEnabled   // -- FIX016 --
             takeFocus: sheet.opened
             onAnswered: allow => sheet.answered(allow)
         }

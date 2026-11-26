@@ -9,7 +9,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { hasPage, openPage } from "../nav";
+import { hasPage, openPage, openOnHub } from "../nav"; // -- WP UB6 -- openOnHub
 import { presetsButton } from "../presets"; // -- WP INTD --
 
 type Clients = { dspiClients: { call(m: string, p: unknown): Promise<unknown> }[] };
@@ -324,13 +324,7 @@ async function linkHub(): Promise<OwnHub> {
 
 async function openUnit(page: Page, hub: OwnHub, serial: string): Promise<Locator> {
   await page.goto(`http://127.0.0.1:${hub.port}/console/`);
-  const picker = page.getByRole("navigation", { name: "DSPi devices" });
-  await picker.getByRole("listitem").filter({ hasText: `Hub 127.0.0.1:${hub.port}` }).getByRole("button", { name: "Connect" }).click();
-  const session = page.getByRole("article").last();
-  const entry = session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: serial.slice(-8) });
-  await entry.getByRole("button", { name: "Open" }).click();
-  await expect(session).toHaveAttribute("data-serial", new RegExp(serial));
-  return session;
+  return openOnHub(page, { host: `127.0.0.1:${hub.port}`, serial }); // -- WP UB6 -- the Fleet's Open
 }
 
 test.describe("WB8 on a hub", () => {

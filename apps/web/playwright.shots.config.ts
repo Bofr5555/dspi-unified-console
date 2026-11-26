@@ -1,9 +1,11 @@
-// The screenshot tour (test/shots/tour.spec.ts), not a test suite: pictures of the console on
+// The screenshot specs (test/shots/*.spec.ts), not a test suite: pictures of the console on
 // the core's demo device and on `uconsole --demo hub --alink`, dark and light, at a desktop
 // width and at 375 px. Run through tools/shots/web.sh, which builds with apps/web/tools/ci.sh
-// --no-e2e and then runs this config alone in the same Playwright image:
+// --no-e2e and then runs this config alone in the same Playwright image, on the specs PW_ARGS
+// names (-- INT016 -- by default parity_web.spec.ts; the README's are readme_web.spec.ts, and the
+// old tour.spec.ts is gone):
 //
-//   tools/shots/web.sh <out dir>
+//   PW_ARGS="test/shots/<spec>.ts --project desktop" tools/shots/web.sh <out dir>
 //
 // The PNGs go to $SHOTS_DIR (web.sh sets it to <out dir>; default test-results/shots).
 import { defineConfig, devices } from "@playwright/test";

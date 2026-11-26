@@ -145,6 +145,7 @@ impl Closing {
     /// guard is dropped.
     fn take(inner: &mut Inner) -> Option<Self> {
         let conn = inner.conn.take()?;
+        crate::solo::remember_lost(inner, Some(&conn)); // -- FIX016 -- (REVG F3)
         inner.state = state::default_state();
         let worker = crate::rta::take_worker(inner);
         Some(Self { conn, worker })

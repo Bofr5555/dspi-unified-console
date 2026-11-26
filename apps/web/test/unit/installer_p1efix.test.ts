@@ -66,7 +66,7 @@ async function sessionOn(): Promise<Session> {
 test("P1EFIX lock: the locked-user line is the core's banner row", { skip }, async () => {
   await sessionOn();
   const row = noticeRow(LOCK_BANNER_KEY);
-  assert.equal(row?.reason, "Locked by the installer: only volume, mute and presets can be changed.");
+  assert.equal(row?.reason, "Locked by the installer: only volume, mute, source and presets can be changed.");
   const line = lockLine({ pinSet: true, heldBy: "hub", locked: true, unlocked: false, covers: ["channels"] });
   assert.equal(line, row?.reason);
   assert.ok(!/\p{Extended_Pictographic}/u.test(line), "no glyphs");

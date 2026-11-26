@@ -1268,6 +1268,8 @@ impl DspiCore {
         mut plan: Plan,
         options: &PreflightOptions,
     ) -> Result<MeasureState> {
+        // -- WP GAP2 -- a sweep must reach every output it measures
+        self.solo_end()?;
         // -- WP ROLL1 -- who starts it (before the slot: it takes `inner`)
         let actor = crate::actor::JobActor::capture(self).actor();
         // The slot is held from the busy check to the session's install, so

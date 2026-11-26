@@ -16,7 +16,7 @@ import { NoDeviceFrame, NoDeviceStrip } from "./shell/NoDevice"; // -- WP REVEFI
 import { Session } from "./session";
 // -- WP WEBM1 -- the Modern shell
 import { alreadyOpenText, holderOf, serialOf, transportName } from "./shell/open-rule"; // -- WP WEBM3 -- transportName
-import { CONNECT, type Navigation } from "./shell/sections";
+import { CONNECT, FLEET, type Navigation } from "./shell/sections";
 import { TopBar } from "./shell/TopBar";
 // -- WP WB6b --
 import { UnsavedWatch } from "./unsaved";
@@ -26,13 +26,17 @@ import { OpenFiles } from "../screens/snapshots/OpenFile";
 import { ActionBoard, type PaletteEntry } from "./menus/board";
 import { menuItems, ownRow, type Handler, type MenuItem } from "./menus/actions";
 import { Palette } from "./palette/Palette";
-import { paletteEntries } from "./palette/entries";
+import { DOCS_URL, helpEntries, noDeviceEntries, paletteEntries } from "./palette/entries"; // -- WP UFW -- Help, no device
 import { deviceName, NoticeLog } from "./drawer/notices";
 import { BellButton, Drawer, useNotices } from "./drawer/Drawer";
 import { deviceTabsInRail, inspectorShown, loadArrangement, saveArrangement, setInspectorShown, type Arrangement } from "./arrangement/arrangement";
+import { accessAttributes, useCoarsePointer } from "./arrangement/access"; // -- WP UB13 --
 import { AppearanceDialog, ArrangementContext, RailTopContext } from "./arrangement/Appearance";
 import { DeviceTabs } from "./shell/DeviceTabs";
 import { useFollowAgent } from "./follow-agent"; // -- WP ODEC --
+// -- WP UB6 -- (UXP B6, D13) a hub-served console starts on the hub's Fleet
+import { FleetPage, fleetHubOf, sharedCount, useFleet, withoutFleetEntry } from "../screens/hub/FleetPage";
+import { useHubView } from "../screens/hub/HubScreen";
 import { appleKeys } from "./undo";
 
 export interface ConsoleOptions {
@@ -69,6 +73,7 @@ export function App(props: { options: ConsoleOptions }) {
   const [aboutOpen, setAboutOpen] = useState(false);
   const [listError, setListError] = useState("");
   const [addHubError, setAddHubError] = useState("");
+  const [listed, setListed] = useState(false); // -- WP UB6 -- the backend's list read once
   // -- WP WEBM1 -- the devices' page in place of the session's; what the page has to say; a tab being closed; the shortcut list
   const [picking, setPicking] = useState(false);
   const [said, setSaid] = useState("");
@@ -97,6 +102,7 @@ export function App(props: { options: ConsoleOptions }) {
     setInspector(v);
   }, []);
   const [appearance, setAppearance] = useState(false);
+  const coarse = useCoarsePointer(); // -- WP UB13 -- for Automatic's Comfortable
   const board = useMemo(() => new ActionBoard(), []);
   const [palette, setPalette] = useState<{ entries: PaletteEntry[]; back: HTMLElement | null } | null>(null);
   const log = useMemo(() => new NoticeLog(), []);
@@ -111,6 +117,7 @@ export function App(props: { options: ConsoleOptions }) {
     } catch (e) {
       setListError(e instanceof Error ? e.message : String(e));
     }
+    setListed(true); // -- WP UB6 --
   }, [backend]);
 
   useEffect(() => {
@@ -183,6 +190,12 @@ export function App(props: { options: ConsoleOptions }) {
     };
     // -- WP P2WB1 -- the hub screen's Open: another DSPi of the same hub, in a session of its own
     if (source.kind === "hub") session.openDevice = (serial) => void open(inst, { kind: "hub", url: source.url, deviceId: serial });
+    // -- WP UWN -- (UXP A16) Try Again and Connect Again: a new session for the same place (the DSPi it had, if any);
+    // Remove: the hub off this page's list
+    session.reopen = () =>
+      void close(session).then(() => open(inst, source.kind === "hub" && !source.deviceId && session.deviceId ? { ...source, deviceId: session.deviceId } : source));
+    if (source.kind === "hub" && inst.editable && backend.removeSource)
+      session.forget = () => void close(session).then(() => backend.removeSource!(inst.id, source)).then(reload, reload);
     add(session);
     await session.open(targetFor(source));
   };
@@ -229,6 +242,16 @@ export function App(props: { options: ConsoleOptions }) {
     : null;
 
   const current = sessions.find((s) => s.id === active) ?? sessions[0] ?? null;
+  // -- WP UB6 -- (UXP B6, D13) the serving hub's Fleet: a session of its own in the hub's choose step, read while no
+  // DSPi is open; on a hub's page the Fleet is shown (asking the hub) until the list says the hub has none for this page
+  const fleetHub = useMemo(() => fleetHubOf(installations), [installations]);
+  const fleet = useFleet(fleetHub, !current, async (hub) => {
+    const source: Source = { kind: "hub", url: hub.url };
+    const access = props.options.readOnly ? "view" : await backend.access(hub.inst.id, source, "");
+    return new Session(`${hub.inst.id}/fleet`, hub.inst.id, hub.inst.name, source, access, spawnCore(), tokens);
+  });
+  const fleetView = useHubView(fleet?.feed);
+  const fleetShown = !!fleetHub || (backend.kind === "hub" && !listed);
   // -- WP ODEC -- the screens follow an AI agent working through another console (ui/follow.ts)
   useFollowAgent(sessions, current, show);
 
@@ -255,7 +278,7 @@ export function App(props: { options: ConsoleOptions }) {
       ) : null}
       <div class="devices-columns">
         <DevicePicker
-          installations={installations}
+          installations={withoutFleetEntry(installations, fleetHub) /* -- WP UB6 -- the serving hub once */}
           env={env}
           openKeys={openKeys}
           onOpen={(i, s) => void open(i, s)}
@@ -307,6 +330,7 @@ export function App(props: { options: ConsoleOptions }) {
     "device.devices": { run: () => onPicking(true) },
     "edit.settings": { run: () => setAppearance(true) },
     "help.about": { run: () => setAboutOpen(true), text: `About ${short}` },
+    "help.manual": { run: () => void window.open(`${DOCS_URL}manual/README.md`, "_blank", "noopener") }, // -- WP UFW -- (UXP A8)
   };
   const handlers = () => board.handlers(current?.id ?? null);
   const mac = appleKeys(typeof navigator === "undefined" ? "" : (navigator.platform ?? ""));
@@ -330,6 +354,9 @@ export function App(props: { options: ConsoleOptions }) {
     // A tab not on show has no view, so only the page's rows
     const mine = board.session(s.id)?.handlers["device.firmwareUpdate"];
     if (mine && s === current) h["device.firmwareUpdate"] = mine;
+    // -- WP UFW -- (UXP A10, C1) Factory Reset is the device's, as Qt's tab menu, not Save ▾'s
+    const reset = board.session(s.id)?.handlers["device.factoryReset"];
+    if (reset && s === current) h["device.factoryReset"] = reset;
     return menuItems("device", h);
   };
   const openPalette = () => {
@@ -343,6 +370,9 @@ export function App(props: { options: ConsoleOptions }) {
     if (onShortcutList) extra.push({ id: "web.shortcuts", kind: "action", title: "Keyboard Shortcuts", where: "Help", keys: "Shift+?", enabled: true, run: onShortcutList });
     if (!mine?.entries.some((e) => e.id === "settings:appearance"))
       extra.push({ id: "settings:appearance", kind: "settings", title: "Appearance", where: "Settings", keywords: ["Settings"], keys: "", enabled: true, run: () => setAppearance(true) });
+    // -- WP UFW -- (UXP A8) with no DSPi, the ways to one; and the manual's answers
+    if (!current) extra.push(...noDeviceEntries({ openDemo, devices: () => onPicking(true), addHub: addHub ? () => onPicking(true) : null }));
+    extra.push(...helpEntries((url) => void window.open(url, "_blank", "noopener")));
     setDrawerOpen(false);
     setPalette({
       entries: paletteEntries({ current, session: mine, handlers: handlers(), others, extra }),
@@ -418,6 +448,7 @@ export function App(props: { options: ConsoleOptions }) {
       data-nav={arrangement.navigation}
       data-theme={arrangement.theme === "system" ? undefined : arrangement.theme}
       data-device-tabs={tabsInRail ? "rail" : undefined}
+      {...accessAttributes(arrangement, coarse) /* -- WP UB13 -- data-outline, data-density */}
     >
       {/* -- WP REVEFIX -- several devices: their tabs over the top bar (Qt's device row) */}
       {deviceRow ? <div class="device-row">{deviceTabs}</div> : null}
@@ -441,7 +472,27 @@ export function App(props: { options: ConsoleOptions }) {
           <SessionView key={current.id} session={current} onClose={() => void close(current)} shell={shell} />
         ) : (
           // -- WP REVEFIX -- (REVD D12) no device: the whole rail, the strip, an empty state on every page (Qt's)
-          <NoDeviceFrame shell={shell} start={CONNECT} strip={<NoDeviceStrip openDemo={openDemo} />} />
+          <NoDeviceFrame
+            shell={shell}
+            start={fleetShown ? FLEET : CONNECT /* -- WP UB6 -- */}
+            strip={
+              fleetShown
+                ? (go) => <NoDeviceStrip openDemo={openDemo} hub={{ shared: sharedCount(fleetHub, fleetView), onOpen: fleetHub ? () => go(FLEET) : null }} />
+                : <NoDeviceStrip openDemo={openDemo} />
+            }
+            fleet={
+              fleetShown ? (
+                <FleetPage
+                  fleet={fleet}
+                  name={fleetHub?.inst.name ?? ""}
+                  url={fleetHub?.url ?? ""}
+                  openKeys={openKeys}
+                  readOnly={props.options.readOnly}
+                  onOpen={(s) => (fleetHub ? void open(fleetHub.inst, s) : undefined)}
+                />
+              ) : undefined
+            }
+          />
         )}
       </main>
       {aboutOpen ? <About sourceUrl={props.options.sourceUrl} onClose={() => setAboutOpen(false)} /> : null}
@@ -466,10 +517,22 @@ function useOpenStatus(session: Session | null): Session["state"]["status"] | nu
   return session?.state.status ?? null;
 }
 
+// -- WP UB12 -- The e2e tests' pages were written for a new board: their browser holds this key
+// (playwright.config.ts), and the demo opens as the blank capture, not the tuned example.
+const BLANK_DEMO_KEY = "dspi.test.blankDemo";
+
+function blankDemo(): boolean {
+  try {
+    return globalThis.localStorage?.getItem(BLANK_DEMO_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 function targetFor(source: Source): DeviceTarget {
   switch (source.kind) {
     case "demo":
-      return { kind: "demo" };
+      return blankDemo() ? { kind: "demo", blank: true } : { kind: "demo" }; // -- WP UB12 --
     case "usb":
       // -- WP WB4a --
       return source.serial ? { kind: "usb", serial: source.serial } : { kind: "usb" };

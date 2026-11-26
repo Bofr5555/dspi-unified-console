@@ -25,7 +25,6 @@ static const GraphController::Slot peqDockSlot(GraphController::PeqDock, "PeqBan
 namespace {
 
 // The Mac editor's tuning
-constexpr double kDotHit = 10;
 constexpr double kCurveHit = 6;
 constexpr double kDragThreshold = 2;
 constexpr double kZoomZone = 40;
@@ -402,7 +401,7 @@ int PeqOverlay::dotUnder(const QPointF &p) const {
     double score = 0;
     for (int b : graphBands()) {
         const double d = distance(dotOf(m_shown[b]), p);
-        if (d > kDotHit) continue;
+        if (d > m_dotHit) continue;
         const double s = d - (selection().contains(b) ? 3 : 0) - (m_hovered == b ? 2 : 0);
         if (best < 0 || s < score) {
             best = b;
@@ -1723,8 +1722,8 @@ void PeqOverlay::refreshChip() {
         rows << row(Peq::Freq, tr("Freq"), f.first, f.second, true);
         if (Peq::usesGain(p.filter_type)) rows << row(Peq::Gain, tr("Gain"), Peq::truncated(p.gain, true), tr("dB"), true);
         if (Peq::usesQ(p.filter_type))
-            // "Width", as the band list calls it, with Q as its unit
-            rows << row(Peq::Width, tr("Width"), Peq::truncated(p.q), tr("Q"), true);
+            // -- INT016 -- (A10 one filter vocabulary) "Q", as the band list calls it (was Width)
+            rows << row(Peq::Width, tr("Q"), Peq::truncated(p.q), tr("Q"), true);
         else if (shape == Peq::AllPass)
             rows << row(Peq::Width, tr("Order"), tr("1st"), QString(), false);
         else

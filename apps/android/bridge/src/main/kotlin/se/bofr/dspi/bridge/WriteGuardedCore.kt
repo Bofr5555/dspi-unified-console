@@ -232,6 +232,12 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
         return inner.csDemoLearn(protocol, code)
     }
 
+    // -- WP UB12 -- "Reset demo": the demo's tuned example again
+    override fun resetDemo() {
+        guard("resetDemo")
+        inner.resetDemo()
+    }
+
     override fun demoRenameElsewhere(target: Int, name: String) {
         guard("demoRenameElsewhere")
         return inner.demoRenameElsewhere(target, name)
@@ -1085,6 +1091,7 @@ internal class WriteGuardedCore(private val inner: DspiCoreApi, private val allo
             "csDemoBusy",
             // -- WP CG20 --
             "csDemoLearn",
+            "resetDemo", // -- WP UB12 --
             "demoRenameElsewhere",
             "demoLatencyTiming",
             // -- WP QD31 --

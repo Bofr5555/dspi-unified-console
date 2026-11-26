@@ -15,9 +15,11 @@
 #include <QAccessible>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QPointer>   // -- FIX016 --
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QSettings>
+#include <QSignalSpy>   // -- FIX016 --
 #include <QTest>
 #include <cmath>
 #include <functional>
@@ -140,11 +142,20 @@ void checkDelay(SmokeDriver &d) {
     device->write(QStringLiteral("output delay 0"), [](FfiCore *c) { return dspi_set_output_delay(c, 0, 1.5f); },
                   [&](bool r) { ok = r; });
     d.waitIdle();
-    QObject *delay = d.object(QStringLiteral("Dashboard.delay.%1").arg(inputs));
+    // -- FIX016 -- (R1-SEGV) found anew at each look: a change of what a card shows
+    // makes every card anew (the Repeater's model is a list), so an item kept
+    // across a wait may be gone
+    const auto delayShown = [&]() { return textOf(d.object(QStringLiteral("Dashboard.delay.%1").arg(inputs))); };
     d.check(QStringLiteral("qp5: an output delay write is taken"), ok);
     d.check(QStringLiteral("qp5: the output column shows its delay"),
-            d.waitFor(2000, [&]() { return textOf(delay) == QLatin1String("Delay: 1.5ms"); }));
+            d.waitFor(2000, [&]() { return delayShown() == QLatin1String("Delay: 1.5ms"); }));
     device->write(QStringLiteral("output delay 0"), [before](FfiCore *c) { return dspi_set_output_delay(c, 0, before); });
+    d.waitIdle();
+    // -- FIX016 -- (R1-SEGV) and the cards made again with it before the next checks
+    // hold on to one (the 8c800da3b crash: the gear's card made anew under them)
+    d.check(QStringLiteral("qp5: and the delay put back shows"), d.waitFor(3000, [&]() {
+                return delayShown() == QStringLiteral("Delay: %1ms").arg(DashboardController::delayText(before));
+            }));
     d.waitIdle();
 }
 
@@ -171,9 +182,12 @@ void checkLayout(SmokeDriver &d) {
             grid && grid->property("columns").toInt() == dc->columnsFor(0, grid->width(), count));
 
     // The gear and the popup
+    // -- FIX016 -- (R1-SEGV) held as QPointers: a card made anew (its delay or name
+    // changed) takes its gear and popup with it, and a raw pointer read after that
+    // was the SIGSEGV of 8c800da3b's qp5 (a call through a freed item)
     QQuickWindow *w = d.mainWindow();
-    QQuickItem *card = d.item(QStringLiteral("Dashboard.card.input"));
-    QQuickItem *gear = card ? d.item(QStringLiteral("Dashboard.gear"), card) : nullptr;
+    QPointer<QQuickItem> card = d.item(QStringLiteral("Dashboard.card.input"));
+    QPointer<QQuickItem> gear = card ? d.item(QStringLiteral("Dashboard.gear"), card) : nullptr;
     d.check(QStringLiteral("qp5: the gear is hidden until the pointer is over the card"), gear && gear->opacity() < 0.01);
     if (!w || !card || !gear) return;
     // A user clicks the gear in the active main window (an earlier section may
@@ -182,20 +196,22 @@ void checkLayout(SmokeDriver &d) {
     d.check(QStringLiteral("qp5: the main window is active"), QTest::qWaitForWindowActive(w, 2000));
     QTest::mouseMove(w, card->mapToScene(QPointF(card->width() / 2, card->height() / 2)).toPoint());
     d.check(QStringLiteral("qp5: the gear shows while the pointer is over the card"),
-            d.waitFor(1000, [&]() { return gear->opacity() > 0.99; }));
+            d.waitFor(1000, [&]() { return gear && gear->opacity() > 0.99; }));
+    d.check(QStringLiteral("qp5: the gear's card stays while it is used"), card && gear);   // -- FIX016 --
+    if (!card || !gear) return;
     d.check(QStringLiteral("qp5: the gear is named for screen readers"),
             gear->property("toolTip").toString() == QLatin1String("Dashboard layout"));
-    QObject *popup = gear->findChild<QObject *>(QStringLiteral("DashboardLayoutPopup"));
+    QPointer<QObject> popup = gear->findChild<QObject *>(QStringLiteral("DashboardLayoutPopup"));
     QPoint gearAt = gear->mapToScene(QPointF(gear->width() / 2, gear->height() / 2)).toPoint();
     QTest::mouseClick(w, Qt::LeftButton, Qt::NoModifier, gearAt);
     d.check(QStringLiteral("qp5: the gear opens the layout popup"),
             popup && d.waitFor(1000, [&]() { return popup->property("opened").toBool(); }));
-    if (!popup) return;
+    if (!popup || !gear) return;
     d.spin(200);
     d.check(QStringLiteral("qp5: screenshot of the layout popup"), d.grab(w, QStringLiteral("window-dashboard-layout.png")));
 
     auto *content = qobject_cast<QQuickItem *>(popup->property("contentItem").value<QObject *>());
-    QQuickItem *summary = content ? d.item(QStringLiteral("DashboardLayoutPopup.summary"), content) : nullptr;
+    QPointer<QQuickItem> summary = content ? d.item(QStringLiteral("DashboardLayoutPopup.summary"), content) : nullptr;
     d.check(QStringLiteral("qp5: Auto says it fits the window"),
             textOf(summary) == QLatin1String("Fits as many cards per row as the window allows."));
     QQuickItem *two = content ? d.item(QStringLiteral("DashboardLayoutPopup.tile.2"), content) : nullptr;
@@ -203,28 +219,108 @@ void checkLayout(SmokeDriver &d) {
     if (two) QTest::mouseClick(w, Qt::LeftButton, Qt::NoModifier, two->mapToScene(QPointF(two->width() / 2, two->height() / 2)).toPoint());
     d.check(QStringLiteral("qp5: the 2 tile chooses two per row"), dc->cardsPerRow() == 2);
     d.check(QStringLiteral("qp5: the summary follows"), textOf(summary) == QLatin1String("Up to 2 cards per row."));
-    d.check(QStringLiteral("qp5: the popup stays open on a choice"), popup->property("opened").toBool());
+    d.check(QStringLiteral("qp5: the popup stays open on a choice"), popup && popup->property("opened").toBool());
+    if (!popup || !gear) return;   // -- FIX016 --
 
     // One click on the gear while the popup is open closes it, once (behaviour.md §26)
     // (each click well apart from the last, so none of them is a double
     // click; the choice moved the card, so the gear is found again)
     d.spin(600);
+    if (!gear || !popup) {   // -- FIX016 --
+        d.check(QStringLiteral("qp5: the gear's card stays while it is used"), false);
+        dc->setCardsPerRow(saved);
+        return;
+    }
     gearAt = gear->mapToScene(QPointF(gear->width() / 2, gear->height() / 2)).toPoint();
     QTest::mouseMove(w, gearAt);
     QTest::mouseClick(w, Qt::LeftButton, Qt::NoModifier, gearAt);
     d.spin(600);
     d.check(QStringLiteral("qp5: a click on the gear closes the open popup and leaves it closed"),
-            !popup->property("opened").toBool());
+            popup && !popup->property("opened").toBool());
     // Hover is only worked out again when the pointer moves, as it would
     QTest::mouseMove(w, gearAt + QPoint(1, 0));
     QTest::mouseMove(w, gearAt);
-    d.check(QStringLiteral("qp5: the gear still shows under the pointer"), gear->opacity() > 0.5 && gear->isEnabled());
+    d.check(QStringLiteral("qp5: the gear still shows under the pointer"), gear && gear->opacity() > 0.5 && gear->isEnabled());
     QTest::mouseClick(w, Qt::LeftButton, Qt::NoModifier, gearAt);
-    d.check(QStringLiteral("qp5: the gear opens it again"), d.waitFor(1000, [&]() { return popup->property("opened").toBool(); }));
+    d.check(QStringLiteral("qp5: the gear opens it again"), d.waitFor(1000, [&]() { return popup && popup->property("opened").toBool(); }));
     QTest::keyClick(w, Qt::Key_Escape);
-    d.check(QStringLiteral("qp5: Escape closes the popup"), d.waitFor(1000, [&]() { return !popup->property("opened").toBool(); }));
+    d.check(QStringLiteral("qp5: Escape closes the popup"), d.waitFor(1000, [&]() { return !popup || !popup->property("opened").toBool(); }));
 
     dc->setCardsPerRow(saved);
+    QTest::mouseMove(w, QPoint(2, 2));
+}
+
+// -- FIX016 -- (R1-SEGV) The 8c800da3b crash's path: the card under the pointer is
+// made anew (a delay changed) while the gear is about to be clicked, again and
+// again, and clicks land where the gear was. The old card and gear go (the
+// smoke's raw pointer to them was the crash); the app takes every click, a
+// click where the gear was with no hover opens nothing, and the new card's gear
+// works once the pointer moves.
+void checkRebuiltUnderPointer(SmokeDriver &d) {
+    DashboardController *dc = Registrar::instance<DashboardController>();
+    DeviceModel *device = d.app().device;
+    QQuickWindow *w = d.mainWindow();
+    const DspState *s = device->state();
+    if (!dc || !w || !s) return;
+    const float before = s->output_delay_ms[0];
+    const auto gearOf = [&]() -> QQuickItem * {
+        QQuickItem *card = d.item(QStringLiteral("Dashboard.card.input"));
+        return card ? d.item(QStringLiteral("Dashboard.gear"), card) : nullptr;
+    };
+    QPointer<QQuickItem> card = d.item(QStringLiteral("Dashboard.card.input"));
+    QPointer<QQuickItem> gear = gearOf();
+    if (!card || !gear) {
+        d.check(QStringLiteral("fix016 R1-SEGV: the input card's gear"), false);
+        return;
+    }
+    w->requestActivate();
+    QTest::qWaitForWindowActive(w, 2000);
+    QTest::mouseMove(w, card->mapToScene(QPointF(card->width() / 2, card->height() / 2)).toPoint());
+    d.waitFor(1000, [&]() { return gear && gear->opacity() > 0.99; });
+    const QPoint gearAt = gear->mapToScene(QPointF(gear->width() / 2, gear->height() / 2)).toPoint();
+    QSignalSpy rebuilt(dc, &DashboardController::cardsChanged);
+    int round = 0;
+    const auto delay = [&](float ms) {
+        device->write(QStringLiteral("fix016 delay"), [ms](FfiCore *c) { return dspi_set_output_delay(c, 0, ms); });
+    };
+    // Five rounds: a delay written, a click where the gear is while the cards are
+    // made anew, and no wait between them
+    for (round = 0; round < 5; ++round) {
+        delay(before + 0.5f * float(round + 1));
+        QTest::mouseClick(w, Qt::LeftButton, Qt::NoModifier, gearAt);
+        d.spin(30);
+        QTest::mouseClick(w, Qt::LeftButton, Qt::NoModifier, gearAt);
+    }
+    d.waitIdle();
+    d.waitFor(3000, [&]() { return rebuilt.count() > 0 && !card; });
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    d.check(QStringLiteral("fix016 R1-SEGV: a delay change makes the card under the pointer anew (%1 times)").arg(rebuilt.count()),
+            rebuilt.count() > 0 && !card && !gear);
+    // The new gear: no hover worked out yet (the pointer has not moved), so a click
+    // where it is opens nothing
+    QPointer<QQuickItem> fresh = gearOf();
+    QPointer<QObject> popup = fresh ? fresh->findChild<QObject *>(QStringLiteral("DashboardLayoutPopup")) : nullptr;
+    if (popup && popup->property("opened").toBool()) QMetaObject::invokeMethod(popup, "close");
+    d.spin(200);
+    QTest::mouseClick(w, Qt::LeftButton, Qt::NoModifier, gearAt);
+    d.spin(300);
+    d.check(QStringLiteral("fix016 R1-SEGV: the app takes every click; one where the gear was, with no hover, opens nothing"),
+            fresh && popup && (!fresh->isEnabled() ? !popup->property("opened").toBool() : true));
+    // Once the pointer moves, the new card's gear shows and opens its popup
+    QTest::mouseMove(w, gearAt + QPoint(1, 0));
+    QTest::mouseMove(w, gearAt);
+    d.check(QStringLiteral("fix016 R1-SEGV: the new card's gear shows under the pointer"),
+            d.waitFor(1000, [&]() { return fresh && fresh->opacity() > 0.99 && fresh->isEnabled(); }));
+    if (popup && !popup->property("opened").toBool()) QTest::mouseClick(w, Qt::LeftButton, Qt::NoModifier, gearAt);
+    d.check(QStringLiteral("fix016 R1-SEGV: and opens the layout popup"), d.waitFor(1000, [&]() { return popup && popup->property("opened").toBool(); }));
+    QTest::keyClick(w, Qt::Key_Escape);
+    d.waitFor(1000, [&]() { return !popup || !popup->property("opened").toBool(); });
+    delay(before);
+    d.waitIdle();
+    d.waitFor(3000, [&]() {
+        return textOf(d.object(QStringLiteral("Dashboard.delay.%1").arg(int(s->num_input_channels))))
+            == QStringLiteral("Delay: %1ms").arg(DashboardController::delayText(before));
+    });
     QTest::mouseMove(w, QPoint(2, 2));
 }
 
@@ -303,6 +399,7 @@ void dashboardSection(SmokeDriver &d) {
     d.check(QStringLiteral("qp5: screenshot of the Overview"), d.grab(d.mainWindow(), QStringLiteral("window-dashboard.png")));
     checkDelay(d);
     checkLayout(d);
+    checkRebuiltUnderPointer(d);   // -- FIX016 --
     checkMeters(d);
     checkNoDevice(d);
 }

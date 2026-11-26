@@ -28,7 +28,16 @@ export default defineConfig({
   workers: 4,
   retries: 0,
   reporter: [["list"]],
-  use: { baseURL: `http://127.0.0.1:${port}/`, trace: "retain-on-failure" },
+  // -- WP UB12 -- the pages' demo is the blank capture these tests were written for (src/ui/App.tsx's
+  // BLANK_DEMO_KEY); test/e2e/demo_ub12.spec.ts clears it for the tuned example every page opens
+  use: {
+    baseURL: `http://127.0.0.1:${port}/`,
+    trace: "retain-on-failure",
+    storageState: {
+      cookies: [],
+      origins: [port, hubPort].map((p) => ({ origin: `http://127.0.0.1:${p}`, localStorage: [{ name: "dspi.test.blankDemo", value: "1" }] })),
+    },
+  },
   webServer: [
     { command: `node tools/serve.mjs dist ${port}`, url: `http://127.0.0.1:${port}/`, reuseExistingServer: false },
     ...(fakehub

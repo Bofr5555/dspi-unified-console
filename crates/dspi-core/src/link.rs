@@ -1177,7 +1177,9 @@ impl DspiCore {
         let (old, worker) = {
             let mut inner = self.lock();
             let worker = crate::rta::take_worker(&mut inner);
-            (inner.conn.take(), worker)
+            let old = inner.conn.take();
+            crate::solo::remember_lost(&mut inner, old.as_ref()); // -- FIX016 -- (REVG F3)
+            (old, worker)
         };
         drop(self.set_meter_path(None)); // -- WP LK2 --
         if let Some(conn) = &old {

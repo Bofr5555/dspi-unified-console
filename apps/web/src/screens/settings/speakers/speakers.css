@@ -1,0 +1,27 @@
+/* WP UB7 (UXP B7): the one speaker table (SpeakerTable.tsx). Columns under their headings on a wide
+   page; each row wraps, headings hidden, on a narrow one (no horizontal scroll at 375 px). */
+.dspi-web .speaker-table { display: flex; flex-direction: column; gap: 8px; }
+.dspi-web .speaker-table-head,
+.dspi-web .speaker-table-row {
+  display: grid;
+  grid-template-columns: minmax(12em, 1.6fr) 9em 6em minmax(8em, 1fr);
+  gap: 4px 8px;
+  align-items: center;
+}
+.dspi-web .speaker-table-head { padding-bottom: 4px; border-bottom: 1px solid var(--separator, var(--border)); }
+.dspi-web .speaker-table-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.dspi-web .speaker-table-who { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
+.dspi-web .speaker-table-who .speakers-who { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.dspi-web .speaker-table-who .speakers-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dspi-web .speaker-table-row input[type="text"] { width: 100%; min-width: 0; box-sizing: border-box; }
+.dspi-web .speaker-table-together { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dspi-web .speaker-table-byhand { align-self: flex-start; }
+@media (max-width: 640px) {
+  .dspi-web .speaker-table-head { display: none; }
+  .dspi-web .speaker-table-row { display: flex; flex-wrap: wrap; }
+  .dspi-web .speaker-table-who { flex: 1 1 100%; }
+  .dspi-web .speaker-table-row input[type="text"] { width: 6em; }
+}
+/* The layout in one line where it is used (LayoutSummary.tsx) */
+.dspi-web .layout-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin: 0; }
+.dspi-web .layout-summary-text { flex: 1 1 16em; min-width: 0; }

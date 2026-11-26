@@ -248,13 +248,36 @@ pub struct Risk {
     pub output: Option<u8>,
     /// The writes that make it so; an Allow covers exactly these.
     pub keys: Vec<WriteKey>,
+    // -- WP UAG -- (UXP A6)
+    /// The app's words for it ([`said_of`]): `what` with the channels and
+    /// presets as the screen names them ("Right tweeter: gain −5.0 dB →
+    /// −2.0 dB", "preset 2 “Lunch”"), without "(flash)"; `what` when the
+    /// call had no device. It may hold names the user or a device wrote, so
+    /// it is never in [`Risk::to_json`], which agents read.
+    pub said: String,
+    /// The name of [`Risk::output`] as the screens show it ("Right
+    /// tweeter"), "" for none: the sheet's heading. The app's alone, as
+    /// [`Risk::said`].
+    pub channel: String,
 }
 
 impl Risk {
     /// As JSON, for the app and the agent: `output` from 1, as the app shows it.
+    /// Never [`Risk::said`] (-- WP UAG --).
     pub fn to_json(&self) -> Value {
         json!({"kind": self.kind.as_str(), "what": self.what, "output": self.output.map(|o| u16::from(o).saturating_add(1))})
     }
+}
+
+// -- WP UAG -- (UXP A6)
+/// The names the app's screens give a device's channels and presets, for
+/// the question's words ([`Risk::said`], [`Judging::rest`]): the app's alone.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ScreenWords {
+    /// The channels ([`DspiCore::channel_words`]).
+    pub channels: dspi_core::ChannelWords,
+    /// Each preset's name, "" for none (slot 1 first).
+    pub presets: Vec<String>,
 }
 
 /// [`judge`]'s answer.
@@ -333,6 +356,23 @@ pub struct Judging {
     // -- WP AIVIS --
     /// The device and the actor, for the rule on what the user took back.
     pub taken_back: TakenBack,
+    // -- WP UAG -- (UXP A6)
+    /// The device's names as the app shows them, for [`Risk::said`]; `None`
+    /// under a policy that does not judge on a device.
+    pub words: Option<ScreenWords>,
+    /// The held call's other changes, in the app's words: what the same
+    /// Allow also does that is not asked about on its own ("Sub: gain 0 →
+    /// −6 dB"). The app's alone, as [`Risk::said`].
+    pub rest: Vec<String>,
+    // -- WP UAG -- (UXP A7)
+    /// Why the console refused the call, in the app's words ("Kept Right
+    /// tweeter's high-pass at 1 kHz", "The installer lock is on"): the
+    /// activity entry's `said`, which agents never read.
+    pub refusal: Option<String>,
+    /// The call's own words for the app in place of the history's, when its
+    /// steps would mislead (a quiet preset load: "Master volume −127 dB;
+    /// Preset 2 loaded"). The app's alone.
+    pub said: Option<String>,
 }
 
 // -- WP AIVIS --
@@ -417,10 +457,11 @@ pub fn prejudge(
             Ok(())
         }
         Verdict::Ask(risks) => {
-            j.asked.extend(risks);
+            ask_all(&mut j, state, writes, risks); // -- WP UAG --
             Err(ToolError::new(HELD_TEXT))
         }
         Verdict::Refuse(why) => {
+            j.refusal = Some(refusal_words(&why, j.words.as_ref())); // -- WP UAG --
             j.refused = Some(why.clone());
             Err(ToolError::new(why))
         }
@@ -443,6 +484,24 @@ pub fn require(
     indices: &[u8],
 ) -> Result<(), ToolError> {
     require_keyed(cell, kind, what, indices, None)
+}
+
+// -- WP UB5 -- (UXP B5) refusals say where the person does it
+/// The refusal of a write no setting of the user's lets an agent make.
+pub const NO_POLICY_TEXT: &str = "the server's policy does not let agents do this: what agents \
+     may do is the user's choice, in the app (Settings › AI Agents). Nothing was changed; do not \
+     retry.";
+
+/// Where in the app the person does what only they may do, by the core's
+/// words for it (`actor::user_only`).
+fn user_only_place(msg: &str) -> Option<&'static str> {
+    if msg.starts_with("The speaker layout") {
+        Some("Settings › Speakers")
+    } else if msg.starts_with("The speaker detection's setting") {
+        Some("Settings › AI Agents")
+    } else {
+        None
+    }
 }
 
 // -- WP INTI -- (review RF2)
@@ -479,9 +538,7 @@ fn require_keyed(
 ) -> Result<(), ToolError> {
     let mut j = lock(cell);
     let Some(mode) = j.mode else {
-        return Err(ToolError::new(
-            "the server's policy does not let agents do this",
-        ));
+        return Err(ToolError::new(NO_POLICY_TEXT)); // -- WP UB5 --
     };
     let key = WriteKey::new(
         &path.map_or_else(|| format!("static.{}", kind.as_str()), str::to_owned),
@@ -498,12 +555,17 @@ fn require_keyed(
     {
         return Ok(());
     }
-    j.asked.push(Risk {
-        kind,
-        what: what.to_owned(),
-        output: None,
-        keys: vec![key],
-    });
+    push_asked(
+        &mut j,
+        Risk {
+            said: String::new(), // -- WP UAG --
+            channel: String::new(),
+            kind,
+            what: what.to_owned(),
+            output: None,
+            keys: vec![key],
+        },
+    );
     Err(ToolError::new(HELD_TEXT))
 }
 
@@ -531,14 +593,13 @@ pub fn require_detect(
 ) -> Result<(), ToolError> {
     let mut j = lock(cell);
     let Some(mode) = j.mode else {
-        return Err(ToolError::new(
-            "the server's policy does not let agents do this",
-        ));
+        return Err(ToolError::new(NO_POLICY_TEXT)); // -- WP UB5 --
     };
     if mode == ConfirmMode::NeverAsk {
         return if j.detect_allowed {
             Ok(())
         } else {
+            j.refusal = Some(SWITCHED_OFF_DETECT.to_owned()); // -- WP UAG --
             Err(ToolError::new(DETECT_NEVER_ASK_TEXT))
         };
     }
@@ -553,18 +614,28 @@ pub fn require_detect(
     if j.grant.contains(&detect_key) || j.grant.contains(&crate::grant::standing_detect_key()) {
         return Ok(());
     }
-    j.asked.push(Risk {
-        kind: RiskKind::TestSignal,
-        what: signal.to_owned(),
-        output: None,
-        keys: vec![signal_key],
-    });
-    j.asked.push(Risk {
-        kind: RiskKind::Detect,
-        what: detect.to_owned(),
-        output: None,
-        keys: vec![detect_key],
-    });
+    push_asked(
+        &mut j,
+        Risk {
+            said: String::new(), // -- WP UAG --
+            channel: String::new(),
+            kind: RiskKind::TestSignal,
+            what: signal.to_owned(),
+            output: None,
+            keys: vec![signal_key],
+        },
+    );
+    push_asked(
+        &mut j,
+        Risk {
+            said: String::new(), // -- WP UAG --
+            channel: String::new(),
+            kind: RiskKind::Detect,
+            what: detect.to_owned(),
+            output: None,
+            keys: vec![detect_key],
+        },
+    );
     Err(ToolError::new(HELD_TEXT))
 }
 
@@ -591,9 +662,7 @@ pub fn require_roles(
 ) -> Result<(), ToolError> {
     let mut j = lock(cell);
     let Some(mode) = j.mode else {
-        return Err(ToolError::new(
-            "the server's policy does not let agents do this",
-        ));
+        return Err(ToolError::new(NO_POLICY_TEXT)); // -- WP UB5 --
     };
     if mode == ConfirmMode::NeverAsk {
         if let Some(why) = demotes {
@@ -602,6 +671,7 @@ pub fn require_roles(
         return if j.roles_allowed {
             Ok(())
         } else {
+            j.refusal = Some(SWITCHED_OFF_ROLES.to_owned()); // -- WP UAG --
             Err(ToolError::new(ROLES_NEVER_ASK_TEXT))
         };
     }
@@ -613,12 +683,17 @@ pub fn require_roles(
     if j.grant.contains(&key) {
         return Ok(());
     }
-    j.asked.push(Risk {
-        kind: RiskKind::SpeakerRoles,
-        what: what.to_owned(),
-        output: None,
-        keys: vec![key],
-    });
+    push_asked(
+        &mut j,
+        Risk {
+            said: String::new(), // -- WP UAG --
+            channel: String::new(),
+            kind: RiskKind::SpeakerRoles,
+            what: what.to_owned(),
+            output: None,
+            keys: vec![key],
+        },
+    );
     Err(ToolError::new(HELD_TEXT))
 }
 
@@ -630,20 +705,23 @@ pub fn require_roles(
 pub fn require_change(cell: &JudgingCell, what: &str, indices: &[u8]) -> Result<(), ToolError> {
     let mut j = lock(cell);
     let Some(mode) = j.mode else {
-        return Err(ToolError::new(
-            "the server's policy does not let agents do this",
-        ));
+        return Err(ToolError::new(NO_POLICY_TEXT)); // -- WP UB5 --
     };
     let key = WriteKey::new("static.change", indices, ParamValue::Trigger);
     if mode != ConfirmMode::AskEverything || j.grant.contains(&key) {
         return Ok(());
     }
-    j.asked.push(Risk {
-        kind: RiskKind::Change,
-        what: what.to_owned(),
-        output: None,
-        keys: vec![key],
-    });
+    push_asked(
+        &mut j,
+        Risk {
+            said: String::new(), // -- WP UAG --
+            channel: String::new(),
+            kind: RiskKind::Change,
+            what: what.to_owned(),
+            output: None,
+            keys: vec![key],
+        },
+    );
     Err(ToolError::new(HELD_TEXT))
 }
 
@@ -666,13 +744,13 @@ pub fn umbrella(verdict: Verdict) -> Verdict {
 
 /// The installer lock's refusal: what still passes
 /// (`dspi_core::limits::lock::LOCKED_USER_WRITES`, the locked-user banner's
-/// "only volume, mute and presets"), where the user unlocks, and that the PIN
+/// "only volume, mute, source and presets"), where the user unlocks, and that the PIN
 /// is never the agent's. -- WP FUNC2c -- (FSTORY S7: 0 of 3 agents offered the
 /// mute the lock lets through when the text said only "ask the user to
-/// unlock".)
+/// unlock".) -- FIX016 -- (LOCKSRC) and the input source.
 pub const LOCKED_TEXT: &str = "the installer lock is on: while it is locked only the volume, \
-     the mutes and a preset load pass (dspi_set_volume, dspi_set_user_mute, dspi_set_mute, \
-     dspi_preset_load). For anything else ask the user to unlock it in the app (Settings › \
+     the mutes, the input source and a preset load pass (dspi_set_volume, dspi_set_user_mute, \
+     dspi_set_mute, dspi_set_source, dspi_preset_load). For anything else ask the user to unlock it in the app (Settings › \
      Installer); no tool unlocks it, and an agent never takes or uses the PIN. Nothing was \
      changed.";
 
@@ -686,9 +764,9 @@ pub fn lock_json(lock: &dspi_core::LockState) -> Value {
     json!({
         "pin_set": lock.pin_set,
         "locked": true,
-        "while_locked": "only the volume, the mutes and a preset load pass (dspi_set_volume, \
-                         dspi_set_user_mute, dspi_set_mute, dspi_preset_load); the user unlocks \
-                         in the app (Settings › Installer)",
+        "while_locked": "only the volume, the mutes, the input source and a preset load pass \
+                         (dspi_set_volume, dspi_set_user_mute, dspi_set_mute, dspi_set_source, \
+                         dspi_preset_load); the user unlocks in the app (Settings › Installer)",
     })
 }
 
@@ -705,6 +783,10 @@ pub fn hard_code(code: &str) -> bool {
 /// A core error as the agent reads it, noting in `cell` what the server
 /// acts on: a drag (retry, with the server's staleness bound) and a hold.
 pub fn core_error(cell: &JudgingCell, e: DspiError) -> ToolError {
+    // -- WP UAG -- (UXP A7) why, for the person, where the console refuses it
+    if let Some(said) = refused_by_core(&e) {
+        lock(cell).refusal.get_or_insert_with(|| said.to_owned());
+    }
     match &e {
         DspiError::ConfirmationRequired { code, .. } if code == USER_EDITING => {
             lock(cell).editing = true;
@@ -723,18 +805,32 @@ pub fn core_error(cell: &JudgingCell, e: DspiError) -> ToolError {
         DspiError::ConfirmationRequired { code, msg } if code == AGENT_REFUSED => {
             ToolError::new(crate::untrusted::note(msg))
         }
-        DspiError::ConfirmationRequired { code, .. } if code == USER_ONLY => ToolError::new(
-            "only the user may do that, in the app; an agent never can. Do not retry.",
-        ),
+        // -- WP UB5 -- (UXP B5) and where
+        DspiError::ConfirmationRequired { code, msg } if code == USER_ONLY => {
+            ToolError::new(match user_only_place(msg) {
+                Some(place) => format!(
+                    "only the user may do that, in the app ({place}); an agent never can. Do \
+                     not retry."
+                ),
+                None => "only the user may do that, in the app; an agent never can. Do not retry."
+                    .to_owned(),
+            })
+        }
         DspiError::ConfirmationRequired { code, .. } if code == NOT_OWN_ENTRY => ToolError::new(
-            "that change is not this agent's; only the user can undo it. Do not retry.",
+            "that change is not this agent's; only the user can undo it, in the app (Undo or the \
+             History). Do not retry.", // -- WP UB5 -- (UXP B5) where
         ),
         DspiError::ConfirmationRequired { code, .. } if code == AGENT_READ_ONLY => {
-            ToolError::new("agents may only read on this computer. Do not retry.")
+            // -- WP UB5 -- (UXP B5) and where that is chosen
+            ToolError::new(
+                "agents may only read on this computer: what agents may do is the user's \
+                 choice, in the app (Settings › AI Agents). Do not retry.",
+            )
         }
         DspiError::LimitExceeded { .. } => ToolError::new(format!(
             "{} This is the installer's limits profile: it is not asked about and an \
-             agent cannot lift it.",
+             agent cannot lift it. Only the user can change the limits, in the app (Settings › \
+             Installer).", // -- WP UB5 -- (UXP B5) where
             ToolError::from(e).0
         )),
         DspiError::InstallerLock { .. } => ToolError::new(LOCKED_TEXT), // -- WP FUNC2c --
@@ -779,6 +875,8 @@ pub fn judge(state: &DspState, writes: &[WriteKey], j: &Judging) -> Verdict {
     }
     if mode == ConfirmMode::AskEverything && risks.is_empty() {
         risks.push(Risk {
+            said: String::new(), // -- WP UAG --
+            channel: String::new(),
             kind: RiskKind::Change,
             what: summary(state, writes),
             output: None,
@@ -869,6 +967,399 @@ fn summary(st: &DspState, writes: &[WriteKey]) -> String {
         }
     }
     format!("change {}", items.join(", "))
+}
+
+// -- WP UAG -- (UXP A6) ------------------------------------ the app's words
+
+/// The device's names as its screens show them, for a question: -- FIX016
+/// -- (REVG F4) an output's name stands alone only from the speaker layout
+/// the user confirmed ([`question_output_name`]), so `said`, `channel` (the
+/// sheet's heading), the unasked rows, `held_said` and `refusal_words` all
+/// name it so.
+fn screen_words(core: &DspiCore) -> ScreenWords {
+    let mut channels = core.channel_words();
+    let confirmed = core
+        .speaker_layout()
+        .ok()
+        .flatten()
+        .is_some_and(|l| l.state() == dspi_core::LayoutState::Confirmed);
+    if !confirmed {
+        channels.from_layout.clear();
+    }
+    for (o, name) in channels.outputs.iter_mut().enumerate() {
+        *name = question_output_name(name, o, &channels.from_layout);
+    }
+    ScreenWords {
+        channels,
+        presets: core
+            .get_state()
+            .preset_names
+            .iter()
+            .map(|n| crate::untrusted::name(n))
+            .collect(),
+    }
+}
+
+/// Ask the user about `r`, with its words for the app.
+fn push_asked(j: &mut Judging, mut r: Risk) {
+    r.said = said_of(r.kind, &r.what, j.words.as_ref());
+    if let (Some(o), Some(w)) = (r.output, j.words.as_ref()) {
+        r.channel = w.channels.output(usize::from(o));
+    }
+    j.asked.push(r);
+}
+
+/// Ask the user about `risks` of a plan of `writes` on `state`, and keep the
+/// plan's other changes in the app's words ([`Judging::rest`]).
+fn ask_all(j: &mut Judging, state: &DspState, writes: &[WriteKey], risks: Vec<Risk>) {
+    let asked: Vec<(String, Vec<u8>)> = risks
+        .iter()
+        .flat_map(|r| {
+            r.keys
+                .iter()
+                .map(|k| (k.item().0.to_owned(), k.item().1.to_vec()))
+        })
+        .collect();
+    for r in risks {
+        push_asked(j, r);
+    }
+    let Some(words) = j.words.as_ref() else {
+        return;
+    };
+    let mut after = state.clone();
+    for w in writes {
+        apply(&mut after, w);
+    }
+    let mut seen: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut rows = Vec::new();
+    for w in writes {
+        let item = (w.item().0.to_owned(), w.item().1.to_vec());
+        if asked.contains(&item) || seen.contains(&item) {
+            continue;
+        }
+        seen.push(item);
+        // The item's last write is what it becomes
+        let last = writes
+            .iter()
+            .rev()
+            .find(|x| x.item() == w.item())
+            .unwrap_or(w);
+        if let Some(row) = rest_row(state, &after, last, &words.channels)
+            && !rows.contains(&row)
+        {
+            rows.push(row);
+        }
+    }
+    for row in rows {
+        if !j.rest.contains(&row) {
+            j.rest.push(row);
+        }
+    }
+}
+
+/// One change of a held plan in the app's words, from its value before to
+/// after where both are numbers ("Sub: gain 0 → −6 dB"); `None` for a
+/// write that changes nothing.
+fn rest_row(
+    before: &DspState,
+    after: &DspState,
+    w: &WriteKey,
+    words: &dspi_core::ChannelWords,
+) -> Option<String> {
+    let (item, ix) = w.item();
+    let path = if item == "eq" {
+        "eq.band"
+    } else {
+        w.path.as_str()
+    };
+    let now = value_of(after, path, ix);
+    let was = value_of(before, path, ix);
+    if now.is_some() && now == was {
+        return None;
+    }
+    let entry = |v: ParamValue| dspi_core::HistoryEntry {
+        path: path.to_owned(),
+        indices: ix.to_vec(),
+        before: None,
+        after: v,
+        source: dspi_core::HistorySource::Local,
+        at_ms: 0,
+        undoable: true,
+        label: None,
+        id: 0,
+        actor: 0,
+        actor_label: None,
+    };
+    let text = |v| dspi_core::change_words::change_text(&entry(v), words);
+    let said = text(now.unwrap_or_else(|| w.after.clone()));
+    Some(match was {
+        Some(v) => from_to(&text(v), &said),
+        None => said,
+    })
+}
+
+/// The value at `path` and `ix` on `st`, as a write of it would carry it,
+/// for the paths [`apply`] models outside the effects.
+fn value_of(st: &DspState, path: &str, ix: &[u8]) -> Option<ParamValue> {
+    let i0 = ix.first().copied().unwrap_or(0);
+    let i1 = ix.get(1).copied().unwrap_or(0);
+    let band = || band_of(st, i0, i1).copied();
+    Some(match path {
+        "vol.user" => ParamValue::Float(st.user_volume_db),
+        "vol.master" => ParamValue::Float(st.master_volume_db),
+        "vol.mute" => ParamValue::Bool(st.user_mute),
+        "pre" => ParamValue::Float(get(&st.input_preamp_db, i0)),
+        "pre.all" => ParamValue::Float(st.preamp_db),
+        "bypass" => ParamValue::Bool(st.bypass),
+        "out.gain" => ParamValue::Float(get(&st.output_gain_db, i0)),
+        "out.delay" => ParamValue::Float(get(&st.output_delay_ms, i0)),
+        "out.mute" => ParamValue::Bool(get(&st.output_muted, i0)),
+        "out.enable" => ParamValue::Bool(get(&st.output_enabled, i0)),
+        "ch.delay" => ParamValue::Float(get(&st.channel_delays, i0)),
+        "mix" => ParamValue::Bytes(
+            MatrixRoutePacket {
+                input: i0,
+                output: i1,
+                enabled: cell_of(&st.matrix_routing, i0, i1),
+                phase_invert: cell_of(&st.matrix_invert, i0, i1),
+                gain_db: cell_of(&st.matrix_gain, i0, i1),
+            }
+            .encode()
+            .to_vec(),
+        ),
+        "eq.band" => ParamValue::Bytes(band_bytes(&band().unwrap_or(FLAT))),
+        _ => return None,
+    })
+}
+
+/// "Sub: gain 0 dB" then "Sub: gain −6 dB" as "Sub: gain 0 → −6 dB": the
+/// words both share once, the values from → to; `after` alone unless both
+/// differ in a number.
+fn from_to(before: &str, after: &str) -> String {
+    let b: Vec<&str> = before.split(' ').collect();
+    let a: Vec<&str> = after.split(' ').collect();
+    let head = b.iter().zip(&a).take_while(|(x, y)| x == y).count();
+    let (bt, at) = (
+        b.get(head..).unwrap_or_default(),
+        a.get(head..).unwrap_or_default(),
+    );
+    let digit = |w: &[&str]| w.iter().any(|t| t.chars().any(|c| c.is_ascii_digit()));
+    if head == 0 || !digit(bt) || !digit(at) {
+        return after.to_owned();
+    }
+    // A unit both end with is said once
+    let unit = bt.len() > 1 && at.len() > 1 && bt.last() == at.last();
+    let bt = if unit {
+        bt.get(..bt.len().saturating_sub(1)).unwrap_or_default()
+    } else {
+        bt
+    };
+    format!(
+        "{} {} \u{2192} {}",
+        a.get(..head).unwrap_or_default().join(" "),
+        bt.join(" "),
+        at.join(" ")
+    )
+}
+
+/// [`Risk::said`]: the server's words `what` for a risk of `kind` as the
+/// app's screens say them. "(flash)" goes (the sheet says what a flash write
+/// means); a raised value reads from → to and its channel comes first ("Out 4
+/// gain up from −5.0 dB to −2.0 dB": "Out 4: gain −5.0 dB → −2.0 dB"); with
+/// `words`, the channels and presets are named as the screens name them
+/// ("Right tweeter: …", "preset 2 “Lunch”").
+pub(crate) fn said_of(kind: RiskKind, what: &str, words: Option<&ScreenWords>) -> String {
+    let mut s = what.replace(" (flash)", "");
+    if matches!(kind, RiskKind::Louder | RiskKind::DelayStep) {
+        if let Some((head, tail)) = s.rsplit_once(" from ")
+            && let Some((a, b)) = tail.split_once(" to ")
+        {
+            let head = head.strip_suffix(" up").unwrap_or(head);
+            s = format!("{head} {a} \u{2192} {b}");
+        }
+        if let Some(ch) = s
+            .strip_prefix("Turn off ")
+            .and_then(|r| r.strip_suffix("'s limiter"))
+        {
+            s = format!("{ch} limiter off");
+        }
+    }
+    s = channel_first(&s);
+    s = minus_signs(&s);
+    match words {
+        Some(w) if kind != RiskKind::SpeakerRoles => name_words(&s, w),
+        _ => s,
+    }
+}
+
+/// A number's "-" as the screens write it, "−".
+fn minus_signs(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut prev = ' ';
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        let number = chars.peek().is_some_and(char::is_ascii_digit);
+        out.push(if c == '-' && number && matches!(prev, ' ' | '(') {
+            '\u{2212}'
+        } else {
+            c
+        });
+        prev = c;
+    }
+    out
+}
+
+/// "Out 4 gain …" as "Out 4: gain …": a channel's own value, its channel
+/// first, so identical rows of several channels fold.
+fn channel_first(s: &str) -> String {
+    let mut t = s.splitn(4, ' ');
+    let (Some(ch), Some(n), Some(field)) = (t.next(), t.next(), t.next()) else {
+        return s.to_owned();
+    };
+    let numbered = matches!(ch, "Out" | "In") && n.chars().all(|c| c.is_ascii_digit());
+    if !numbered || !matches!(field, "gain" | "trim" | "limiter" | "delay") {
+        return s.to_owned();
+    }
+    let rest = s
+        .get(ch.len().saturating_add(n.len()).saturating_add(1)..)
+        .unwrap_or_default();
+    format!("{ch} {n}:{rest}")
+}
+
+// -- FIX016 -- (REVG F4)
+/// Output `o`'s (0-based) `name` as a question says it: a name from the
+/// confirmed speaker layout (`from_layout`) stands alone ("Left tweeter"),
+/// and so does the core's own label ("Out 3", "3 · None"); any other name,
+/// a channel name an agent may set without a question, keeps the output's
+/// number: "Sub (quieter) · Out 3".
+pub(crate) fn question_output_name(name: &str, o: usize, from_layout: &[u8]) -> String {
+    let n = o.saturating_add(1);
+    let trusted = u8::try_from(o).is_ok_and(|o| from_layout.contains(&o));
+    if trusted || name == format!("Out {n}") || name == format!("{n} \u{b7} None") {
+        name.to_owned()
+    } else {
+        format!("{name} \u{b7} Out {n}")
+    }
+}
+
+/// `s` with "Out N", "In N" and "preset N" named as the screens name them.
+pub(crate) fn name_words(s: &str, w: &ScreenWords) -> String {
+    let toks: Vec<&str> = s.split(' ').collect();
+    let mut out: Vec<String> = Vec::with_capacity(toks.len());
+    let mut i = 0usize;
+    while let Some(t) = toks.get(i).copied() {
+        let next = toks.get(i.saturating_add(1)).copied().unwrap_or("");
+        let digits = next.chars().take_while(char::is_ascii_digit).count();
+        let n = next
+            .get(..digits)
+            .and_then(|d| d.parse::<usize>().ok())
+            .filter(|n| *n >= 1);
+        let tail = next.get(digits..).unwrap_or_default();
+        match (t, n) {
+            ("Out", Some(n)) => {
+                out.push(format!("{}{tail}", w.channels.output(n.saturating_sub(1))))
+            }
+            ("In", Some(n)) => out.push(format!("{}{tail}", w.channels.input(n.saturating_sub(1)))),
+            ("preset", Some(n)) => {
+                out.push(t.to_owned());
+                let named_here = toks.get(i.saturating_add(2)) == Some(&"as");
+                match w.presets.get(n.saturating_sub(1)) {
+                    Some(p) if !p.trim().is_empty() && !named_here && tail.is_empty() => {
+                        out.push(format!("{n} \u{201c}{p}\u{201d}"));
+                    }
+                    _ => out.push(next.to_owned()),
+                }
+            }
+            _ => {
+                out.push(t.to_owned());
+                i = i.saturating_add(1);
+                continue;
+            }
+        }
+        i = i.saturating_add(2);
+    }
+    out.join(" ")
+}
+
+// -- WP UAG -- (UXP A7) ------------------------------------- the refusals
+
+/// The refusal of a speaker detection under "never ask" with the switch off,
+/// for the person.
+const SWITCHED_OFF_DETECT: &str =
+    "Agents may not detect speakers: switched off in Settings › AI Agents";
+/// The same for speaker roles from the person's words.
+const SWITCHED_OFF_ROLES: &str =
+    "Agents may not set speaker roles from your words: switched off in Settings › AI Agents";
+
+/// Why the core refused an agent's write, for the person: the rules that are
+/// the person's or the installer's, not a question.
+fn refused_by_core(e: &DspiError) -> Option<&'static str> {
+    match e {
+        DspiError::ConfirmationRequired { code, .. } if code == USER_CHANGED => {
+            Some("You changed this after the agent did, so it was left as you set it")
+        }
+        DspiError::ConfirmationRequired { code, .. } if code == USER_ONLY => {
+            Some("Only you can do this, in the app")
+        }
+        DspiError::ConfirmationRequired { code, .. } if code == NOT_OWN_ENTRY => {
+            Some("That change is yours: only you can undo it")
+        }
+        DspiError::ConfirmationRequired { code, .. } if code == AGENT_READ_ONLY => {
+            Some("Agents may only read on this computer")
+        }
+        DspiError::LimitExceeded { .. } => Some("Your limits held it"),
+        DspiError::InstallerLock { .. } => Some("The installer lock is on"),
+        _ => None,
+    }
+}
+
+/// A frequency as the screens write it: "1 kHz", "1.2 kHz", "80 Hz".
+pub(crate) fn hz_words(hz: f32) -> String {
+    if hz >= 1_000.0 {
+        let k = format!("{:.1}", hz / 1_000.0);
+        format!("{} kHz", k.trim_end_matches(".0"))
+    } else {
+        format!("{hz:.0} Hz")
+    }
+}
+
+/// The policy's refusal `why` (this module's words for the agent) as the
+/// person reads it in the strip and the activity: what the rule kept, the
+/// output named as the screens name it ("Kept Right tweeter's high-pass at
+/// 1 kHz"). Never sent to an agent.
+pub(crate) fn refusal_words(why: &str, words: Option<&ScreenWords>) -> String {
+    // The output the rule is about leads the text ("Out 2: …", "Out 2 drives …")
+    let mut t = why.split(' ');
+    let out = match (t.next(), t.next()) {
+        (Some("Out"), Some(n)) => {
+            let n = n.trim_end_matches(':');
+            n.chars()
+                .all(|c| c.is_ascii_digit())
+                .then(|| format!("Out {n}"))
+        }
+        _ => None,
+    };
+    let said = match out {
+        Some(o) if why.contains("speaker detection heard nothing") => {
+            format!("Nothing was heard from {o}: only you can include it, in Settings › Speakers")
+        }
+        Some(o) if why.contains("high-pass") => {
+            let floor = why
+                .split_once("high-pass at ")
+                .and_then(|(_, r)| r.split_once(" Hz"))
+                .and_then(|(n, _)| n.trim().parse::<f32>().ok());
+            match floor {
+                Some(hz) => format!("Kept {o}'s high-pass at {}", hz_words(hz)),
+                None => format!("Kept {o}'s high-pass"),
+            }
+        }
+        Some(o) => format!("Kept {o} safe: the speaker rules refused it"),
+        None => "The speaker rules refused it".to_owned(),
+    };
+    match words {
+        Some(w) => name_words(&said, w),
+        None => said,
+    }
 }
 
 /// The wire channel a delay write is about.
@@ -1042,6 +1533,8 @@ fn judge_values(before: &DspState, after: &DspState, writes: &[WriteKey], risks:
         let keys = || keys_of(writes, path, ix);
         let mut push = |kind, what: String, output| {
             risks.push(Risk {
+                said: String::new(), // -- WP UAG --
+                channel: String::new(),
                 kind,
                 what,
                 output,
@@ -1766,6 +2259,8 @@ pub fn agent_out(o: u8) -> String {
 /// [`hard_verdict`]'s.)
 fn highpass_verdict(o: u8, ch: u8, writes: &[WriteKey], risks: &mut Vec<Risk>) {
     risks.push(Risk {
+        said: String::new(), // -- WP UAG --
+        channel: String::new(),
         kind: RiskKind::TweeterCrossing,
         what: format!(
             "{} has a high-pass at {TWEETER_FLOOR_HZ} Hz or above (a tweeter): this \
@@ -2007,6 +2502,8 @@ fn judge_effects(before: &DspState, after: &DspState, writes: &[WriteKey], risks
             format!("Turn on {word} (it adds level)")
         };
         risks.push(Risk {
+            said: String::new(), // -- WP UAG --
+            channel: String::new(),
             kind: RiskKind::Louder,
             what,
             output: None,
@@ -2038,6 +2535,8 @@ fn judge_effects(before: &DspState, after: &DspState, writes: &[WriteKey], risks
             continue;
         };
         risks.push(Risk {
+            said: String::new(), // -- WP UAG --
+            channel: String::new(),
             kind: RiskKind::Louder,
             what,
             output: Some(o),
@@ -2102,6 +2601,8 @@ fn judge_masks(before: &DspState, after: &DspState, writes: &[WriteKey], risks: 
                 continue;
             }
             risks.push(Risk {
+                said: String::new(), // -- WP UAG --
+                channel: String::new(),
                 kind: RiskKind::Louder,
                 what: format!("{word} now also on {} (it adds level)", out_word(o)),
                 output: Some(o),
@@ -2114,6 +2615,8 @@ fn judge_masks(before: &DspState, after: &DspState, writes: &[WriteKey], risks: 
         && get(&after.upmix, 0) != 0.0
     {
         risks.push(Risk {
+            said: String::new(), // -- WP UAG --
+            channel: String::new(),
             kind: RiskKind::Enable,
             what: "Turn on the upmixer (it plays on the centre and surround outputs)".to_owned(),
             output: None,
@@ -2229,13 +2732,14 @@ impl AgentPolicy {
             match verdict {
                 Verdict::Pass => Ok(()),
                 Verdict::Ask(risks) => {
-                    j.asked.extend(risks);
+                    ask_all(&mut j, p.state, &writes, risks); // -- WP UAG --
                     Err(DspiError::ConfirmationRequired {
                         code: AGENT_CONFIRM.into(),
                         msg: HELD_TEXT.into(),
                     })
                 }
                 Verdict::Refuse(why) => {
+                    j.refusal = Some(refusal_words(&why, j.words.as_ref())); // -- WP UAG --
                     j.refused = Some(why.clone());
                     Err(DspiError::ConfirmationRequired {
                         code: AGENT_REFUSED.into(),
@@ -2412,6 +2916,7 @@ impl Policy for AgentPolicy {
             j.roles_allowed = self.agent_roles();
             j.held = held_outputs(core);
             j.own = own_outputs(core); // -- WP REVDFIX --
+            j.words = Some(screen_words(core)); // -- WP UAG --
         }
         (!UNJUDGED_TOOLS.contains(&call.tool)).then(|| Self::hook(Arc::clone(judging)))
     }

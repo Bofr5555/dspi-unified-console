@@ -27,8 +27,8 @@ const rows = (items: ReturnType<typeof menuItems>) => items.map((m) => (m === "s
 const run = () => undefined;
 
 test("WEBM4 actions.json: the desktop's rows and menus, every menu row a row", () => {
-  assert.equal(ACTIONS.length, 68);
-  assert.equal(ITEM_ACTIONS.length, 33);
+  assert.equal(ACTIONS.length, 72); // -- WP UFW -- Help › User Manual, Keyboard Shortcuts -- WP UB2 -- Window › Mode… -- WP UB12 -- Reset Demo
+  assert.equal(ITEM_ACTIONS.length, 34); // -- WP GAP2 -- the channel menu's Solo
   for (const [menu, groups] of Object.entries(MENUS)) for (const id of groups.flat()) assert.ok(isAction(id), `${menu}: ${id}`);
   // -- INTC -- "files": the desktop Equaliser's Files ▾ (MenuTable's place, DL8 fold)
   assert.deepEqual(Object.keys(MENUS).sort(), ["appMenu", "autoeq", "band", "channel", "device", "files", "graph", "history", "save", "slot"]);
@@ -41,7 +41,9 @@ test("WEBM4 actions.json: the desktop's rows and menus, every menu row a row", (
 
 test("WEBM4 menus: only the rows the web handles, in actions.json's groups; no empty group, no stray separator", () => {
   assert.deepEqual(menuItems("save", {}), [], "nothing handled: no menu");
-  assert.deepEqual(rows(menuItems("save", { "device.revert": { run }, "device.factoryReset": { run, danger: true } })), ["Revert to Saved…", "|", "Factory Reset…"]);
+  // -- WP UFW -- (UXP A10, C1) Factory Reset is a device tab's, not Save ▾'s
+  assert.deepEqual(rows(menuItems("save", { "device.revert": { run }, "device.factoryReset": { run, danger: true } })), ["Revert to Saved…"]);
+  assert.deepEqual(rows(menuItems("device", { "device.factoryReset": { run, danger: true }, "device.close": { run } })), ["Factory Reset…", "|", "Close"]);
   // The middle group (Save Master Volume, Save Output Configuration) has no web handler: left out, not greyed
   const items = menuItems("channel", { "channel.copy": { run }, "channel.paste": { run, enabled: false, reason: "Nothing copied" }, "channel.clear": { run } });
   assert.deepEqual(rows(items), ["Copy Parameters", "Paste Parameters", "|", "Clear PEQ…"]);
@@ -147,7 +149,7 @@ test("WEBM4 arrangement: as kept (WEBM1's key, which held the sections alone), d
   const a = withChoice(withChoice(DEFAULT_ARRANGEMENT, "theme", "dark")!, "deviceTabs", "rail")!;
   assert.equal(withChoice(a, "theme", "purple"), null, "not one of its choices");
   saveArrangement(kv, a);
-  assert.deepEqual(loadArrangement(kv), { navigation: "rail", deviceTabs: "rail", theme: "dark" });
+  assert.deepEqual(loadArrangement(kv), { ...DEFAULT_ARRANGEMENT, navigation: "rail", deviceTabs: "rail", theme: "dark" }); // -- WP UB13 -- and the access choices
   assert.equal(loadNavigation(kv), "rail", "WEBM1's reading of it still works");
   saveArrangement(kv, withChoice(a, "navigation", "tabs")!);
   assert.equal(loadNavigation(kv), "tabs");
@@ -257,7 +259,7 @@ test("WEBM4 on the demo: the device's handlers are actions.json's rows, its page
   // Commit asks first
   h["device.commit"]!.run();
   await new Promise((r) => setTimeout(r, 20));
-  assert.deepEqual(asked, ["Save Preset"]);
+  assert.deepEqual(asked, ["Save to Device"]); // -- WP UWN -- (UXP D1) the button's words
   // Locked: presets and mute only
   assert.deepEqual(Object.keys(sessionHandlers({ ...ctx, locked: true })).filter((k) => !k.startsWith("device.preset")), ["device.mute"]);
   // A shown page no row opens is in the palette by itself; a channel; a Settings page

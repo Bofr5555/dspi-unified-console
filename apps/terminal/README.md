@@ -86,19 +86,22 @@ mnemonics (its Shift-Cmd-M is `M` here):
 | `G` `A` | Signal Generator, Spectrum Analyser |
 | `T` `I` | Stats for Nerbs, Interrupt Monitor |
 | `B` | AutoEQ |
-| `,` | Settings |
+| `N` | Snapshots: save the device as it is, Recall, and A/B (the device now against a snapshot: `a` starts it, `Space` switches, `k` keeps the side it is on). Over DSPi Link a recall counts down: `k` keeps it, `r` puts the settings back |
+| `,` | Settings (Settings › Speakers: which output drives what, the roles the measurement and its safety checks take; `n` names a speaker, `g` sets a group, Confirm keeps it) |
 
 Everywhere:
 
 | Key | Does |
 |---|---|
-| `Tab` | Next region: channels, footer, detail |
-| `↑ ↓` | Select a channel; `Enter` returns to the overview |
+| `Tab` | Next region: channels, the page, the footer (one region: `↑ ↓` move inside it) |
+| `↑ ↓` | Select a channel; `Enter` or `→` goes into its page, `Esc` back to the overview. Outputs nothing is routed to are folded under "N unused ▸" (`Enter` opens it) |
+| `[` `]` | The listening volume down, up by 1 dB, on every page; `{` `}` (with Shift) by 3 dB |
+| `m` | Mute or unmute the listening volume, on every page |
 | `Space` | Toggle: a bypass, a feature in the quick strip, mute on the volume row |
 | `;` | Page commands: a small grammar scoped to the current page, with live hints (`1 2 > 3` routes on the matrix, `3 peak 1k -2` sets a band, `gain -3` trims an output) |
-| `Ctrl-P` | Search every parameter, tool and action |
-| `:` | Command line, the same grammar as the shell |
-| `Ctrl-S` | Commit Parameters to the active preset |
+| `Ctrl-P` | Search: words find places, tools, actions, verbs and parameters ("crossover", "mute", "low pass", "snapshot"); `Enter` goes there, `Tab` puts a command on the `:` line |
+| `:` | Command line, the shell's grammar (numbers take `k`: `1k`); `:help` is `?`. `snapshot`, `ab`, `diff`, `lock`, `limits`, `status` and `measure docs`, `show`, `export` run here on this device, with the terminal handed back while they run; `:snapshot recall NAME` and `:ab NAME` run in the interface and open the Snapshots panel (`:snapshot` and `:ab` alone open it) |
+| `Ctrl-S` | Save to Device: the active preset |
 | `Ctrl-Z` `Ctrl-Y` | Undo, redo |
 | `= g p . + - h l` | Graph height, pop-out, phase, linked partner, zoom, cursor |
 | `f t` | The live spectrum on the graph; take the analyser back from another console |
@@ -109,6 +112,46 @@ Everywhere:
 
 The echo line prints every change as the `:` command that would make it, so
 anything done in the interface can be pasted into a script.
+
+With no DSPi attached, `uconsole` opens on a page that waits for one and opens
+it the moment it is plugged in; meanwhile `d` opens the demo, `l` a DSPi Link
+hub (an address, or empty to look on the network) and `?` shows what
+`uconsole doctor` finds. A board in BOOTSEL shows as the drive RPI-RP2 instead
+(`uconsole flash`). One-shot commands still end with exit code 2 when there is
+no device.
+
+### Plain mode: lines for a screen reader, a log or a script
+
+`uconsole --plain` (and plain `uconsole` when `TERM=dumb`) is the interface as
+lines: no full-screen drawing, no colour, no box, braille or meter
+characters. It greets with the overview as sentences, then takes one command
+per line and says every change back as the command that makes it:
+
+```
+uconsole 0.16.0, plain mode. Connected to the demo device.
+Volume 0.0 dB, not muted.
+No unsaved changes.
+USB 1: no filters, trim 0.0 dB
+…
+Out 1 · L: no filters, gain 0.0 dB, not muted
+Out 2 · R: no filters, gain 0.0 dB, not muted
+7 unused outputs are not listed (overview all lists them).
+Type a command, help for the list, or quit.
+dspi> out.gain 0 -3
+out.gain 0 -3
+dspi> show out 1
+Out 1 · L: no filters, gain -3.0 dB, not muted
+```
+
+Every parameter and command of the shell's grammar works, as do `overview`
+(`overview all` adds the unused outputs), `show out 1`, `save` (Save to
+Device), `params`, `help` and the shell's `snapshot`, `ab`, `diff`, `lock`,
+`limits`, `status` and `measure docs`/`show`/`export`, on the same session.
+`quit` asks once when something is unsaved. With standard input piped
+(`uconsole --plain < session.txt`) there is no prompt, a mistake does not stop
+the rest, and the exit code is the first failure's. A script's lines are its
+commands, never answers: `ab` keeps the side it is on (`ab NAME --keep b` ends
+on B) and a guarded recall is kept at once, and the next line runs.
 
 ## Building
 

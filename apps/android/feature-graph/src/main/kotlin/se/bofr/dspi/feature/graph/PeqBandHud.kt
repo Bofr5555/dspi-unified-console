@@ -46,6 +46,7 @@ import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.onClick
@@ -164,8 +165,8 @@ private fun hudRowsFull(p: FilterParams): List<PeqHudRow> {
         }
         rows +=
             when {
-                // "Width", as the band list's column header calls it, with Q as the unit.
-                FilterTypes.hasQ(p.filterType) -> PeqHudRow(PeqHudField.Q, "Width", PeqValueText.truncated(p.q.toDouble()), "Q", true)
+                // -- INT016 -- (A10 one filter vocabulary) "Q", as the band list's column header calls it (was Width, with Q as the unit).
+                FilterTypes.hasQ(p.filterType) -> PeqHudRow(PeqHudField.Q, "Q", PeqValueText.truncated(p.q.toDouble()), "", true)
                 so.first == PeqShape.ALL_PASS -> PeqHudRow(PeqHudField.Q, "Order", "1st", "", false)
                 else -> PeqHudRow(PeqHudField.Q, "Slope", "6", "dB/oct", false, inline = true)
             }
@@ -424,11 +425,12 @@ fun PeqShapeChooser(
                 Modifier
                     .padding(start = 3.dp)
                     .size(15.dp, 17.dp)
-                    .clickable {
+                    // -- WP UAN -- (UXP A12) named: TalkBack read the chevron
+                    .clickable(role = Role.Button, onClickLabel = "Back") {
                         if (chooser.back()) onBack() else onStep()
-                    },
+                    }.semantics { contentDescription = "Back" },
                 contentAlignment = Alignment.Center
-            ) { Text("‹", fontSize = 13.sp, color = Color.White.copy(alpha = 0.85f)) }
+            ) { Text("‹", Modifier.clearAndSetSemantics {}, fontSize = 13.sp, color = Color.White.copy(alpha = 0.85f)) }
             Text(chooser.title, fontSize = 10.sp, color = Color.White.copy(alpha = 0.85f), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Box(Modifier.padding(horizontal = 8.dp).padding(top = 3.dp).fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.09f)))

@@ -1,10 +1,141 @@
 # Changelog
 
-Release notes of each version: `CHANGELOG-0.15.0.md`, `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md`.
+Release notes of each version: `CHANGELOG-0.16.0.md`, `CHANGELOG-0.14.0.md`, `CHANGELOG-0.13.0.md` (`CHANGELOG-0.15.0.md`: not
+released, folded into 0.16.0).
 
-## 0.15.0 (2026-11-26)
+## 0.16.0 (2026-11-26)
 
 One version for every client but the Swift app: the Qt desktop app (Windows, Linux and macOS), Android (versionCode
+16), the Terminal (`uconsole`), the web console and the hub. The Swift app for macOS, iPhone and iPad is still
+deferred. The firmware is unchanged: the fork's v1.1.6-bofr1. **0.16.0 is the first release after 0.14.0**: 0.15.0
+was prepared (`main` at `201118b9`, 2026-11-26) but not published, so what 0.16.0 brings since 0.14.0 is this section
+and the 0.15.0 section below. The release notes, `CHANGELOG-0.16.0.md`, cover both; they also say what was tested
+where (nothing new on a real DSPi), and the known limits.
+
+### Speakers to crossovers and routes (desktop)
+- Equaliser › Crossover and Routing have **From Speaker Layout…**: from the confirmed speaker layout, one sheet of
+  transitions (frequency and slope, Same as Left) writes every output's high- and low-pass and/or the routes as one
+  device write in one undo group. A tweeter's high-pass never goes below the tweeter floor (1 kHz, 12 dB/oct, or the
+  installer's higher limit); a route to a tweeter or mid driver without an active high-pass is refused unless the
+  same Apply writes its crossover; each half of a sum (a centre or sub from L and R) is set 6 dB below what fed the
+  output before (at most −6 dB), never louder than before. Settings › Speakers and the first run's Speakers step offer **Crossovers and Routing…**.
+- A new high or low pass opens at its partner way's frequency, never under the floor.
+
+### A/B as saved against now (desktop, web)
+- The top bar's A | B and the B key compare the active preset as saved on the device (the core's baseline) with the
+  device now, from the first edit (`ab_start_saved`). The listening volume, mute and the master volume stay live on
+  every toggle. A recalls what a load of that preset would play: a tweeter the load guard would hold is held.
+- On A, B's edits count as unsaved (`preset_dirty`, `preset_changes`): a preset switch, a tab close, quit and a
+  linked recall ask; Save to Device saves B.
+- Classic's B key starts the same compare.
+
+### Save state and the first run (desktop)
+- Each device tab shows its unsaved count with a dot, the tooltip lists the changes, the Save question names the
+  device, slot and preset; **Save All…** with two or more devices; Factory Reset moved from Save ▾ to the tab menu and
+  Devices › This Computer; a Keep says "not saved on the device yet" with Save to Device. Ctrl+S with no device does
+  nothing.
+- The Overview's setup list ("Set up this DSPi · n of m done"). The first run: a board step you can pass, Speakers
+  with Later, Done in the layout's words, Open the Demo on Welcome.
+- One name per output in Modern ("Left woofer · 1") in the Crossover and Delay & Gain tables, the matrix heads, the
+  Routing inspector and the Installer; the palette finds outputs by their words. Outputs nothing plays to fold under
+  "N unused"; an output with a role in the confirmed layout, a crossover or PEQ band, or a test signal never folds.
+- Settings opens on Device › Speakers ("System" is "Device"); About's protocol rows moved to Advanced; the dock's
+  "DSP" load; **Help › Keyboard Shortcuts** (Modern) and F6/Shift+F6 between the regions.
+- Measure and Auto-tune: an action bar always in view (Trial with Keep primary, Run, Proposal) and one refusal row
+  per reason with its fix. One speaker table (Settings › Speakers and the first run, "Measured together" follows the
+  speaker's name); Measure and Auto-tune show it in one line.
+- Settings › Appearance › Accessibility: Outline controls and Control size (Comfortable in Modern only; defaults
+  unchanged).
+- **All devices** in the dock links volume, mute and preset recall of the open devices (each within its limits,
+  keeping its offset; Home's volume and the tray follow; an offset is taken again when a device was changed
+  elsewhere).
+
+### Home and the installer's lock (desktop, web, Android)
+- Simple mode and the locked user open on **Home**: the device, the User volume and Mute, the source, the presets as
+  a Recall list, a health line (web: rooms on an installation). Simple's dock has no Master and no Bypass EQ.
+- Locked, in Modern, on the web and on Android nothing the lock refuses is offered (read-only pages with Go to Home;
+  Save, undo, the writing shortcuts and palette rows, Open in Window and A|B off). Classic stays live under the lock,
+  as before (the core refuses after the click).
+- The core lets the locked user change the input source (with volume, mute and preset), and refuses
+  `speaker_layout_set` under the lock on every client.
+
+### Solo (desktop, web)
+- **Solo** / **End Solo** for an output (the Routing inspector, the channel menu, a strip while it lasts): the core
+  mutes the other outputs on the device only; the mirror, the unsaved list, presets, snapshots, exports and agents
+  see the user's mutes. It ends before any save, load, whole-state write, measurement and disconnect; a page that
+  goes away ends it (web), and a connection lost without a close has its solo mutes lifted on the next attach of
+  that serial, before the baseline is taken.
+
+### The demo
+- `open_demo` opens a tuned two-way example (LR4 at 2.2 kHz, a room-mode cut, EQ, tweeters −3 dB and 0.1 ms later,
+  named outputs, a confirmed speaker layout), saved as slot 1 so nothing is unsaved; `reset_demo` (fake devices only)
+  starts it again; Reset Demo in Qt, the web and Android. `open_demo_blank` opens the bare capture (tests).
+
+### AI agents (desktop app)
+- The question sheet speaks the screen's words ("wants to make Right woofer louder", "gain −5.0 dB → −2.0 dB", ▲ on
+  the asked rows, Undo's honest last line); a name an agent set is shown with its output number. Refusals of an
+  agent are shown in the strip; Stop Agents is the one Stop.
+- An agent's questions within about 1.5 s are one sealed sheet grouped by device with one Allow; a group takes a
+  question only while its whole sheet (asked rows first, then the unasked ones, and a heading per device) fits the
+  12 rows the sheet shows (`GROUP_SHEET_ROWS`), the rest is the next sheet; up to 8 questions of an agent may wait
+  (was 3). The server refuses an answer to a question not yet sealed.
+- The strip says when an agent's work is not saved, with Save. `dspi_get_guide`; the relay's pairing code is shown
+  in the app and the chat; a three-step manual page; **Install in Claude Desktop…** writes an `.mcpb` extension
+  (untried in a real Claude Desktop, unsigned).
+
+### Web console
+- Device tabs named by place, a Start page with three named Connects, skip links, one Tab stop for the rail; recovery
+  that fences the page while a device is away and names another hub at the address; Devices › **Fleet** on a
+  hub-served page and the hub page in parts with one table; snapshots kept per DSPi in the browser (IndexedDB);
+  the EQ phase and group delay, Crossfeed's output-pair picker, output polarity; the Crossover opens on an output;
+  the filter words; an installable app (manifest).
+
+### Android
+- Mute on Home; 1 dB notification steps; the lock's line with Unlock… on a refused tap; Settings › Speakers and the
+  Speakers step (read-only under the lock); the touch band editor, the two crossover rows with Same for the right
+  side, legend pills; USB loss and reconnect notices; strip buttons on the bar. Phones (and the iOS code's iPhone and
+  iPad) open in Advanced (`assets/modes/modes.json`).
+
+### Terminal
+- Plain mode (`--plain`, `TERM=dumb`); piped, prompts take no script lines (an `ab` or a guarded recall keeps), and
+  the exit code is the first failure's. Ctrl-P search by words, the no-device page, the shell's verbs on the `:` line,
+  `k` in numbers, Tab regions, volume keys on every page, unused outputs folded. Settings › Speakers is read-only
+  under the lock.
+
+### Words
+- Save to Device everywhere; Bell, Q, Low pass and High pass for the filters (the saved files keep their ids); the
+  unsaved list says "Out 1 · L"; "trial" for a timed apply; What's New opens once with the app's own 0.16 notes.
+
+### Fixes
+- The review before this release (REVG) found, and 0.16.0 fixes: B's edits lost on side A of the A/B; the master
+  volume jumping on an A/B toggle in "with preset" mode; one Allow covering rows below the sheet's cut, and an answer
+  to a question not yet shown; the speaker layout writable under the lock; Home's volume outside the All-devices
+  link; a solo's mutes kept and saved after a reload or a lost connection; From Speaker Layout routing a tweeter
+  without a high-pass, and a louder sum; confirmed speakers folded as unused; lock holes in Modern's shortcuts,
+  palette and windows; an agent-set name on the question sheet without its output number; Terminal plain mode
+  eating script lines and dropping `--plain CMD`; Measure forgetting the simulated microphone when the demo
+  reopened.
+- **Kept on purpose from FIN015's work in progress** (two commits that were not in 0.15.0, `e51cb2a0c` and
+  `30015aa64`): an outside start of the signal generator (another console, a control surface) no longer reads the
+  device to learn which outputs play; every output of that device is shown while it plays. Conservative: nothing
+  that plays is folded.
+
+### Integrators
+- Additive C ABI: `dspi_ab_start_saved`, `dspi_solo_output`/`_end`/`_state`, `dspi_reset_demo`,
+  `dspi_open_demo_blank`; the compare replies carry `saved`. UniFFI: `reset_demo`. Nothing removed.
+- The installer lock: `speaker_layout_set` is refused while locked (PIN required); the input source is a locked
+  user's write.
+- MCP: the app's confirmation JSON gains `said`, `channel`, `batch`, `rest`, `group`, `sealed`, `seals_in_ms` and
+  `sheet` (the group's rows in the sheet's order; never in `dspi_get_confirmation`); a group is capped at
+  `GROUP_SHEET_ROWS` (12) rows; `answer_confirmation` (and `dspi_mcp_confirm_answer`) refuses a question whose
+  group is not sealed; `FilterType::label()` says "Bell" (the `type` token stays `peaking`).
+- The hub's installer lock lets `REQ_SET_INPUT_SOURCE` through as the core's does; its refusal says "volume, mute,
+  source and presets only".
+
+## 0.15.0 (not released, folded into 0.16.0)
+
+Prepared as a release but not published (owner, 2026-11-26): its content ships in 0.16.0. As it was written: one
+version for every client but the Swift app: the Qt desktop app (Windows, Linux and macOS), Android (versionCode
 15), the Terminal (`uconsole`), the web console and the hub. The Swift app for macOS, iPhone and iPad is still
 deferred. The firmware is unchanged: the fork's v1.1.6-bofr1, as for 0.14.0. Everything below was merged after the
 0.14.0 release (tag `v0.14.0`, `7d681a73`, 2026-11-20) up to 2026-11-26. The release notes are

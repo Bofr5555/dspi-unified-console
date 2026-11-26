@@ -24,7 +24,7 @@ export interface SessionContext {
   /** Show a screen, at an effect or a channel (`ChainTarget`'s fields). */
   open: (screen: string, at?: Record<string, unknown>) => void;
   sections: readonly Section[];
-  /** The locked-user front page: presets, mute and volume only. */
+  /** The locked-user front page: presets, mute, volume and the source (-- FIX016 -- LOCKSRC) only. */
   locked: boolean;
 }
 
@@ -49,13 +49,19 @@ const PAGE_ROWS: Record<string, { screen: string; at?: Record<string, unknown> }
 export async function factoryReset(session: Session, ask: Ask): Promise<void> {
   const a = await ask({
     title: "Factory Reset",
-    body: <p>Do you wish to clear all active parameters? This will not overwrite your saved parameters unless you run 'Commit Parameters'.</p>,
+    body: <p>Do you wish to clear all active parameters? This will not overwrite your saved parameters unless you use Save to Device.</p>, // -- WP UWN -- (UXP D1) one word for Save
     buttons: [
       { label: "Reset", value: "yes", danger: true },
       { label: "Cancel", value: "cancel" },
     ],
   });
   if (a === "yes") await session.change("factoryReset", { token: await session.token("factory_reset") });
+}
+
+// -- WP UB12 --
+/** Reset Demo: the demo's tuned example, its saved preset and its roles again, with nothing unsaved (no question: it is the demo). */
+export function resetDemo(session: Session): Promise<boolean> {
+  return session.change("demo", { action: "reset" });
 }
 
 export function sessionHandlers(c: SessionContext): Handlers {
@@ -84,6 +90,8 @@ export function sessionHandlers(c: SessionContext): Handlers {
   out["device.commit"] = write(key({ action: "commit" }));
   out["device.revert"] = write(key({ action: "revert" }));
   out["device.factoryReset"] = write(() => factoryReset(session, ask), { danger: true });
+  // -- WP UB12 -- (UXP B12) the demo's tuned example again; only the demo has the row
+  if (session.source.kind === "demo") out["device.resetDemo"] = write(() => resetDemo(session));
   out["device.bypass"] = write(key({ action: "bypass" }), { on: s.bypass });
   const ab = mayToggle(desk.state, !!ro);
   out["device.abToggle"] = { run: () => void runKey({ action: "ab" }, session, desk, ask, unsaved), enabled: ab, reason: ab ? undefined : ro || "No A/B compare runs (Library › Snapshots)" };
@@ -105,7 +113,7 @@ export function actionTitle(id: string, session: Session | null): string {
 export const ALIASES: Record<string, string[]> = {
   "device.commit": ["Save to Device"],
   "device.devices": ["Open a DSPi…", "Switch Device"],
-  "autoeq.browse": ["Headphone Profile…", "AutoEQ"],
+  "autoeq.browse": ["AutoEQ…", "Headphone Profile"], // -- WP UWN -- (UXP A17) the page tool says AutoEQ…
   "tools.spectrum": ["Spectrum Analyzer"],
 };
 

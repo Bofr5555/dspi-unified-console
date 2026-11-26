@@ -62,7 +62,8 @@ open_enum! {
     /// Values 32..63 encode crossover families; see [`Crossover`].
     FilterType: u8 {
         Flat            =  0, "Flat";
-        Peaking         =  1, "Peaking";
+        // -- INT016 -- (A10 one filter vocabulary) the shape's word, Bell
+        Peaking         =  1, "Bell";
         LowShelf        =  2, "Low shelf";
         HighShelf       =  3, "High shelf";
         LowPass         =  4, "Low pass";
@@ -133,13 +134,18 @@ impl FilterType {
     /// The name every client shows for this type: the Console's band-list
     /// name (`FilterType.name`, DSPMath.swift:114-160 at release/v1.1.6).
     /// Passes read as cuts ("High Cut (12dB)" for a low pass), crossovers as
-    /// family, order and pass ("LR4 Low Pass"); a type this build does not
+    /// family, order and pass ("LR4 Low pass"); a type this build does not
     /// know reads "Type 14". [`label`](Self::label) stays the protocol's own
     /// wording for logs and the command line.
+    ///
+    /// -- INT016 -- (A10 one filter vocabulary) the words are the one list
+    /// every screen says: Bell (the Console's "Peaking"), Low Shelf, High
+    /// Shelf, Low Cut, High Cut, Notch, All Pass; a crossover's direction is
+    /// "Low pass" / "High pass", as the crossover tables and inspectors say.
     pub fn display_name(self) -> String {
         let name = match self {
             Self::Flat => "Off",
-            Self::Peaking => "Peaking",
+            Self::Peaking => "Bell",
             Self::LowShelf => "Low Shelf (12dB)",
             Self::HighShelf => "High Shelf (12dB)",
             Self::LowPass => "High Cut (12dB)",
@@ -158,7 +164,7 @@ impl FilterType {
                         "{}{} {}",
                         m.family.short().to_uppercase(),
                         m.order,
-                        if m.high_pass { "High Pass" } else { "Low Pass" }
+                        if m.high_pass { "High pass" } else { "Low pass" }
                     ),
                     None => format!("Type {raw}"),
                 };
@@ -592,12 +598,13 @@ mod tests {
 
     // -- WP CG34 --
     /// The Console's `FilterType.name` (DSPMath.swift:114-160, release/v1.1.6)
-    /// for every case, in `allCases` order.
+    /// for every case, in `allCases` order; -- INT016 -- (A10 one filter
+    /// vocabulary) but Bell for Peaking and "Low pass" / "High pass".
     #[test]
     fn wp_cg34_display_names_are_the_consoles() {
         let console = [
             "Off",
-            "Peaking",
+            "Bell", // -- INT016 -- (A10 one filter vocabulary)
             "Low Shelf (12dB)",
             "High Shelf (12dB)",
             "High Cut (12dB)",
@@ -610,38 +617,38 @@ mod tests {
             "Linkwitz Transform",
             "High Cut (6dB)",
             "Low Cut (6dB)",
-            "LR2 Low Pass",
-            "LR2 High Pass",
-            "LR4 Low Pass",
-            "LR4 High Pass",
-            "LR6 Low Pass",
-            "LR6 High Pass",
-            "LR8 Low Pass",
-            "LR8 High Pass",
-            "BW1 Low Pass",
-            "BW1 High Pass",
-            "BW2 Low Pass",
-            "BW2 High Pass",
-            "BW3 Low Pass",
-            "BW3 High Pass",
-            "BW4 Low Pass",
-            "BW4 High Pass",
-            "BW5 Low Pass",
-            "BW5 High Pass",
-            "BW6 Low Pass",
-            "BW6 High Pass",
-            "BW7 Low Pass",
-            "BW7 High Pass",
-            "BW8 Low Pass",
-            "BW8 High Pass",
-            "BES2 Low Pass",
-            "BES2 High Pass",
-            "BES4 Low Pass",
-            "BES4 High Pass",
-            "BES6 Low Pass",
-            "BES6 High Pass",
-            "BES8 Low Pass",
-            "BES8 High Pass",
+            "LR2 Low pass",
+            "LR2 High pass",
+            "LR4 Low pass",
+            "LR4 High pass",
+            "LR6 Low pass",
+            "LR6 High pass",
+            "LR8 Low pass",
+            "LR8 High pass",
+            "BW1 Low pass",
+            "BW1 High pass",
+            "BW2 Low pass",
+            "BW2 High pass",
+            "BW3 Low pass",
+            "BW3 High pass",
+            "BW4 Low pass",
+            "BW4 High pass",
+            "BW5 Low pass",
+            "BW5 High pass",
+            "BW6 Low pass",
+            "BW6 High pass",
+            "BW7 Low pass",
+            "BW7 High pass",
+            "BW8 Low pass",
+            "BW8 High pass",
+            "BES2 Low pass",
+            "BES2 High pass",
+            "BES4 Low pass",
+            "BES4 High pass",
+            "BES6 Low pass",
+            "BES6 High pass",
+            "BES8 Low pass",
+            "BES8 High pass",
         ];
         let ours: Vec<String> = FilterType::all_defined()
             .map(FilterType::display_name)

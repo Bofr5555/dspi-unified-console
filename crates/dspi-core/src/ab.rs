@@ -28,6 +28,27 @@
 //! first captures the side it leaves (reads only, no event), so tweaking B,
 //! flipping to A and back finds B with the tweak. [`DspiCore::ab_diff`]
 //! compares the sides as last left.
+//!
+//! -- WP UB34 -- (UXP B3) [`DspiCore::ab_start_saved`] compares "as saved on
+//! the device" (A: the active preset as last loaded or saved, the baseline
+//! of [`DspiCore::preset_changes`]) with "now" (B), so a top-bar A | B works
+//! from the first edit with nothing captured by hand. Only what a preset
+//! holds differs between its sides: the listening volume and mute, the
+//! external mute, the master volume (-- FIX016 -- also in "with preset"
+//! mode: master volume is not compared), the output configuration outside
+//! "with preset" mode and the settings outside the image stay as they are
+//! live on every toggle (a toggle never jumps the volume). It ends when its
+//! baseline is replaced (a load, a save, a revert, a factory reset).
+//!
+//! -- FIX016 -- (REVG R3) B's edits are never dropped without a question:
+//! while the compare stands on A, [`DspiCore::preset_changes`] (and so
+//! [`DspiCore::preset_dirty`], which every client's unsaved question, Save
+//! count and close or quit guard reads) lists B's changes too, so a preset
+//! switch, a close, a quit or a linked recall asks as for any unsaved edit.
+//! A save (to the active preset, another slot or a copy) while on A puts B
+//! back first and ends the compare, so it saves B, never A without B. A load
+//! (a switch or a revert, the person having said to drop the changes) ends
+//! the compare and B with it.
 
 use std::sync::Mutex;
 
@@ -42,6 +63,15 @@ const CAPTURED_A_NAME: &str = "A";
 const CAPTURED_A_NOTE: &str = "Captured for an A/B compare";
 /// The note of a side re-captured as a toggle leaves it.
 const CAPTURED_NOTE: &str = "Captured by an A/B toggle";
+// -- WP UB34 -- the sides of a compare of "as saved" against "now"
+const SAVED_A_NAME: &str = "As saved";
+// -- FIX016 -- (REVG F1) and says what it leaves out
+const SAVED_A_NOTE: &str =
+    "The active preset as saved on the device. Master volume is not compared";
+const SAVED_B_NAME: &str = "Now";
+const SAVED_B_NOTE: &str = "The device's settings when the compare began";
+/// The refusal of [`DspiCore::ab_start_saved`] with no saved state known.
+pub(crate) const NO_SAVED: &str = "the settings saved on the device are not known yet";
 
 /// One side of a compare.
 #[cfg_attr(feature = "uniffi", derive(uniffi::Enum))]
@@ -99,6 +129,16 @@ pub struct AbCompare {
     pub recall: Option<SnapshotRecall>,
 }
 
+// -- WP UB34 --
+/// What a compare of "as saved" against "now" was made from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct SavedMark {
+    /// The baseline's epoch (`Inner::baseline_epoch`).
+    epoch: u64,
+    /// The active preset slot it was the baseline of.
+    slot: Option<u8>,
+}
+
 impl AbCompare {
     fn none() -> Self {
         Self {
@@ -124,6 +164,8 @@ struct Compare {
     a_name: String,
     b_name: String,
     side: AbSide,
+    // -- WP UB34 -- Some for a compare of "as saved" against "now"
+    saved: Option<SavedMark>,
 }
 
 impl Compare {
@@ -165,6 +207,8 @@ impl Compare {
 pub(crate) struct AbSlot {
     compare: Mutex<Option<Compare>>,
     epochs: Mutex<u64>,
+    // -- FIX016 -- (REVG R3) B's document and its settings, read once
+    b_cache: Mutex<Option<(String, DspState)>>,
 }
 
 impl AbSlot {
@@ -190,7 +234,8 @@ pub(crate) const NO_COMPARE: &str = "no A/B compare is running";
 /// The refusal of an A/B call while a guarded apply waits for Keep or Revert
 /// (P1SA): a toggle then would capture the guarded change into a side, and
 /// bring it back after the guard reverted it.
-pub(crate) const GUARD_WAITING: &str = "finish the safe apply first: Keep or Revert";
+// -- WP UFW -- (UXP D10) the countdown's one user word is "trial"
+pub(crate) const GUARD_WAITING: &str = "finish the trial first: Keep or Revert";
 
 /// What a snapshot document says about itself, checked before anything is
 /// sent: `(name, platform, inputs, outputs)`.
@@ -252,7 +297,11 @@ impl DspiCore {
 
     /// The running compare, ended first when its connection is gone.
     fn ab_current(&self) -> Option<Compare> {
-        let generation = self.lock().conn.as_ref().map(|c| c.generation);
+        let (generation, base) = {
+            let inner = self.lock();
+            let generation = inner.conn.as_ref().map(|c| c.generation);
+            (generation, saved_mark(&inner))
+        };
         let mut slot = self.ab.slot();
         if slot
             .as_ref()
@@ -260,13 +309,36 @@ impl DspiCore {
         {
             *slot = None;
         }
+        // -- WP UB34 -- "as saved" is no more what the device has saved
+        if let Some(c) = slot.as_mut()
+            && let Some(mark) = c.saved
+            && mark.epoch != base.epoch
+        {
+            if c.side == AbSide::A && mark.slot == base.slot {
+                // The same preset saved again while on A by someone else
+                // (-- FIX016 -- this console's saves put B back first and
+                // its loads end the compare): A is still what is saved,
+                // and B keeps its edits.
+                c.saved = Some(base);
+            } else {
+                *slot = None;
+            }
+        }
         slot.clone()
     }
 
     /// Recall `side` of `c`; on success the compare (if still the same one)
     /// is on `side`. A lost connection ends the compare.
     fn ab_recall(&self, c: &Compare, side: AbSide) -> Result<SnapshotRecall> {
-        match self.snapshot_recall_document(c.text(side).to_owned()) {
+        // -- WP UB34 -- a side of "as saved" against "now" is laid onto the
+        // live settings first, so only what a preset holds changes
+        let text = if c.saved.is_some() {
+            self.ab_on_live(c.text(side), c.name(side))
+                .map_err(|e| self.ab_failed(c, e))?
+        } else {
+            c.text(side).to_owned()
+        };
+        match self.snapshot_recall_document(text) {
             Ok(r) => {
                 if let Some(now) = self.ab.slot().as_mut().filter(|n| n.epoch == c.epoch) {
                     now.side = side;
@@ -328,7 +400,12 @@ impl DspiCore {
     }
 
     /// Start a compare of `a` and `b` (documents; `a` `None`: capture it).
-    fn ab_begin(&self, a: Option<String>, b: String) -> Result<AbCompare> {
+    fn ab_begin(
+        &self,
+        a: Option<String>,
+        b: String,
+        saved: Option<SavedMark>,
+    ) -> Result<AbCompare> {
         self.ab_guard_free()?; // -- WP P1CFIX -- F4
         let generation = self.ab_generation()?;
         // A compare already running is replaced, whatever comes of this one.
@@ -363,6 +440,7 @@ impl DspiCore {
             a_name,
             b_name,
             side: AbSide::A,
+            saved,
         };
         // A given A is recalled first, so the device is on A. A refusal
         // leaves no compare.
@@ -402,7 +480,7 @@ impl DspiCore {
         } else {
             Some(self.snapshot_export(a_id)?)
         };
-        self.ab_begin(a, b)
+        self.ab_begin(a, b, None)
     }
 
     /// [`DspiCore::ab_start`] with snapshot documents' text (the web, and a
@@ -410,7 +488,7 @@ impl DspiCore {
     pub fn ab_start_documents(&self, a_text: String, b_text: String) -> Result<AbCompare> {
         self.client_write_check()?; // -- WP ROMODE --
         let a = (!a_text.is_empty()).then_some(a_text);
-        self.ab_begin(a, b_text)
+        self.ab_begin(a, b_text, None)
     }
 
     /// Recall the other side: one bulk write (`0xA1`) plus the settings
@@ -485,6 +563,184 @@ impl DspiCore {
     }
 }
 
+// -- WP UB34 -- (UXP B3) "as saved" against "now"
+
+/// The baseline a compare of "as saved" against "now" stands on now.
+fn saved_mark(inner: &crate::Inner) -> SavedMark {
+    SavedMark {
+        epoch: inner.baseline_epoch,
+        slot: inner.baseline_of.as_ref().map(|(_, slot)| *slot),
+    }
+}
+
+/// `preset`'s settings where a preset holds them, `live`'s everywhere else:
+/// the listening volume and mute, the external mute, the sub solo, the
+/// persistence modes, the master volume and the output configuration unless
+/// it travels with presets (what a preset load leaves alone, and what
+/// [`DspiCore::preset_changes`] does not count). -- FIX016 -- (REVG F1) The
+/// master volume is not compared even when it travels with presets: a
+/// toggle never jumps the volume (saved −10 dB under a live −40 dB was +30 dB
+/// on one click).
+pub(crate) fn preset_on_live(preset: &DspState, live: &DspState) -> DspState {
+    use crate::presets::WITH_PRESET;
+    let mut s = preset.clone();
+    s.user_volume_db = live.user_volume_db;
+    s.user_mute = live.user_mute;
+    s.dac_mute_enabled = live.dac_mute_enabled;
+    s.dac_mute_active_low = live.dac_mute_active_low;
+    s.dac_mute_pin = live.dac_mute_pin;
+    s.dac_mute_hold_ms = live.dac_mute_hold_ms;
+    s.dac_mute_release_ms = live.dac_mute_release_ms;
+    s.subharm_solo = live.subharm_solo;
+    s.master_volume_mode = live.master_volume_mode;
+    s.output_config_mode = live.output_config_mode;
+    s.master_volume_db = live.master_volume_db; // -- FIX016 -- (REVG F1) never compared
+    if live.output_config_mode != WITH_PRESET {
+        s.output_pins.clone_from(&live.output_pins);
+        s.output_types.clone_from(&live.output_types);
+        s.i2s_bck_pin = live.i2s_bck_pin;
+        s.i2s_bck_pin_slave = live.i2s_bck_pin_slave;
+        s.i2s_clock_pin_mode = live.i2s_clock_pin_mode;
+        s.mck_enabled = live.mck_enabled;
+        s.mck_pin = live.mck_pin;
+        s.mck_multiplier = live.mck_multiplier;
+        s.adat_out_enabled = live.adat_out_enabled;
+        s.adat_out_pin = live.adat_out_pin;
+        s.limiter_enabled.clone_from(&live.limiter_enabled);
+        s.limiter_link_group.clone_from(&live.limiter_link_group);
+        s.limiter_threshold_db
+            .clone_from(&live.limiter_threshold_db);
+        s.limiter_release_ms.clone_from(&live.limiter_release_ms);
+        // The input block but the source itself
+        s.spdif_inputs_enabled = live.spdif_inputs_enabled;
+        s.spdif_rx_pins.clone_from(&live.spdif_rx_pins);
+        s.i2s_rx_pins.clone_from(&live.i2s_rx_pins);
+        s.i2s_input_channels = live.i2s_input_channels;
+        s.i2s_input_rate = live.i2s_input_rate;
+        s.i2s_clock_mode = live.i2s_clock_mode;
+        s.adat_input_enabled = live.adat_input_enabled;
+        s.adat_input_pin = live.adat_input_pin;
+        s.adat_input_clock_mode = live.adat_input_clock_mode;
+    }
+    s
+}
+
+impl DspiCore {
+    /// Snapshot document `text`'s preset laid onto the live settings
+    /// ([`preset_on_live`]), as a snapshot document named `name`. Reads only.
+    fn ab_on_live(&self, text: &str, name: &str) -> Result<String> {
+        let doc = crate::files::parse_config(text).map_err(invalid)?;
+        let base = self.lock().state.clone();
+        let preset = crate::snapshot::state_of_document(&base, &doc)
+            .ok_or_else(|| invalid(format!("{name}: the snapshot's settings cannot be read")))?;
+        self.snapshot_capture_document_adjusted(name.to_owned(), CAPTURED_NOTE.into(), &|live| {
+            *live = preset_on_live(&preset, live);
+        })
+    }
+}
+
+// Not exported to the bindings: the desktop app (C ABI) and the web (wasm)
+// call it; Android has no top-bar A/B.
+impl DspiCore {
+    /// Start an A/B compare of the active preset as saved on the device (A,
+    /// the baseline [`DspiCore::preset_changes`] compares with) against the
+    /// device now (B), and recall A: the top bar's A | B from the first edit
+    /// (UXP B3, owner D7). Only what a preset holds differs between the
+    /// sides (see [`preset_on_live`]), on every toggle too. It ends by
+    /// itself when its baseline is replaced, but a save or revert of the
+    /// same preset while on A keeps it. A compare already running is
+    /// replaced.
+    ///
+    /// Errors: [`DspiError::InvalidArgument`] ([`NO_SAVED`]) when the core
+    /// has no baseline (no image in this build's format), or while a
+    /// guarded apply waits; [`DspiError::Disconnected`]; the capture's and
+    /// the recall's errors.
+    pub fn ab_start_saved(&self) -> Result<AbCompare> {
+        self.client_write_check()?; // -- WP ROMODE --
+        self.ab_guard_free()?;
+        // What was queued before the compare is part of "now".
+        self.settle_notifications();
+        // -- INT016 -- (the integration's safety review) "as saved" plays what a
+        // load of the preset would: a trusted tweeter or midrange the preset
+        // leaves without its high-pass is held (muted) on A, as the load guard
+        // held it, never unmuted by the compare
+        let rules = self.load_guard_rules();
+        let (saved, mark) = {
+            let mut inner = self.lock();
+            inner.conn()?;
+            let base = inner.baseline.as_deref().ok_or_else(|| invalid(NO_SAVED))?;
+            let mut saved = inner.state.clone();
+            crate::state::decode_bulk(base, &mut saved).map_err(|_| invalid(NO_SAVED))?;
+            (saved, saved_mark(&inner))
+        };
+        let b = self.snapshot_capture_document(SAVED_B_NAME.into(), SAVED_B_NOTE.into())?;
+        let a = self.snapshot_capture_document_adjusted(
+            SAVED_A_NAME.into(),
+            SAVED_A_NOTE.into(),
+            &|live| {
+                *live = preset_on_live(&saved, live);
+                crate::preset_guard::hold_unprotected(live, &rules);
+            },
+        )?;
+        self.ab_begin(Some(a), b, Some(mark))
+    }
+
+    /// Whether the running compare is one of "as saved" against "now"
+    /// ([`DspiCore::ab_start_saved`]). No I/O.
+    pub fn ab_is_saved(&self) -> bool {
+        self.ab_current().is_some_and(|c| c.saved.is_some())
+    }
+
+    // -- FIX016 -- (REVG R3)
+    /// B's settings while a compare of "as saved" against "now" stands on A
+    /// (the side the person left, edits included), laid onto `live` as a
+    /// toggle would ([`preset_on_live`]); `None` otherwise. No I/O.
+    pub(crate) fn ab_saved_b_on_a(&self, live: &DspState) -> Option<DspState> {
+        let c = self
+            .ab_current()
+            .filter(|c| c.saved.is_some() && c.side == AbSide::A)?;
+        let mut cache = self.ab.b_cache.lock().unwrap_or_else(|p| p.into_inner());
+        if cache.as_ref().is_none_or(|(text, _)| *text != c.b) {
+            let doc = crate::files::parse_config(&c.b).ok()?;
+            let b = crate::snapshot::state_of_document(live, &doc)?;
+            *cache = Some((c.b.clone(), b));
+        }
+        cache.as_ref().map(|(_, b)| preset_on_live(b, live))
+    }
+
+    // -- FIX016 -- (REVG R3)
+    /// Before a save: a compare of "as saved" against "now" ends on B (B
+    /// recalled when the device is on A), so what is saved is B, the
+    /// person's edits, never A without them. Nothing with no such compare.
+    pub(crate) fn ab_save_b_first(&self) -> Result<()> {
+        if self.ab_current().is_some_and(|c| c.saved.is_some()) {
+            self.ab_keep(AbSide::B)?;
+        }
+        Ok(())
+    }
+
+    // -- FIX016 -- (REVG R3)
+    /// Before a load (a switch or a revert, whose question the person
+    /// answered with the unsaved changes, B's among them): a compare of "as
+    /// saved" against "now" ends, B with it. Nothing sent.
+    pub(crate) fn ab_end_saved(&self) {
+        let mut slot = self.ab.slot();
+        if slot.as_ref().is_some_and(|c| c.saved.is_some()) {
+            *slot = None;
+        }
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_p1ab;
+
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+mod tests_wp_ub34;
+
+// -- FIX016 --
+#[cfg(test)]
+mod tests_fix016_f1;
+#[cfg(test)]
+mod tests_fix016_r3;

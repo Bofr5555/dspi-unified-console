@@ -70,6 +70,7 @@ mod cs;
 // -- WP CG20 --
 mod cs_rules;
 mod curves;
+mod demo_example; // -- WP UB12 --
 mod device;
 mod ext;
 // -- WP FWX --
@@ -135,6 +136,8 @@ pub mod notice_text;
 pub mod confirm;
 // -- WP P1SN --
 mod snapshot;
+// -- WP GAP2 -- solo one output: a listening state, not a setting
+mod solo;
 // -- WP P1OF --
 pub mod offline;
 // -- WP P1AB --
@@ -173,6 +176,8 @@ pub mod actor;
 pub mod speaker_layout;
 // -- WP WEB6 -- the effect pages' drawings (Qt's C++ curves, moved to the core)
 pub mod effect_curves;
+// -- WP GAP1 -- an output's polarity from its routes (the web's snapshot, Qt's rule)
+pub mod output_polarity;
 // -- WP SHOWFIX -- the names a person knows a channel by
 pub mod change_words;
 pub mod channel_words; // -- WP SHOWFIX -- (finding 4)
@@ -563,6 +568,16 @@ pub(crate) struct Inner {
     /// The device (serial) and active preset slot `baseline` was captured
     /// for: a re-read of the same device on the same preset keeps it.
     pub(crate) baseline_of: Option<(String, u8)>,
+    // -- WP UB34 --
+    /// Counts the baselines captured: an A/B compare of "as saved" against
+    /// "now" ends when the baseline it was made from is replaced.
+    pub(crate) baseline_epoch: u64,
+    // -- FIX016 -- (REVG F3)
+    /// The outputs a solo held muted on a device whose connection went
+    /// without the solo's end (unplugged, a Link session lost, replaced by
+    /// another open), by serial: the next connect of that serial unmutes
+    /// them before its baseline is taken (`solo::lift_lost`).
+    pub(crate) lost_solo: Vec<(String, Vec<u8>)>,
     /// The notification monitor's log (WP C7).
     pub(crate) monitor: monitor::MonitorLog,
     /// The analyser's state and worker (WP C9).
@@ -752,6 +767,10 @@ pub(crate) struct Connection {
     /// knows (`stats::SiggenOutputs`): an unused output it plays on is not
     /// hidden (`OutputLabel::hidden`, REVF R1).
     pub(crate) siggen: stats::SiggenOutputs,
+    // -- WP GAP2 --
+    /// The output soloed on this connection, and what the solo holds muted
+    /// (`solo.rs`): it ends with the connection.
+    pub(crate) solo: solo::Solo,
 }
 
 /// A remote device reached without the [`Inner`] lock (WP C15).
@@ -883,6 +902,7 @@ impl Connection {
             board_seen: None, // -- WP LKFAST --
             // -- WP FIN015 --
             siggen: stats::SiggenOutputs::default(),
+            solo: solo::Solo::default(), // -- WP GAP2 --
         }
     }
 
@@ -1029,6 +1049,8 @@ impl Inner {
             state: state::default_state(),
             baseline: None,
             baseline_of: None,
+            baseline_epoch: 0,
+            lost_solo: Vec::new(), // -- FIX016 --
             monitor: monitor::MonitorLog::default(),
             rta: rta::RtaState::default(),
             cs: cs::CsState::default(),

@@ -15,7 +15,8 @@
 //! - **The locked-user state:** a PIN is set, the installer has chosen what
 //!   the lock covers (the profile's `lockedPages`, by the mode manifest's
 //!   screen ids) and this console is not unlocked for the device. Then only
-//!   the writes of [`LOCKED_USER_WRITES`] (volume, mute, preset) pass, within
+//!   the writes of [`LOCKED_USER_WRITES`] (volume, mute, preset, and -- FIX016
+//!   -- the input source) pass, within
 //!   the limits; every other write is refused before anything is sent, with
 //!   [`DspiError::InstallerLock`] `locked`. The check sits where every write
 //!   to the device starts (`Inner::writable_conn`), so a new write is refused
@@ -76,13 +77,15 @@ use crate::{DspiCore, DspiError, Inner, Result};
 pub use dspi_session::limits::{LOCK_FIRST_WAIT_MS, LOCK_FREE_TRIES, LOCK_MAX_WAIT_MS};
 
 /// The writes the locked-user state lets through (by registry path; the
-/// manifest's `lockedUser.writes`).
-pub const LOCKED_USER_WRITES: [&str; 5] = [
+/// manifest's `lockedUser.writes`). -- FIX016 -- (LOCKSRC, owner: "locked
+/// users may change the source", D4's remote home) the input source too.
+pub const LOCKED_USER_WRITES: [&str; 6] = [
     "vol.master",
     "vol.user",
     "vol.mute",
     "out.mute",
     "preset.load",
+    "in.source",
 ];
 
 /// The notice a client shows in the unlock dialog: the lock is on this
@@ -96,8 +99,9 @@ pub const LOCK_HUB_NOTICE: &str = "installer_lock.hub";
 
 // -- WP P1EFIX --
 /// The locked-user banner's row, the same line in every client: its `reason`
-/// is the banner's sentence ("Locked by the installer: only volume, mute and
-/// presets can be changed."), its `title` a short name for it.
+/// is the banner's sentence ("Locked by the installer: only volume, mute,
+/// source and presets can be changed.", -- FIX016 -- LOCKSRC), its `title` a
+/// short name for it.
 pub const LOCK_BANNER_NOTICE: &str = "installer_lock.banner";
 
 /// A PIN's shortest and longest length, in characters.
@@ -671,7 +675,7 @@ pub(crate) fn lock_check(inner: &mut Inner) -> Result<()> {
     }
     Err(lock_error(
         "locked",
-        "The installer has locked this DSPi on this console: only volume, mute and presets can be changed.",
+        "The installer has locked this DSPi on this console: only volume, mute, source and presets can be changed.", // -- FIX016 -- (LOCKSRC)
     ))
 }
 

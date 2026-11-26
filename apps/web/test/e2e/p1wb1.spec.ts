@@ -7,7 +7,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { openDevices, openPage } from "../nav";
+import { openDevices, openPage, openOnHub } from "../nav"; // -- WP UB6 -- openOnHub
 
 type Clients = { dspiClients: { call(m: string, p: unknown): Promise<unknown> }[] };
 type State = { outputGainDb: number[]; masterVolumeDb: number; userMute: boolean; bypass: boolean; activePresetSlot: number };
@@ -50,8 +50,10 @@ async function noSidewaysScroll(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
 }
 
-test("P1WB1 snapshots: capture downloads, recall puts every value back, Import… brings one back", async ({ page }) => {
+test("P1WB1 snapshots: capture holds it (-- WP UB14 -- no download), Export… downloads, recall puts every value back, Import… brings one back", async ({ page }) => {
   const errors = errorsOf(page);
+  let downloads = 0; // -- WP UB14 --
+  page.on("download", () => downloads++);
   const session = await openDemo(page);
   await openPage(session, "Snapshots");
   const screen = session.getByRole("region", { name: "Snapshots" });
@@ -59,13 +61,18 @@ test("P1WB1 snapshots: capture downloads, recall puts every value back, Import�
   const capture = session.getByRole("dialog", { name: "Capture Snapshot" });
   await capture.getByLabel("Name").fill("Kväll ✓");
   await capture.getByLabel("Note").fill("before the gig");
-  const [dl] = await Promise.all([page.waitForEvent("download"), capture.getByRole("button", { name: "Capture", exact: true }).click()]);
-  expect(dl.suggestedFilename()).toBe("Kväll ✓.dspipreset");
-  const text = readFileSync(await dl.path(), "utf8");
-  expect(JSON.parse(text).meta.kind).toBe("snapshot");
+  await capture.getByRole("button", { name: "Capture", exact: true }).click();
   const list = screen.getByRole("list", { name: "Held snapshots" });
   await expect(list.getByRole("listitem")).toHaveCount(1);
   await expect(list.getByRole("listitem").first()).toContainText("before the gig");
+  // -- WP UB14 -- (B14) kept in this browser, said under the heading; Export… in the row's menu is the download
+  await expect(screen).toContainText("Kept in this browser for this DSPi. Export… saves one as a file.");
+  expect(downloads).toBe(0);
+  await list.getByRole("button", { name: "More, Kväll ✓" }).click();
+  const [dl] = await Promise.all([page.waitForEvent("download"), session.getByRole("menu", { name: "More, Kväll ✓" }).getByRole("menuitem", { name: "Export…" }).click()]);
+  expect(dl.suggestedFilename()).toBe("Kväll ✓.dspipreset");
+  const text = readFileSync(await dl.path(), "utf8");
+  expect(JSON.parse(text).meta.kind).toBe("snapshot");
 
   await call(page, "write", { path: "out.gain", indices: [0], value: { float: -7 } });
   await expect.poll(async () => (await coreState(page)).outputGainDb[0]).toBe(-7);
@@ -97,6 +104,44 @@ test("P1WB1 snapshots: capture downloads, recall puts every value back, Import�
   expect(errors).toEqual([]);
 });
 
+// -- WP UB14 -- (B14, D14) the held snapshots outlive the page: kept in the browser per DSPi serial
+test("UB14 snapshots: kept in this browser through a reload; Delete is for good", async ({ page }) => {
+  const errors = errorsOf(page);
+  let session = await openDemo(page);
+  await openPage(session, "Snapshots");
+  let screen = session.getByRole("region", { name: "Snapshots" });
+  await expect(screen).toContainText("Kept in this browser for this DSPi.");
+  await screen.getByRole("button", { name: "Capture…" }).click();
+  const capture = session.getByRole("dialog", { name: "Capture Snapshot" });
+  await capture.getByLabel("Name").fill("Evening");
+  await capture.getByLabel("Note").fill("warmer");
+  await capture.getByRole("button", { name: "Capture", exact: true }).click();
+  await expect(screen.getByRole("list", { name: "Held snapshots" }).getByRole("listitem")).toHaveCount(1);
+
+  // The page again (a reload): the same DSPi's list, the note and all; Recall works from it.
+  session = await openDemo(page);
+  await openPage(session, "Snapshots");
+  screen = session.getByRole("region", { name: "Snapshots" });
+  const list = screen.getByRole("list", { name: "Held snapshots" });
+  await expect(list.getByRole("listitem")).toHaveCount(1);
+  await expect(list.getByRole("listitem", { name: "Evening" })).toContainText("warmer");
+  await call(page, "write", { path: "out.gain", indices: [0], value: { float: -6 } });
+  await expect.poll(async () => (await coreState(page)).outputGainDb[0]).toBe(-6);
+  await unsavedShown(session);
+  await list.getByRole("listitem", { name: "Evening" }).getByRole("button", { name: "Recall", exact: true }).click();
+  await page.getByRole("dialog", { name: "Recall Snapshot" }).getByRole("button", { name: "Recall" }).click();
+  await expect.poll(async () => (await coreState(page)).outputGainDb[0]).toBe(0);
+
+  await list.getByRole("button", { name: "More, Evening" }).click();
+  await session.getByRole("menu", { name: "More, Evening" }).getByRole("menuitem", { name: "Delete…" }).click();
+  await page.getByRole("dialog", { name: "Delete Snapshot" }).getByRole("button", { name: "Delete" }).click();
+  await expect(list.getByRole("listitem")).toHaveCount(0);
+  session = await openDemo(page);
+  await openPage(session, "Snapshots");
+  await expect(session.getByRole("region", { name: "Snapshots" })).toContainText("No snapshots yet");
+  expect(errors).toEqual([]);
+});
+
 test("P1WB1 A/B and safe apply: the toggle in the scene bar and its key, off during a countdown; Keep, Revert", async ({ page }) => {
   const errors = errorsOf(page);
   const session = await openDemo(page);
@@ -105,7 +150,7 @@ test("P1WB1 A/B and safe apply: the toggle in the scene bar and its key, off dur
   await call(page, "write", { path: "out.gain", indices: [0], value: { float: -4 } });
   await screen.getByRole("button", { name: "Capture…" }).click(); // -- WP INTD -- Capture is a popover
   await session.getByRole("dialog", { name: "Capture Snapshot" }).getByLabel("Name").fill("Bright");
-  await Promise.all([page.waitForEvent("download"), session.getByRole("dialog", { name: "Capture Snapshot" }).getByRole("button", { name: "Capture", exact: true }).click()]);
+  await session.getByRole("dialog", { name: "Capture Snapshot" }).getByRole("button", { name: "Capture", exact: true }).click(); // -- WP UB14 -- no download
   await call(page, "write", { path: "out.gain", indices: [0], value: { float: 0 } });
   const row = screen.getByRole("list", { name: "Held snapshots" }).getByRole("listitem", { name: "Bright" });
 
@@ -236,7 +281,7 @@ test("P1WB1 keys: Qt's table, never while a text field has focus", async ({ page
   await expect.poll(async () => (await coreState(page)).userMute).toBe(false);
   // Commit asks first.
   await page.keyboard.press("Control+s");
-  const dialog = page.getByRole("dialog", { name: "Save Preset" });
+  const dialog = page.getByRole("dialog", { name: "Save to Device" });
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Cancel" }).click();
   // Preset 2 (stored first), with an unsaved change: asked, as the picker asks.
@@ -289,17 +334,13 @@ test.describe("over DSPi Link", () => {
   test("P1WB1: a recall through a hub with the guard is a safe apply: countdown, Keep or Revert", async ({ page }) => {
     hub = await ownHub();
     await page.goto(`http://127.0.0.1:${hub.port}/console/`);
-    const row = page.getByRole("navigation", { name: "DSPi devices" }).getByRole("listitem").filter({ hasText: `Hub 127.0.0.1:${hub.port}` });
-    await row.getByRole("button", { name: "Connect" }).click();
-    const session = page.getByRole("article").last();
-    await session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").first().getByRole("button", { name: "Open" }).click();
-    await expect(session).toHaveAttribute("data-serial", /DEMO/);
+    const session = await openOnHub(page, { host: `127.0.0.1:${hub.port}`, serial: "DEMO0000DSPI0001" }); // -- WP UB6 -- the Fleet's Open
     await openPage(session, "Snapshots");
     const screen = session.getByRole("region", { name: "Snapshots" });
     await expect(screen).toContainText("Every recall here can be taken back");
     await screen.getByRole("button", { name: "Capture…" }).click(); // -- WP INTD -- Capture is a popover
     await session.getByRole("dialog", { name: "Capture Snapshot" }).getByLabel("Name").fill("Site");
-    await Promise.all([page.waitForEvent("download"), session.getByRole("dialog", { name: "Capture Snapshot" }).getByRole("button", { name: "Capture", exact: true }).click()]);
+    await session.getByRole("dialog", { name: "Capture Snapshot" }).getByRole("button", { name: "Capture", exact: true }).click(); // -- WP UB14 -- no download
     const item = screen.getByRole("list", { name: "Held snapshots" }).getByRole("listitem", { name: "Site" });
     // -- WP WEB7 -- over DSPi Link the switch is on and cannot be turned off (Qt's)
     await expect(screen.getByRole("switch", { name: "Recall with rollback" })).toHaveAttribute("aria-checked", "true");

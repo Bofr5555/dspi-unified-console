@@ -23,6 +23,9 @@ SettingsPage {
     // -- WP DL7 -- the offer of a limits profile shows (Classic: its row; Modern: a notice)
     readonly property bool offerLimits: AiController.enabled && LimitsController.connected && !LimitsController.active
     readonly property bool modern: LayoutController.modern
+    // -- WP UAG -- (UXP A9) the first task first: while no agent is paired, Connect an Agent is right
+    // under the switch; once one is, it moves down to its place after the settings
+    readonly property bool connectFirst: AiController.clients.length === 0
 
     function when(epochSeconds) {
         return epochSeconds > 0 ? new Date(epochSeconds * 1000).toLocaleString(Qt.locale(), Locale.ShortFormat) : ""
@@ -185,6 +188,15 @@ SettingsPage {
         onAction: AiController.openLimits()
     }
 
+    // -- WP UAG -- (UXP A9) Connect an Agent here while none is paired
+    Loader {
+        objectName: "AiAgents.connectFirst"
+        Layout.fillWidth: true
+        active: page.connectFirst
+        visible: active
+        sourceComponent: connectGroup
+    }
+
     // ---- When they ask ------------------------------------------------------------------
     SettingsGroup {
         objectName: "AiAgents.permissions"
@@ -196,7 +208,8 @@ SettingsPage {
                 ? qsTr("Agents' changes are made at once, louder ones and test signals too. Your limits profile and the protection of outputs you set up as tweeters still apply.")
                 : AiController.confirmMode === "ask_everything"
                 ? qsTr("Every change waits for your answer.")
-                : qsTr("Changes that make something louder, unmute or switch on an output, load or save a preset, or lower a tweeter's protection, and test signals, wait for your answer. Other changes are made at once.")
+                // -- WP UAG -- (UXP A9, F14) every kind that is asked
+                : qsTr("Changes that make something louder (a gain, a volume, an EQ boost over 6 dB), unmute, switch on or newly route an output, move a delay by more than 20 ms, change the input source, load or save a preset, or lower a tweeter's protection, and test signals, speaker detection and speaker roles from your words, wait for your answer. Other changes are made at once.")
         footerColor: AiController.confirmMode === "never_ask" ? Theme.warning : Theme.textMuted
         SettingsPickerRow {
             objectName: "AiAgents.confirm"
@@ -317,68 +330,151 @@ SettingsPage {
     }
 
     // ---- Connecting one -------------------------------------------------------------------
-    SettingsGroup {
-        objectName: "AiAgents.connect"
-        title: qsTr("Connect an Agent")
-        iconName: "plug"
-        footer: agentTabs.currentIndex < 2
-                ? qsTr("The first time it connects, you are asked to allow it here.")
-                : qsTr("Add a client below to get a token.")
-        AppTabBar {
-            id: agentTabs
-            objectName: "AiAgents.tabs"
-            visible: !page.modern   // -- WP DL7 -- Modern: the segments below (this keeps the choice)
-            label: qsTr("Agent")
-            Layout.fillWidth: true
-            AppTabButton { objectName: "AiAgents.tab.desktop"; text: qsTr("Claude Desktop") }
-            AppTabButton { objectName: "AiAgents.tab.code"; text: qsTr("Claude Code") }
-            AppTabButton { objectName: "AiAgents.tab.other"; text: qsTr("Other Agents") }
-        }
-        ToolSegments {   // -- WP DL7 -- grey, content-sized (DESIGN-LANGUAGE §7)
-            objectName: "AiAgents.segments"
-            visible: page.modern
-            label: qsTr("Agent")
-            model: [qsTr("Claude Desktop"), qsTr("Claude Code"), qsTr("Other Agents")]
-            current: agentTabs.currentIndex
-            onChosen: index => agentTabs.currentIndex = index
-        }
-        Text {
-            Layout.fillWidth: true
-            text: agentTabs.currentIndex === 0 ? qsTr("Add this to claude_desktop_config.json, then start Claude Desktop again:")
-                : agentTabs.currentIndex === 1 ? qsTr("Run this in a terminal:")
-                : qsTr("An agent that starts a program: this command. One that connects over HTTP: the address, with the header “Authorization: Bearer” and a client's token.")
-            font: Theme.fontBody
-            color: Theme.text
-            wrapMode: Text.Wrap
-        }
-        AiCopyField {
-            objectName: "AiAgents.config"
-            label: qsTr("Configuration")
-            text: agentTabs.currentIndex === 0 ? AiController.desktopConfig
-                : agentTabs.currentIndex === 1 ? AiController.codeCommand
-                : AiController.relayCommand
-        }
-        AiCopyField {
-            objectName: "AiAgents.url"
-            visible: agentTabs.currentIndex === 2
-            label: qsTr("Address")
-            text: AiController.url
-        }
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: Theme.spacing
-            Text {
+    // -- WP UAG -- (UXP A9) here once an agent is paired; above, under the switch, before
+    Loader {
+        Layout.fillWidth: true
+        active: !page.connectFirst
+        visible: active
+        sourceComponent: connectGroup
+    }
+    Component {
+        id: connectGroup
+        SettingsGroup {
+            objectName: "AiAgents.connect"
+            title: qsTr("Connect an Agent")
+            iconName: "plug"
+            footer: agentTabs.currentIndex < 2
+                    ? qsTr("The first time it connects, you are asked to allow it here.")
+                    : qsTr("Add a client below to get a token.")
+            AppTabBar {
+                id: agentTabs
+                objectName: "AiAgents.tabs"
+                visible: !page.modern   // -- WP DL7 -- Modern: the segments below (this keeps the choice)
+                label: qsTr("Agent")
                 Layout.fillWidth: true
-                text: qsTr("An agent on another computer connects through SSH.")
+                AppTabButton { objectName: "AiAgents.tab.desktop"; text: qsTr("Claude Desktop") }
+                AppTabButton { objectName: "AiAgents.tab.code"; text: qsTr("Claude Code") }
+                AppTabButton { objectName: "AiAgents.tab.other"; text: qsTr("Other Agents") }
+            }
+            ToolSegments {   // -- WP DL7 -- grey, content-sized (DESIGN-LANGUAGE §7)
+                objectName: "AiAgents.segments"
+                visible: page.modern
+                label: qsTr("Agent")
+                model: [qsTr("Claude Desktop"), qsTr("Claude Code"), qsTr("Other Agents")]
+                current: agentTabs.currentIndex
+                onChosen: index => agentTabs.currentIndex = index
+            }
+            // -- WP UB15 -- (UXP B15) Claude Desktop: this app as an extension in one
+            // click; the file by hand below it, for a Claude Desktop without extensions
+            RowLayout {
+                visible: agentTabs.currentIndex === 0
+                Layout.fillWidth: true
+                spacing: Theme.spacing
+                Text {
+                    Layout.fillWidth: true
+                    text: qsTr("Add this app to Claude Desktop as an extension: Claude Desktop opens and asks you to install it.")
+                    font: Theme.fontBody
+                    color: Theme.text
+                    wrapMode: Text.Wrap
+                }
+                AppButton {
+                    objectName: "AiAgents.installDesktop"
+                    primary: true
+                    text: qsTr("Install in Claude Desktop…")
+                    iconName: "download"
+                    onClicked: ClaudeDesktop.install()
+                }
+            }
+            Text {
+                objectName: "AiAgents.installOpened"
+                visible: agentTabs.currentIndex === 0 && ClaudeDesktop.state === "opened"
+                Layout.fillWidth: true
+                text: qsTr("In Claude Desktop, click Install. When Claude first uses it, you are asked here to allow it.")
                 font: Theme.fontBody
                 color: Theme.textMuted
                 wrapMode: Text.Wrap
             }
-            AppButton {
-                objectName: "AiAgents.otherComputer"
-                text: qsTr("Use from Another Computer…")
-                iconName: "external-link"
-                onClicked: Shell.openUrl(AiController.otherComputerUrl)
+            NoticeRow {
+                objectName: "AiAgents.installNotOpened"
+                visible: agentTabs.currentIndex === 0 && (ClaudeDesktop.state === "notOpened" || ClaudeDesktop.state === "failed")
+                Layout.fillWidth: true
+                kind: ClaudeDesktop.state === "failed" ? "error" : "warning"
+                text: ClaudeDesktop.state === "failed"
+                      ? qsTr("The extension was not saved: %1").arg(ClaudeDesktop.error)
+                      //: %1 is a file's path
+                      : qsTr("Nothing opened the extension. Is Claude Desktop installed? The extension is saved as %1.").arg(ClaudeDesktop.extensionFile)
+                actionText: ClaudeDesktop.state === "failed" ? "" : qsTr("Show File")
+                onAction: ClaudeDesktop.showExtensionFile()
+            }
+            Text {
+                Layout.fillWidth: true
+                text: agentTabs.currentIndex === 0 ? qsTr("Or add this to claude_desktop_config.json by hand, then start Claude Desktop again. Use one of the two, not both:")
+                    : agentTabs.currentIndex === 1 ? qsTr("Run this in a terminal:")
+                    : qsTr("An agent that starts a program: this command. One that connects over HTTP: the address, with the header “Authorization: Bearer” and a client's token.")
+                font: Theme.fontBody
+                color: Theme.text
+                wrapMode: Text.Wrap
+            }
+            AiCopyField {
+                objectName: "AiAgents.config"
+                label: qsTr("Configuration")
+                text: agentTabs.currentIndex === 0 ? AiController.desktopConfig
+                    : agentTabs.currentIndex === 1 ? AiController.codeCommand
+                    : AiController.relayCommand
+            }
+            // -- WP UB15 -- (UXP B15, A9) where that file is
+            RowLayout {
+                visible: agentTabs.currentIndex === 0
+                Layout.fillWidth: true
+                spacing: Theme.spacing
+                Text {
+                    objectName: "AiAgents.configFile"
+                    Layout.fillWidth: true
+                    //: %1 is the path of Claude Desktop's configuration file
+                    text: qsTr("Claude Desktop keeps it in %1").arg(ClaudeDesktop.configFile)
+                    font: Theme.fontBody
+                    color: Theme.textMuted
+                    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                }
+                AppButton {
+                    objectName: "AiAgents.openConfigFolder"
+                    text: qsTr("Open Config Folder")
+                    iconName: "folder-open"
+                    onClicked: ClaudeDesktop.openConfigFolder()
+                }
+            }
+            AiCopyField {
+                objectName: "AiAgents.url"
+                visible: agentTabs.currentIndex === 2
+                label: qsTr("Address")
+                text: AiController.url
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Theme.spacing
+                Text {
+                    Layout.fillWidth: true
+                    text: qsTr("An agent on another computer connects through SSH.")
+                    font: Theme.fontBody
+                    color: Theme.textMuted
+                    wrapMode: Text.Wrap
+                }
+                AppButton {
+                    objectName: "AiAgents.otherComputer"
+                    text: qsTr("Use from Another Computer…")
+                    iconName: "external-link"
+                    onClicked: Shell.openUrl(AiController.otherComputerUrl)
+                }
+            }
+            // -- WP UAG -- (UXP A9, F7) the agent app's own questions, beside this app's
+            Text {
+                objectName: "AiAgents.hostAsks"
+                visible: agentTabs.currentIndex < 2
+                Layout.fillWidth: true
+                text: qsTr("Your agent app may also ask before each tool it uses. You can let it allow the dspi tools: this app still asks you before risky changes, and your limits always hold.")
+                font: Theme.fontBody
+                color: Theme.textMuted
+                wrapMode: Text.Wrap
             }
         }
     }

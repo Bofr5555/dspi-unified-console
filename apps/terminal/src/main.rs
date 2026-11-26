@@ -118,6 +118,8 @@ mod core_route;
 mod api;
 // -- WP P5TM -- `uconsole measure`: measurement documents and the tune
 mod measure;
+// -- WP UB11 -- `--plain`: the interface as lines (UXP B11)
+mod plain;
 // -- WP MCP3 -- `uconsole mcp`: the stdio relay for AI agents
 mod mcp;
 
@@ -219,6 +221,25 @@ fn main() -> ExitCode {
     // A script beats every other reading of the arguments: `-f` is explicit,
     // and a non-terminal standard input with nothing else to do can only mean
     // someone is piping commands in.
+    // -- FIX016 -- (REVG F10b) `--plain` with a command: refused, never dropped or ignored
+    if let Some(cmd) = plain::command_with_plain(&flags) {
+        eprintln!(
+            "{COMMAND}: --plain takes its commands from standard input, one per line, not \
+             `{}` as well: run `{COMMAND} {}…` without --plain, or type it in the plain mode",
+            printable(cmd),
+            printable(cmd)
+        );
+        return ExitCode::from(exit::USAGE);
+    }
+    // -- WP UB11 -- (UXP B11, D16) `--plain` with no command, before a piped
+    // standard input is read as a script: the plain mode reads it line by line
+    if plain::wanted(
+        &flags,
+        std::env::var("TERM").ok().as_deref(),
+        std::io::IsTerminal::is_terminal(&std::io::stdin()),
+    ) {
+        return ExitCode::from(plain::run(target, &flags));
+    }
     let script = flag_value(&flags, "-f").or_else(|| flag_value(&flags, "--file"));
     if script.is_some() {
         return ExitCode::from(cmd_script(target, script, &flags, json));
@@ -560,8 +581,14 @@ fn prompt_pin(hub: &str, source: &str) -> Option<String> {
         eprint!("Open pairing on {hub}, and type the PIN it shows: ");
     }
     std::io::stderr().flush().ok()?;
-    let mut line = String::new();
-    std::io::stdin().read_line(&mut line).ok()?;
+    // -- WP UB11 -- the shared reader's line when it runs (the plain mode)
+    let line = if pro::stdin_shared() {
+        pro::stdin_answers().recv().ok()?
+    } else {
+        let mut line = String::new();
+        std::io::stdin().read_line(&mut line).ok()?;
+        line
+    };
     let pin = line.trim();
     (!pin.is_empty()).then(|| pin.to_owned())
 }
@@ -609,6 +636,10 @@ fn usage() {
 
 USAGE:
     {COMMAND}                 open the interface
+    {COMMAND} --plain         the interface as lines, for a screen reader, a
+                             log or a script: the overview as sentences, any
+                             command, each change said back (also with no
+                             command when TERM=dumb)
     {COMMAND} dump            connect and print the full device state
     {COMMAND} screenshot [w] [h] [screen]
                              render one frame of the interface as text
@@ -1066,7 +1097,13 @@ fn cmd_screenshot(target: &Target, args: &[&str], flags: &[&str]) -> u8 {
         };
         (session, state, None)
     } else {
-        match target.connect(&prompt_pin) {
+        // -- WP UB12 -- the demo as the interface opens it: the core's tuned example
+        let connected = if *target == Target::Demo {
+            core_route::open_connected(target, &prompt_pin)
+        } else {
+            target.connect(&prompt_pin)
+        };
+        match connected {
             Ok(c) => (c.session, c.state, Some(c.ext)),
             Err(e) => return fail_open(e),
         }
@@ -1138,10 +1175,23 @@ fn cmd_tui(target: &Target, flags: &[&str], palette: dspi_tui::theme::Palette) -
     // groups); a switch or a reconnect opens the same way.
     // One bulk read seeds everything the packet covers, so the first frame
     // shows the person's tuning rather than a flat line.
+    // -- WP UTM -- the target opened: the one chosen on the waiting page
+    let mut chosen = target.clone();
     let opened = match core_route::open_core(target, &pro::Stores::default_dirs(), &prompt_pin) {
         Ok(o) => o,
+        // -- WP UTM -- (UXP A13) no device yet: the page that waits for one
+        Err(e) if e.is_no_device() && *target == (Target::Usb { serial: None }) => {
+            match wait_for_device(palette) {
+                Ok((o, t)) => {
+                    chosen = t;
+                    o
+                }
+                Err(code) => return code,
+            }
+        }
         Err(e) => return e.report(),
     };
+    let target = &chosen;
     let mut c = match core_route::connected_on(&opened) {
         Ok(c) => c,
         Err(e) => return fail_open(e),
@@ -1163,6 +1213,111 @@ fn cmd_tui(target: &Target, flags: &[&str], palette: dspi_tui::theme::Palette) -
     )
 }
 
+// -- WP UTM -- (UXP A13)
+/// The interface's page before there is a device: wait for one, or open the
+/// demo or a hub the person chooses there. A choice that does not open goes
+/// back to the page with the reason on it. Answers the core and the target it
+/// opened; `Err`: the exit code (a quit is not a failure).
+fn wait_for_device(
+    palette: dspi_tui::theme::Palette,
+) -> Result<(core_route::OpenedCore, Target), u8> {
+    let theme = dspi_tui::Theme::new(
+        palette,
+        dspi_tui::theme::ColorDepth::detect(),
+        dspi_tui::perf::detect_glyphs(),
+    );
+    let mut page = dspi_tui::waiting::Waiting::new(theme);
+    let mut found = || dspi_transport::list_devices().is_ok_and(|d| !d.is_empty());
+    let doctor = || doctor::report(&Target::Usb { serial: None }).0;
+    loop {
+        let choice = match dspi_tui::waiting::run(&mut page, &mut found, &doctor) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("{COMMAND}: {e}");
+                return Err(exit::TRANSPORT);
+            }
+        };
+        use dspi_tui::waiting::Choice;
+        let target = match choice {
+            Choice::Quit => return Err(exit::OK),
+            Choice::Device => Target::Usb { serial: None },
+            Choice::Demo => Target::Demo,
+            Choice::Link(address) => match link_target(&address) {
+                Ok(t) => t,
+                Err(e) => {
+                    page.note = Some(e);
+                    continue;
+                }
+            },
+        };
+        match core_route::open_core(&target, &pro::Stores::default_dirs(), &prompt_pin) {
+            Ok(o) => return Ok((o, target)),
+            // Gone again before it opened: keep waiting.
+            Err(e) if e.is_no_device() => page.note = None,
+            Err(e) => page.note = Some(format!("{}: {}", target.via(), e.words())),
+        }
+    }
+}
+
+// -- WP UTM --
+/// The hub the waiting page's `l` names: `--link ADDRESS`, or `--hub` (look
+/// on the network) when the address is empty; as the command line reads them.
+fn link_target(address: &str) -> Result<Target, String> {
+    let flags: Vec<&str> = if address.is_empty() {
+        vec!["--hub"]
+    } else {
+        vec!["--link", address]
+    };
+    let (target, _) = parse_target(&flags)?;
+    let target = resolve_pin(target, std::env::var("DSPI_PIN").ok(), read_stdin_line)?;
+    dspi_tui::shell::connect::locate_hub(target, &link::Person).map_err(|e| e.to_string())
+}
+
+// -- WP UTM -- (UXP A13, C10)
+/// One of the shell's verbs from the interface's `:` line, on the
+/// interface's core (`core_route::on_interface_core`), with the terminal
+/// handed back: its output and questions are the shell's.
+fn shell_verb(words: &[String], target: Option<&Target>) -> u8 {
+    let target = target.cloned().unwrap_or(Target::Usb { serial: None });
+    let flags: Vec<&str> = words.iter().map(String::as_str).collect();
+    let run = || match flags.first().copied() {
+        Some("snapshot") => pro::snapshots::cmd_snapshot(&target, &flags, false),
+        Some("ab") => pro::snapshots::cmd_ab(&target, &flags, false),
+        Some("diff") => pro::cmd_diff(&target, &flags, false),
+        Some("limits") => pro::installer::cmd_limits(&target, &flags, false),
+        Some("lock") => pro::installer::cmd_lock(&target, &flags, false),
+        Some("status") => pro::cmd_status(&target, &flags, false),
+        Some("measure") => measure::run(&target, &flags, false),
+        Some("reset-demo") => reset_demo(&target), // -- WP UB12 --
+        _ => exit::USAGE,
+    };
+    core_route::on_interface_core(run).unwrap_or_else(|| {
+        eprintln!("{COMMAND}: the interface has no device open");
+        exit::NO_DEVICE
+    })
+}
+
+// -- WP UB12 --
+/// `:reset-demo`: the interface's demo runs its tuned example again, with
+/// nothing unsaved and its roles the example's (UXP B12).
+fn reset_demo(target: &Target) -> u8 {
+    let opened = match core_route::open_core(target, &pro::Stores::default_dirs(), &prompt_pin) {
+        Ok(o) => o,
+        Err(e) => return e.report(),
+    };
+    match opened.handle.core.reset_demo() {
+        Ok(()) => {
+            println!("The demo runs its example again.");
+            exit::OK
+        }
+        Err(dspi_core::DspiError::Unsupported) => {
+            eprintln!("{COMMAND}: only the demo device can be reset; this is a real DSPi");
+            exit::USAGE
+        }
+        Err(e) => pro::fail(&e),
+    }
+}
+
 // -- WP TM26 --
 /// Why the interface cannot open, when standard input or output is not a
 /// terminal.
@@ -1173,9 +1328,11 @@ fn no_terminal(stdin_is_terminal: bool, stdout_is_terminal: bool) -> Option<Stri
         (true, false) => "standard output is",
         (false, false) => "standard input and output are",
     };
+    // -- WP UB11 -- the plain mode needs none
     Some(format!(
         "the interface needs a terminal, and {which} not one; \
-         give a command to run instead (see `{COMMAND} --help`)"
+         give a command to run instead, or --plain for the interface as lines \
+         (see `{COMMAND} --help`)"
     ))
 }
 
@@ -1239,6 +1396,10 @@ fn run_tui_with(
         // -- WP TMCORE -- a device the interface opens again goes on a core too
         live.set_opener(std::sync::Arc::new(core_route::open_connected));
         live.set_connection(target, ext);
+        // -- WP UTM -- the shell's verbs on the `:` line, on this core
+        live.set_shell_verbs(std::rc::Rc::new(shell_verb));
+        // -- WP UB11 -- the Snapshots panel and Settings › Speakers, on this core
+        live.set_host(std::rc::Rc::new(pro::host::CoreHost::interface()));
     }
     live.set_protocol(protocol); // -- WP PGTM --
     if let Some(file) = document {

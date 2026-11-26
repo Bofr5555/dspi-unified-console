@@ -567,6 +567,22 @@ static PRESET_LOAD: Tool = Tool {
             .iter()
             .map(|row| held_words(row, n_in))
             .collect();
+        // -- WP UAG -- (UXP A7) for the person, one sentence in place of the quiet
+        // load's steps ("Master volume −127.0 dB; Preset 2 loaded; and 2 more")
+        let words = policy::lock(&call.judging).words.clone();
+        let name = core
+            .get_state()
+            .preset_names
+            .get(usize::from(slot))
+            .map(|n| untrusted::name(n))
+            .filter(|n| !n.trim().is_empty())
+            .map(|n| format!(" \u{201c}{n}\u{201d}"))
+            .unwrap_or_default();
+        let mut said = format!("Loaded preset {}{name}", slot_word(slot));
+        if !held.is_empty() {
+            said.push_str(&format!(": {}", held_said(&held, words.as_ref())));
+        }
+        policy::lock(&call.judging).said = Some(said);
         if !held.is_empty() {
             merge(
                 &mut r,
@@ -581,6 +597,55 @@ static PRESET_LOAD: Tool = Tool {
         Ok(r)
     },
 };
+
+// -- WP UAG -- (UXP A7)
+/// What the limits profile held of a load (`held`: [`held_words`]' rows, "Out
+/// 2 crossover 1 frequency: 600 → 1000 Hz") as the person reads it: "your
+/// limits kept Left tweeter and Right tweeter at 1 kHz" when every row is a
+/// frequency held at one value, else the rows, the outputs named as the
+/// screens name them.
+pub(crate) fn held_said(held: &[String], words: Option<&policy::ScreenWords>) -> String {
+    let mut outs: Vec<String> = Vec::new();
+    let mut target: Option<&str> = None;
+    let mut one = true;
+    for row in held {
+        let parts = row.split_once(": ").and_then(|(head, value)| {
+            let mut t = head.split(' ');
+            let out = match (t.next(), t.next()) {
+                (Some("Out"), Some(n)) => format!("Out {n}"),
+                _ => return None,
+            };
+            let to = value.rsplit_once("\u{2192} ").map(|(_, b)| b.trim())?;
+            head.ends_with("frequency").then_some((out, to))
+        });
+        match parts {
+            Some((out, to)) if target.is_none_or(|t| t == to) => {
+                target = Some(to);
+                if !outs.contains(&out) {
+                    outs.push(out);
+                }
+            }
+            _ => one = false,
+        }
+    }
+    let hz = target
+        .and_then(|t| t.strip_suffix(" Hz"))
+        .and_then(|n| n.trim().parse::<f32>().ok());
+    let said = match hz {
+        Some(hz) if one && !outs.is_empty() => {
+            format!(
+                "your limits kept {} at {}",
+                outs.join(" and "),
+                policy::hz_words(hz)
+            )
+        }
+        _ => format!("your limits held {}", held.join("; ")),
+    };
+    match words {
+        Some(w) => policy::name_words(&said, w),
+        None => said,
+    }
+}
 
 static REVERT_TO_SAVED: Tool = Tool {
     name: "dspi_revert_to_saved",

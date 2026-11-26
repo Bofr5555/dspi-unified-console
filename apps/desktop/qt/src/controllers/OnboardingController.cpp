@@ -39,8 +39,22 @@ const SettingsRegistry::Section developerSection{ "advanced", 50, "OnboardingDev
 // The keys behaviour.md §21.2 names, so a user's state carries over
 const char *const kSetupDoneKey = "onboarding/setupDone";
 const char *const kWhatsNewKey = "onboarding/whatsNewShown";
+// -- WP UFW -- (UXP C8) the newest of the app's own notes read
+const char *const kAppNotesKey = "onboarding/appNotesShown";
 
 using Version = AppUpdater::Version;
+
+// -- WP UFW -- (UXP A8, C8) The newest of the app's own notes (the core's
+// What's New marks them `app`), invalid for none
+Version newestAppNotes(const QVariantList &releases) {
+    Version newest;
+    for (const QVariant &r : releases) {
+        const QVariantMap m = r.toMap();
+        const Version v = Version::parse(m.value(QStringLiteral("version")).toString());
+        if (m.value(QStringLiteral("app")).toBool() && v.valid && (!newest.valid || newest < v)) newest = v;
+    }
+    return newest;
+}
 
 QJsonDocument coreJson(uint32_t (*fill)(char *, uint32_t), uint32_t first) {
     return QJsonDocument::fromJson(readSized([fill](char *buf, uint32_t len) { return fill(buf, len); }, first));
@@ -64,15 +78,36 @@ void withSpeakersStep(QVariantMap &wizard) {
     wizard.insert(QStringLiteral("stages"), stages);
 }
 
+// -- WP UA4 -- The words only this app says (OnboardingController.h): a
+// stage's `pc` block, there where the core kept it, over the stage
+void withPcWords(QVariantMap &wizard) {
+    QVariantList stages = wizard.value(QStringLiteral("stages")).toList();
+    for (QVariant &v : stages) {
+        QVariantMap stage = v.toMap();
+        const QVariantMap pc = stage.take(QStringLiteral("pc")).toMap();
+        for (auto it = pc.cbegin(); it != pc.cend(); ++it) stage.insert(it.key(), it.value());
+        v = stage;
+    }
+    wizard.insert(QStringLiteral("stages"), stages);
+}
+
+QString checklistKey(const QString &serial, const char *what) {
+    return QStringLiteral("onboarding/checklist/%1/%2").arg(serial.isEmpty() ? QStringLiteral("-") : serial, QLatin1String(what));
+}
+
 } // namespace
 
 OnboardingController::OnboardingController(const AppContext &ctx, QObject *parent) : QObject(parent), m_ctx(ctx) {
     // Compiled into the core: no device, no lock, fine on this thread
     m_gettingStarted = coreJson(dspi_onboarding_getting_started_json, 16384).object().toVariantMap();
+    withPcWords(m_gettingStarted);   // -- WP UA4 --
     withSpeakersStep(m_gettingStarted);
     m_releases = coreJson(dspi_onboarding_whats_new_json, 16384).array().toVariantList();
-    // Newest first whatever the file's order (the Mac's rule)
+    // Newest first whatever the file's order (the Mac's rule); -- WP UFW -- the
+    // app's own notes before the firmware's (their versions are the app's)
     std::stable_sort(m_releases.begin(), m_releases.end(), [](const QVariant &a, const QVariant &b) {
+        const bool appA = a.toMap().value(QStringLiteral("app")).toBool(), appB = b.toMap().value(QStringLiteral("app")).toBool();
+        if (appA != appB) return appA;
         return Version::parse(b.toMap().value(QStringLiteral("version")).toString())
                < Version::parse(a.toMap().value(QStringLiteral("version")).toString());
     });
@@ -102,8 +137,15 @@ void OnboardingController::showReleaseNotesIfUnread() {
     // Release notes are not onboarding: a new install has nothing to catch up
     // on and starts caught up; after an update the unread notes open once
     const QString shown = whatsNewShown();
-    if (shown.isEmpty()) markWhatsNewRead();
-    else if (!unreadSince(shown).isEmpty()) m_ctx.shell->showTool(QStringLiteral("help.whatsNew"));   // -- WP LAY3 --
+    if (shown.isEmpty()) {
+        markWhatsNewRead();
+        return;
+    }
+    // -- WP UFW -- (UXP C8) by itself only when the app's own notes have news
+    // not read yet; the firmware's notes alone wait in Help › What's New
+    const Version app = newestAppNotes(m_releases);
+    const Version read = Version::parse(QSettings().value(QLatin1String(kAppNotesKey)).toString());
+    if (app.valid && (!read.valid || read < app)) m_ctx.shell->showTool(QStringLiteral("help.whatsNew"));   // -- WP LAY3 --
 }
 
 void OnboardingController::setInstaller(QObject *installer) {
@@ -146,6 +188,8 @@ QVariantList OnboardingController::unreadSince(const QString &shown) const {
 }
 
 void OnboardingController::markWhatsNewRead() {
+    // -- WP UFW -- the app's own notes are read with them
+    if (const Version app = newestAppNotes(m_releases); app.valid) QSettings().setValue(QLatin1String(kAppNotesKey), app.text());
     const QString bundled = bundledFirmware();
     if (bundled.isEmpty() || bundled == whatsNewShown()) return;
     QSettings().setValue(QLatin1String(kWhatsNewKey), bundled);
@@ -156,8 +200,36 @@ void OnboardingController::resetOnboarding() {
     QSettings s;
     s.remove(QLatin1String(kSetupDoneKey));
     s.remove(QLatin1String(kWhatsNewKey));
+    s.remove(QLatin1String(kAppNotesKey));   // -- WP UFW --
+    s.remove(QStringLiteral("onboarding/checklist"));   // -- WP UA4 --
+    ++m_checklistRevision;
     emit whatsNewShownChanged();
     emit wizardShownChanged();
+    emit checklistChanged();
+}
+
+// ---- -- WP UA4 -- The Overview's setup list ------------------------------------
+
+bool OnboardingController::checklistClosed(const QString &serial) const {
+    return QSettings().value(checklistKey(serial, "closed"), false).toBool();
+}
+
+void OnboardingController::closeChecklist(const QString &serial) {
+    if (checklistClosed(serial)) return;
+    QSettings().setValue(checklistKey(serial, "closed"), true);
+    ++m_checklistRevision;
+    emit checklistChanged();
+}
+
+bool OnboardingController::measuredSeen(const QString &serial) const {
+    return QSettings().value(checklistKey(serial, "measured"), false).toBool();
+}
+
+void OnboardingController::noteMeasured(const QString &serial) {
+    if (measuredSeen(serial)) return;
+    QSettings().setValue(checklistKey(serial, "measured"), true);
+    ++m_checklistRevision;
+    emit checklistChanged();
 }
 
 // ---- Help > Save Diagnostics... ----------------------------------------------

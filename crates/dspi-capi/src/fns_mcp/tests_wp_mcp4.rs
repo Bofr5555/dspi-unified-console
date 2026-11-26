@@ -53,12 +53,17 @@ fn answer(mut s: TcpStream) -> Value {
         .clone()
 }
 
-/// Two confirmations' worth of waiting: the sheet, once it is there.
+/// Two confirmations' worth of waiting: the sheet, once it is there (and,
+/// -- FIX016 -- (R2), sealed: the app shows it, and may answer it, only then).
 fn sheet(mcp: *mut FfiMcp) -> Value {
     let end = Instant::now() + Duration::from_secs(20);
     loop {
         let r = reply(|b, l| dspi_mcp_confirmations(mcp, b, l));
-        if let Some(first) = r["value"].as_array().and_then(|v| v.first()) {
+        if let Some(first) = r["value"]
+            .as_array()
+            .and_then(|v| v.first())
+            .filter(|f| f["sealed"] == json!(true))
+        {
             return first.clone();
         }
         assert!(Instant::now() < end, "no sheet");

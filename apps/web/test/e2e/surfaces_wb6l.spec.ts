@@ -6,8 +6,7 @@
 //   and options from `csDescribe`); a change is Pending until Apply, then live and unsaved
 //   until Save; Revert asks and puts back what is stored; a new control works when added; a
 //   group needs a member; a remote button is learned from the demo's remote and applied.
-// - The quick strip switches an effect by its registry path and follows the core's state;
-//   its Matrix button opens and leaves the Matrix.
+// - -- WP UWN -- (UXP C7) the Overview has no quick strip any more.
 // - The keys: Ctrl+Shift+M opens the Matrix (Cmd on a Mac), Shift+? lists the shortcuts,
 //   and neither acts while typing in a field.
 // - View only: everything shows, no switch or Apply can be used, and the keys still move
@@ -157,30 +156,14 @@ test("WB6l CG20: a remote button learned from the demo's remote, applied with th
   expect(errors).toEqual([]);
 });
 
-test("WB6l M60: the quick strip switches an effect by its path and opens the Matrix", async ({ page }) => {
+// -- WP UWN -- (UXP C7) the Overview's nine icon-only quick-strip buttons are gone (Qt's Overview has none):
+// their pages are the rail's and the palette's, the effects' switches are the Effects tile's chips and pages
+test("UWN C7: the Overview has no quick strip; its effects are the Effects tile's", async ({ page }) => {
   const errors = errorsOf(page);
   const session = await openSession(page);
-  const strip = session.getByRole("toolbar", { name: "Quick access" });
-  const cf = strip.getByRole("button", { name: "Headphone Crossfeed" });
-  const was = (await call<{ state: { crossfeedEnabled: boolean } }>(page, "state")).state.crossfeedEnabled;
-  await expect(cf).toHaveAttribute("aria-pressed", String(was));
-  await cf.click();
-  await expect(cf).toHaveAttribute("aria-pressed", String(!was));
-  expect((await call<{ state: { crossfeedEnabled: boolean } }>(page, "state")).state.crossfeedEnabled).toBe(!was);
-  // A switch written past the strip shows on it after the next read-back (here: the crossfeed again).
-  await call(page, "write", { path: "loud.on", value: { bool: true } });
-  await session.getByRole("button", { name: "Headphone Crossfeed" }).click();
-  await expect(strip.getByRole("button", { name: "Loudness Compensation" })).toHaveAttribute("aria-pressed", "true");
-  await expect(strip.getByRole("button", { name: "Psychoacoustic Bass" })).toBeVisible();
-  await expect(strip.getByRole("button", { name: "Bypass Master EQ" })).toBeVisible();
-
-  const matrix = strip.getByRole("button", { name: "Matrix Mixer" });
-  await matrix.click();
-  await expectPage(session, "Matrix");
-  // -- WP WEBM1 -- the strip is the Overview's; the rail goes back
-  await expect(strip).toHaveCount(0);
-  await openPage(session, "Main");
-  await expect(strip).toBeVisible();
+  await expect(session.getByRole("region", { name: "Effects" })).toBeVisible();
+  await expect(session.getByRole("toolbar", { name: "Quick access" })).toHaveCount(0);
+  await expect(session.getByRole("button", { name: "Matrix Mixer" })).toHaveCount(0);
   if (test.info().project.name === "narrow") await noOverflow(page);
   expect(errors).toEqual([]);
 });
@@ -196,7 +179,7 @@ test("WB6l M24: Ctrl+Shift+M opens the Matrix, Shift+? lists the keys, never whi
   const list = page.getByRole("dialog", { name: "Keyboard Shortcuts" });
   await expect(list).toBeVisible();
   await expect(list.getByText("Matrix Mixer…")).toBeVisible();
-  await expect(list.getByText("Commit Parameters…")).toBeVisible();
+  await expect(list.getByText("Save to Device…")).toBeVisible(); // -- WP UFW -- (UXP A10, D1)
   await expect(list.getByText("Recall Preset 1-9")).toBeVisible();
   // No effects screen on this build: its keys are not listed.
   await list.getByRole("button", { name: "Close" }).click();
@@ -210,12 +193,7 @@ test("WB6l M24: Ctrl+Shift+M opens the Matrix, Shift+? lists the keys, never whi
   await page.keyboard.press("Shift+Slash");
   await expectPage(session, "Control Surfaces");
   await expect(list).toHaveCount(0);
-  // The strip's shortcut button opens the same list, and so does the app menu.
-  await openPage(session, "Main");
-  await session.getByRole("toolbar", { name: "Quick access" }).getByRole("button", { name: "Keyboard Shortcuts" }).click();
-  await expect(list).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(list).toHaveCount(0);
+  // The app menu opens the same list (-- WP UWN -- the quick strip's button is gone: UXP C7).
   await appMenu(page.locator("#one"), "Keyboard Shortcuts");
   await expect(list).toBeVisible();
   await page.keyboard.press("Escape");
@@ -223,13 +201,9 @@ test("WB6l M24: Ctrl+Shift+M opens the Matrix, Shift+? lists the keys, never whi
   expect(errors).toEqual([]);
 });
 
-test("WB6l read only: the editor and the strip show but write nothing; the keys still move", async ({ page }) => {
+test("WB6l read only: the editor shows but writes nothing; the keys still move", async ({ page }) => {
   const errors = errorsOf(page);
   const session = await openSession(page, "Venue B");
-  const strip = session.getByRole("toolbar", { name: "Quick access" });
-  await expect(strip.getByRole("button", { name: "Headphone Crossfeed" })).toBeDisabled();
-  await expect(strip.getByRole("button", { name: "Bypass Master EQ" })).toBeDisabled();
-  await expect(strip.getByRole("button", { name: "Matrix Mixer" })).toBeEnabled();
   await openSurfaces(session);
   const knob = card(session, "Volume Knob");
   await knob.getByRole("button", { name: "Expand Volume Knob" }).click();

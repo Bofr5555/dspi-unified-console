@@ -276,17 +276,19 @@ export function crossfeedPairs(s: Pick<DspState, "platformId">): number {
   return s.platformId === 0 ? 2 : 4;
 }
 
-/** The bits of a mask of kind `kind`; `outputName` names output `o`. */
-export function maskBits(kind: MaskKind, s: DspState, outputName: (o: number) => string): MaskBit[] {
+/**
+ * The bits of a mask of kind `kind`; `outputName` names output `o`. -- WP GAP1 -- `pairs`: the
+ * crossfeed pair map's outputs per pair (the extension's), else each pair is 2p and 2p+1.
+ */
+export function maskBits(kind: MaskKind, s: DspState, outputName: (o: number) => string, pairs?: readonly { left: number; right: number }[]): MaskBit[] {
   switch (kind) {
     case "outputs":
       return Array.from({ length: Math.min(s.numOutputChannels, 16) }, (_, o) => ({ bit: o, short: `OUT${o + 1}`, long: outputName(o) }));
     case "pairs":
-      return Array.from({ length: crossfeedPairs(s) }, (_, p) => ({
-        bit: p,
-        short: `OUT${2 * p + 1}+${2 * p + 2}`,
-        long: `${outputName(2 * p)} and ${outputName(2 * p + 1)}`,
-      }));
+      return Array.from({ length: crossfeedPairs(s) }, (_, p) => {
+        const { left, right } = pairs?.[p] ?? { left: 2 * p, right: 2 * p + 1 }; // -- WP GAP1 --
+        return { bit: p, short: `OUT${left + 1}+${right + 1}`, long: `${outputName(left)} and ${outputName(right)}` };
+      });
     case "detector":
     case "apply":
       return Array.from({ length: Math.min(s.numInputChannels, 8) }, (_, i) => ({ bit: i, short: `IN${i + 1}`, long: s.channelNames[i] ?? `Input ${i + 1}` }));

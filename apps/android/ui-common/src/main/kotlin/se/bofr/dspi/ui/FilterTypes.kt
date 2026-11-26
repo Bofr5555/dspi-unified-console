@@ -88,7 +88,7 @@ enum class FilterType(val raw: Int) {
         get() =
             when (this) {
                 FLAT -> "Off"
-                PEAKING -> "Peaking"
+                PEAKING -> "Bell"
                 LOW_SHELF -> "Low Shelf (12dB)"
                 HIGH_SHELF -> "High Shelf (12dB)"
                 LOW_PASS -> "High Cut (12dB)"
@@ -106,7 +106,7 @@ enum class FilterType(val raw: Int) {
 
     private fun crossoverName(): String {
         val family = crossoverFamily ?: return name
-        val lp = if (crossoverIsLowPass == true) "Low Pass" else "High Pass"
+        val lp = if (crossoverIsLowPass == true) "Low pass" else "High pass"
         return "${family.shortName}$crossoverOrder $lp"
     }
 
@@ -227,7 +227,7 @@ data class PeqMenuGroup(val name: String, val variants: List<FilterType>) {
         val all: List<PeqMenuGroup> =
             listOf(
                 PeqMenuGroup("Off", listOf(FilterType.FLAT)),
-                PeqMenuGroup("Peaking", listOf(FilterType.PEAKING)),
+                PeqMenuGroup("Bell", listOf(FilterType.PEAKING)),
                 PeqMenuGroup("Low Shelf", listOf(FilterType.LOW_SHELF1, FilterType.LOW_SHELF)),
                 PeqMenuGroup("High Shelf", listOf(FilterType.HIGH_SHELF1, FilterType.HIGH_SHELF)),
                 PeqMenuGroup("High Cut", listOf(FilterType.LOW_PASS1, FilterType.LOW_PASS)),

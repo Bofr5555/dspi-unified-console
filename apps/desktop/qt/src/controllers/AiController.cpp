@@ -23,6 +23,7 @@
 #include "PeqEditorController.h"   // -- WP SHOWFIX --
 #include "SidebarController.h"     // -- WP SHOWFIX --
 #include "UnitsMeasureController.h"   // -- WP AIVIS --
+#include "UnsavedGuard.h"             // -- WP UB5 --
 #include "Snapshot.h"
 
 #include "AppIdentity.h"
@@ -59,7 +60,10 @@ static const SettingsRegistry::Page aiPage{
       QT_TRANSLATE_NOOP("SettingsPages", "Agent activity"), QT_TRANSLATE_NOOP("SettingsPages", "Port"),
       QT_TRANSLATE_NOOP("SettingsPages", "Use from another computer"),
       // -- WP FEATUI --
-      QT_TRANSLATE_NOOP("SettingsPages", "Loudest measurement, SPL cap"), QT_TRANSLATE_NOOP("SettingsPages", "Remembered devices") } };
+      QT_TRANSLATE_NOOP("SettingsPages", "Loudest measurement, SPL cap"), QT_TRANSLATE_NOOP("SettingsPages", "Remembered devices"),
+      // -- WP UB15 --
+      QT_TRANSLATE_NOOP("SettingsPages", "Install in Claude Desktop, extension"),
+      QT_TRANSLATE_NOOP("SettingsPages", "claude_desktop_config.json, config folder") } };
 
 namespace {
 
@@ -91,11 +95,6 @@ QString str(const QJsonObject &o, const char *key) { return o.value(QLatin1Strin
 
 bool portValid(int port) { return port >= 1 && port <= 65535; }
 
-// What starts this app: the AppImage, when it runs from one (its mount goes away)
-QString programPath() {
-    const QString image = qEnvironmentVariable("APPIMAGE");
-    return QDir::toNativeSeparators(image.isEmpty() ? QCoreApplication::applicationFilePath() : image);
-}
 
 QString rowKey(const QJsonObject &e) {
     return QStringLiteral("%1:%2").arg(e.value(QLatin1String("run")).toInteger()).arg(e.value(QLatin1String("id")).toInteger());
@@ -160,12 +159,19 @@ AiController::AiController(const AppContext &ctx, QObject *parent) : QObject(par
     connect(&m_readSoon, &QTimer::timeout, this, &AiController::readActivity);
     connect(&m_readSoon, &QTimer::timeout, this, &AiController::readAgents);   // -- WP LAY8 --
     connect(ctx.registry, &DeviceRegistry::devicesChanged, this, &AiController::onDevices);
+    // -- WP UAG -- (UXP A7) a refusal is said for a few seconds
+    m_refusalTimer.setSingleShot(true);
+    m_refusalTimer.setInterval(kRefusalMs);
+    connect(&m_refusalTimer, &QTimer::timeout, this, &AiController::clearRefusal);
     // -- WP AIVIS --
     m_workTimer.setInterval(500);
     connect(&m_workTimer, &QTimer::timeout, this, &AiController::refreshWork);
     connect(this, &AiController::stateChanged, this, &AiController::refreshWork);
     connect(this, &AiController::confirmationsChanged, this, &AiController::refreshWork);
     connect(ctx.registry, &DeviceRegistry::devicesChanged, this, &AiController::refreshWork);
+    // -- WP UB5 -- (UXP B5) an agent's changes, until the device is saved; said while agents are on
+    connect(ctx.registry, &DeviceRegistry::devicesChanged, this, &AiController::noteUnsaved);
+    connect(this, &AiController::stateChanged, this, &AiController::unsavedChanged);
     // -- WP ODEC -- a follow the rate limit held off, tried once it allows
     m_followTimer.setSingleShot(true);
     connect(&m_followTimer, &QTimer::timeout, this, [this] {
@@ -173,6 +179,9 @@ AiController::AiController(const AppContext &ctx, QObject *parent) : QObject(par
         const FollowAt at = std::exchange(m_followPendingAt, FollowAt());   // -- WP SHOWFIX --
         if (!device.isEmpty()) followTo(device, at);
     });
+    // -- WP UB5 -- (UXP D2) the questions of a group, once the server sealed it
+    m_sealTimer.setSingleShot(true);
+    connect(&m_sealTimer, &QTimer::timeout, this, &AiController::readConfirmations);
     // -- WP SHOWFIX -- (finding 10) a question's device, once an input rests
     m_questionTimer.setSingleShot(true);
     connect(&m_questionTimer, &QTimer::timeout, this, &AiController::followQuestion);
@@ -405,6 +414,7 @@ void AiController::setEnabled(bool on) {
     m_enabled = on;
     QSettings().setValue(QLatin1String(kEnabledKey), on);
     if (!on) m_lastError.clear();   // a failed start is tried again at the next switch-on
+    if (!on) clearRefusal();        // -- WP UAG -- and so is Stop Agents
     emit stateChanged();
     reconcile();
 }
@@ -473,6 +483,7 @@ void AiController::stopServer() {
                  m_answered.clear();
                  m_lastCall = QDateTime();
                  m_work = QJsonObject();   // -- WP AIVIS --
+                 m_agentUnsaved.clear();   // -- WP UB5 -- agents off ends their sessions: the tabs still say unsaved
                  setAgents({});   // -- WP LAY8 --
                  setPairing({});
                  emit confirmationsChanged();
@@ -488,6 +499,7 @@ void AiController::setPaused(bool on) {
     if (on == m_paused || !m_mcp) return;
     m_paused = on;
     dspi_mcp_pause(m_mcp, on);   // never waits for a call in progress
+    clearRefusal();              // -- WP UAG -- the person's Pause is the newer news
     emit stateChanged();
 }
 
@@ -736,14 +748,30 @@ void AiController::readConfirmations() {
                  if (!isOk(reply)) return;
                  QList<Waiting> list;
                  QSet<quint64> there;
+                 qint64 sealsIn = -1;   // -- WP UB5 --
                  for (const QJsonValue &v : reply.value(QLatin1String("value")).toArray()) {
                      const QJsonObject c = v.toObject();
+                     // -- WP UB5 -- (UXP D2) a group the server may still add to is not shown: it is
+                     // read again once it seals, and never grows after
+                     if (!c.value(QLatin1String("sealed")).toBool(true)) {
+                         const qint64 in = c.value(QLatin1String("seals_in_ms")).toInteger();
+                         sealsIn = sealsIn < 0 ? in : qMin(sealsIn, in);
+                         continue;
+                     }
                      Waiting w;
                      w.id = quint64(c.value(QLatin1String("confirmation_id")).toInteger());
                      w.client = str(c, "client_name");
                      w.title = str(c, "title");
                      w.device = str(c, "device");
+                     w.askedMs = c.value(QLatin1String("asked_ms")).toInteger();   // -- WP UAG --
+                     w.group = quint64(c.value(QLatin1String("group")).toInteger(qint64(w.id)));   // -- WP UB5 --
                      for (const QJsonValue &r : c.value(QLatin1String("risks")).toArray()) {
+                         // -- WP UAG -- (UXP A6) the change in the screen's words: the first asked one heads the sheet
+                         if (w.heading.isEmpty())
+                             w.heading = questionHeading(w.client, str(r.toObject(), "kind"), str(r.toObject(), "channel"),
+                                                         deviceTitle(w.device));
+                         w.flash = w.flash || str(r.toObject(), "kind") == QLatin1String("flash_write")
+                                   || str(r.toObject(), "kind") == QLatin1String("installation_save");
                          w.risks << str(r.toObject(), "what");
                          w.sound = w.sound || str(r.toObject(), "kind") == QLatin1String("test_signal");   // -- WP FEATUI --
                          w.wholesale = w.wholesale || str(r.toObject(), "kind") == QLatin1String("recall");   // -- WP FUNC2c --
@@ -757,6 +785,10 @@ void AiController::readConfirmations() {
                          //: %1 is a kind of change ("Louder"), %2 the change ("Out 1 gain up from -12 dB to -3 dB")
                          w.riskLines << (label.isEmpty() || named ? w.risks.constLast() : tr("%1: %2").arg(label, w.risks.constLast()));
                      }
+                     // -- WP UAG -- the whole call, the asked rows first (said: the app's words, never an agent's)
+                     for (const QJsonValue &b : c.value(QLatin1String("batch")).toArray())
+                         w.batch << QVariantMap{ { QStringLiteral("said"), str(b.toObject(), "said") },
+                                                 { QStringLiteral("risky"), b.toObject().value(QLatin1String("risky")).toBool() } };
                      w.grant = c.value(QLatin1String("grant")).toObject();   // -- WP ODEC --
                      w.warning = str(c, "warning");   // -- WP ADETQ --
                      // -- WP ROLES -- the whole table of speaker roles from the person's words
@@ -782,6 +814,7 @@ void AiController::readConfirmations() {
                  }
                  m_answered.intersect(there);
                  if (!list.isEmpty()) m_tick.start();
+                 if (sealsIn >= 0) m_sealTimer.start(int(std::clamp<qint64>(sealsIn, 0, 2000)) + 30);   // -- WP UB5 --
                  // Only a change: the rows' buttons are armed anew with each
                  if (list == m_waiting) return;
                  m_waiting = list;
@@ -815,9 +848,124 @@ QVariantList AiController::confirmations() const {
             // -- WP ROLES -- speaker roles from the person's words: the table, then the rest
             { QStringLiteral("roleCells"), w.roleCells },
             { QStringLiteral("rolesAfter"), w.rolesAfter },
+            // -- WP UAG -- (UXP A6)
+            { QStringLiteral("heading"), w.heading },
+            { QStringLiteral("batch"), w.batch },
+            { QStringLiteral("flash"), w.flash },
+            { QStringLiteral("agent"), agentName(w.client) },
+            { QStringLiteral("askedMs"), double(w.askedMs) },   // -- WP UAG -- (UXP D2)
+            { QStringLiteral("group"), double(w.group) },       // -- WP UB5 -- (UXP D2) the server's sheet
         });
     }
     return out;
+}
+
+// -- WP UB5 -- (UXP B5) An agent's changes are saved, or gone, once the device's preset turns clean
+// after it was seen unsaved (a save, a preset load, the changes put back): they are no longer said
+void AiController::noteUnsaved() {
+    bool changed = false;
+    for (auto it = m_agentUnsaved.begin(); it != m_agentUnsaved.end();) {
+        DeviceSession *session = m_ctx.registry->session(it.key());
+        const bool dirty = session && m_ctx.registry->dirty(session);
+        if (!session || (it->dirtySeen && !dirty)) {
+            it = m_agentUnsaved.erase(it);
+            changed = true;
+            continue;
+        }
+        changed = changed || dirty != it->dirtySeen;
+        it->dirtySeen = dirty;
+        ++it;
+    }
+    if (changed) emit unsavedChanged();
+}
+
+QVariantMap AiController::unsaved() const {
+    if (!m_running) return {};
+    qsizetype count = 0;
+    QString agent, device;
+    int devices = 0;
+    for (auto it = m_agentUnsaved.cbegin(); it != m_agentUnsaved.cend(); ++it) {
+        if (!it->dirtySeen || it->keys.isEmpty()) continue;
+        count += it->keys.size();
+        agent = it->agent;
+        device = it.key();
+        ++devices;
+    }
+    if (!devices) return {};
+    //: The agent strip, after an AI agent's work: %n settings it changed that the device has not saved
+    QString text = devices > 1 ? tr("Changed %n settings on %1 devices, not saved yet", "", int(count)).arg(devices)
+                               : tr("Changed %n settings, not saved yet", "", int(count));
+    if (devices == 1 && m_ctx.registry->sessions().size() > 1) text += QStringLiteral(" · ") + deviceTitle(device);
+    return QVariantMap{ { QStringLiteral("agent"), agent },
+                        { QStringLiteral("count"), int(count) },
+                        { QStringLiteral("devices"), devices },
+                        { QStringLiteral("deviceId"), devices == 1 ? device : QString() },
+                        { QStringLiteral("text"), text },
+                        { QStringLiteral("save"), devices > 1 ? tr("Save All…") : tr("Save to Device") } };
+}
+
+void AiController::saveUnsaved() {
+    const QVariantMap u = unsaved();
+    if (u.isEmpty()) return;
+    const QString device = u.value(QStringLiteral("deviceId")).toString();
+    if (device.isEmpty()) {
+        if (auto *guard = Registrar::instance<UnsavedGuard>()) guard->askSaveAll();
+        return;
+    }
+    // The save question of that device, as the top bar's Save to Device asks it
+    if (device != m_ctx.registry->activeId()) m_ctx.registry->activate(device);
+    m_ctx.shell->trigger(QStringLiteral("device.commit"));
+}
+
+// -- WP UAG -- (UXP A7) The strip stops saying the refusal
+void AiController::clearRefusal() {
+    m_refusalTimer.stop();
+    if (m_refusal.isEmpty()) return;
+    m_refusal.clear();
+    emit refusalChanged();
+}
+
+// -- WP UAG -- (UXP A6) The question's heading: the change in one line, as the first asked
+// row is ("Claude Code wants to make Right tweeter louder (Fronts)")
+QString AiController::questionHeading(const QString &client, const QString &kind, const QString &channel,
+                                      const QString &device) {
+    const QString agent = agentName(client);
+    const bool named = !channel.isEmpty();
+    //: In an AI agent's question, an output it does not name
+    const QString output = named ? channel : tr("an output");
+    QString line;
+    // %1 is the agent's name, %2 an output's name ("Right tweeter")
+    if (kind == QLatin1String("louder"))
+        line = named ? tr("%1 wants to make %2 louder").arg(agent, channel) : tr("%1 wants to make the sound louder").arg(agent);
+    else if (kind == QLatin1String("unmute"))
+        line = named ? tr("%1 wants to unmute %2").arg(agent, channel) : tr("%1 wants to unmute the volume").arg(agent);
+    else if (kind == QLatin1String("enable"))
+        line = tr("%1 wants to turn on %2").arg(agent, output);
+    else if (kind == QLatin1String("new_route"))
+        line = tr("%1 wants to send a new input to %2").arg(agent, output);
+    else if (kind == QLatin1String("boost"))
+        line = named ? tr("%1 wants to boost the EQ of %2").arg(agent, channel) : tr("%1 wants to boost an EQ band").arg(agent);
+    else if (kind == QLatin1String("delay_step"))
+        line = named ? tr("%1 wants to move the delay of %2 a long way").arg(agent, channel)
+                     : tr("%1 wants to move a delay a long way").arg(agent);
+    else if (kind == QLatin1String("tweeter_crossing"))
+        line = tr("%1 wants to lower the tweeter protection of %2").arg(agent, output);
+    else if (kind == QLatin1String("test_signal"))
+        line = tr("%1 wants to play test signals").arg(agent);
+    else if (kind == QLatin1String("recall"))
+        line = tr("%1 wants to replace the settings").arg(agent);
+    else if (kind == QLatin1String("flash_write"))
+        line = tr("%1 wants to save on the device").arg(agent);
+    else if (kind == QLatin1String("installation_save"))
+        line = tr("%1 wants to save the installation").arg(agent);
+    else if (kind == QLatin1String("source"))
+        line = tr("%1 wants to change the input source").arg(agent);
+    else if (kind == QLatin1String("system"))
+        line = tr("%1 wants to change every unit").arg(agent);
+    else
+        line = tr("%1 wants to change the settings").arg(agent);
+    //: An AI agent's question's heading: %1 the change ("Claude Code wants to make Sub louder"), %2 a device's name
+    return device.isEmpty() ? line : tr("%1 (%2)").arg(line, device);
 }
 
 // -- WP ODEC -- The grouped question's sentence: what Allow grants beyond this call
@@ -863,6 +1011,31 @@ void AiController::answer(double id, bool allow) {
                  }
                  readConfirmations();
              });
+}
+
+// -- WP UB5 -- (UXP D2)
+void AiController::answerAll(const QVariantList &ids, bool allow) {
+    QList<quint64> fresh;
+    for (const QVariant &v : ids) {
+        const quint64 n = quint64(v.toDouble());
+        if (!m_answered.contains(n)) fresh << n;
+    }
+    if (fresh.isEmpty()) return;
+    for (quint64 n : std::as_const(fresh)) m_answered.insert(n);
+    followQuestion();
+    emit confirmationsChanged();
+    emit stateChanged();
+    FfiMcp *mcp = m_mcp;
+    for (quint64 n : std::as_const(fresh))
+        onThread([mcp, n, allow] { return dspi_mcp_confirm_answer(mcp, n, allow); },
+                 [this, allow](bool taken) {
+                     if (allow && !taken) {
+                         if (auto *notices = Registrar::instance<NoticeCenter>())
+                             notices->post(tr("The agent's change was not made: it was no longer waiting for your answer."),
+                                           QStringLiteral("warning"));
+                     }
+                     readConfirmations();
+                 });
 }
 
 // ---- The activity ---------------------------------------------------------------------
@@ -936,6 +1109,8 @@ QVariantList AiController::activity() const {
                                                   : tr("Held back") },
             { QStringLiteral("undo"), undo },
             { QStringLiteral("undoNote"), done != m_undo.cend() ? done->second : QString() },
+            // -- WP UAG -- (UXP A7) the console refused it: `detail` is why, in the person's words
+            { QStringLiteral("refused"), outcome == QLatin1String("error") && !str(e, "said").isEmpty() && journalIds(e).isEmpty() },
         });
     }
     return rows;
@@ -1572,6 +1747,17 @@ void AiController::tell(const QList<QJsonObject> &rows) {
     for (const QJsonObject &e : rows) {
         const QString device = str(e, "device");
         const bool write = e.value(QLatin1String("write")).toBool();
+        // -- WP UAG -- (UXP A7) the console refused it: the server's words for the person
+        // (`said` on a call that changed nothing), in the strip for a few seconds; no toast
+        if (str(e, "outcome") == QLatin1String("error") && !str(e, "said").isEmpty() && journalIds(e).isEmpty()) {
+            const DeviceSession *on = m_ctx.registry->session(device);
+            m_refusal = QVariantMap{ { QStringLiteral("agent"), agentName(str(e, "client_name")) },
+                                     { QStringLiteral("text"), str(e, "said") },
+                                     { QStringLiteral("device"), on ? on->title() : QString() } };
+            m_refusalTimer.start();
+            emit refusalChanged();
+            continue;
+        }
         // -- WP INTG -- (review RE2) a write that failed but left changes (a
         // preset load that left the device silent): said, with Undo
         if (write && str(e, "outcome") == QLatin1String("error") && !journalIds(e).isEmpty()) {
@@ -1584,7 +1770,9 @@ void AiController::tell(const QList<QJsonObject> &rows) {
                     canUndo = canUndo || (v.toMap().value(QStringLiteral("key")).toString() == rowKey(e)
                                           && v.toMap().value(QStringLiteral("undo")) == QLatin1String("can"));
                 //: An AI agent's change that failed but changed something: %1 is its name, %2 the app's words for what happened
-                notices->postTagged(QStringLiteral("ai"), tr("%1's change did not go through: %2").arg(agent, str(e, "detail")),
+                // -- WP UAG -- (UXP A7) the person's words where the server has them
+                notices->postTagged(QStringLiteral("ai"), tr("%1's change did not go through: %2")
+                                                              .arg(agent, str(e, "said").isEmpty() ? str(e, "detail") : str(e, "said")),
                                     canUndo ? tr("Undo") : QString(), [this] { undoNoticed(); });
             }
         }
@@ -1611,6 +1799,36 @@ void AiController::tell(const QList<QJsonObject> &rows) {
             const QVariantList indices = t.value(QLatin1String("indices")).toArray().toVariantList();
             m_touches.append({ device, str(t, "path"), indices, now });
             emit touched(device, str(t, "path"), indices);
+        }
+        // -- WP UB5 -- (UXP B5) what it leaves unsaved on the device, a setting once; a save, a preset
+        // load or a revert to saved leaves nothing of it
+        if (!device.isEmpty()) {
+            static const QStringList saved{ QStringLiteral("dspi_preset_save"), QStringLiteral("dspi_preset_load"),
+                                            QStringLiteral("dspi_revert_to_saved") };
+            if (saved.contains(str(e, "tool"))) {
+                if (m_agentUnsaved.remove(device)) emit unsavedChanged();
+            } else if (!e.value(QLatin1String("touched")).toArray().isEmpty()) {
+                AgentUnsaved &u = m_agentUnsaved[device];
+                u.agent = agentName(str(e, "client_name"));
+                for (const QJsonValue &v : e.value(QLatin1String("touched")).toArray())
+                    u.keys.insert(str(v.toObject(), "path") + QLatin1Char(' ')
+                                  + QString::fromUtf8(QJsonDocument(v.toObject().value(QLatin1String("indices")).toArray()).toJson(QJsonDocument::Compact)));
+                noteUnsaved();
+                emit unsavedChanged();
+            }
+        }
+        // -- WP UAG -- (UXP A7) a preset load is one sentence of its own (the preset, what the limits
+        // held), not "the last: Master volume −127.0 dB" of its quiet steps, and has no Undo
+        if (str(e, "tool") == QLatin1String("dspi_preset_load") || str(e, "tool") == QLatin1String("dspi_revert_to_saved")) {
+            auto *notices = Registrar::instance<NoticeCenter>();
+            if (!notices || str(e, "said").isEmpty()) continue;
+            const DeviceSession *on = m_ctx.registry->session(device);
+            m_noticeKeys.clear();
+            //: An AI agent loaded a preset: %1 is its name, %2 what happened ("Loaded preset 2 “Lunch”: your limits kept …")
+            notices->postTagged(QStringLiteral("ai"), tr("%1: %2").arg(agentName(str(e, "client_name")), str(e, "said"))
+                                                          + (on && m_ctx.registry->sessions().size() > 1 ? QStringLiteral(" · ") + on->title() : QString()),
+                                QString(), {});
+            continue;
         }
         if (journalIds(e).isEmpty()) continue;
         auto *notices = Registrar::instance<NoticeCenter>();
@@ -1697,12 +1915,12 @@ void AiController::readMeasureLog() {
 // ---- What to put into an agent's configuration ----------------------------------------
 
 QString AiController::relayCommand() {
-    const QString path = programPath();
+    const QString path = AppIdentity::programPath();   // -- FIX016 -- (F14) one helper
     return (path.contains(QLatin1Char(' ')) ? QLatin1Char('"') + path + QLatin1Char('"') : path) + QStringLiteral(" --mcp");
 }
 
 QString AiController::desktopConfig() {
-    const QJsonObject server{ { QStringLiteral("command"), programPath() }, { QStringLiteral("args"), QJsonArray{ QStringLiteral("--mcp") } } };
+    const QJsonObject server{ { QStringLiteral("command"), AppIdentity::programPath() }, { QStringLiteral("args"), QJsonArray{ QStringLiteral("--mcp") } } };
     const QJsonObject root{ { QStringLiteral("mcpServers"), QJsonObject{ { QStringLiteral("dspi"), server } } } };
     return QString::fromUtf8(QJsonDocument(root).toJson()).trimmed();
 }

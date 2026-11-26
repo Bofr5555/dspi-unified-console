@@ -11,8 +11,8 @@ SKIP_RENDER=1 tools/shots/readme.sh ~/.cache/dspi-build/work/shots   # only the 
 ```
 
 It starts the function test's app on a 1600×1000 screen (`functest.py up`), takes its pages with `gallery.py` and a
-measurement by the user with `shots2.py`, runs the web console's tour (`tools/shots/web.sh`) and the Terminal's
-(`tools/shots/terminal.sh`), then crops, scales to at most 1400 px wide and recompresses each picture with ImageMagick
+measurement by the user with `shots2.py`, takes the web console's two pictures (`tools/shots/web.sh` with
+`apps/web/test/shots/readme_web.spec.ts`) and the Terminal's (`tools/shots/terminal.sh`), then crops, scales to at most 1400 px wide and recompresses each picture with ImageMagick
 in the build image. The light theme throughout, but the Terminal, which is shown dark.
 
 | File | What |

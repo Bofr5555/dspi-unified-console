@@ -136,7 +136,7 @@ pub(crate) fn to_json(rows: &[Row], summary: Vec<String>) -> Map<String, Value> 
     out
 }
 
-/// A band in a row: "Peaking 1000 Hz, Q 0.71, +3.0 dB"; "Off" for a flat one.
+/// A band in a row: "Bell 1000 Hz, Q 0.71, +3.0 dB"; "Off" for a flat one.
 pub(crate) fn band_text(p: &FilterParams) -> String {
     let t = FilterType::from_raw(p.filter_type);
     if t == FilterType::Flat {

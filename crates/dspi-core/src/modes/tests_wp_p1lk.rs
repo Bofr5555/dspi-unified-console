@@ -77,18 +77,30 @@ fn wp_p1lk_the_manifest_reads_whole_and_consistent() {
 fn wp_p1lk_defaults_per_platform_class() {
     let m = mode_manifest();
     let mode = |p: &str| resolve(&m, p, "", false, true, None).unwrap();
-    assert_eq!(mode("phone").mode, "simple");
+    // -- WP UAN -- owner D9 (2026-11-25): phones open in Advanced until Simple means something there
+    assert_eq!(mode("phone").mode, "advanced");
     assert_eq!(mode("desktop").mode, "advanced");
     assert_eq!(mode("web").mode, "advanced");
     assert_eq!(mode("phone").reason, "default");
-    assert_eq!(mode("phone").first_screen, "front");
+    assert_eq!(mode("phone").first_screen, "system");
+    assert_eq!(
+        resolve(&m, "phone", "simple", false, true, None)
+            .unwrap()
+            .first_screen,
+        "front"
+    );
     assert_eq!(mode("desktop").first_screen, "system");
     // Firmware is a desktop operation only.
     let inst = |p: &str| resolve(&m, p, "installer", false, true, None).unwrap();
     assert!(inst("desktop").operations.contains(&"firmware".to_owned()));
     assert!(!inst("phone").operations.contains(&"firmware".to_owned()));
     assert!(inst("phone").screens.contains(&"limits".to_owned()));
-    assert!(!mode("phone").operations.contains(&"diagnostics".to_owned()));
+    assert!(
+        !resolve(&m, "phone", "simple", false, true, None)
+            .unwrap()
+            .operations
+            .contains(&"diagnostics".to_owned())
+    );
     assert!(
         mode("desktop")
             .operations

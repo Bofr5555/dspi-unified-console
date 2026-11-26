@@ -25,7 +25,7 @@ async function openDemo(page: Page): Promise<Locator> {
   await page.goto("/");
   await page.getByRole("navigation", { name: "DSPi devices" }).getByRole("listitem").filter({ hasText: "Demo DSPi" }).getByRole("button", { name: "Connect" }).click();
   const session = page.getByRole("article").last();
-  await expect(session.locator(".device-meta")).toBeVisible();
+  await expect(session).toHaveAttribute("data-status", "open"); // -- WP UWN -- (UXP A17) the tab's second line is hidden at 375 px
   return session;
 }
 
@@ -57,7 +57,8 @@ test("WEB7 Library's states", async ({ page }) => {
     const pop = session.getByRole("dialog", { name: "Capture Snapshot" });
     await pop.getByLabel("Name").fill(name);
     if (note) await pop.getByLabel("Note").fill(note);
-    await Promise.all([page.waitForEvent("download"), pop.getByRole("button", { name: "Capture", exact: true }).click()]);
+    await pop.getByRole("button", { name: "Capture", exact: true }).click(); // -- WP UB14 -- kept, no download
+    await expect(session.getByRole("list", { name: "Held snapshots" }).getByRole("listitem", { name })).toBeVisible();
   }
   await snaps.getByRole("list", { name: "Held snapshots" }).getByRole("listitem", { name: "Bright" }).hover();
   await shot(page, "library-snapshots-list");

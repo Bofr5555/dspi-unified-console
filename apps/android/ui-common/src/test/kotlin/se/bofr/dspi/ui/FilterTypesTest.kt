@@ -10,9 +10,10 @@ class FilterTypesTest {
     @Test
     fun namesMatchMacOs() {
         assertEquals("High Cut (12dB)", FilterType.LOW_PASS.displayName)
-        assertEquals("LR4 Low Pass", FilterType.LR4_LP.displayName)
-        assertEquals("BW1 High Pass", FilterType.BW1_HP.displayName)
-        assertEquals("BES8 High Pass", FilterType.BES8_HP.displayName)
+        assertEquals("LR4 Low pass", FilterType.LR4_LP.displayName)
+        assertEquals("BW1 High pass", FilterType.BW1_HP.displayName)
+        assertEquals("BES8 High pass", FilterType.BES8_HP.displayName)
+        assertEquals("Bell", FilterType.PEAKING.displayName)
         assertEquals("LR4 LP", FilterType.LR4_LP.shortLabel)
         assertEquals("NO", FilterType.NOTCH.dashboardCode)
         assertEquals("LS1", FilterType.LOW_SHELF1.dashboardCode)

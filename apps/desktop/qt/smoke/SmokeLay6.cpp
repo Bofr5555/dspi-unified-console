@@ -254,6 +254,17 @@ void openPart(Palette &p) {
 
 // ---- What is in it ------------------------------------------------------------------
 
+// -- WP UFW -- Row `i`'s title in Modern (ChannelInfo.titleOf, UXP A1): its name, then an
+// output's number unless the name starts with it ("Left woofer · 1", "Out 1 · L")
+QString ufwTitle(ChannelListModel *channels, int i) {
+    const QString label = channels->get(i, QStringLiteral("label")).toString();
+    const QString name = channels->get(i, QStringLiteral("displayName")).toString().isEmpty() ? label : channels->get(i, QStringLiteral("displayName")).toString();
+    if (channels->get(i, QStringLiteral("kind")).toString() != QLatin1String("output")) return name;
+    const QString n = QString::number(channels->get(i, QStringLiteral("number")).toInt() + 1);
+    const QRegularExpressionMatch own = QRegularExpression(QStringLiteral("^(?:Out )?(\\d+)(?!\\d)")).match(name);
+    return own.hasMatch() && own.captured(1) == n ? name : name + QStringLiteral(" · ") + n;
+}
+
 void contentsPart(Palette &p) {
     p.open();
     const QStringList ids = p.ids();
@@ -296,9 +307,8 @@ void contentsPart(Palette &p) {
     p.check("the settings pages", pages >= 10);
     ChannelListModel *channels = p.d.app().device->channels();
     bool every = channels->rowCount() > 4;
-    for (int i = 0; i < channels->rowCount(); ++i)
-        every = every && p.row(QStringLiteral("channel:%1").arg(channels->get(i, QStringLiteral("channel")).toInt())).value(QStringLiteral("title"))
-                             == channels->get(i, QStringLiteral("label"));
+    for (int i = 0; i < channels->rowCount(); ++i)   // -- WP UFW -- as Modern names it (UXP A1)
+        every = every && p.row(QStringLiteral("channel:%1").arg(channels->get(i, QStringLiteral("channel")).toInt())).value(QStringLiteral("title")) == ufwTitle(channels, i);
     p.check("every channel, by its name", every);
     p.check("no device: the open one is the only one", ids.filter(QRegularExpression(QStringLiteral("^device:"))).isEmpty());
 
@@ -335,6 +345,51 @@ void findPart(Palette &p) {
         const QString first = p.ids().value(0);
         // Toggle A/B is greyed without a compare: first, but not chosen
         p.check(QStringLiteral("\"%1\" finds %2 first (%3)").arg(QLatin1String(query), QLatin1String(id), first), first == QLatin1String(id));
+    }
+    p.close();
+}
+
+// ---- -- WP UFW -- (UXP A8) The words users type, and the manual's answers ---------------
+
+void wordsPart(Palette &p) {
+    const std::pair<const char *, const char *> wanted[] = {
+        { "high-pass", "page:equaliser/crossover" }, { "hpf", "page:equaliser/crossover" }, { "protection", "settings:installer" },
+        { "tweeter floor", "settings:installer" }, { "refused", "help:refused" }, { "rename device", "settings:global" },
+        { "save to device", "device.commit" }, { "commit parameters", "device.commit" }, { "glossary", "help:words" },
+        { "user manual", "help.manual" }
+    };
+    p.open();
+    for (const auto &[query, id] : wanted) {
+        p.type(QLatin1String(query));
+        const QString first = p.ids().value(0);
+        p.check(QStringLiteral("ufw: \"%1\" finds %2 first (%3)").arg(QLatin1String(query), QLatin1String(id), first), first == QLatin1String(id));
+    }
+    p.type(QStringLiteral("high-pass"));
+    p.check("ufw: a synonym says what found it", p.shownText(QStringLiteral("page:equaliser/crossover"), "where").contains(QStringLiteral("high-pass")));
+    p.type(QStringLiteral("save"));
+    p.check("ufw: Ctrl+S reads Save to Device", p.row(QStringLiteral("device.commit")).value(QStringLiteral("title")).toString() == QStringLiteral("Save to Device…")
+                && p.row(QStringLiteral("device.commit")).value(QStringLiteral("keys")).toString() == QLatin1String("Ctrl+S"));
+    // The manual's answers open its page on the project's site, at the section
+    p.type(QStringLiteral("help"));
+    const QString refused = p.row(QStringLiteral("help:refused")).value(QStringLiteral("arg")).toString();
+    p.check("ufw: Help entries open the manual's section", refused.startsWith(QStringLiteral("https://"))
+                && refused.endsWith(QStringLiteral("/docs/manual/measurement.md#4-the-safety-rules-and-what-they-mean-for-you"))
+                && p.row(QStringLiteral("help:refused")).value(QStringLiteral("kind")).toString() == QLatin1String("help"));
+    p.check("ufw: the manual itself is a row the shell runs", p.shell->handles(QStringLiteral("help.manual")));
+    // An output by its words (ChannelInfo's keywords, UXP A1): its number, its slot's name
+    ChannelListModel *channels = p.d.app().device->channels();
+    for (int i = 0; i < channels->rowCount(); ++i) {
+        if (channels->get(i, QStringLiteral("kind")).toString() != QLatin1String("output")) continue;
+        const QString id = QStringLiteral("channel:%1").arg(channels->get(i, QStringLiteral("channel")).toInt());
+        const QString number = QString::number(channels->get(i, QStringLiteral("number")).toInt() + 1);
+        p.type(QStringLiteral("out ") + number);
+        p.check("ufw: an output by its number", p.ids().mid(0, 3).contains(id) && p.row(id).value(QStringLiteral("title")).toString() == ufwTitle(channels, i));
+        const QString name = channels->get(i, QStringLiteral("displayName")).toString();
+        if (!name.isEmpty() && name != channels->get(i, QStringLiteral("label")).toString()) {
+            p.type(name);
+            p.check("ufw: a layout's output by its name, its number second", p.ids().value(0) == id && p.row(id).value(QStringLiteral("title")).toString().startsWith(name + QStringLiteral(" · ")));
+        }
+        break;
     }
     p.close();
 }
@@ -683,6 +738,7 @@ void paletteSection(SmokeDriver &d) {
     openPart(p);
     contentsPart(p);
     findPart(p);
+    wordsPart(p);   // -- WP UFW --
     runPart(p);
     greyedPart(p);
     keysPart(p);

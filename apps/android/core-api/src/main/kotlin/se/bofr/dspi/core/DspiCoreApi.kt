@@ -851,6 +851,22 @@ interface DspiCoreApi : AutoCloseable {
     fun csDemoLearn(protocol: Int, code: Long): Boolean
 
     /**
+     * "Reset demo": the open demo device runs the settings it opened with
+     * again (the example, for [`DspiCore::open_demo`]'s) as preset slot 1's
+     * and the active slot, the mirror is read again with nothing unsaved,
+     * and the example's speaker layout is kept again. The device stays
+     * open. The history is a preset load's ("Preset 1 loaded"): what came
+     * before it is gone with the state, as after a factory reset.
+     *
+     * Errors: [`DspiError::Disconnected`] with no device;
+     * [`DspiError::Unsupported`], with no traffic, on anything but a
+     * simulated device; the refusals of every write (read-only, an
+     * installer's lock, another actor) and the transfer errors of the read.
+     */
+    @Throws(DspiException::class)
+    fun resetDemo()
+
+    /**
      * Adopt a USB device the platform already opened: Android's
      * `UsbDeviceConnection.getFileDescriptor()`. The core `dup(2)`s the fd
      * and owns the duplicate, so the app keeps (and later closes) its own;
@@ -934,11 +950,6 @@ interface DspiCoreApi : AutoCloseable {
      */
     fun wireFeatures(): Long
 
-    /**
-     * Open the built-in demo device (`dspi_transport::FakeDevice::demo`):
-     * a simulated RP2350 that answers reads and writes and notifies.
-     * Replaces any open device.
-     */
     @Throws(DspiException::class)
     fun openDemo()
 
@@ -5375,6 +5386,11 @@ interface DspiCoreApi : AutoCloseable {
      * What differs from the active preset, one sentence each, in the Mac
      * console's words and order. Empty without a device or a baseline. No
      * I/O: input source titles come from the names the core keeps.
+     *
+     * -- FIX016 -- (REVG R3) While a compare of "as saved" against "now"
+     * stands on A, B's changes are listed too (after the live ones): they
+     * are unsaved edits the person left on B, so every client's question
+     * before a switch, a close or a quit asks for them.
      */
     fun presetChanges(): List<String>
 
@@ -5820,7 +5836,10 @@ interface DspiCoreApi : AutoCloseable {
      * lacks, more than 16, or a speaker name over 64 characters (nothing
      * kept); [`DspiError::Io`] when the file cannot be written;
      * [`DspiError::ConfirmationRequired`] `user_only` inside another actor's
-     * [`crate::actor::ActorScope`] (WP INT1).
+     * [`crate::actor::ActorScope`] (WP INT1); -- FIX016 -- (REVG R4)
+     * [`DspiError::InstallerLock`] in the locked-user state (the console's
+     * lock or the hub's), as any write but those the lock lets through: the
+     * roles are what the tweeter guards trust.
      */
     @Throws(DspiException::class)
     fun speakerLayoutSet(layout: SpeakerLayout): SpeakerLayout

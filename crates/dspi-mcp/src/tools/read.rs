@@ -29,6 +29,7 @@ pub static TOOLS: &[&Tool] = &[
     &GET_HISTORY,
     &GET_ACTIVITY,
     &GET_USER_ACTIVITY, // -- WP AIVIS --
+    &GET_GUIDE,         // -- WP UB5 --
 ];
 
 // ------------------------------------------------------------------ helpers
@@ -1198,6 +1199,27 @@ fn where_json(path: &str, ix: &[u8], n_in: u8) -> Map<String, Value> {
 
 /// The most activity entries one call gives.
 const MAX_ACTIVITY: u64 = 200;
+
+// -- WP UB5 -- (UXP B5) the guide for a host that cannot read resources: the
+// rules otherwise reach its agent only as refusals
+static GET_GUIDE: Tool = Tool {
+    name: "dspi_get_guide",
+    title: "How to work with a DSPi",
+    description: "The guide to this server (the dspi://guide resource, for hosts that cannot \
+                  read resources): channels and numbering, the speaker safety rules, what the \
+                  user is asked, several devices at once, saving, hubs and measuring. Read it \
+                  before your first change.",
+    class: ToolClass::Read,
+    device: false,
+    input_schema: empty_schema,
+    output_schema: || {
+        json!({"type": "object", "required": ["guide"],
+               "properties": {"guide": {"type": "string"}, "uri": {"type": "string"}}})
+    },
+    handler: |_, _| {
+        Ok(json!({"uri": crate::resources::GUIDE_URI, "guide": crate::resources::GUIDE}))
+    },
+};
 
 static GET_ACTIVITY: Tool = Tool {
     name: "dspi_get_activity",

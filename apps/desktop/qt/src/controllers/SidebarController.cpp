@@ -1,5 +1,6 @@
 // -- WP QP1 -- The sidebar's state and writes (SidebarController.h).
 #include "SidebarController.h"
+#include "DeviceLinkController.h"   // -- WP UB34 --
 #include "Confirm.h"   // -- WP P1QT2 --
 #include "NoticeCenter.h"   // -- WP CLIPQT --
 
@@ -524,8 +525,17 @@ void SidebarController::setSidebarWidth(int width) {
 }
 
 void SidebarController::setUserVolume(double db) {
+    // -- FIX016 -- (REVG F2) linked: every device moves, keeping its offset
+    if (auto *link = Registrar::instance<DeviceLinkController>(); link && link->linked()) {
+        link->setUserVolume(db);
+        return;
+    }
+    writeUserVolume(db);
+}
+
+void SidebarController::writeUserVolume(double db, std::function<void(bool)> done) {
     const float v = float(qBound(kUserMinDb, db, 0.0));
-    apply(QStringLiteral("user volume"), [v](FfiCore *c) { return dspi_set_user_volume(c, v); });
+    apply(QStringLiteral("user volume"), [v](FfiCore *c) { return dspi_set_user_volume(c, v); }, std::move(done));
 }
 
 void SidebarController::setMasterVolume(double db) {
@@ -650,6 +660,8 @@ void SidebarController::runPreset(const QString &what, std::function<uint8_t(Ffi
 void SidebarController::requestPresetSwitch(int slot) {
     const int active = m_ctx.device->presets()->activeSlot();
     if (slot < 0 || slot >= MAX_PRESETS || slot == active || presetBusy() || !m_ctx.device->connected()) return;
+    // -- WP UB34 -- (UXP B4) linked in the dock: one question, then every device
+    if (auto *link = Registrar::instance<DeviceLinkController>(); link && link->takePresetSwitch(slot)) return;
     const std::shared_ptr<State> st = state();
     const QPointer<DeviceSession> session = m_ctx.activeSession();
     const uint64_t generation = m_ctx.device->snapshot().generation;

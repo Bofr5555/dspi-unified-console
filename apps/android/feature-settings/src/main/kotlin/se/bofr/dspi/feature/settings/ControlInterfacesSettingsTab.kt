@@ -29,6 +29,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import se.bofr.dspi.bridge.BridgeEvent
 import se.bofr.dspi.bridge.DspiBridge
@@ -206,15 +209,31 @@ fun ControlInterfacesSettingsTab(bridge: DspiBridge, coordinator: SettingsSaveCo
                     ) { i2cDraft = i2cDraft.copy(sclPin = it) }
                     SettingRow("Target Address", "7-bit address, 0x08 - 0x77.", enabled = writeEnabled(connected)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            TextButton(onClick = {
-                                i2cDraft =
-                                    i2cDraft.copy(address = (i2cDraft.address - 1).coerceAtLeast(I2C_CTRL_ADDR_MIN))
-                            }, enabled = writeEnabled(connected)) { Text("−") }
+                            TextButton(
+                                onClick = {
+                                    i2cDraft =
+                                        i2cDraft.copy(address = (i2cDraft.address - 1).coerceAtLeast(I2C_CTRL_ADDR_MIN))
+                                },
+                                enabled = writeEnabled(connected),
+                                modifier = Modifier.semantics {
+                                    contentDescription = "Lower the address"
+                                }
+                            ) {
+                                Text("−", Modifier.clearAndSetSemantics {}) // -- WP UAN -- (UXP A12) named
+                            }
                             Text("0x%02X".format(i2cDraft.address), style = MaterialTheme.typography.bodyLarge)
-                            TextButton(onClick = {
-                                i2cDraft =
-                                    i2cDraft.copy(address = (i2cDraft.address + 1).coerceAtMost(I2C_CTRL_ADDR_MAX))
-                            }, enabled = writeEnabled(connected)) { Text("+") }
+                            TextButton(
+                                onClick = {
+                                    i2cDraft =
+                                        i2cDraft.copy(address = (i2cDraft.address + 1).coerceAtMost(I2C_CTRL_ADDR_MAX))
+                                },
+                                enabled = writeEnabled(connected),
+                                modifier = Modifier.semantics {
+                                    contentDescription = "Raise the address"
+                                }
+                            ) {
+                                Text("+", Modifier.clearAndSetSemantics {}) // -- WP UAN --
+                            }
                         }
                     }
                 }
@@ -303,7 +322,7 @@ private fun ApplyRow(
                 Text(
                     status.first,
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (status.second) MacColors.orange else MaterialTheme.colorScheme.onSurfaceVariant
+                    color = if (status.second) MacColors.warningText else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             } else if (dirty) {
                 Text("Unapplied changes", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

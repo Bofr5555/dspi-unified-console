@@ -835,7 +835,45 @@ fn wp_p5ses_device_preflight_refuses_what_the_rules_forbid() {
     );
 }
 
-#[cfg(feature = "link")]
+// -- WP UFW -- (UXP A10) the tweeter rule's refusal in the Speakers page's
+// words: "tweeter" and "mid driver", never "high way" or "middle way"
+#[test]
+fn wp_ufw_the_tweeter_refusal_names_the_driver() {
+    let message = |r: &Rig, role| {
+        let p = r.core.measure_preflight(walked(&[(0, role)])).unwrap();
+        let b = p
+            .blockers
+            .iter()
+            .find(|b| b.key == "measure.tweeter_highpass");
+        b.map(|b| b.message.clone()).unwrap_or_default()
+    };
+    let r = rig();
+    let high = message(&r, MeasureRole::High);
+    assert!(
+        high.starts_with("Out 1 is a tweeter and has no active high-pass"),
+        "{high}"
+    );
+    let mid = message(&r, MeasureRole::Mid);
+    assert!(
+        mid.starts_with("Out 1 is a mid driver and has no active high-pass"),
+        "{mid}"
+    );
+    // A first-order high-pass at 2 kHz makes a full-range output a tweeter
+    let n_in = r.core.get_state().num_input_channels;
+    r.core.set_filter(n_in, 0, band(13, 2_000.0)).unwrap();
+    let raised = message(&r, MeasureRole::Full);
+    assert!(
+        raised.starts_with(
+            "Out 1 has a high-pass at 1 kHz or above, so it is measured as a tweeter, and"
+        ),
+        "{raised}"
+    );
+    for m in [high, mid, raised] {
+        assert!(!m.contains(" way"), "{m}");
+    }
+}
+
+#[cfg(feature = "link")] // -- INT016 -- back on its test (UFW's insert took it)
 #[test]
 fn wp_p5ses_device_a_viewer_through_the_hub_is_denied() {
     use dspi_link::fakehub::{Auth, FakeHub, HubConfig};

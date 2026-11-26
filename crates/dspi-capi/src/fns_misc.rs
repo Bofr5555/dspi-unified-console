@@ -1129,6 +1129,21 @@ pub extern "C" fn dspi_snapshot_capture_document(
 }
 
 // -- WP P1AB -- A/B compare (PRO1 W4)
+// -- WP UB34 -- every compare reply also says `saved`: whether the compare is
+// one of "as saved on the device" against "now" (`dspi_ab_start_saved`)
+fn ab_reply(c: &dspi_core::DspiCore, r: Result<dspi_core::AbCompare>) -> String {
+    #[derive(serde::Serialize)]
+    struct Reply {
+        #[serde(flatten)]
+        compare: dspi_core::AbCompare,
+        saved: bool,
+    }
+    json_reply(r.map(|compare| Reply {
+        saved: compare.active && c.ab_is_saved(),
+        compare,
+    }))
+}
+
 /// Start an A/B compare of two snapshots in the store: `a_id` null or ""
 /// captures the open device as A, else snapshot `a_id` is recalled first;
 /// `b_id` is B. JSON: the compare `{ok, active, side, aName, bName, recall}`
@@ -1172,7 +1187,18 @@ pub extern "C" fn dspi_ab_start_documents(
 /// on its new side, or a failure (`invalid` with no compare running).
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_ab_toggle(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
-    text(core, buf, len, |c| json_reply(c.ab_toggle()))
+    text(core, buf, len, |c| ab_reply(c, c.ab_toggle()))
+}
+
+// -- WP UB34 -- (UXP B3)
+/// Start an A/B compare of the active preset as saved on the device (A)
+/// against the device now (B), and recall A: only what a preset holds
+/// differs, the listening volume stays as it is. JSON: the compare
+/// (`saved` true), or a failure (`invalid` when the saved settings are not
+/// known).
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_ab_start_saved(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
+    text(core, buf, len, |c| ab_reply(c, c.ab_start_saved()))
 }
 
 /// What differs from A to B: `dspi_config_diff`'s JSON for the pair, or a
@@ -1204,7 +1230,7 @@ pub extern "C" fn dspi_ab_keep(
 /// The running compare, or `active: false` with none. JSON; never a failure.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_ab_state(core: *mut FfiCore, buf: *mut c_char, len: u32) -> u32 {
-    text(core, buf, len, |c| json_reply(Ok(c.ab_state())))
+    text(core, buf, len, |c| ab_reply(c, Ok(c.ab_state())))
 }
 
 /// Recall a snapshot document's text on the open device: the reply of
@@ -1337,9 +1363,30 @@ pub extern "C" fn dspi_bootloader_counts(rp2040: *mut u32, rp2350: *mut u32) {
 }
 
 /// Open the demo device, a simulated DSPi, in place of any open device.
+/// It runs a tuned example (a stereo two-way on outputs 1-4, its roles
+/// confirmed).
+// -- WP UB12 -- its second sentence
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_open_demo(core: *mut FfiCore) -> bool {
     flag(core, DspiCore::open_demo)
+}
+
+// -- WP UB12 --
+/// Open the demo device as the bundled capture left it (no filters, nothing
+/// named, no speaker layout), in place of any open device: for tests of a
+/// new board.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_open_demo_blank(core: *mut FfiCore) -> bool {
+    flag(core, DspiCore::open_demo_blank)
+}
+
+// -- WP UB12 --
+/// "Reset Demo": the open demo device runs the settings it opened with again,
+/// with nothing unsaved and its roles the example's again; the device stays
+/// open. False, with the error kept, on anything but the demo device.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_reset_demo(core: *mut FfiCore) -> bool {
+    flag(core, DspiCore::reset_demo)
 }
 
 // ── The extension channel ────────────────────────────────────────────

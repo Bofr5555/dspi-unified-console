@@ -15,6 +15,7 @@ use dspi_core::{
 };
 use serde_json::{Value, json};
 
+use crate::confirm::GROUP_QUIET_MS; // -- FIX016 -- (R2) an answer waits for the sheet
 use crate::policy::{AgentPolicy, ConfirmMode};
 use crate::rate::RateLimit;
 use crate::tests_wp_mcp5::{
@@ -361,7 +362,8 @@ fn wp_adet1_one_grouped_question_with_the_warning_and_a_grant_for_detections() {
     assert_eq!(sheet["grant"]["kind"], json!("test_signals"));
     assert_eq!(sheet["grant"]["detect"], json!(true));
     assert_eq!(sheet["grant"]["device"], json!(id.as_str()));
-    s.answer_confirmation(cid, true, now).unwrap();
+    s.answer_confirmation(cid, true, now + GROUP_QUIET_MS)
+        .unwrap();
     let grants = s.grants();
     assert_eq!(grants.len(), 1);
     assert_eq!(grants[0]["detect"], json!(true), "{grants:?}");
@@ -400,13 +402,15 @@ fn wp_adet1_one_grouped_question_with_the_warning_and_a_grant_for_detections() {
         "dspi_measure_start",
         json!({"outputs": [1], "sweep_ms": 1000, "passes": 2}),
     );
-    s.answer_confirmation(cid, true, now).unwrap();
+    s.answer_confirmation(cid, true, now + GROUP_QUIET_MS)
+        .unwrap();
     assert_eq!(s.grants()[0]["detect"], json!(false));
     ok_at(&mut s, c, now, "dspi_measure_stop", json!({}));
     layout(&core2, false);
     let cid = held_at(&mut s, c, now, DETECT, json!({"outputs": [3]}));
     // Allowed: the grant now covers detections too.
-    s.answer_confirmation(cid, true, now).unwrap();
+    s.answer_confirmation(cid, true, now + GROUP_QUIET_MS)
+        .unwrap();
     assert_eq!(s.grants()[0]["detect"], json!(true));
     let _ = core;
 }
@@ -480,7 +484,8 @@ fn wp_adet1_a_revoke_stops_a_running_detection_at_once() {
     let c = s.connect();
     let now = 1_000;
     let cid = held_at(&mut s, c, now, DETECT, json!({"outputs": [3]}));
-    s.answer_confirmation(cid, true, now).unwrap();
+    s.answer_confirmation(cid, true, now + GROUP_QUIET_MS)
+        .unwrap();
     let started = app_takes(&mut s, &core);
     assert_eq!(started.len(), 1, "{started:?}");
     assert!(started[0].get("error").is_none(), "{started:?}");
@@ -513,7 +518,8 @@ fn wp_adet1_the_demo_simulation_detects_a_tweeter_end_to_end() {
     let mut now = 1_000;
     assert_eq!(overview(&mut s, c)["roles_from"], json!("none"));
     let cid = held_at(&mut s, c, now, DETECT, json!({"outputs": [3]}));
-    s.answer_confirmation(cid, true, now).unwrap();
+    s.answer_confirmation(cid, true, now + GROUP_QUIET_MS)
+        .unwrap();
     // Busy while it waits.
     let e = err_at(&mut s, c, now, DETECT, json!({"outputs": [3]}));
     assert!(e.contains("waits for the app"), "{e}");

@@ -34,9 +34,12 @@ export interface SectionDef {
 /** The page with the devices to connect to (the page's own, not a session's screen). */
 export const CONNECT = "connect";
 export const CONNECT_PAGE: Page = { id: CONNECT, label: "This Computer" }; // -- WP WEB7 -- Qt's Devices tab
+// -- WP UB6 -- (UXP B6, D13) a hub-served console's first page: the hub's DSPis, with no DSPi open (screens/hub/FleetPage.tsx)
+export const FLEET = "fleet";
+export const FLEET_PAGE: Page = { id: FLEET, label: "Fleet" };
 
 export const SECTIONS: readonly SectionDef[] = [
-  { id: "overview", title: "Overview", pages: ["main", "overview", "sender"] },
+  { id: "overview", title: "Overview", pages: ["home", "main", "overview", "sender"] }, // -- WP UB2 -- Home (Simple, locked) first
   { id: "equaliser", title: "Equaliser", pages: ["eq", "xover", "delays", "inputs"] }, // -- WP WEBM2 -- PEQ | Crossover | Delay & gain
   { id: "routing", title: "Routing", pages: ["matrix"] },
   { id: "effects", title: "Effects", pages: ["effects"] },
@@ -44,7 +47,7 @@ export const SECTIONS: readonly SectionDef[] = [
   { id: "analyse", title: "Analyse", pages: ["analyser", "generator", "stats", "monitor"] },
   { id: "library", title: "Library", pages: ["presets", "snapshots", "history", "files", "autoeq"] }, // -- WP WEBM3 -- history -- WP WEB7 -- presets, autoeq (Qt's order)
   { id: "system", title: "System", pages: ["system", "system-clock", "system-installation", "events", "chain"] }, // -- WP WEB7 -- Qt's Units | Clock and Links | Installation | Events, then the web's Signal Chain
-  { id: "devices", title: "Devices", foot: true, pages: [CONNECT, "hub", "hub-settings", "device"] },
+  { id: "devices", title: "Devices", foot: true, pages: [FLEET, CONNECT, "hub", "hub-settings", "device"] }, // -- WP UB6 -- FLEET
   { id: "settings", title: "Settings", foot: true, pages: ["settings", "installer"] }, // -- WP WEB7 -- Control Surfaces is Settings' Control part
 ];
 
@@ -65,9 +68,9 @@ export interface Section {
   pages: Page[];
 }
 
-/** The sections `shown` has pages for, in the rail's order, with the devices' own page in Devices. */
-export function sectionsFor(shown: readonly (Page | ScreenDef)[]): Section[] {
-  const all: Page[] = [CONNECT_PAGE, ...shown.filter((x) => x.id !== CONNECT)];
+/** The sections `shown` has pages for, in the rail's order, with the devices' own page (-- WP UB6 -- and the Fleet when `fleet`) in Devices. */
+export function sectionsFor(shown: readonly (Page | ScreenDef)[], fleet = false): Section[] {
+  const all: Page[] = [...(fleet ? [FLEET_PAGE] : []), CONNECT_PAGE, ...shown.filter((x) => x.id !== CONNECT && x.id !== FLEET)];
   const out: Section[] = [];
   for (const def of SECTIONS) {
     const mine = all.filter((x) => sectionOf(x.id) === def.id);

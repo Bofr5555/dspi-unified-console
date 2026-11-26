@@ -1,5 +1,8 @@
 # uConsole for DSPi 0.15.0
 
+**Not released.** 0.15.0 was prepared but not published; everything in it is folded into
+[0.16.0](CHANGELOG-0.16.0.md), the first release after 0.14.0. These notes are kept as they were written.
+
 Release date: 2026-11-26. One version for every client but the Swift app.
 
 0.15.0 changes how the desktop app looks and how far it reaches. It has a second layout, **Modern**, which you can

@@ -1,15 +1,20 @@
 #!/bin/bash
-# The web console's screenshot tour (apps/web/test/shots/tour.spec.ts) on the core's demo
-# device and on `uconsole --demo hub --alink`: dark and light, 1366 px and 375 px.
+# The web console's screenshots (apps/web/playwright.shots.config.ts) on the core's demo device
+# and on `uconsole --demo hub --alink`: the specs under apps/web/test/shots named in PW_ARGS, dark
+# and light, at 1366 px (project desktop) and 375 px (project narrow).
 #
-#   tools/shots/web.sh <out dir>          PNGs into <out dir>
-#   SHOTS_ONLY=<regex> PW_ARGS=<spec…>     only the pictures whose name matches (the specs that read it)
+#   tools/shots/web.sh <out dir>                      PNGs into <out dir>: by default
+#                                                     test/shots/parity_web.spec.ts --project desktop
+#                                                     (every Modern page and part on the demo)
+#   PW_ARGS="test/shots/<spec>.ts [--project …]"      those specs instead (readme.sh: readme_web.spec.ts)
+#   SHOTS_ONLY=<regex> PW_ARGS=<spec…>                only the pictures whose name matches (the specs that read it)
 #
 # The builds are apps/web/tools/ci.sh's (`--no-e2e`: the core, the fake hub, `uconsole`, the
-# page); then the tour alone, in the same Playwright image and mounts. The steps that make a
-# unit lose its link use upstream's @dspi/link client, at the commit the conformance runner
-# pins (crates/dspi-hub/tests/conformance/run-clients.sh), taken from a clone with
-# `git archive` and checked against its tree hash. No device and no audio: demo devices only.
+# page); then the specs alone, in the same Playwright image and mounts. -- INT016 -- The old
+# screenshot tour (tour.spec.ts) is gone; a spec that makes a unit lose its link (none now) would
+# use upstream's @dspi/link client (DSPI_LINK_SRC), at the commit the conformance runner pins
+# (crates/dspi-hub/tests/conformance/run-clients.sh), taken from a clone with `git archive` and
+# checked against its tree hash. No device and no audio: demo devices only.
 set -euo pipefail
 out=${1:?usage: web.sh <out dir>}
 root=$(cd "$(dirname "$0")/../.." && pwd)
@@ -49,4 +54,4 @@ podman run --rm --init --userns=keep-id --user "$(id -u):$(id -g)" --ipc=private
   -v "$out":/shots:z -e SHOTS_DIR=/shots "${link[@]}" \
   -v "$work/home":/home/web:z -v "$work/tmp":/wtmp:z -e HOME=/home/web -e TMPDIR=/wtmp \
   -e SHOTS_ONLY="${SHOTS_ONLY:-}" -e CI=1 -w /src/apps/web "$PLAYWRIGHT" \
-  npx playwright test --config playwright.shots.config.ts ${PW_ARGS:-}
+  npx playwright test --config playwright.shots.config.ts ${PW_ARGS:-test/shots/parity_web.spec.ts --project desktop}

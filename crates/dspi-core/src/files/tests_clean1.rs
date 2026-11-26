@@ -30,7 +30,7 @@ fn capture() -> DspState {
 /// A connected demo device, read.
 fn demo() -> Arc<DspiCore> {
     let core = DspiCore::new();
-    core.open_demo().unwrap();
+    core.open_demo_blank().unwrap(); // -- WP UB12 --
     core.fetch_all().unwrap();
     core
 }
@@ -317,7 +317,7 @@ fn clean1_the_pair_map_is_taken_as_the_console_takes_it() {
 #[test]
 fn clean1_the_demo_export_is_the_qt_fixture() {
     let core = DspiCore::new();
-    core.open_demo().unwrap();
+    core.open_demo_blank().unwrap(); // -- WP UB12 --
     let text = core
         .config_export("Qt reference".into(), "1.0".into(), 0b0101)
         .unwrap();

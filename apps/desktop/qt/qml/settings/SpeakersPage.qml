@@ -12,6 +12,8 @@ import UConsole
 // words or kept, ROLES' and ADETQ's stamp); Confirm is the blue
 // primary only while it can act. The notice and the table's pills are ROLEQ's,
 // ADETQ's and ROLES' as they are.
+// -- WP UB1 -- (UXP B1) a confirmed layout offers "Crossovers and Routing…":
+// both from this layout, one undo step (CrossoverFromLayout).
 SettingsPage {
     id: page
     objectName: "SpeakersPage"
@@ -62,7 +64,9 @@ SettingsPage {
             objectName: "SpeakersPage.readOnly"
             visible: DeviceModel.connected && !page.sc.editable
             Layout.fillWidth: true
-            text: qsTr("This connection may not change the DSPi: the speaker layout is shown, not changed.")
+            // -- FIX016 -- (R4) the installer's lock, or a connection that may not write
+            text: LimitsController.locked ? qsTr("Locked by the installer: the speaker layout is shown, not changed.")
+                                          : qsTr("This connection may not change the DSPi: the speaker layout is shown, not changed.")
             font: Theme.fontBody
             color: Theme.textMuted
             wrapMode: Text.Wrap
@@ -82,7 +86,7 @@ SettingsPage {
             }
             AppButton {
                 objectName: "SpeakersPage.suggestion"
-                text: qsTr("Use the Suggestion")
+                text: qsTr("Suggest from Routing and Filters")   // -- WP UB7 -- (UXP B7) one word
                 enabled: page.sc.editable && page.sc.loaded
                 onClicked: page.sc.useSuggestion()
             }
@@ -94,6 +98,15 @@ SettingsPage {
                 toolTip: page.sc.detectBlocker.length ? page.sc.detectBlocker
                          : qsTr("Find out which outputs reach a driver and which drive a tweeter, with quiet test sweeps and the microphone")
                 onClicked: detectQuestion.open()
+            }
+            // -- WP UB1 -- the next step once the layout is confirmed
+            AppButton {
+                objectName: "SpeakersPage.fromLayout"
+                visible: page.confirmed
+                text: qsTr("Crossovers and Routing…")
+                enabled: LayoutSetupController.writable
+                toolTip: qsTr("Starting crossovers and routes from this layout, in one undo step")
+                onClicked: fromLayout.open()
             }
             Text {
                 objectName: "SpeakersPage.state"
@@ -109,6 +122,17 @@ SettingsPage {
                 color: page.modern && page.sc.saidError && page.ownSaid.length ? Theme.dangerText : Theme.textMuted
                 wrapMode: Text.Wrap
             }
+        }
+        // -- WP UB7 -- (UXP B7) a Detect… that cannot start says why, not only in its tooltip
+        Text {
+            objectName: "SpeakersPage.detectWhy"
+            visible: text.length > 0 && !page.sc.detecting
+            Layout.fillWidth: true
+            textFormat: Text.PlainText
+            text: page.sc.loaded ? page.sc.detectBlocker : ""
+            font: Theme.fontSmall
+            color: Theme.textMuted
+            wrapMode: Text.Wrap
         }
         // -- WP ADETQ -- while the detection runs: where it is, and Stop
         RowLayout {
@@ -205,6 +229,14 @@ SettingsPage {
             color: page.sc.saidError ? Theme.dangerText : Theme.textMuted
             wrapMode: Text.Wrap
         }
+    }
+
+    // -- WP UB1 --
+    CrossoverFromLayout {
+        id: fromLayout
+        parent: page.Window.window ? page.Window.window.contentItem : null
+        crossoversWanted: true
+        routingWanted: true
     }
 
     // -- WP ADETQ -- the one question before the app's own detection (AUTODES 4.4)

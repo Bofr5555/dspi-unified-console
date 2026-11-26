@@ -147,8 +147,12 @@ class DemoScreensAn28Test {
         val show = host()
         show { HomeScreen(bridge, {}, {}) }
         assertShows("home", "Filter Response", "USB 1", "Demo", "User Volume")
-        // -- WP INTD -- (REVD W12) output 1's short label is "L": a full-range output says no "· Full"
-        assertTrue("home shows \"L\"", rule.onAllNodesWithText("L", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
+        // -- WP INTD -- (REVD W12) a full-range output says no "· Full"
+        // -- FIX016 -- (REVG R1) UB12's tuned demo names its outputs: output 1's short label is the user's name, whole
+        assertTrue(
+            "home shows \"Left woofer\"",
+            rule.onAllNodesWithText("Left woofer", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+        )
         assertAbsent("· Full")
         assertAbsent("· None")
         show { ChannelScreen(bridge, 0, {}, {}) }

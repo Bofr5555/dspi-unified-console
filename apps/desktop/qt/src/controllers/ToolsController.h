@@ -84,6 +84,8 @@ public:
     ToolsController(const AppContext &ctx, QObject *parent);
     QVariantList unprotectedOutputs() const { return state()->unprotected; }   // -- WP P1QT2 --
     QString unprotectedText() const;                                    // -- WP P1QT2 --
+    // -- INT016 -- the same row with the caller's names (Modern's "Left woofer · 1"); an empty name is "Out N"
+    Q_INVOKABLE QString unprotectedTextOf(const QStringList &names) const;
     static ToolsController *create(QQmlEngine *, QJSEngine *) { return Registrar::instance<ToolsController>(); }
 
     int revision() const { return m_reads; }

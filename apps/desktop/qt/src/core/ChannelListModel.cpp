@@ -148,6 +148,18 @@ void ChannelListModel::update(const DeviceSnapshot &snap, const QString &platfor
             // -- WP FIN015 -- (REVF R1) unless the generator plays on it: the
             // generator writes after the matrix, so it is loud
             r.hidden = o.value(QLatin1String("hidden")).toBool();
+            // -- FIX016 -- (REVG F7) nor one with a role in the speaker layout (it is
+            // named from it), nor one with a crossover or PEQ band on (set up, its
+            // routes to come): Crossover, Delay & Gain and Measure keep them in view
+            if (fromLayout.contains(QJsonValue(r.index))) r.hidden = false;
+            if (r.channel >= 0 && r.channel < MAX_CHANNELS) {
+                bool band = false;
+                for (int b = 0; b < BANDS_PER_CHANNEL && !band; ++b)
+                    band = s->filters[r.channel][b].filter_type != 0 && !s->filters[r.channel][b].bypass;
+                for (int b = 0; b < MAX_XOVER_BANDS && !band; ++b)
+                    band = s->xover[r.channel][b].filter_type != 0 && !s->xover[r.channel][b].bypass;
+                if (band) r.hidden = false;
+            }
             // -- WP SHOWFIX -- the speaker layout's name where the core has one
             // ("Centre woofer"), as the Overview's card names it
             const QString word = words.value(QLatin1String("outputs")).toArray().at(r.index).toString();

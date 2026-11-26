@@ -161,3 +161,23 @@ mod tests_wp_roles;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
 mod tests_wp_showfix;
+// -- WP UAG --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+mod tests_wp_uag;
+// -- WP UB5 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+mod tests_wp_ub5;
+// -- FIX016 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+mod tests_fix016_r2;
+// -- FIX016 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+mod tests_fix016_r4;
+// -- FIX016 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+mod tests_fix016_f4;

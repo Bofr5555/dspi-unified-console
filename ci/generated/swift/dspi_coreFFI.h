@@ -2426,6 +2426,11 @@ void uniffi_dspi_core_fn_method_dspicore_reset_alink_stats(void*_Nonnull ptr, Ru
 void uniffi_dspi_core_fn_method_dspicore_reset_buffer_stats(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_RESET_DEMO
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_RESET_DEMO
+void uniffi_dspi_core_fn_method_dspicore_reset_demo(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_RESET_INFO_AT_CONNECT
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_FN_METHOD_DSPICORE_RESET_INFO_AT_CONNECT
 RustBuffer uniffi_dspi_core_fn_method_dspicore_reset_info_at_connect(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -6725,6 +6730,12 @@ uint16_t uniffi_dspi_core_checksum_method_dspicore_reset_alink_stats(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_RESET_BUFFER_STATS
 #define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_RESET_BUFFER_STATS
 uint16_t uniffi_dspi_core_checksum_method_dspicore_reset_buffer_stats(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_RESET_DEMO
+#define UNIFFI_FFIDEF_UNIFFI_DSPI_CORE_CHECKSUM_METHOD_DSPICORE_RESET_DEMO
+uint16_t uniffi_dspi_core_checksum_method_dspicore_reset_demo(void
     
 );
 #endif

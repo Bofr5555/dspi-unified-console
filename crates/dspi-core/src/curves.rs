@@ -265,6 +265,30 @@ fn level_db(sections: &[Coeffs], freq: f64) -> f64 {
     10.0 * power.max(POWER_FLOOR).log10()
 }
 
+// -- WP GAP1 --
+/// `Re(z P'(z) / P(z))` for `P(z^-1) = p0 + p1 z^-1 + p2 z^-2` on the unit
+/// circle at `w`: one polynomial's share of the group delay, in samples.
+fn poly_delay(p0: f64, p1: f64, p2: f64, w: f64) -> f64 {
+    let (c1, s1) = (w.cos(), w.sin());
+    let (c2, s2) = ((2.0 * w).cos(), (2.0 * w).sin());
+    let (re, im) = (p0 + p1 * c1 + p2 * c2, -(p1 * s1 + p2 * s2));
+    let (dre, dim) = (p1 * c1 + 2.0 * p2 * c2, -(p1 * s1 + 2.0 * p2 * s2));
+    (dre * re + dim * im) / (re * re + im * im)
+}
+
+// -- WP GAP1 --
+/// The cascade's group delay at `freq`, in ms (0 where it is not a number:
+/// a zero on the unit circle, where the phase steps).
+fn delay_ms(sections: &[Coeffs], freq: f64) -> f64 {
+    let w = omega(freq);
+    let samples: f64 = sections
+        .iter()
+        .map(|c| poly_delay(c.b0, c.b1, c.b2, w) - poly_delay(1.0, c.a1, c.a2, w))
+        .sum();
+    let ms = samples / SAMPLE_RATE * 1000.0;
+    if ms.is_finite() { ms } else { 0.0 }
+}
+
 /// The cascade's phase at `freq`, in degrees within +-180 (0 where it is
 /// not a number).
 fn phase_deg(sections: &[Coeffs], freq: f64) -> f64 {
@@ -338,6 +362,18 @@ pub fn compute_phase_curve(filters: Vec<FilterParams>, unwrap: bool) -> Vec<f64>
         .map(|i| phase_deg(&sections, curve_freq(i)))
         .collect();
     if unwrap { unwrapped(wrapped) } else { wrapped }
+}
+
+// -- WP GAP1 --
+/// The combined group delay of `filters` in ms at each of the
+/// [`CURVE_POINTS`] frequencies of [`curve_freq`]: `-d(phase)/d(omega)`,
+/// exact per biquad (no differencing of the phase curve), 0 for no bands and
+/// where it is not a number.
+pub fn compute_group_delay_curve(filters: Vec<FilterParams>) -> Vec<f64> {
+    let sections = cascade(&filters);
+    (0..CURVE_POINTS as u32)
+        .map(|i| delay_ms(&sections, curve_freq(i)))
+        .collect()
 }
 
 /// The frequency of curve point `i` in Hz: 10 Hz at 0, 20 kHz at
@@ -1032,3 +1068,9 @@ mod tests_clean1 {
 #[allow(clippy::arithmetic_side_effects)]
 #[path = "curves/tests_wp_cgswsa.rs"]
 mod tests_wp_cgswsa;
+
+// -- WP GAP1 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects)]
+#[path = "curves/tests_wp_gap1.rs"]
+mod tests_wp_gap1;

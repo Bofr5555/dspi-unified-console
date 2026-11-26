@@ -29,7 +29,7 @@ fn wp_cg34_the_names_through_c() {
         read(|b, l| dspi_filter_type_name(13, b, l)),
         "Low Cut (6dB)"
     );
-    assert_eq!(read(|b, l| dspi_filter_type_name(34, b, l)), "LR4 Low Pass");
+    assert_eq!(read(|b, l| dspi_filter_type_name(34, b, l)), "LR4 Low pass"); // -- INT016 -- (A10)
     assert_eq!(read(|b, l| dspi_filter_type_name(20, b, l)), "Type 20");
 }
 

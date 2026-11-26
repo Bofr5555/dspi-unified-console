@@ -174,6 +174,11 @@ void speakersSection(SmokeDriver &d) {
     d.switchLayout("classic");
     quieten(d);
     const QJsonObject was = storedLayout(d);
+    // -- INT016 -- (UB7's finding) from an empty, unconfirmed layout, whatever an
+    // earlier section (roleq-speakers, ub7-speakers) left confirmed
+    setLayout(d, { { QStringLiteral("outputs"), QJsonArray{} }, { QStringLiteral("confirmedByUser"), false } });
+    sc->reload();
+    d.waitFor(3000, [&] { return sc->loaded() && sc->status() != QLatin1String("confirmed"); });
 
     // ---- A layout the detection wrote: auto-detected ---------------------------------
     const QJsonObject kept = setLayout(d, detectedLayout(d));
@@ -391,6 +396,11 @@ void agentSection(SmokeDriver &d) {
     if (!device->connected() || !device->demo()) device->openDemo();
     d.waitFor(10000, [&] { return device->connected() && device->demo(); });
     d.switchLayout("classic");
+    // -- FIX016 -- (R1-QT) put back at the end: the volume, and no Measure window
+    // the agent's detection opened (ua2's "in view" checks after it read the main
+    // window while the Measure view was in that window)
+    const float volumeWas = device->state() ? device->state()->user_volume_db : -20.0f;
+    const bool measureWas = d.app().shell->shownWindows().contains(QStringLiteral("tools.measure"));
     quieten(d);
     const QJsonObject was = storedLayout(d);
     // Nobody's word yet: the proposal kept unconfirmed (a confirmed layout is not detected over)
@@ -439,9 +449,17 @@ void agentSection(SmokeDriver &d) {
         QObject *sheet = d.object(QStringLiteral("AiConfirmSheet"));
         return sheet && sheet->property("heading").toString().startsWith(QLatin1String("Detect the speakers on "));
     }));
+    // -- WP UAG -- (UXP A6) what to do comes first; the mechanism waits under Details
+    d.check(QStringLiteral("uag: the detection says what to do first, the warning under Details"), d.waitFor(2000, [&] {
+        auto *todo = qobject_cast<QQuickItem *>(d.object(QStringLiteral("AiConfirmSheet.todo")));
+        auto *w = qobject_cast<QQuickItem *>(d.object(QStringLiteral("AiConfirmSheet.warning")));
+        return todo && todo->isVisible() && textOf(todo).contains(QLatin1String("Keep the volume where it is")) && w && !w->isVisible();
+    }));
+    if (QQuickWindow *mw = d.mainWindow()) d.grab(mw, QStringLiteral("uag-detect-question.png"));
+    click(d.object(QStringLiteral("AiConfirmSheet.details")));
     d.check(QStringLiteral("adet-agent: the sheet shows the warning"), d.waitFor(2000, [&] {
-        QObject *w = d.object(QStringLiteral("AiConfirmSheet.warning"));
-        return w && textOf(w) == QStringLiteral("⚠ ") + AiController::detectWarning();
+        auto *w = qobject_cast<QQuickItem *>(d.object(QStringLiteral("AiConfirmSheet.warning")));
+        return w && w->isVisible() && textOf(w) == QStringLiteral("⚠ ") + AiController::detectWarning();
     }));
     if (QQuickWindow *mw = d.mainWindow()) d.grab(mw, QStringLiteral("adet-agent-question.png"));
     ai->answer(q.value(QStringLiteral("id")).toDouble(), true);
@@ -536,6 +554,8 @@ void agentSection(SmokeDriver &d) {
     ai->revoke(ai->clients().value(0).toMap().value(QStringLiteral("id")).toDouble());
     if (!was.isEmpty() && was.value(QLatin1String("outputs")).isArray()) setLayout(d, was);
     sc->reload();
+    if (!measureWas) d.app().shell->closeWindow(QStringLiteral("tools.measure"));   // -- FIX016 --
+    device->write(QLatin1String("adet volume"), [volumeWas](FfiCore *c) { return dspi_set_user_volume(c, volumeWas); });   // -- FIX016 --
     d.waitIdle();
     d.spin(200);
 }

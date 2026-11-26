@@ -25,7 +25,24 @@ pub fn start(core: &DspiCore, p: StartParams) -> Result<Value, CallError> {
 
 /// `abToggle`: recall the other side (`DspiCore::ab_toggle`).
 pub fn toggle(core: &DspiCore) -> Result<Value, CallError> {
-    Ok(tidy(&core.ab_toggle()?))
+    Ok(saved(core, tidy(&core.ab_toggle()?)))
+}
+
+// -- WP UB34 -- (UXP B3)
+/// A compare's reply with `saved`: whether it is one of "as saved on the
+/// device" against "now" (`DspiCore::ab_is_saved`).
+fn saved(core: &DspiCore, mut v: Value) -> Value {
+    let on = v.get("active").and_then(Value::as_bool) == Some(true) && core.ab_is_saved();
+    if let Some(o) = v.as_object_mut() {
+        o.insert("saved".into(), Value::Bool(on));
+    }
+    v
+}
+
+/// `abStartSaved`: compare the active preset as saved on the device (A)
+/// with the device now (B), on A (`DspiCore::ab_start_saved`).
+pub fn start_saved(core: &DspiCore) -> Result<Value, CallError> {
+    Ok(saved(core, tidy(&core.ab_start_saved()?)))
 }
 
 /// `abDiff`: what differs from A to B, `configDiff`'s reply for the pair.
@@ -54,7 +71,7 @@ pub fn keep(core: &DspiCore, p: KeepParams) -> Result<Value, CallError> {
 
 /// `abState`: the running compare, `active: false` with none.
 pub fn state(core: &DspiCore) -> Value {
-    tidy(&core.ab_state())
+    saved(core, tidy(&core.ab_state()))
 }
 
 #[cfg(test)]
@@ -136,5 +153,40 @@ mod tests_wp_p1ab {
             (json!(false), json!("b"))
         );
         assert_eq!(ok(h, "abState", json!({}))["active"], false);
+    }
+
+    // -- WP UB34 -- (UXP B3) "as saved" against "now", from the first edit
+    #[test]
+    fn wp_ub34_as_saved_against_now_on_the_web() {
+        guard::reset_for_test();
+        let h = session_new().unwrap();
+        assert_eq!(run(h, "abStartSaved", json!({}))["ok"], false);
+        ok(h, "open", json!({ "kind": "demo" }));
+        ok(
+            h,
+            "write",
+            json!({ "path": "out.gain", "indices": [0], "value": { "float": -4.0 } }),
+        );
+        let s = ok(h, "abStartSaved", json!({}));
+        assert_eq!(
+            (s["active"].clone(), s["side"].clone(), s["saved"].clone()),
+            (json!(true), json!("a"), json!(true)),
+            "{s}"
+        );
+        // -- FIX016 R3 -- the device plays A as saved, but B's edit still
+        // counts as unsaved, so nothing ends the compare without a question
+        assert_eq!(
+            ok(h, "presetChanges", json!({}))["dirty"],
+            true,
+            "on A, B's edit is unsaved"
+        );
+        let t = ok(h, "abToggle", json!({}));
+        assert_eq!(
+            (t["side"].clone(), t["saved"].clone()),
+            (json!("b"), json!(true))
+        );
+        assert_eq!(ok(h, "abState", json!({}))["saved"], true);
+        ok(h, "abKeep", json!({ "side": "b" }));
+        assert_eq!(ok(h, "abState", json!({}))["saved"], false);
     }
 }

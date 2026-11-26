@@ -13,7 +13,7 @@
 # lists below are the base's. A work package lists its own files in its own
 # cmake/wp/<wp>.cmake (see "Work packages' files"); it does not edit this file.
 cmake_minimum_required(VERSION 3.21)
-project(uconsole-for-dspi VERSION 0.15.0 LANGUAGES C CXX)
+project(uconsole-for-dspi VERSION 0.16.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -26,6 +26,18 @@ if(NOT DSPI_QT_MAJOR STREQUAL "6")
 endif()
 
 get_filename_component(DSPI_REPO "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
+# -- WP UA5 -- The version About and the packages show is the project's: the
+# workspace's (Cargo.toml [workspace.package]). The packaging scripts read the
+# project() line, so it stays a literal; a release that bumps one and not the other
+# stops here instead of shipping an app that names the last release.
+if(EXISTS "${DSPI_REPO}/Cargo.toml")
+    file(STRINGS "${DSPI_REPO}/Cargo.toml" dspi_workspace_version REGEX "^version = \"[0-9.]+\"" LIMIT_COUNT 1)
+    string(REGEX REPLACE "^version = \"([0-9.]+)\".*" "\\1" dspi_workspace_version "${dspi_workspace_version}")
+    if(dspi_workspace_version AND NOT dspi_workspace_version STREQUAL PROJECT_VERSION)
+        message(FATAL_ERROR "The app's version ${PROJECT_VERSION} (project() in apps/desktop/qt/CMakeLists.txt) is not the workspace's "
+                            "${dspi_workspace_version} (Cargo.toml): set both to the release's version")
+    endif()
+endif()
 set(DSPI_CARGO_TARGET_DIR "${DSPI_REPO}/target" CACHE PATH "cargo's target directory")
 set(DSPI_RUST_TARGET "" CACHE STRING "Rust target triple of a cross build")
 option(DSPI_SMOKE "Build uconsole-for-dspi-smoke, the app with its smoke driver" OFF)

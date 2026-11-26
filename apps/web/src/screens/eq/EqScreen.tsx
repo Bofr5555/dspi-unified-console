@@ -51,6 +51,7 @@ import { TAP_INPUT, TAP_OUTPUT } from "../analysis/analyser";
 import { identifyOutput } from "../analysis/siggen";
 // -- WP WBCLIP -- the channel clipboard (M45): the chosen channel's menu, and the keys act on it
 import { useClipboard } from "../clipboard/model";
+import { useSolo } from "../../ui/solo"; // -- WP GAP2 --
 // -- WP WEBM4 -- the channel's menu (the Channel button, a right click on a channel) is actions.json's
 import { menuItems, type Handler } from "../../ui/menus/actions";
 import { ActionMenuButton, isMenuKey, useContextMenu } from "../../ui/menus/ActionMenu";
@@ -82,6 +83,7 @@ import { EmptyState } from "../../ui/design"; // -- WP WEB --
 import { PageTools } from "../../ui/shell/Parts"; // -- WP WEB3 --
 import { Pill } from "../../ui/Pill"; // -- WP WEB3 --
 import "./eq.css"; // -- WP WEB3 --
+import { prefsStore, usePrefs } from "../settings/model"; // -- WP GAP1 -- the Phase chip
 
 interface EqChannel extends ChannelRow {
   output: boolean;
@@ -243,6 +245,11 @@ const EqView = memo(
     const [wire, setWire] = useState<number>(() => {
       if (channels.some((c) => c.wire === props.target?.wire)) return props.target!.wire!;
       const kept = chosenWire.get(session);
+      // -- WP UWN -- (UXP A17) the Crossover tab opens on an output: the kept one, else the first that is on
+      if (mode === "crossover" && !channels.some((c) => c.wire === kept && c.output)) {
+        const out = channels.find((c) => c.output); // the channel list holds the outputs that are on
+        if (out) return out.wire;
+      }
       return kept !== undefined && channels.some((c) => c.wire === kept) ? kept : (channels[0]?.wire ?? 0);
     });
     const chosen = channels.find((c) => c.wire === wire) ?? channels[0];
@@ -260,6 +267,7 @@ const EqView = memo(
     // -- WP WBCLIP -- the channel Ctrl/Cmd+C and +V act on, while this screen is shown
     // (a layout effect: set as the chosen channel shows, before a key can arrive)
     const board = useClipboard(session);
+    const solo = useSolo(session); // -- WP GAP2 --
     useLayoutEffect(() => {
       board.selected = cw;
       return () => {
@@ -290,12 +298,15 @@ const EqView = memo(
     // The curves: the chosen channel's (as shown, a drag included) first, then the others shown.
     const flat = s.bypass;
     const othersShown = channels.filter((c) => c.wire !== cw && !hidden.has(c.wire));
+    // -- WP GAP1 -- the edited channel's phase while the Phase chip (Settings › Graphing's switch) is on
+    const look = usePrefs().graph;
     const req = useMemo<CurveRequest>(
       () => ({
         chains: flat ? [[], ...othersShown.map(() => [])] : [chosen ? chain(s, chosen, edits.shown) : edits.shown, ...othersShown.map((c) => chain(s, c, peq(s, c.wire)))],
         bands: edits.shown,
+        ...(look.showPhase ? { phase: true, unwrap: look.phaseUnwrapped } : {}),
       }),
-      [JSON.stringify([edits.shown, flat, othersShown.map((c) => [c.wire, peq(s, c.wire), c.output ? s.xover?.[c.wire] : null]), chosen?.output ? s.xover?.[cw] : null])],
+      [JSON.stringify([edits.shown, flat, othersShown.map((c) => [c.wire, peq(s, c.wire), c.output ? s.xover?.[c.wire] : null]), chosen?.output ? s.xover?.[cw] : null]), look.showPhase, look.phaseUnwrapped],
     );
     const key = JSON.stringify(req);
     const curves = useCurves(session, key, req);
@@ -450,6 +461,8 @@ const EqView = memo(
       };
       if (c.output) {
         h["channel.identify"] = { run: () => void identifyOutput(session, c.index), enabled: !ro, reason: "Play counted blips on this output alone" };
+        // -- WP GAP2 -- only this output plays, until End Solo (not saved)
+        h["channel.solo"] = { run: () => void solo.toggle(c.index), on: solo.output === c.index, enabled: !solo.reason && (s.outputEnabled[c.index] ?? false), reason: solo.reason || undefined };
         if (props.open) h["channel.routing"] = { run: () => props.open!({ screen: "matrix" }) };
       }
       // The band list's Clear All, on the channel on show
@@ -537,7 +550,7 @@ const EqView = memo(
         <div class="eq-tools">
           {!chosen.output && mode === "peq" ? (
             <button type="button" aria-expanded={autoeq} onClick={() => setAutoeq((v) => !v)}>
-              Headphone Profile…
+              AutoEQ…{/* -- WP UWN -- (UXP A17) the docs' and the Library tab's word (was Headphone Profile…) */}
             </button>
           ) : null}
           <ActionMenuButton label="Files" items={filesItems} />
@@ -617,6 +630,16 @@ const EqView = memo(
               onClick={() => analyser.setChoice({ graph: !analyser.choice.graph })}
             >
               RTA
+            </button>
+            {/* -- WP GAP1 -- Qt's Phase chip, between RTA and All Curves as there */}
+            <button
+              type="button"
+              class="graph-chip"
+              aria-pressed={look.showPhase}
+              title="Show the phase"
+              onClick={() => prefsStore().set({ graph: { showPhase: !look.showPhase } })}
+            >
+              Phase
             </button>
             <button
               type="button"

@@ -198,7 +198,7 @@ fn wp_p1cfix_f4_ab_calls_are_refused_while_a_guard_waits() {
     core.set_output_gain(O, 5.0).unwrap(); // the guarded change
     let refused = |r: Result<crate::AbCompare>| match r {
         Err(DspiError::InvalidArgument { msg }) => {
-            assert!(msg.contains("finish the safe apply first"), "{msg}");
+            assert!(msg.contains("finish the trial first"), "{msg}"); // -- WP UFW --
         }
         other => panic!("not refused: {other:?}"),
     };

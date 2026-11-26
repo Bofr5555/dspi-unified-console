@@ -7,14 +7,15 @@
 package se.bofr.dspi.feature.tools
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.RadioButton
@@ -33,6 +34,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
@@ -133,12 +135,14 @@ fun CrossfeedView(bridge: DspiBridge, modifier: Modifier = Modifier) {
                 SectionLabel("PRESET")
                 CrossfeedParameters.presets.forEachIndexed { i, p ->
                     Row(
-                        Modifier.fillMaxWidth().clickable(enabled = writeEnabled(connected)) { bridge.setCrossfeedPreset(i) },
+                        // -- WP UAN -- (UXP A12) one radio row: the radio is no stop of its own
+                        Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                            .selectable(selected = crossfeed.preset == i, enabled = writeEnabled(connected), role = Role.RadioButton) {
+                                bridge.setCrossfeedPreset(i)
+                            },
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        RadioButton(selected = crossfeed.preset == i, onClick = {
-                            bridge.setCrossfeedPreset(i)
-                        }, enabled = writeEnabled(connected))
+                        RadioButton(selected = crossfeed.preset == i, onClick = null, enabled = writeEnabled(connected))
                         Column(Modifier.padding(start = 4.dp)) {
                             Text(p.name, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                             Caption(p.description)

@@ -2,4 +2,6 @@ REQUIRES A DSPi DEVICE. This app is a controller for the DSPi USB audio DSP (a R
 
 It is the Android client of uConsole for DSPi, made by Bofr5555 and published with Weeb Labs' permission. It needs DSPi firmware v1.1.6 for full features; with other versions it connects read-only.
 
+Set up your speakers in the app: say which output drives a woofer, a mid or a tweeter, and a tweeter keeps its protection. Measuring and auto-tune with a microphone are in the desktop and web consoles of uConsole for DSPi.
+
 Optional DSPi Link (off by default): control DSPi units over your local network through a hub. Links to a uConsole for DSPi hub are encrypted, and pairing pins the hub's key. Links to Weeb Labs' DSPi Console bridge are not encrypted; use those only on networks you trust.

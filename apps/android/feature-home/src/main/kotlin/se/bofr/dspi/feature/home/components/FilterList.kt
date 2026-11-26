@@ -74,6 +74,11 @@ fun FilterListView(
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val wide = maxWidth >= 560.dp
         Column(Modifier.fillMaxWidth().dspiCard()) {
+            // -- WP UAN -- (UXP B10) PEQ · XO at the top of the list: under ten bands it was out of sight
+            if (tabs.isNotEmpty()) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp)) { SegmentedControl(tabs) }
+                HorizontalRule(Modifier.fillMaxWidth())
+            }
             if (wide) {
                 Row(
                     Modifier.fillMaxWidth().background(c.controlBackground).padding(horizontal = 8.dp, vertical = 8.dp),
@@ -91,7 +96,7 @@ fun FilterListView(
                         Header("TYPE", FilterColumns.type)
                         Header("FREQ", FilterColumns.freq + FilterColumns.unit)
                         Header("GAIN", FilterColumns.gain + FilterColumns.unit)
-                        Header("WIDTH", FilterColumns.q + FilterColumns.unit)
+                        Header("Q", FilterColumns.q + FilterColumns.unit) // -- INT016 -- (A10 one filter vocabulary) was WIDTH
                     }
                 }
                 HorizontalRule(Modifier.fillMaxWidth())
@@ -126,7 +131,7 @@ fun FilterListView(
                     }
                 )
             }
-            if (onClear != null || tabs.isNotEmpty() || bypassSupported) {
+            if (onClear != null || bypassSupported) {
                 HorizontalRule(Modifier.fillMaxWidth())
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
@@ -150,7 +155,6 @@ fun FilterListView(
                     }
                     Spacer(Modifier.weight(1f))
                     if (onClear != null) PillButton("Clear All", onClick = { confirmClear = true })
-                    if (tabs.isNotEmpty()) SegmentedControl(tabs)
                 }
             }
         }

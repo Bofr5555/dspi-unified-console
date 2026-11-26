@@ -37,7 +37,8 @@ AppMenuBar {
                 menu.addMenu(sub)
             } else {
                 const id = row.id
-                const shown = row.optional ? Shell.handles(id) : true
+                // -- INT016 -- a row only Modern answers is not in this bar
+                const shown = !row.modernOnly && (row.optional ? Shell.handles(id) : true)
                 // -- WP QP18 -- owned by the bar, an item of the window: a submenu's
                 // action finds no window through its menu, and its shortcut would not work
                 const action = actionComponent.createObject(bar, { text: row.text, shortcut: row.shortcut || "" })

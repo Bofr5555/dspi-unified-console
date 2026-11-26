@@ -40,7 +40,9 @@ class DeviceRegistry : public QObject {
     // The open devices, the main session's first: [{ id, title, label,
     // transport, serial, state, active, clip, busy, job }]; `state` is "live",
     // "reconnecting" or "lost", `clip` whether one that is not active clips,
-    // `busy` whether something runs on it (a measurement), `job` what, in words
+    // `busy` whether something runs on it (a measurement), `job` what, in words.
+    // -- WP UA3 -- `dirty` whether its preset has unsaved changes, `unsaved`
+    // how many (0 while clean), `changes` the core's lines for them
     Q_PROPERTY(QVariantList devices READ devices NOTIFY devicesChanged)
     // The active device's id, "" with none
     Q_PROPERTY(QString activeId READ activeId NOTIFY devicesChanged)
@@ -113,6 +115,10 @@ public:
 
     // Opens under way, for the smoke driver
     int opening() const { return m_opening; }
+    // -- WP UA3 -- What `session`'s preset has unsaved, as last read (after
+    // each snapshot applied on it, whether it is the active one or not)
+    bool dirty(DeviceSession *session) const;
+    QStringList unsavedChanges(DeviceSession *session) const;
     // A unit another session has, refused on a session's own core
     // (SessionModel): openFailed()
     void reportRefused(const QString &serial);
@@ -168,6 +174,7 @@ private:
     static void eventThunk(const char *eventJson, void *self);
     void track(DeviceSession *session);
     void readRows();
+    void readUnsaved(DeviceSession *session);   // -- WP UA3 --
     void endSession(DeviceSession *session, const QByteArray &id);   // -- WP MDQT2c --
     void pollHotplug();
     // `job` on `pool`'s thread, `done` back here while this lives
@@ -190,6 +197,14 @@ private:
     // -- WP XDEV1 -- the extra cores: id -> serial, and the serials on their way
     QHash<QString, QString> m_extras;
     QStringList m_extraOpening;
+    // -- WP UA3 -- each session's unsaved changes, read on its own worker
+    struct Unsaved {
+        bool dirty = false;
+        QStringList changes;
+        bool inFlight = false;
+        bool again = false;
+    };
+    QHash<DeviceSession *, Unsaved> m_unsaved;
 };
 
 #endif // DEVICEREGISTRY_H

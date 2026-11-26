@@ -190,7 +190,7 @@ with (section 14).
 | `unsupported` | the device or the hub lacks it (no `EXT_IDENTIFY`, `fw.install`; a rollout of a device not on the hub's own USB, section 21) | spec 7.1 |
 | `confirmation_required` | a gated write (`preset.save`, `preset.delete`, `dev.save`, `dev.save.io`) without `"confirm": true` from an admin | the core's token rule |
 | `limit_exceeded` | the write crosses the device's limits profile; `limit` names it. Nothing was sent | P1HL |
-| `installer_lock` | the device is locked and the write is not volume, mute or preset | P1HL |
+| `installer_lock` | the device is locked and the write is not volume, mute, the input source or preset | P1HL |
 | `image_refused` | a whole image (`0xA1`, `0xA3`: a recall, an import) from control on a device with a profile or a lock; also a firmware image the rollout will not put on a device, with `reason` (section 21.3) | P1HL, P3RO |
 | `internal` | the hub failed; the log says why | spec 7.1 |
 | `tls_required` | a PIN pairing, `auth.rotate`, a `tls_only` token or an API key over plaintext where the hub refuses it (section 2.1); every `fw.*` message over plaintext, in every TLS mode (section 21.1); also the reason of close 4003 | SECSRV, SECPAIR, P3RO |
@@ -764,7 +764,7 @@ is not listed.
 - Gated paths (`preset.save`, `preset.delete`, `dev.save`, `dev.save.io`) are written only by an admin with
   `"confirm": true`: the API's explicit confirmation (the hub's core mints and spends the confirmation token itself).
   Otherwise `confirmation_required` (admin) or `denied`.
-- On a locked device, control may set `vol.master`, `vol.user`, `vol.mute`, `out.mute` and load a preset only
+- On a locked device, control may set `vol.master`, `vol.user`, `vol.mute`, `out.mute`, `in.source` and load a preset only
   (`installer_lock` otherwise). Past a limit: `limit_exceeded` with `limit`, nothing sent.
 - **The child session acts for its caller** in two things only: a device lock (spec 7.7) the caller holds lets its
   API writes through (another session's lock answers `locked`), and a PIN unlock (`limits.unlock`) the caller made
@@ -1008,7 +1008,7 @@ serial), each with a device block (`identifiers: ["dspi_<serial>"]`, the device'
 
 - **Who writes.** Every `set` is sent through the control plane, as a WebSocket or REST request is, on the key's
   principal session (a remote-range session id, the key's role, attributed to the key's name): the role, limits
-  (section 9's refusals), the installer lock (which lets volume, mute and preset through), the device lock, a
+  (section 9's refusals), the installer lock (which lets volume, mute, the input source and preset through), the device lock, a
   pending guarded apply (`conflict`) and the read-only rule judge it. A refused set changes nothing, and the hub
   publishes the state again as it is, so Home Assistant's control moves back; the refusal is in the hub's log. A
   Viewer-role key, or a revoked one, writes nothing. The hub reads the volume, the mute and the preset names as the

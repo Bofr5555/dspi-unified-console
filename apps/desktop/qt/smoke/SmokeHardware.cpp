@@ -122,11 +122,13 @@ void hardwareSection(SmokeDriver &d) {
     QStringList ids;
     for (const QVariant &row : s->sidebarRows(QString()))
         if (row.toMap().contains(QStringLiteral("id"))) ids << row.toMap().value(QStringLiteral("id")).toString();
-    d.check(QStringLiteral("qp11: System lists Inputs, Outputs, I2S Configuration, Global Parameters after Overview"),
-            ids.indexOf(QStringLiteral("overview")) >= 0 && ids.indexOf(QStringLiteral("inputs")) == ids.indexOf(QStringLiteral("overview")) + 1
-                && ids.indexOf(QStringLiteral("outputs")) == ids.indexOf(QStringLiteral("inputs")) + 1
-                && ids.indexOf(QStringLiteral("i2s")) == ids.indexOf(QStringLiteral("outputs")) + 1
-                && ids.indexOf(QStringLiteral("global")) == ids.indexOf(QStringLiteral("i2s")) + 1);
+    // -- INT016 -- (WP UA5) the Device group's order where the work is: Speakers, Outputs,
+    // Inputs, Global Parameters, I2S Configuration, then Overview
+    const QStringList devicePages{ QStringLiteral("speakers"), QStringLiteral("outputs"), QStringLiteral("inputs"),
+                              QStringLiteral("global"), QStringLiteral("i2s"), QStringLiteral("overview") };
+    const qsizetype first = ids.indexOf(devicePages.first());
+    d.check(QStringLiteral("qp11: Device lists Speakers, Outputs, Inputs, Global Parameters, I2S Configuration, then Overview"),
+            first >= 0 && ids.mid(first, devicePages.size()) == devicePages);
     d.check(QStringLiteral("qp11: Control lists Control Interfaces on a device with them"),
             hw->has().value(QStringLiteral("interfaces")).toBool() == ids.contains(QStringLiteral("interfaces")));
     auto found = [&](const QString &query) {

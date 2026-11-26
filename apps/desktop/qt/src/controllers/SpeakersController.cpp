@@ -10,6 +10,7 @@
 #include "DeviceModel.h"
 #include "DeviceSession.h"       // -- WP ADETQ --
 #include "FilesController.h"
+#include "LimitsController.h"   // -- FIX016 --
 #include "MeasureController.h"   // -- WP ADETQ --
 #include "NoticeCenter.h"        // -- WP ADETQ --
 #include "SessionState.h"
@@ -22,6 +23,7 @@
 #include <QLocale>     // -- WP ADETQ --
 #include <QMetaObject>
 #include <QQmlEngine>
+#include <QSet>        // -- WP UB7 --
 #include <QSettings>
 #include <algorithm>
 
@@ -132,6 +134,18 @@ QJsonObject detectedIn(const QJsonObject &layout, int output) {
     return {};
 }
 
+// -- WP UB7 -- a speaker's name as the groups compare it ("" for none)
+QString nameKey(const QVariantMap &row) { return row.value(QStringLiteral("speaker")).toString().trimmed().toCaseFolded(); }
+bool inLayout(const QVariantMap &row) { return row.value(QStringLiteral("included")).toBool(); }
+int groupOf(const QVariantMap &row) { return row.value(QStringLiteral("group")).toInt(); }
+
+// -- WP UB7 -- the lowest group none of `used` has
+int freeGroup(const QSet<int> &used) {
+    int g = 0;
+    while (used.contains(g) && g < 15) ++g;
+    return g;
+}
+
 // -- WP ADETQ -- "today at 14:02", or "on 23/11/2026"
 QString stampAt(qint64 ms) {
     const QDateTime at = QDateTime::fromMSecsSinceEpoch(ms);
@@ -176,6 +190,9 @@ SpeakersController::SpeakersController(const AppContext &ctx, QObject *parent) :
                 connect(files, &FilesController::importingChanged, this, [this, files] {
                     if (!files->importing()) reload();
                 });
+            // -- FIX016 -- (R4) the installer's lock makes the layout read-only
+            if (auto *limits = Registrar::instance<LimitsController>())
+                connect(limits, &LimitsController::lockChanged, this, &SpeakersController::updateEditable);
             // -- WP ADETQ -- whether a detection may start follows what runs
             if (auto *measure = Registrar::instance<MeasureController>()) {
                 connect(measure, &MeasureController::runningChanged, this, [this] {
@@ -215,13 +232,22 @@ SpeakersController::StatePtr SpeakersController::state() const {
     return sessionState<State>(m_ctx.activeSession(), QStringLiteral("SpeakersController"));
 }
 
+// -- FIX016 -- (R4) Under the installer's lock the roles are not the locked user's
+// to change: the core refuses the layout's write (speaker_layout_set's lock
+// check), and the page, its Suggest and Detect…, and the first run's Speakers
+// step are read-only
+void SpeakersController::updateEditable() {
+    const auto *limits = Registrar::instance<LimitsController>();
+    const bool editable = m_ctx.device->connected() && !m_ctx.device->readOnly() && !(limits && limits->locked());
+    if (editable == m_editable) return;
+    m_editable = editable;
+    emit editableChanged();
+    emit detectChanged();
+}
+
 void SpeakersController::onSnapshot() {
     const StatePtr st = state();
-    const bool editable = m_ctx.device->connected() && !m_ctx.device->readOnly();
-    if (editable != m_editable) {
-        m_editable = editable;
-        emit editableChanged();
-    }
+    updateEditable();   // -- FIX016 --
     // -- WP MDQT2c -- another device is active: its layout and its draft, as it
     // was left; what others stored for it meanwhile is read
     const bool switched = st != m_announced;
@@ -391,10 +417,128 @@ void SpeakersController::setField(int output, const QString &field, const QVaria
     }
 }
 
-void SpeakersController::setIncluded(int output, bool on) { setField(output, QStringLiteral("included"), on); }
+void SpeakersController::setIncluded(int output, bool on) {
+    setField(output, QStringLiteral("included"), on);
+    if (on) settleGroup(output);   // -- WP UB7 --
+}
 void SpeakersController::setRole(int output, const QString &role) { setField(output, QStringLiteral("role"), role); }
 void SpeakersController::setSpeaker(int output, const QString &speaker) {
     setField(output, QStringLiteral("speaker"), speaker.trimmed().left(kMaxSpeakerChars));
+    settleGroup(output);   // -- WP UB7 --
+}
+
+// -- WP UB7 -- (UXP B7) The row's group as its speaker's name says: the group of
+// another row with the name, else its own (a new one when the group it has is
+// another speaker's). An unnamed row keeps its group.
+void SpeakersController::settleGroup(int output) {
+    const StatePtr st = state();
+    QVariantMap row;
+    for (const QVariant &v : std::as_const(st->rows))
+        if (v.toMap().value(QStringLiteral("output")).toInt() == output) row = v.toMap();
+    const QString key = nameKey(row);
+    if (!inLayout(row) || key.isEmpty()) return;
+    const int was = groupOf(row);
+    QSet<int> used;
+    int same = -1;
+    bool shared = false;
+    for (const QVariant &v : std::as_const(st->rows)) {
+        const QVariantMap r = v.toMap();
+        if (!inLayout(r) || r.value(QStringLiteral("output")).toInt() == output) continue;
+        used.insert(groupOf(r));
+        if (same < 0 && nameKey(r) == key) same = groupOf(r);
+        shared = shared || groupOf(r) == was;
+    }
+    const int group = same >= 0 ? same : shared ? freeGroup(used) : was;
+    if (group != was) setField(output, QStringLiteral("group"), group);
+}
+
+// -- WP UB7 -- every row's group as the names say, in output order: a name keeps
+// the group its first row has unless an earlier name took it
+void SpeakersController::followNames() {
+    const StatePtr st = state();
+    QHash<QString, int> groups;
+    QSet<int> used;
+    QVariantList rows = st->rows;
+    for (const bool named : { true, false })
+        for (QVariant &v : rows) {
+            QVariantMap r = v.toMap();
+            const QString key = nameKey(r);
+            if (!inLayout(r) || key.isEmpty() != !named) continue;
+            int g = groups.value(key, -1);
+            if (g < 0) {
+                g = used.contains(groupOf(r)) ? freeGroup(used) : groupOf(r);
+                used.insert(g);
+                if (named) groups.insert(key, g);
+            }
+            r.insert(QStringLiteral("group"), g);
+            v = r;
+        }
+    if (rows == st->rows) return;
+    st->rows = rows;
+    st->touched = true;
+    emit rowsChanged();
+}
+
+bool SpeakersController::groupsFollowNames() const {
+    const QVariantList &rows = state()->rows;
+    for (int i = 0; i < rows.size(); ++i)
+        for (int j = i + 1; j < rows.size(); ++j) {
+            const QVariantMap a = rows[i].toMap(), b = rows[j].toMap();
+            if (!inLayout(a) || !inLayout(b)) continue;
+            const QString ka = nameKey(a), kb = nameKey(b);
+            if (ka.isEmpty() && kb.isEmpty()) continue;
+            if ((ka == kb) != (groupOf(a) == groupOf(b))) return false;
+        }
+    return true;
+}
+
+namespace {
+// -- WP UB7 -- a role in the summary's words (the glossary's: woofer, mid driver, …)
+QString roleWord(const QString &role) {
+    if (role == QLatin1String("sub")) return SpeakersController::tr("subwoofer");
+    if (role == QLatin1String("low")) return SpeakersController::tr("woofer");
+    if (role == QLatin1String("mid")) return SpeakersController::tr("mid driver");
+    if (role == QLatin1String("high")) return SpeakersController::tr("tweeter");
+    return SpeakersController::tr("full range");
+}
+} // namespace
+
+QString SpeakersController::summary() const {
+    const StatePtr st = state();
+    if (st->serial.isEmpty() || !st->loaded) return {};
+    const QJsonObject base = st->stored.isEmpty() ? st->proposal : st->stored;
+    QStringList order;
+    QHash<QString, QStringList> parts;
+    QHash<QString, QString> names;
+    for (const QJsonValue &v : base.value(QLatin1String("outputs")).toArray()) {
+        const QJsonObject o = v.toObject();
+        const int n = o.value(QLatin1String("output")).toInt();
+        // The output's number only: the device's label carries the side too ("Out 1 · L")
+        const QString label = tr("Out %1").arg(n + 1);
+        const QString speaker = str(o, "speaker").trimmed();
+        // An unnamed output stands alone
+        const QString key = speaker.isEmpty() ? QStringLiteral("\x01") + QString::number(n) : speaker.toCaseFolded();
+        if (!parts.contains(key)) {
+            order << key;
+            names.insert(key, speaker);
+        }
+        //: The speaker summary's part for one output: %1 its role ("tweeter"), %2 the output ("Out 2")
+        parts[key] << tr("%1 %2").arg(roleWord(str(o, "role")), label);
+    }
+    if (order.isEmpty()) return tr("No output is in the speaker layout yet.");
+    QStringList speakers;
+    for (const QString &key : std::as_const(order))
+        speakers << (names.value(key).isEmpty() ? parts.value(key).join(QStringLiteral(", "))
+                                                //: The speaker summary's part for one speaker: %1 its name ("L"), %2 its outputs ("woofer Out 1, tweeter Out 2")
+                                                : tr("%1: %2").arg(names.value(key), parts.value(key).join(QStringLiteral(", "))));
+    const QString s = status();
+    //: The end of the speaker summary: the layout is confirmed
+    const QString said = s == QLatin1String("confirmed") ? tr("confirmed")
+                          //: The end of the speaker summary: nothing is kept, the roles are the suggestion
+                          : s == QLatin1String("none") ? tr("suggested, not confirmed")
+                                                       //: The end of the speaker summary: kept, not confirmed
+                                                       : tr("not confirmed");
+    return speakers.join(QStringLiteral(" · ")) + QStringLiteral(" · ") + said;
 }
 void SpeakersController::setGroup(int output, int group) { setField(output, QStringLiteral("group"), std::clamp(group, 0, 15)); }
 
@@ -587,6 +731,19 @@ QVariantList SpeakersController::rows() const {
     for (const QVariant &v : std::as_const(st->rows)) {
         QVariantMap row = v.toMap();
         row.insert(pillOf(*st, row));
+        // -- WP UB7 -- the speakers this row is measured with, by name (else the output's label)
+        QStringList with;
+        if (inLayout(row))
+            for (const QVariant &w : std::as_const(st->rows)) {
+                const QVariantMap r = w.toMap();
+                if (!inLayout(r) || groupOf(r) != groupOf(row)) continue;
+                const QString name = r.value(QStringLiteral("speaker")).toString().trimmed();
+                const QString word = name.isEmpty() ? r.value(QStringLiteral("label")).toString() : name;
+                bool seen = false;
+                for (const QString &x : std::as_const(with)) seen = seen || x.toCaseFolded() == word.toCaseFolded();
+                if (!seen) with << word;
+            }
+        row.insert(QStringLiteral("groupName"), with.join(QStringLiteral(" + ")));
         out.append(row);
     }
     return out;
@@ -751,6 +908,9 @@ bool SpeakersController::detecting() const {
 
 QString SpeakersController::detectBlocker() const {
     if (state()->serial.isEmpty()) return tr("No device connected.");
+    // -- FIX016 -- (R4)
+    if (const auto *limits = Registrar::instance<LimitsController>(); limits && limits->locked())
+        return tr("Locked by the installer: the speakers are not detected.");
     if (!m_editable) return tr("This connection may not change the DSPi.");
     // (AUTODES owner question 7: not over a confirmed layout in v1)
     if (status() == QLatin1String("confirmed"))

@@ -228,6 +228,50 @@ export function SettingsScreen(props: ScreenProps) {
   );
 }
 
+// -- WP UWN -- (UXP A16)
+/** The pages Settings shows with no DSPi open: the Application and Display parts, which are this console's own. */
+export const NO_DEVICE_PAGES: readonly SettingsPageId[] = ["about", "appearance", "graphing", "spectrum"];
+
+/**
+ * Settings with no DSPi open (Qt shows its Application and Display parts then too): the same list and page layout,
+ * the console's own pages only; Device and Control wait for a DSPi.
+ */
+export function NoDeviceSettings() {
+  const parts = partsShown(NO_DEVICE_PAGES);
+  const [part, setPart] = useState<SettingsPart>("application");
+  const [page, setPage] = useState<SettingsPageId>("appearance");
+  const current = pageDef(page).part === part ? page : (pageOfPart(part, NO_DEVICE_PAGES, undefined) ?? "about");
+  const def = pageDef(current);
+  const rows = listRows(NO_DEVICE_PAGES, part, "").filter((r) => !isHeading(r)) as (typeof SETTINGS_PAGE_DEFS)[number][];
+  return (
+    <div class="settings-screen st-screen">
+      <PageParts label="Settings" parts={parts.map((g) => ({ id: g, label: PART_TITLES[g] }))} current={part} onPart={(id) => setPart(id as SettingsPart)} />
+      <div class="st-side">
+        <nav class="settings-nav st-list" aria-label="Settings pages">
+          <div class="st-list-group">
+            {rows.map((p) => (
+              <button type="button" key={p.id} class="st-row" aria-current={p.id === current ? "page" : undefined} onClick={() => setPage(p.id)}>
+                <span class="st-badge" style={{ background: p.tint }} aria-hidden="true">
+                  <Icon name={p.icon} />
+                </span>
+                <span class="st-row-title">{p.title}</span>
+              </button>
+            ))}
+          </div>
+          <p class="note st-nodevice">Open a DSPi for its Device settings.</p>
+        </nav>
+      </div>
+      <div class="settings-page st-page" role="tabpanel" aria-label={def.title}>
+        <h2 class="settings-page-title">{def.title}</h2>
+        {current === "about" ? <AboutPage /> : null}
+        {current === "appearance" ? <AppearanceSettings /> : null}
+        {current === "graphing" ? <GraphingPage /> : null}
+        {current === "spectrum" ? <SpectrumPage /> : null}
+      </div>
+    </div>
+  );
+}
+
 /** -- WP WEB7 -- A row with a switch at the right edge (Qt's SettingsToggle): the title, a caption under it. */
 function SwitchRow(props: { label: string; caption?: string; on: boolean; disabled?: boolean; onChange: (on: boolean) => void }) {
   return (
@@ -491,6 +535,15 @@ function GraphingPage() {
     <>
       <Group title="Graph Appearance" icon="chart-line">
         <SwitchRow label="Graph Line Glow" caption="Add a neon glow effect to frequency response curves" on={g.showGlow} onChange={(v) => set({ showGlow: v })} />
+        {/* -- WP GAP1 -- Qt's phase switches (the Equaliser graph's Phase chip is the first) */}
+        <SwitchRow label="Show Phase Response" caption="Overlay the selected channel's phase (degrees) as a dotted line" on={g.showPhase} onChange={(v) => set({ showPhase: v })} />
+        <SwitchRow
+          label="Unwrap Phase"
+          caption="Show continuous phase instead of wrapping at ±180°"
+          on={g.phaseUnwrapped}
+          disabled={!g.showPhase}
+          onChange={(v) => set({ phaseUnwrapped: v })}
+        />
       </Group>
       <Group title="Response Curve" icon={<Icon name="activity" />}>
         <SliderRow label="Line Width" value={g.lineWidth} text={`${g.lineWidth.toFixed(1)} pt`} min={1} max={4} step={0.5} onChange={(v) => set({ lineWidth: v })} />

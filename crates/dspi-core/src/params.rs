@@ -631,6 +631,7 @@ impl DspiCore {
     /// the link input (`alink_info`'s `alink_input`); the connection and
     /// transfer errors of every setter.
     pub fn set_input_source(&self, source: u8) -> Result<()> {
+        let _lock = crate::limits::LockScope::allow(); // -- FIX016 -- (LOCKSRC) allowed while locked
         // -- WP SW1 --
         self.ensure_probed();
         let mut inner = self.writing()?;
@@ -956,6 +957,10 @@ fn send(inner: &mut Inner, path: &str, indices: &[u8], value: Value) -> Result<(
     }
     let mut w = inner.writable_conn()?;
     w.conn().fresh_image = false;
+    // -- WP GAP2 -- while soloed the device keeps the other outputs muted
+    if crate::solo::holds_write(w.conn(), path, indices, &value) {
+        return Ok(());
+    }
     w.session()?.send(path, indices, value)?;
     Ok(())
 }

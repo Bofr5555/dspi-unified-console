@@ -3,12 +3,15 @@
 // other (PACKAGES.md): the firmware versions come from :feature-firmware.
 package se.bofr.dspi.app
 
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -25,8 +28,13 @@ import se.bofr.dspi.feature.onboarding.OnboardingSource
 import se.bofr.dspi.feature.onboarding.OnboardingText
 import se.bofr.dspi.feature.onboarding.ReleaseOrder
 import se.bofr.dspi.feature.onboarding.WhatsNewScreen
+import se.bofr.dspi.feature.settings.SpeakerWords
+import se.bofr.dspi.feature.settings.SpeakersEditor
+import se.bofr.dspi.feature.settings.SpeakersModel
 import se.bofr.dspi.ui.DspiRoutes
 import se.bofr.dspi.ui.LocalDemoMode
+import se.bofr.dspi.ui.LocalUiMode
+import se.bofr.dspi.ui.UiModes
 import se.bofr.dspi.ui.settings.LocalAppSettings
 
 /**
@@ -64,6 +72,10 @@ internal fun GettingStartedRoute(bridge: DspiBridge, go: (String) -> Unit, back:
     val status by bridge.status.collectAsState()
     val state by bridge.state.collectAsState()
     val board = boardStatus(status.connected, if (status.connected) FirmwareVersion.of(state) else null)
+    // -- WP UAN -- (UXP B8) the Speakers step, the Settings page's rows
+    val scope = rememberCoroutineScope()
+    val speakers = remember(bridge) { SpeakersModel(bridge, scope) }
+    val speakersState by speakers.state.collectAsState()
     GettingStartedScreen(
         words,
         board,
@@ -71,7 +83,19 @@ internal fun GettingStartedRoute(bridge: DspiBridge, go: (String) -> Unit, back:
         onDone = {
             store.update { it.copy(onboardingSetupDone = true) }
             back()
-        }
+        },
+        // -- FIX016 -- (REVG R4) not in the locked-user state: the roles are the installer's (the tweeter
+        // guard trusts them), as Settings › Speakers is not there either; Getting Started is a locked route
+        speakersStage = if (LocalUiMode.current == UiModes.LOCKED_USER) {
+            null
+        } else {
+            {
+                Text(SpeakerWords.TITLE, style = MaterialTheme.typography.headlineSmall)
+                SpeakersEditor(bridge, speakers)
+                if (!speakersState.confirmed) Text(SpeakerWords.LATER, style = MaterialTheme.typography.bodyMedium)
+            }
+        },
+        speakersConfirmed = speakersState.confirmed && !speakersState.changed
     )
 }
 

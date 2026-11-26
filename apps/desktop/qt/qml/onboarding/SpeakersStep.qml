@@ -6,6 +6,9 @@ import UConsole
 // (assets/onboarding/speakers.json): the proposal, or the stored layout,
 // pre-filled; Confirm keeps it as the person's layout. GettingStarted shows
 // the stage's title and paragraphs above it.
+// -- WP UA4 -- (UXP A4, owner D15) The wizard's footer is the one primary:
+// Later while the table is as it came, Confirm and Continue once the person
+// edited it (`touched`); Confirm here is the quiet way to keep it and stay.
 ColumnLayout {
     id: step
     objectName: "SpeakersStep"
@@ -13,6 +16,14 @@ ColumnLayout {
     readonly property var sc: SpeakersController
     readonly property var buttons: stage.buttons || {}
     readonly property bool confirmed: sc.status === "confirmed" && !sc.edited
+    // -- WP UA4 -- the person changed the table on this step since it was
+    // last kept (or since the step showed)
+    property bool touched: false
+    onConfirmedChanged: if (confirmed) touched = false
+    Connections {
+        target: DeviceRegistry
+        function onActiveIdChanged() { step.touched = false }
+    }
     spacing: Theme.spacing
 
     Component.onCompleted: sc.reload()
@@ -29,6 +40,7 @@ ColumnLayout {
     SpeakersTable {
         visible: DeviceModel.connected
         Layout.fillWidth: true
+        onChangedByUser: step.touched = true   // -- WP UA4 --
     }
     Text {
         objectName: "SpeakersStep.state"
@@ -46,7 +58,6 @@ ColumnLayout {
         AppButton {
             objectName: "SpeakersStep.confirm"
             text: step.buttons.confirm || ""
-            primary: !step.confirmed
             enabled: step.sc.editable && step.sc.loaded && !step.confirmed
             onClicked: step.sc.confirm()
         }
@@ -54,15 +65,37 @@ ColumnLayout {
             objectName: "SpeakersStep.suggestion"
             text: step.buttons.suggestion || ""
             enabled: step.sc.editable && step.sc.loaded
-            onClicked: step.sc.useSuggestion()
+            onClicked: {
+                step.sc.useSuggestion()
+                step.touched = true   // -- WP UA4 -- the person chose it
+            }
+        }
+        // -- INT016 -- (UB1's follow-up, UXP B1) the next step once the layout
+        // is confirmed, as Settings › Speakers offers it
+        AppButton {
+            objectName: "SpeakersStep.fromLayout"
+            visible: step.confirmed
+            text: qsTr("Crossovers and Routing…")
+            enabled: LayoutSetupController.writable
+            toolTip: qsTr("Starting crossovers and routes from this layout, in one undo step")
+            onClicked: fromLayout.open()
         }
     }
     Text {
-        visible: !step.confirmed
+        objectName: "SpeakersStep.later"   // -- WP UA4 --
+        visible: !step.confirmed && DeviceModel.connected
         Layout.fillWidth: true
         text: step.stage.later || ""
         font: Theme.fontSmall
         color: Theme.textMuted
         wrapMode: Text.Wrap
+    }
+
+    // -- INT016 --
+    CrossoverFromLayout {
+        id: fromLayout
+        parent: step.Window.window ? step.Window.window.contentItem : null
+        crossoversWanted: true
+        routingWanted: true
     }
 }

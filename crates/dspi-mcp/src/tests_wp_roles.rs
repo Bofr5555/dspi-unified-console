@@ -12,6 +12,7 @@ use dspi_core::measure::MeasureRole;
 use dspi_core::{CoreSet, LayoutState, RoleCheckVerdict, RoleSource};
 use serde_json::{Value, json};
 
+use crate::confirm::GROUP_QUIET_MS; // -- FIX016 -- (R2) an answer waits for the sheet
 use crate::policy::{AgentPolicy, ConfirmMode, ROLES_NEVER_ASK_TEXT};
 use crate::rate::RateLimit;
 use crate::tests_wp_mcp5::{
@@ -63,7 +64,7 @@ fn overview(s: &mut Server, c: crate::ClientId) -> Value {
 
 /// Allow confirmation `cid` and read the held call's result.
 fn allow(s: &mut Server, c: crate::ClientId, cid: u64) -> Value {
-    s.answer_confirmation(cid, true, 0).unwrap();
+    s.answer_confirmation(cid, true, GROUP_QUIET_MS).unwrap();
     let r = ok_at(
         s,
         c,
@@ -176,7 +177,7 @@ fn wp_roles_the_owners_sentence_is_one_question_with_the_whole_table() {
         let mut other = owners_table();
         other["rows"][1]["role"] = json!("woofer");
         let cid = held_at(&mut s, c, 0, ROLES, other);
-        s.answer_confirmation(cid, false, 0).unwrap();
+        s.answer_confirmation(cid, false, GROUP_QUIET_MS).unwrap();
         let l = core.speaker_layout().unwrap().unwrap();
         assert_eq!(l.output(1).unwrap().role, Mid);
     }

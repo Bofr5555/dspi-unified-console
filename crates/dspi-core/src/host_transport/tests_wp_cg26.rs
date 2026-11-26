@@ -279,7 +279,7 @@ fn opened(
 #[test]
 fn wp_cg26_the_mirror_is_the_fake_devices() {
     let direct = DspiCore::new();
-    direct.open_demo().unwrap();
+    direct.open_demo_blank().unwrap(); // -- WP UB12 --
     direct.fetch_all().unwrap();
     let want = direct.get_state();
     for kind in [
@@ -500,7 +500,7 @@ fn wp_cg26_notify_without_a_host_connection_is_ignored() {
 
     // A demo device replacing the host connection is not fed.
     let (core, _host, _) = opened(HostTransportKind::Usb);
-    core.open_demo().unwrap();
+    core.open_demo_blank().unwrap(); // -- WP UB12 --
     core.notify_tap_set(true);
     let mut p = vec![2, nfy::NOTIFY_EVT_PRESET_LOADED as u8, 0, 0, 3, 0, 0, 0];
     core.host_notify(p.clone(), None);

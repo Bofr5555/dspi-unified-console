@@ -483,7 +483,7 @@ export function parseNote(s: string): number | null {
   return 440 * 2 ** ((midi - 69) / 12);
 }
 
-/** What a screen reader hears for a band: "Band 3: Peaking, 1.000 kHz, +3.00 dB, Q 1.000, bypassed". */
+/** What a screen reader hears for a band: "Band 3: Bell, 1.000 kHz, +3.00 dB, Q 1.000, bypassed". */
 export function bandLabel(b: number, p: FilterParams): string {
   const parts = [typeName(p.filterType)];
   if (p.filterType !== T.flat) {

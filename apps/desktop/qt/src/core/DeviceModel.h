@@ -110,6 +110,7 @@ public:
     Q_INVOKABLE void refresh();
     void reread();   // -- WP SHOWFIX -- SessionModel::reread
     Q_INVOKABLE void openDemo();
+    Q_INVOKABLE void resetDemo();   // -- WP UB12 -- SessionModel::resetDemo
     Q_INVOKABLE void selectDevice(const QString &serial);
     // Closes and reopens the open device (the device button's right-click)
     Q_INVOKABLE void reconnect();

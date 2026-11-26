@@ -160,6 +160,9 @@ impl DspiCore {
         conn.wire = wire;
         conn.fresh_image = false;
         inner.state = next;
+        // -- FIX016 -- (REVG F3) a solo's mutes left by a lost connection go
+        // first: never the user's, never in the baseline, never saved
+        crate::solo::lift_lost(inner);
         // -- WP SWAPFIX -- a re-read keeps the unsaved-changes baseline
         presets::keep_or_capture_baseline_locked(inner);
         Ok(())
@@ -706,6 +709,7 @@ fn read_image(conn: &mut Connection, s: &mut DspState) -> Result<Image> {
     };
     // Display only unless it is this build's own format (PLAN §1.5).
     next.bulk_valid = normalized.is_writable();
+    crate::solo::overlay(&conn.solo, &mut next); // -- WP GAP2 --
     *s = next;
     Ok(Image::Read(normalized.read))
 }

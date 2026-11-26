@@ -457,6 +457,21 @@ impl FakeDevice {
         self
     }
 
+    // -- WP UB12 --
+    /// [`FakeDevice::demo`] running `image` (a whole bulk image of the
+    /// capture's wire format) and holding it in preset slot 1, as a demo its
+    /// user had set up and saved: what [`EXT_FAKE_DEMO_RESET`] goes back to.
+    /// `REQ_FACTORY_RESET` still restores the capture.
+    pub fn demo_running(image: Vec<u8>) -> Self {
+        let dev = Self::demo_with(true);
+        {
+            let mut s = dev.shared.lock();
+            s.start = image;
+            s.demo_reset();
+        }
+        dev
+    }
+
     fn demo_with(surfaces: bool) -> Self {
         let options = FakeOptions {
             extensions: true,
@@ -750,6 +765,14 @@ pub const OUTPUT_SAVE_STALL: u8 = 0xFF;
 /// device). Stalls with nothing armed.
 pub const EXT_FAKE_CS_LEARN: u16 = 0xFFF5;
 
+// -- WP UB12 --
+/// `REQ_EXTENSION` OUT sub-command only a [`FakeDevice`] answers, as
+/// [`EXT_FAKE_VREG_SIM`] (WP UB12), with no payload: the image the device
+/// started with ([`FakeDevice::demo_running`]'s) is running again and is preset
+/// slot 1's, slot 1 is the active one, and `BULK_INVALIDATED` goes out as for a
+/// preset recall. A client's "Reset demo".
+pub const EXT_FAKE_DEMO_RESET: u16 = 0xFFF9;
+
 /// Every fake-only `REQ_EXTENSION` sub-command.
 pub const FAKE_ONLY_EXTENSIONS: &[u16] = &[
     EXT_FAKE_VREG_SIM,
@@ -766,6 +789,8 @@ pub const FAKE_ONLY_EXTENSIONS: &[u16] = &[
     EXT_FAKE_ALINK_SIM,
     // -- WP AUSB1 --
     EXT_FAKE_ALINK_USB_SIM,
+    // -- WP UB12 --
+    EXT_FAKE_DEMO_RESET,
 ];
 
 /// What can happen to a simulated device's core-voltage state (WP CG11).
@@ -1331,6 +1356,9 @@ struct State {
     image: Vec<u8>,
     /// What `REQ_FACTORY_RESET` restores.
     factory: Vec<u8>,
+    // -- WP UB12 --
+    /// What [`EXT_FAKE_DEMO_RESET`] restores: the image the device started with.
+    start: Vec<u8>,
     /// `GET_STATUS` sub-query 9.
     status: Vec<u8>,
     options: FakeOptions,
@@ -1410,6 +1438,7 @@ impl State {
             analysis: options.analysis.then(analysis::Analysis::new),
             platform: capture.platform,
             factory: capture.bulk.clone(),
+            start: capture.bulk.clone(), // -- WP UB12 --
             image: capture.bulk,
             status: Vec::new(),
             options,
@@ -1464,6 +1493,20 @@ impl State {
             s.presets.saved_master_volume = live;
         }
         s
+    }
+
+    // -- WP UB12 --
+    /// The image the device started with runs again, as preset slot 1's and
+    /// the active slot ([`EXT_FAKE_DEMO_RESET`]). No notification.
+    fn demo_reset(&mut self) {
+        self.image = self.start.clone();
+        if let Some(slot) = self.presets.slots.first_mut() {
+            *slot = Some(self.start.clone());
+        }
+        self.presets.active = 0;
+        if let Some(live) = self.live_master_volume() {
+            self.presets.saved_master_volume = live;
+        }
     }
 
     // -- WP UPW2 --
@@ -2443,6 +2486,17 @@ impl State {
                 }
                 _ => false,
             },
+            // -- WP UB12 --
+            EXT_FAKE_DEMO_RESET => {
+                data.is_empty() && {
+                    self.demo_reset();
+                    self.event(
+                        nfy::NOTIFY_EVT_BULK_INVALIDATED,
+                        nfy::PARAM_SRC_PRESET as u8,
+                    );
+                    true
+                }
+            }
             _ => false,
         }
     }

@@ -9,6 +9,7 @@
 #include "AboutController.h"
 #include "BootloaderLocator.h"
 #include "FirmwareController.h"
+#include "LayoutController.h"
 #include "OnboardingController.h"
 #include "Registrar.h"
 #include "SettingsController.h"
@@ -96,9 +97,14 @@ QVariantMap qp17Stage(const QVariantMap &words, const char *id) {
 }
 
 // Every `text` (or plain string) of `list` is among `shown`
+// -- WP UA4 -- a row that names another layout is not shown in this one
 bool qp17AllShown(const QVariantList &list, const QStringList &shown) {
     if (list.isEmpty()) return false;
+    auto *layout = Registrar::instance<LayoutController>();
+    const QString here = layout && layout->modern() ? QStringLiteral("modern") : QStringLiteral("classic");
     for (const QVariant &v : list) {
+        const QString only = v.toMap().value(QStringLiteral("layout")).toString();
+        if (!only.isEmpty() && only != here) continue;
         const QString t = v.typeId() == QMetaType::QString ? v.toString() : v.toMap().value(QStringLiteral("text")).toString();
         if (t.isEmpty() || !shown.contains(t)) {
             std::printf("smoke:   not shown: %s\n", qPrintable(t));
@@ -122,8 +128,11 @@ void onboardingSection(SmokeDriver &d) {
     // -- WP QP18 -- this app keeps the effect windows under Tools, as the Mac does
     d.check(QStringLiteral("qp17: the notes name this app's menu"),
             notesJson.contains(QLatin1String("Tools > Tube Modeller (Ctrl+Shift+D)")) && !notesJson.contains(QLatin1String("Effects > ")));
+    // -- WP UFW -- (UXP A8) the app's own notes first, then the firmware's, each newest first
     d.check(QStringLiteral("qp17: the notes are newest first"),
-            ob->releases().value(0).toMap().value(QStringLiteral("version")).toString() == "1.1.6");
+            ob->releases().value(0).toMap().value(QStringLiteral("app")).toBool()
+                && ob->releases().value(0).toMap().value(QStringLiteral("version")).toString() == "0.16"   // -- FIX016 --
+                && ob->releases().value(1).toMap().value(QStringLiteral("version")).toString() == "1.1.6");
     d.check(QStringLiteral("qp17: the bundled firmware is read from the images"), ob->bundledFirmware() == "1.1.6");
     d.check(QStringLiteral("qp17: firmware versions compare as the Mac's"),
             ob->firmwareMatch(QStringLiteral("1.1.6")) == "match" && ob->firmwareMatch(QStringLiteral("1.1.5")) == "older"
@@ -179,14 +188,28 @@ void onboardingSection(SmokeDriver &d) {
             ob->unreadSince(QString()).isEmpty() && ob->unreadSince(QStringLiteral("1.1.6")).isEmpty());
     d.check(QStringLiteral("qp17: unread notes after an update from 1.1.6-beta4"),
             ob->unreadSince(QStringLiteral("1.1.6-beta4")).size() == 2);
+    // -- WP UFW -- (UXP C8) the app's own notes are read with the rest; new
+    // firmware notes alone do not open the window, the app's news does
+    const auto notesWindow = [] {
+        for (QWindow *top : QGuiApplication::topLevelWindows())
+            if (top->objectName() == QLatin1String("WhatsNewWindow")) return qobject_cast<QQuickWindow *>(top);
+        return static_cast<QQuickWindow *>(nullptr);
+    };
+    d.check(QStringLiteral("ufw: a new install has read the app's notes too"),
+            QSettings().value(QStringLiteral("onboarding/appNotesShown")).toString() == QLatin1String("0.16.0"));
     QSettings().setValue(QStringLiteral("onboarding/whatsNewShown"), QStringLiteral("1.1.6-beta4"));
     ob->showReleaseNotesIfUnread();
     d.spin(400);
-    QQuickWindow *notes = nullptr;
-    for (QWindow *top : QGuiApplication::topLevelWindows())
-        if (top->objectName() == QLatin1String("WhatsNewWindow")) notes = qobject_cast<QQuickWindow *>(top);
+    d.check(QStringLiteral("ufw: new firmware notes alone wait in Help"), !notesWindow() || !notesWindow()->isVisible());
+    QSettings().setValue(QStringLiteral("onboarding/appNotesShown"), QStringLiteral("0.14"));
+    QSettings().setValue(QStringLiteral("onboarding/whatsNewShown"), QStringLiteral("1.1.6-beta4"));
+    ob->showReleaseNotesIfUnread();
+    d.spin(400);
+    QQuickWindow *notes = notesWindow();
     d.check(QStringLiteral("qp17: after an update What's New opens by itself"),
             notes && notes->isVisible() && ob->whatsNewShown() == ob->bundledFirmware());
+    d.check(QStringLiteral("ufw: and the app's notes count as read"),
+            QSettings().value(QStringLiteral("onboarding/appNotesShown")).toString() == QLatin1String("0.16.0"));
     if (notes) {
         // A list view makes the rows it shows; its count is every release
         QObject *list = qp17Item(notes->contentItem(), QStringLiteral("WhatsNew.list"));
@@ -199,6 +222,30 @@ void onboardingSection(SmokeDriver &d) {
                     && qp17AllShown(ob->releases().value(0).toMap().value(QStringLiteral("items")).toList(), shown)
                     && qp17Resolved(shown));
         d.check(QStringLiteral("qp17: What's New has the Mac's size"), notes->width() == 460 && notes->height() == 420);
+        // -- WP UFW -- (UXP A8) the app's notes first, with buttons to their places; the firmware's under their heading
+        // -- FIX016 -- 0.16's notes come first, with buttons to Appearance, AI Agents and Speakers
+        QObject *appearance = qp17Item(notes->contentItem(), QStringLiteral("WhatsNew.action.appearance"));
+        QObject *speakers = qp17Item(notes->contentItem(), QStringLiteral("WhatsNew.action.speakers"));
+        d.check(QStringLiteral("ufw: the app's notes come first, with buttons to Appearance, AI Agents and Speakers"),
+                ob->releases().value(0).toMap().value(QStringLiteral("app")).toBool() && appearance
+                    && appearance->property("text").toString() == QStringLiteral("Appearance…")
+                    && qp17Item(notes->contentItem(), QStringLiteral("WhatsNew.action.ai")) && speakers
+                    && speakers->property("text").toString() == QStringLiteral("Speakers…"));
+        // -- FIX016 -- the part heading is the first release's, and the firmware's
+        // first release is scrolled into view first (0.16's notes are long)
+        auto *appPart = qobject_cast<QQuickItem *>(
+            qp17Item(qp17Item(notes->contentItem(), QStringLiteral("WhatsNew.release.0")), QStringLiteral("WhatsNew.part.app")));
+        int firstFirmware = 0;
+        while (firstFirmware < ob->releases().size()
+               && ob->releases().value(firstFirmware).toMap().value(QStringLiteral("app")).toBool())
+            ++firstFirmware;
+        if (list) QMetaObject::invokeMethod(list, "positionViewAtIndex", Q_ARG(int, firstFirmware), Q_ARG(int, 1 /* ListView.Beginning */));
+        d.spin(100);
+        QObject *firmwarePart = qp17Item(qp17Item(notes->contentItem(), QStringLiteral("WhatsNew.release.%1").arg(firstFirmware)),
+                                         QStringLiteral("WhatsNew.part.firmware"));
+        d.check(QStringLiteral("ufw: the firmware's notes under their own heading"),
+                appPart && appPart->isVisible() && !appPart->property("text").toString().isEmpty() && firmwarePart
+                    && firmwarePart->property("text").toString() == QStringLiteral("DSPi firmware") && firmwarePart->property("visible").toBool());
         d.grab(notes, QStringLiteral("window-whatsNew.png"));
         if (QObject *done = qp17Item(notes->contentItem(), QStringLiteral("WhatsNew.done"))) QMetaObject::invokeMethod(done, "click");
         d.spin(200);

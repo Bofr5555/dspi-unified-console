@@ -56,7 +56,7 @@ export const SHORTCUTS: ShortcutRow[] = [
   { id: "edit.copy", text: "Copy Parameters", menu: "Edit", key: "Ctrl+C", clip: "copy", on: "eq" },
   { id: "edit.paste", text: "Paste Parameters", menu: "Edit", key: "Ctrl+V", clip: "paste", on: "eq" },
   { id: "edit.settings", text: "Settings…", menu: "Edit", key: "Ctrl+,", open: { screen: "settings" } },
-  { id: "device.commit", text: "Commit Parameters…", menu: "Device", key: "Ctrl+S", handled: "elsewhere" },
+  { id: "device.commit", text: "Save to Device…", menu: "Device", key: "Ctrl+S", handled: "elsewhere" }, // -- WP UFW -- (UXP A10, D1) the button's words
   { id: "device.revert", text: "Revert to Saved…", menu: "Device", key: "Ctrl+Shift+R", handled: "elsewhere" },
   { id: "device.preset", text: "Recall Preset 1-9", menu: "Device", key: "Ctrl+1…9", handled: "elsewhere" },
   { id: "device.mute", text: "Mute", menu: "Device", key: "Ctrl+M", handled: "elsewhere" },

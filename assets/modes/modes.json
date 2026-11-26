@@ -2,15 +2,15 @@
   "version": 1,
   "platforms": ["phone", "desktop", "web"],
   "modes": [
-    {"id": "simple", "label": "Simple", "defaultOn": ["phone"], "needsPinWhenSet": false},
-    {"id": "advanced", "label": "Advanced", "defaultOn": ["desktop", "web"], "needsPinWhenSet": false},
+    {"id": "simple", "label": "Simple", "defaultOn": [], "needsPinWhenSet": false},
+    {"id": "advanced", "label": "Advanced", "defaultOn": ["phone", "desktop", "web"], "needsPinWhenSet": false},
     {"id": "installer", "label": "Installer", "defaultOn": [], "needsPinWhenSet": true}
   ],
   "lockedUser": {
     "label": "Locked",
     "screens": ["front"],
     "settings": ["about", "installer_note"],
-    "writes": ["vol.master", "vol.user", "vol.mute", "out.mute", "preset.load"]
+    "writes": ["vol.master", "vol.user", "vol.mute", "out.mute", "preset.load", "in.source"]
   },
   "screens": [
     {"id": "front", "title": "Home", "modes": ["simple", "locked_user"], "firstIn": ["simple", "locked_user"]},

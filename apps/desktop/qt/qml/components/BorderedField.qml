@@ -110,8 +110,8 @@ TextField {
     background: Rectangle {
         radius: Theme.radiusControl   // -- WP DL0 --
         color: Theme.control
-        border.width: field.activeFocus ? Theme.focusRingWidth : Theme.lineWidth
-        border.color: field.activeFocus ? Theme.focusRing : Theme.border
+        border.width: field.activeFocus ? Theme.focusRingWidth : Theme.controlLineWidth
+        border.color: field.activeFocus ? Theme.focusRing : Theme.controlLine   // -- WP UB13 --
     }
 
     Accessible.role: Accessible.EditableText

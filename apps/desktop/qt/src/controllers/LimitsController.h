@@ -67,7 +67,7 @@ class LimitsController : public QObject {
     // heldBy, ... }
     Q_PROPERTY(QVariantMap lock READ lock NOTIFY lockChanged)
     Q_PROPERTY(bool pinSet READ pinSet NOTIFY lockChanged)
-    // The locked-user state: only volume, mute and presets may change
+    // The locked-user state: only volume, mute, source and presets may change
     Q_PROPERTY(bool locked READ locked NOTIFY lockChanged)
     // The Installer page may change things without a prompt
     Q_PROPERTY(bool installerOpen READ installerOpen NOTIFY lockChanged)
@@ -136,6 +136,16 @@ public:
     QString recoveryKey() const;
 
     // One limit of output `output` (a field of `outputs`'s rows); NaN clears it
+    // -- FIX016 -- (REVG F8, D4 in Modern) Whether the menu table's row `action` is
+    // one the locked user may not use in Modern: the device writes the top bar
+    // hides (Save, Revert, undo and redo, Factory Reset, Bypass, A/B, snapshots,
+    // imports, the preset slots' rows, firmware). Volume, mute, preset recall and
+    // the input source stay; Classic is not fenced (owner, 2026-11-26). Only the
+    // list: the callers read `locked` and the layout themselves, so a binding
+    // follows them
+    Q_INVOKABLE static bool lockRefuses(const QString &action);
+    // The same with the lock and the layout: Shell's gate refuses the action
+    bool lockFences(const QString &action) const;
     Q_INVOKABLE void setOutputLimit(int output, const QString &field, double value);
     // maxPeqBoostDb or masterVolumeMaxDb; NaN clears it
     Q_INVOKABLE void setLimit(const QString &field, double value);

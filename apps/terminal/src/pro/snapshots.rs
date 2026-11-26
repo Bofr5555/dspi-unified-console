@@ -119,7 +119,7 @@ fn info_json(s: &SnapshotInfo) -> Value {
 }
 
 /// When a snapshot was taken, as local-free UTC text.
-fn when(ms: i64) -> String {
+pub(crate) fn when(ms: i64) -> String {
     let secs = ms.div_euclid(1000);
     let days = secs.div_euclid(86_400);
     let rem = secs.rem_euclid(86_400);
@@ -339,12 +339,21 @@ pub(crate) fn cmd_ab(target: &Target, flags: &[&str], json: bool) -> u8 {
         Err(c) => return c,
     };
     let show = interactive() && !json && keep.is_none();
-    let answers = if keep.is_some() {
+    // -- FIX016 -- (REVG F10) the plain mode's script: no answers from it (its next lines
+    // are commands); the compare keeps the side it is on, as `--keep` that side would
+    let script = super::script_input();
+    if script && keep.is_none() && !json {
+        eprintln!(
+            "{COMMAND}: in a script ab takes no answers: it keeps the side it is on              (ab {b} --keep b ends on B)",
+            b = printable(b)
+        );
+    }
+    let answers = if keep.is_some() || script {
         None
     } else {
         Some(stdin_answers())
     };
-    ab_on(&opened.core, a, b, keep, answers.as_ref(), show, json)
+    ab_on(&opened.core, a, b, keep, answers.as_deref(), show, json)
 }
 
 fn print_compare(c: &AbCompare, json: bool) {
@@ -397,8 +406,9 @@ pub(crate) fn ab_on(
     if let Some(side) = keep {
         return finish(core, side, json);
     }
+    // -- FIX016 -- (REVG F10) no answers to wait for: the side it is on (it was left running)
     let Some(answers) = answers else {
-        return exit::OK;
+        return finish(core, c.side.unwrap_or(AbSide::A), json);
     };
     loop {
         if show {
@@ -410,6 +420,8 @@ pub(crate) fn ab_on(
             return finish(core, c.side.unwrap_or(AbSide::A), json);
         };
         match line.trim().to_ascii_lowercase().as_str() {
+            // -- FIX016 -- (REVG F10) Enter toggles for a person; a blank line of a script does nothing
+            "" if !show => {}
             "" | "t" | "toggle" => match core.ab_toggle() {
                 Ok(now) => {
                     c = now;

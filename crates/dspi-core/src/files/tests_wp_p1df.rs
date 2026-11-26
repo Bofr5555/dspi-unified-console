@@ -28,7 +28,7 @@ fn capture() -> DspState {
 
 fn demo() -> Arc<DspiCore> {
     let core = DspiCore::new();
-    core.open_demo().unwrap();
+    core.open_demo_blank().unwrap(); // -- WP UB12 --
     core.fetch_all().unwrap();
     core
 }
@@ -119,7 +119,7 @@ fn p1df_doc_vs_doc_names_each_changed_value_in_the_preset_words() {
     assert!(
         rows.iter().any(|r| r.0 == "eq"
             && r.2.ends_with("band 1")
-            && r.4.starts_with("Peaking 100 Hz, Q 1.25, 3.0 dB")),
+            && r.4.starts_with("Bell 100 Hz, Q 1.25, 3.0 dB")),
         "{rows:#?}"
     );
     assert!(

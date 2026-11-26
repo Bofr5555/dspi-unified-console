@@ -151,7 +151,7 @@ final class NoticesP1SW3UITests: XCTestCase {
             line = app.descendants(matching: .any)["readOnlyFloorLine"].firstMatch
         }
         XCTAssertTrue(line.waitForExistence(timeout: 10), "the read-only floor's line over the page")
-        XCTAssertTrue(line.label.contains("only volume, mute and presets"), line.label)
+        XCTAssertTrue(line.label.contains("only volume, mute, source and presets"), line.label)
         XCTAssertFalse(app.alerts.firstMatch.exists, "nothing is refused after the fact")
         keep(app, "ios-p1sw3-03-locked-floor")
 

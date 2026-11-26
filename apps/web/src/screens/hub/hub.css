@@ -153,3 +153,90 @@
 .dspi-web .hub-screen .hub-table .hub-serial { white-space: nowrap; }
 /* -- WP REVEFIX -- (REVE C4) the page's controls, off together while the hub does not answer */
 .dspi-web .hub-fence { display: contents; }
+
+/* -- WP UB6 -- (UXP B6) The Fleet (FleetPage.tsx) and the hub page's parts: the merged device table (DeviceTable.tsx)
+   with its details on expand, a body per DSPi so a row and its details share one stripe; the alarm counts as quiet
+   buttons with the severity's dot; the head's counts as status chips (§13). Narrow: a card per DSPi on a tone. */
+.dspi-web .hub-screen { container-type: inline-size; min-width: 0; }
+.dspi-web .fleet-page { gap: 8px; }
+.dspi-web .fleet-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; min-height: 28px; margin-bottom: 4px; }
+.dspi-web .fleet-head .fleet-hub-name { margin-right: 8px; font-weight: 600; }
+.dspi-web .fleet-page .hub-fence { display: block; min-width: 0; margin: 0; padding: 0; border: 0; }
+.dspi-web .fleet-page.away .hub-fence { opacity: 0.6; }
+.dspi-web .hub-screen .hub-head-gap { flex: 1 1 auto; }
+.dspi-web .hub-screen .hub-devices > .card-head > h2.visually-hidden { margin: 0; }
+
+.dspi-web .hub-screen .hub-merged tbody tr:nth-child(even) > td { background: none; }
+.dspi-web .hub-screen .hub-merged tbody:nth-of-type(even) > tr > td { background: var(--stripe); }
+.dspi-web .hub-screen .hub-merged tbody > tr.hub-detail-row > td { height: auto; padding: 2px 8px 10px; }
+.dspi-web .hub-screen .hub-merged td { overflow-wrap: normal; }
+.dspi-web .hub-screen .hub-details { display: grid; grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); gap: 6px 16px; margin: 0; }
+.dspi-web .hub-screen .hub-detail { min-width: 0; }
+.dspi-web .hub-screen .hub-detail dt { font-size: 11px; color: var(--muted); }
+.dspi-web .hub-screen .hub-detail dd { margin: 0; font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+.dspi-web .hub-screen :is(.hub-detail.hub-health-change, .hub-detail.hub-tags, .hub-detail.hub-note) dd { font-family: inherit; }
+.dspi-web .hub-screen .hub-detail.tone-bad dd, .dspi-web .hub-screen .hub-detail.tone-warn dd { font-weight: 600; }
+.dspi-web .hub-screen .hub-detail.tone-bad dd::before, .dspi-web .hub-screen .hub-detail.tone-warn dd::before {
+  content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 4px; border-radius: 3px; vertical-align: middle; background: var(--bad);
+}
+.dspi-web .hub-screen .hub-detail.tone-warn dd::before { background: var(--warn); }
+.dspi-web .hub-screen .hub-merged td.tone-warn { color: var(--text); font-weight: 600; }
+.dspi-web .hub-screen .hub-merged td.tone-bad::before, .dspi-web .hub-screen .hub-merged td.tone-warn::before {
+  content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 4px; border-radius: 3px; vertical-align: middle; background: var(--bad);
+}
+.dspi-web .hub-screen .hub-merged td.tone-warn::before { background: var(--warn); }
+.dspi-web .hub-screen .hub-merged td.tone-bad { color: var(--text); font-weight: 600; }
+.dspi-web .hub-screen .hub-health-temp { font-family: var(--mono); white-space: nowrap; }
+.dspi-web .hub-screen .hub-detail-actions { justify-content: flex-start; margin-top: 8px; }
+.dspi-web .hub-screen .hub-more { color: var(--muted); }
+
+/* A row's alarms: a count with the severity's dot; on the hub page a quiet button to the Alarms part */
+.dspi-web .hub-screen :is(.hub-alarm-count, .fleet-alarm-count) { display: inline-flex; align-items: center; white-space: nowrap; color: var(--text); }
+.dspi-web .hub-screen button.hub-alarm-count { min-height: 24px; padding: 0.1rem 0.55rem; background: transparent; font-size: 12px; }
+.dspi-web .hub-screen button.hub-alarm-count:hover:not(:disabled) { background: var(--control-hover); }
+.dspi-web .hub-screen :is(.hub-alarm-count, .fleet-alarm-count)::before {
+  content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 3px; background: var(--muted);
+}
+.dspi-web .hub-screen :is(.hub-alarm-count, .fleet-alarm-count).warn::before { background: var(--warn); }
+.dspi-web .hub-screen :is(.hub-alarm-count, .fleet-alarm-count).bad::before { background: var(--bad); }
+
+/* The Fleet's table: the hub page's (§9), its Open and Identify quiet buttons */
+.dspi-web .fleet-page .fleet-table { width: 100%; }
+.dspi-web .fleet-page .fleet-table td:first-child { min-width: 8rem; }
+.dspi-web .fleet-page .fleet-table .hub-serial { display: block; white-space: nowrap; }
+
+/* Narrow: a card per DSPi (its fields under their labels), the sort buttons in a row above */
+@container (max-width: 760px) {
+  .dspi-web .hub-screen .hub-merged, .dspi-web .hub-screen .hub-merged > tbody, .dspi-web .hub-screen .hub-merged tr, .dspi-web .hub-screen .hub-merged td { display: block; }
+  .dspi-web .hub-screen .hub-merged > thead { display: block; }
+  .dspi-web .hub-screen .hub-merged > thead tr { display: flex; flex-wrap: wrap; gap: 2px 12px; }
+  .dspi-web .hub-screen .hub-merged > thead th { display: block; padding: 0 0 4px; border: 0; }
+  .dspi-web .hub-screen .hub-merged > thead th:not([aria-sort]) { display: none; }
+  .dspi-web .hub-screen .hub-merged > tbody { margin-top: 6px; border-radius: 6px; background: color-mix(in srgb, var(--text) 4%, transparent); }
+  .dspi-web .hub-screen .hub-merged > tbody > tr > td { background: none !important; height: auto; }
+  .dspi-web .hub-screen .hub-merged tr.hub-health-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 2px 12px; padding: 6px 8px; }
+  .dspi-web .hub-screen .hub-merged tr.hub-health-row > td { padding: 0; min-width: 0; overflow-wrap: anywhere; }
+  .dspi-web .hub-screen .hub-merged tr.hub-health-row > :is(.hub-health-name, .hub-actions) { grid-column: 1 / -1; }
+  .dspi-web .hub-screen .hub-merged tr.hub-health-row > td:not(.hub-health-name):not(.hub-actions)::before {
+    content: attr(data-label); display: block; font-size: 11px; color: var(--muted); font-weight: 400;
+  }
+  .dspi-web .hub-screen .hub-merged .hub-action-row { justify-content: flex-start; flex-wrap: wrap; }
+  .dspi-web .hub-screen .hub-merged .hub-serial { white-space: normal; overflow-wrap: anywhere; }
+  .dspi-web .hub-screen .hub-merged td:first-child { min-width: 0; }
+  .dspi-web .hub-screen .hub-devices .hub-table-wrap { overflow-x: visible; }
+}
+@container (max-width: 640px) {
+  .dspi-web .fleet-page .fleet-table, .dspi-web .fleet-page .fleet-table tbody, .dspi-web .fleet-page .fleet-table tr, .dspi-web .fleet-page .fleet-table td { display: block; }
+  .dspi-web .fleet-page .fleet-table thead { display: none; }
+  .dspi-web .fleet-page .fleet-table tbody tr {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 2px 12px; margin-top: 6px; padding: 6px 8px; border-radius: 6px;
+    background: color-mix(in srgb, var(--text) 4%, transparent);
+  }
+  .dspi-web .fleet-page .fleet-table tbody tr > td { background: none !important; height: auto; padding: 0; min-width: 0; overflow-wrap: anywhere; }
+  .dspi-web .fleet-page .fleet-table tbody tr > td:first-child, .dspi-web .fleet-page .fleet-table tbody tr > td.hub-actions { grid-column: 1 / -1; }
+  .dspi-web .fleet-page .fleet-table tbody tr > td[data-label]:not(:first-child)::before {
+    content: attr(data-label); display: block; font-size: 11px; color: var(--muted); font-weight: 400;
+  }
+  .dspi-web .fleet-page .fleet-table .hub-serial { white-space: normal; overflow-wrap: anywhere; }
+  .dspi-web .fleet-page .hub-action-row { justify-content: flex-start; }
+}

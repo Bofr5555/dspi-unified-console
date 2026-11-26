@@ -203,7 +203,7 @@ private fun SettingsSidebar(
                                 (cat == SettingsCategory.GLOBAL_PARAMS && coordinator.globalRowsDirty()) ||
                                 // -- WP AN6 --
                                 (cat == SettingsCategory.SPDIF_INPUT && coordinator.sourceNamesDirty())
-                        if (dot) Text("●", color = MacColors.orange)
+                        if (dot) Text("●", color = MacColors.warningText)
                     }
                 }
             }
@@ -248,6 +248,10 @@ private fun SettingsDetail(
         SettingsCategory.INSTALLER -> InstallerSettingsTab(bridge, lockedUser = LocalUiMode.current == UiModes.LOCKED_USER)
         SettingsCategory.POWER_ON -> PowerOnSettingsTab(bridge, onOpen)
         SettingsCategory.EVENTS -> WritesExempt { EventsSettingsTab(bridge) } // -- WP P2AN -- read-only
+        // -- WP UAN -- the app's own files: the layout is kept on this phone, nothing is sent to the device
+        // -- FIX016 -- (REVG R4, agent C F7) but it is the device's layout, which the measurement and the preset
+        // guard trust: a read-only session sees it and cannot Confirm (under the write gate, not exempt)
+        SettingsCategory.SPEAKERS -> SpeakersSettingsTab(bridge)
     }
 }
 

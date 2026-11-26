@@ -233,7 +233,7 @@ mod tests {
         let rows = vec![
             vec![
                 "1".into(),
-                "Peaking".into(),
+                "Bell".into(), // -- INT016 -- (A10 one filter vocabulary)
                 "64 Hz".into(),
                 "-6.2 dB".into(),
             ],
@@ -254,7 +254,7 @@ mod tests {
         );
         let lines: Vec<&str> = s.lines().collect();
         assert_eq!(lines[0], "   # TYPE             FREQ     GAIN");
-        assert_eq!(lines[1], "   1 Peaking         64 Hz  -6.2 dB");
+        assert_eq!(lines[1], "   1 Bell            64 Hz  -6.2 dB");
         assert_eq!(lines[2], "▸  2 Low Shelf    [105 Hz]  +8.8 dB");
     }
 

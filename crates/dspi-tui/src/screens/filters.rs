@@ -406,10 +406,11 @@ impl FilterList {
                 ];
                 match meta {
                     Some(m) => {
+                        // -- INT016 -- (A10 one filter vocabulary) sentence case
                         cells.push(Cell::from(if m.high_pass {
-                            "High Pass"
+                            "High pass"
                         } else {
-                            "Low Pass"
+                            "Low pass"
                         }));
                         cells.push(Cell::from(format!("{} dB/oct", m.order as u16 * 6)));
                         cells.push(Cell::from(format!("{:.0} Hz", b.freq)));
@@ -533,9 +534,10 @@ impl FilterList {
                 let selected = usize::from(
                     xover::meta(band.filter_type.to_raw()).is_some_and(|m| m.high_pass),
                 );
+                // -- INT016 -- (A10 one filter vocabulary) sentence case
                 ScreenEvent::Popup(PopupList::new(
                     "Type",
-                    vec!["Low Pass".into(), "High Pass".into()],
+                    vec!["Low pass".into(), "High pass".into()],
                     selected,
                 ))
             }
@@ -958,7 +960,8 @@ pub fn type_menu(
 ) -> (PopupList, Vec<Option<FilterType>>) {
     let groups: &[(&str, &[FilterType])] = &[
         ("Off", &[FilterType::Flat]),
-        ("Peaking", &[FilterType::Peaking]),
+        // -- INT016 -- (A10 one filter vocabulary) Bell, as every screen says
+        ("Bell", &[FilterType::Peaking]),
         ("Low Shelf", &[FilterType::LowShelf1, FilterType::LowShelf]),
         (
             "High Shelf",
@@ -1399,7 +1402,7 @@ mod tests {
         let state = fixture::state();
         let (popup, map) = type_menu(&state, true, FilterType::Peaking);
         assert_eq!(popup.items[0], "Off");
-        assert_eq!(popup.items[1], "Peaking");
+        assert_eq!(popup.items[1], "Bell"); // -- INT016 -- (A10)
         assert_eq!(popup.items[2], "#Low Shelf");
         assert_eq!(popup.items[3], "6 dB/oct");
         assert_eq!(popup.items[4], "12 dB/oct");
@@ -1491,7 +1494,7 @@ mod tests {
         let ScreenEvent::Popup(p) = l.handle(key(KeyCode::Enter), &state) else {
             panic!("direction picker")
         };
-        assert_eq!(p.items, vec!["Low Pass", "High Pass"]);
+        assert_eq!(p.items, vec!["Low pass", "High pass"]); // -- INT016 -- (A10)
         assert_eq!(
             l.popup_result(Some(1), &state),
             ScreenEvent::Command("eq out.9 20 lr2hp 80 0.707 0".into())

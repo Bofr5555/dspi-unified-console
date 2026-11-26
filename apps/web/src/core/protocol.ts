@@ -32,6 +32,8 @@ export type DeviceTarget =
       alink?: boolean;
       /** -- WP AUSB1 -- the demo as an alink USB-direct unit */
       usbDirect?: boolean;
+      /** -- WP UB12 -- the capture as it is (a new board), not the tuned example */
+      blank?: boolean;
     }
   /**
    * A DSPi on USB (WebUSB, WB4a): the serial the page's picker or
@@ -224,6 +226,30 @@ export interface DeviceSnapshot {
   outputLabels?: OutputLabel[];
   /** The dashboard's output cards (`DspiCore::output_cards`). */
   outputCards?: OutputCard[];
+  // -- WP GAP1 --
+  /** Each output's polarity from the routes that feed it (`dspi_core::output_polarity`). */
+  outputPolarity?: OutputPolarity[];
+}
+
+// -- WP GAP1 --
+/** An output's polarity: no route feeds it, every feeding route as it comes, every one inverted, or some. */
+export type OutputPolarity = "none" | "normal" | "inverted" | "mixed";
+
+/** One crossfeed pair's outputs, 0-based (`crates/dspi-wasm/src/pair_map.rs`). */
+export interface CrossfeedPair {
+  left: number;
+  right: number;
+}
+
+/** The crossfeed's output pair map (Qt's ExtController). */
+export interface CrossfeedPairMapView {
+  /** The firmware has the extension's pair map. */
+  supported: boolean;
+  pairCount: number;
+  pairs: CrossfeedPair[];
+  choice: "default" | "k340" | "custom";
+  /** The pair mask that goes with the K340 map (both of its pairs). */
+  k340Mask: number;
 }
 
 /**
@@ -479,8 +505,8 @@ export interface CoreMethods extends HubFleetMethods /* -- WP P3CC -- */, AlinkM
   rtaStart: { params: RtaRequest; result: null };
   rtaStop: { params: undefined; result: null };
   rta: { params: undefined; result: RtaView };
-  /** The core's demo simulations; refused for a real device. -- WP WB8 -- `clip`: the channels in `mask` clip. */
-  demo: { params: { action: "renameElsewhere"; name: string } | { action: "clip"; mask: number }; result: null };
+  /** The core's demo simulations; refused for a real device. -- WP WB8 -- `clip`: the channels in `mask` clip. -- WP UB12 -- `reset`: the demo's tuned example again. */
+  demo: { params: { action: "renameElsewhere"; name: string } | { action: "clip"; mask: number } | { action: "reset" }; result: null };
   // -- WP WB8 -- the change history (crates/dspi-wasm/src/history.rs, WP P0W)
   /** Step back; `entry` null when nothing moved, `note` names another writer whose change was left alone. */
   undo: { params: undefined; result: HistoryMove };
@@ -529,7 +555,16 @@ export interface CoreMethods extends HubFleetMethods /* -- WP P3CC -- */, AlinkM
    * Each chain's combined magnitude (dB) on the grid, and each band's own
    * curve and dot level. Bands need not be the device's (a drag in progress).
    */
-  curves: { params: { chains?: FilterParams[][]; bands?: FilterParams[] }; result: { chains: number[][]; bands: BandCurve[] } };
+  // -- WP GAP1 -- the crossfeed's output pair map: read, checked, written (one undo step)
+  crossfeedPairMap: { params: undefined; result: CrossfeedPairMapView };
+  crossfeedPairsValid: { params: { pairs: CrossfeedPair[] }; result: boolean };
+  setCrossfeedPairMap: { params: { choice: "default" | "k340" } | { pairs: CrossfeedPair[] }; result: CrossfeedPairMapView };
+  curves: {
+    // -- WP GAP1 -- `phase` (with `unwrap`) and `groupDelay`: the first chain's, on the same grid
+    params: { chains?: FilterParams[][]; bands?: FilterParams[]; phase?: boolean; unwrap?: boolean; groupDelay?: boolean };
+    /** `phase` in degrees (within ±180 unless unwrapped), `groupDelay` in ms: only when asked. */
+    result: { chains: number[][]; bands: BandCurve[]; phase?: number[]; groupDelay?: number[] };
+  };
   // -- WP CG34 -- the filter types' names, the core's one table (the Console's band-list names)
   /** Every type the firmware defines, PEQ 0..13 then crossovers 32..63: `{code: 4, name: "High Cut (12dB)"}`. */
   filterTypeNames: { params: undefined; result: { code: number; name: string }[] };
@@ -747,6 +782,12 @@ export interface SnapshotRecallRecord {
 }
 
 /** An A/B compare (`dspi_core::AbCompare`). */
+// -- WP GAP2 --
+/** `soloState`'s answer: the soloed output (from 0), null with none. */
+export interface SoloRecord {
+  output: number | null;
+}
+
 export interface AbCompareRecord {
   active: boolean;
   /** The side on the device; after `abKeep`, the one kept; null with no compare. */
@@ -755,6 +796,8 @@ export interface AbCompareRecord {
   bName: string;
   /** What this call recalled, if it recalled anything. */
   recall: SnapshotRecallRecord | null;
+  /** -- WP UB34 -- (UXP B3) A compare of the preset as saved on the device (A) against now (B): `abStartSaved`'s. */
+  saved?: boolean;
 }
 
 /** Where a guarded apply stands (`dspi_core::GuardPhase`). */
@@ -861,6 +904,15 @@ export interface DocumentMethods {
   abDiff: { params: undefined; result: ConfigDiff };
   abKeep: { params: { side: "a" | "b" }; result: AbCompareRecord };
   abState: { params: undefined; result: AbCompareRecord };
+  /** -- WP UB34 -- Compare the preset as saved on the device (A) with now (B), on A; the listening volume stays. */
+  abStartSaved: { params: undefined; result: AbCompareRecord };
+  // -- WP GAP2 -- solo one output: the others muted on the device only, never saved, not an undo step
+  /** Only `output` (from 0) plays until `soloEnd`; another output moves the solo. The state keeps the user's mutes. */
+  soloOutput: { params: { output: number }; result: SoloRecord };
+  /** Every output plays as the user left it. */
+  soloEnd: { params: undefined; result: SoloRecord };
+  /** The soloed output, null with none (no device I/O). */
+  soloState: { params: undefined; result: SoloRecord };
   /** Import with a way back: waits for `applyConfirm`; a timeout (0: 30 s), Revert or a lost connection reverts. */
   applyGuardedImport: { params: { text: string; options?: number; eqChannels?: number; timeoutS?: number }; result: GuardedApplyRecord };
   /** Recall a snapshot document with a way back. */

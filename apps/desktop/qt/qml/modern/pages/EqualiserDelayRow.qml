@@ -4,9 +4,12 @@ import QtQuick.Layouts
 import UConsole
 
 // -- WP LAY4 -- One output in Delay & Gain. The columns are EqualiserDelay's.
+// -- WP UA1 -- (UXP A1) named as the page's list names it, its number second;
+// its stripe by its place among the rows shown.
 Rectangle {
     id: row
     property int output: 0
+    property int place: output   // -- WP UA1 --
     property real latest: 0.5
     property bool selected: false
     signal limiterWanted()
@@ -24,7 +27,7 @@ Rectangle {
     color: selected ? Theme.selection : "transparent"
     Rectangle {
         anchors.fill: parent
-        visible: row.output % 2 === 0 && !row.selected
+        visible: row.place % 2 === 0 && !row.selected
         color: Theme.text
         opacity: 0.03
     }
@@ -90,14 +93,27 @@ Rectangle {
                 tint: info.tint
             }
             Text {
+                objectName: row.objectName + ".name"
                 Layout.fillWidth: true
+                Layout.maximumWidth: implicitWidth
                 textFormat: Text.PlainText
                 // -- WP FIN015 -- (REVF D1) the name the page's list and header use ("Centre woofer")
-                text: info.displayName || info.label
+                text: info.name
                 font: Theme.fontBody
                 color: Theme.text
                 elide: Text.ElideRight
             }
+            // -- WP UA1 -- its number second, "· 1"
+            Text {
+                objectName: row.objectName + ".number"
+                Layout.leftMargin: -4
+                visible: info.numberText.length > 0
+                textFormat: Text.PlainText
+                text: "· " + info.numberText
+                font: Theme.fontBody
+                color: Theme.textMuted
+            }
+            Item { Layout.fillWidth: true }
         }
         AppSwitch {
             objectName: row.objectName + ".enable"
@@ -108,12 +124,12 @@ Rectangle {
                 ChannelController.requestOutputEnable(row.output, checked)
                 checked = Qt.binding(() => row.enabledOut)
             }
-            Accessible.name: qsTr("%1 enabled").arg(info.label)
+            Accessible.name: qsTr("%1 enabled").arg(info.title)
         }
         ChannelValueField {
             objectName: row.objectName + ".gain"
             Layout.preferredWidth: 84
-            label: qsTr("%1 gain").arg(info.label)
+            label: qsTr("%1 gain").arg(info.title)
             enabled: row.writable
             unit: qsTr("dB")
             fieldWidth: 56
@@ -124,7 +140,7 @@ Rectangle {
         ChannelValueField {
             objectName: row.objectName + ".delay"
             Layout.preferredWidth: 88
-            label: qsTr("%1 delay").arg(info.label)
+            label: qsTr("%1 delay").arg(info.title)
             enabled: row.writable
             unit: qsTr("ms")
             fieldWidth: 60
@@ -139,7 +155,7 @@ Rectangle {
         ChannelValueField {
             objectName: row.objectName + ".distance"
             Layout.preferredWidth: 88
-            label: qsTr("%1 distance").arg(info.label)
+            label: qsTr("%1 distance").arg(info.title)
             enabled: row.writable
             unit: qsTr("cm")
             fieldWidth: 60
@@ -170,7 +186,7 @@ Rectangle {
                 color: info.tint
             }
             Accessible.role: Accessible.Graphic
-            Accessible.name: qsTr("%1 arrives %2 ms late").arg(info.label).arg(Number((row.out.delay || 0).toFixed(3)))
+            Accessible.name: qsTr("%1 arrives %2 ms late").arg(info.title).arg(Number((row.out.delay || 0).toFixed(3)))
         }
         Flip {
             objectName: row.objectName + ".polarity"
@@ -179,7 +195,7 @@ Rectangle {
             on: row.polarity > 0
             text: row.polarity < 0 ? qsTr("–") : row.polarity === 0 ? qsTr("Normal") : row.polarity === 1 ? qsTr("Inverted") : qsTr("Mixed")
             ink: row.polarity > 0 ? Theme.warning : Theme.textMuted
-            toolTip: row.polarity < 0 ? qsTr("No input is connected to %1").arg(info.label) : qsTr("Invert %1").arg(info.label)
+            toolTip: row.polarity < 0 ? qsTr("No input is connected to %1").arg(info.title) : qsTr("Invert %1").arg(info.title)
             onClicked: ChannelController.setOutputPolarity(row.output, row.polarity === 0)
         }
         IconButton {
@@ -189,7 +205,7 @@ Rectangle {
             enabled: row.writable
             iconName: muted ? "volume-x" : "volume-2"
             iconColor: muted ? Theme.dangerText : Theme.textMuted
-            toolTip: muted ? qsTr("Unmute %1").arg(info.label) : qsTr("Mute %1").arg(info.label)
+            toolTip: muted ? qsTr("Unmute %1").arg(info.title) : qsTr("Mute %1").arg(info.title)
             onClicked: ChannelController.setOutputMute(row.output, !muted)
             Accessible.role: Accessible.CheckBox
             Accessible.checkable: true
@@ -204,14 +220,14 @@ Rectangle {
             on: limited
             text: limited ? qsTr("%1 dBFS").arg(Number(row.out.limiterThreshold).toFixed(1)) : qsTr("Off")
             ink: limited ? Theme.accentText : Theme.textMuted
-            toolTip: qsTr("%1 limiter; right-click for its settings").arg(info.label)
+            toolTip: qsTr("%1 limiter; right-click for its settings").arg(info.title)
             onClicked: ChannelController.setLimiterEnabled(row.output, !limited)
             onSecondaryClicked: row.limiterWanted()
         }
     }
 
     Accessible.role: Accessible.Row
-    Accessible.name: info.label
+    Accessible.name: info.title
 
     // -- WP AIVIS -- an agent changed it just now
     AiTouched { path: "out."; indices: [row.output] }

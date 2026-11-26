@@ -87,6 +87,12 @@ async function saveMenu(session: Locator, item: string) {
   await session.getByRole("menuitem", { name: item }).click();
 }
 
+/** -- WP UFW -- (UXP A10, C1) A row of the device tab's menu: Factory Reset… is the device's, not Save ▾'s. */
+async function tabMenu(page: Page, session: Locator, item: string) {
+  await session.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab").first().click({ button: "right" });
+  await page.getByRole("menu", { name: "Device" }).getByRole("menuitem", { name: item }).click();
+}
+
 const unsavedShown = (session: Locator) => expect(presetsButton(session)).toHaveAccessibleName(/, unsaved changes$/);
 const nothingUnsaved = (session: Locator) => expect(presetsButton(session)).not.toHaveAccessibleName(/unsaved/);
 
@@ -300,8 +306,11 @@ test("WB6a tools: Save to device, Revert to Saved and Factory Reset ask first, t
   await setOutputGain(session, -2);
   await unsavedShown(session);
   await session.getByRole("button", { name: /^Save to Device/ }).click();
-  const commit = page.getByRole("dialog", { name: "Save Preset" });
-  await expect(commit).toContainText(`preset slot ${(await coreState(page)).activePresetSlot + 1}`);
+  const commit = page.getByRole("dialog", { name: "Save to Device" });
+  // -- WP UWN -- (UXP A17) the preset by its number and name, not "preset slot N"
+  const cs = await coreState(page);
+  await expect(commit).toContainText(`to preset ${cs.activePresetSlot + 1}`);
+  await expect(commit).not.toContainText("preset slot");
   await commit.getByRole("button", { name: "Save" }).click();
   await nothingUnsaved(session);
   expect(await unsavedLines(page)).toEqual([]);
@@ -322,7 +331,11 @@ test("WB6a tools: Save to device, Revert to Saved and Factory Reset ask first, t
   // Factory Reset: the defaults (bypass off, trims at 0). // -- WP WB6L -- exact: the quick strip has "Bypass Master EQ"
   await session.getByRole("button", { name: "Bypass EQ", exact: true }).click();
   await expect.poll(async () => (await coreState(page)).bypass).toBe(true);
-  await saveMenu(session, "Factory Reset…");
+  await session.getByRole("button", { name: "Save options" }).click();
+  await expect(session.getByRole("menuitem", { name: "Revert to Saved…" })).toBeVisible();
+  await expect(session.getByRole("menuitem", { name: "Factory Reset…" })).toHaveCount(0); // -- WP UFW --
+  await page.keyboard.press("Escape");
+  await tabMenu(page, session, "Factory Reset…");
   await page.getByRole("dialog", { name: "Factory Reset" }).getByRole("button", { name: "Reset" }).click();
   await expect(session.getByRole("button", { name: "Bypass EQ", exact: true })).toHaveAttribute("aria-pressed", "false");
   const st = await coreState(page);

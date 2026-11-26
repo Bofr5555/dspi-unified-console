@@ -1,0 +1,15 @@
+{
+  "name": "uConsole for DSPi",
+  "short_name": "uConsole",
+  "description": "Volume, source and presets of your DSPi, and the whole console a tap away.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#202020",
+  "theme_color": "#202020",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

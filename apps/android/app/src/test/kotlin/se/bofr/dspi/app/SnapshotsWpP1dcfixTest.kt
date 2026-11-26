@@ -125,13 +125,13 @@ class SnapshotsWpP1dcfixTest {
         pumpUntil("rows") { textShown("Warm") }
         rule.onNodeWithTag(snapshotRecallTag(m.items.value.single().id)).assertExists()
         rule.onNodeWithTag(AB_START_TAG).assertExists()
-        rule.onNodeWithTag(CAPTURE_TAG).assertDoesNotExist()
+        rule.onNodeWithTag(CAPTURE_TAG).assertExists() // -- WP UAN -- (UXP A11) Capture in Simple: A/B needs it
         rule.onNodeWithTag(SAFE_APPLY_TIMEOUT_TAG).assertDoesNotExist()
         assertFalse("no rollback choice in Simple", textShown("Recall with rollback"))
         assertFalse(textShown("Import Snapshot File"))
         // Advanced has them, the timeout at the default 30 s
         show { SnapshotsView(m, SnapshotsMode.ADVANCED, onBack = {}) }
-        pumpUntil("advanced") { shown(CAPTURE_TAG) }
+        pumpUntil("advanced") { shown(SAFE_APPLY_TIMEOUT_TAG) } // -- WP UAN -- Capture shows in Simple too
         rule.onNodeWithTag(SAFE_APPLY_TIMEOUT_TAG).assertExists()
         assertTrue(textShown("Rollback time: 30 s"))
         assertTrue(textShown("Recall with rollback"))

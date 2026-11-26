@@ -838,12 +838,15 @@ impl Server {
                 tool_error(msg)
             }
             Err(_) if asked => {
-                let id = self.confirms.open(
+                // -- WP UAG -- with the call's other changes; -- FIX016 --
+                // (REVG R2) they count towards the sheet it may join
+                let id = self.confirms.open_with_rest(
                     client,
                     &label,
                     tool.name,
                     out.device.clone(),
                     out.judging.asked,
+                    out.judging.rest,
                     args.clone(),
                     now_ms,
                 );
@@ -859,13 +862,15 @@ impl Server {
                 // app alone (they may hold names the user or a device wrote)
                 if entry.write {
                     entry.detail = crate::activity::words(&data);
-                    entry.said = said;
+                    entry.said = out.judging.said.clone().unwrap_or(said); // -- WP UAG -- (UXP A7)
                 }
                 tool_ok(data)
             }
             Err(e) => {
                 entry.outcome = Outcome::Error;
                 entry.detail = e.0.clone();
+                // -- WP UAG -- (UXP A7) why the console refused it, for the person
+                entry.said = out.judging.refusal.clone().unwrap_or_default();
                 tool_error(&e.0)
             }
         };
@@ -1105,7 +1110,9 @@ impl Server {
     }
 
     /// The user's answer to confirmation `id` (the app's sheet). Allow runs
-    /// the call now, with a grant for the writes the user saw.
+    /// the call now, with a grant for the writes the user saw. -- FIX016 --
+    /// Refused ([`AnswerError::Unsealed`]) while its group is not sealed by
+    /// `now_ms`: the app shows a group only once sealed.
     pub fn answer_confirmation(
         &mut self,
         id: u64,
@@ -1116,6 +1123,11 @@ impl Server {
         let c = self.confirms.get(id).ok_or(AnswerError::Unknown)?;
         if c.state != ConfirmState::Waiting {
             return Err(AnswerError::Ended(c.state));
+        }
+        // -- FIX016 -- (REVG R2, B10) only a sheet the app may have shown: a
+        // group still taking questions has not been shown to anyone
+        if !c.sealed {
+            return Err(AnswerError::Unsealed);
         }
         let (client, tool_name, args, grant) = (c.client, c.tool, c.args.clone(), c.grant());
         let grouped = c.grouped; // -- WP ODEC --
@@ -1301,6 +1313,29 @@ impl Server {
             .collect()
     }
 
+    // -- WP UB5 -- (UXP D2)
+    /// [`Server::waiting_confirmations`] for the app's sheet at `now_ms`: the
+    /// groups whose time is up are sealed first, and each row says when its
+    /// group seals (`seals_ms`, the server's clock). The app shows a group
+    /// once it is `sealed`. -- FIX016 -- (REVG R2) Each row also carries its
+    /// group's whole sheet in the order to show it (`sheet`,
+    /// [`Confirmations::sheet`]: every asked row before any unasked one).
+    pub fn confirmations_at(&mut self, now_ms: u64) -> Vec<Value> {
+        self.confirms.seal_due(now_ms);
+        self.confirms
+            .waiting()
+            .into_iter()
+            .map(|c| {
+                let mut v = c.to_json();
+                if let Some(o) = v.as_object_mut() {
+                    o.insert("seals_ms".into(), json!(self.confirms.seals_at(c.group)));
+                    o.insert("sheet".into(), json!(self.confirms.sheet(c.group))); // -- FIX016 --
+                }
+                v
+            })
+            .collect()
+    }
+
     /// What the app should hear of since it last asked.
     pub fn take_confirm_events(&mut self) -> Vec<ConfirmEvent> {
         self.confirms.take_events()
@@ -1313,6 +1348,7 @@ impl Server {
     /// gone.
     pub fn tick(&mut self, now_ms: u64) {
         self.now_ms = now_ms; // -- WP AIVIS --
+        self.confirms.seal_due(now_ms); // -- WP UB5 --
         // -- WP ODEC -- grants end with their time, their agent or device
         let ended = {
             let (clients, set) = (&self.clients, &self.set);

@@ -57,19 +57,26 @@ const chainOf = async (page: Page) => {
   return JSON.stringify(CHAIN.map((k) => st[k]));
 };
 
-// -- WP WEB7 -- the left speaker measured on the Measure tab (1 s sweeps), as Qt's flow: Propose from
-// the Device, the other speaker's outputs left out, the placement chosen, the run to its end.
+// -- WP UB7 -- the outputs of the speaker layout's left speaker (the suggestion: nothing is kept here)
+async function leftOutputs(page: Page): Promise<Set<number>> {
+  const l = await call<{ outputs: { output: number; speaker: string }[] }>(page, "speakerLayoutPropose");
+  return new Set(l.outputs.filter((o) => o.speaker === "L").map((o) => o.output));
+}
+
+// -- WP WEB7 -- the left speaker measured on the Measure tab (1 s sweeps), as Qt's flow: the
+// layout's outputs (-- WP UB7 -- the tick boxes only), the other speaker's left out, the placement
+// chosen, the run to its end.
 async function measureLeftOnMeasureTab(page: Page): Promise<void> {
   const screen = page.locator("#one").getByRole("region", { name: "Measure" });
   await partsOf(screen, "Measurement").getByRole("tab", { name: "Measure", exact: true }).click();
   const setup = screen.getByRole("region", { name: "Measurement setup" });
-  await setup.getByRole("button", { name: "Propose from the Device" }).click();
+  const left = await leftOutputs(page);
   const rows = setup.getByRole("list", { name: "Outputs to measure" }).getByRole("listitem");
   await expect(rows.first()).toBeVisible();
   for (const item of await rows.all()) {
     const box = item.getByRole("checkbox");
-    if (!(await box.isChecked())) continue;
-    if ((await item.getByLabel(/^Speaker of/).inputValue()) !== "L") await box.uncheck();
+    const mine = left.has(Number(await item.getAttribute("data-output")));
+    if ((await box.isChecked()) !== mine) await box.setChecked(mine);
   }
   await setup.getByLabel("Placement", { exact: true }).selectOption("listeningPosition");
   await setup.getByLabel("Sweep length").fill("1");
@@ -84,10 +91,12 @@ async function measureAndPropose(page: Page, tune: (name: string) => Locator): P
   await expect(layout.getByLabel("Layout recognised")).toContainText("a three-way speaker");
   // Programme feeds in words, the right speaker left out.
   await expect(layout.getByRole("list", { name: "Outputs" })).toContainText("fed by input");
-  for (const item of await layout.getByRole("list", { name: "Outputs" }).getByRole("listitem").all()) {
-    const speaker = await item.getByLabel(/^Speaker of/).inputValue();
-    if (speaker !== "L") await item.getByRole("checkbox").uncheck();
-  }
+  // -- WP UB7 -- the layout in one line; the outputs only as tick boxes
+  await expect(layout.getByRole("status", { name: "Speaker layout summary" })).toContainText("L: ");
+  await expect(layout.getByRole("combobox", { name: /^Way of / })).toHaveCount(0);
+  const left = await leftOutputs(page);
+  for (const item of await layout.getByRole("list", { name: "Outputs" }).getByRole("listitem").all())
+    if (!left.has(Number(await item.getAttribute("data-output")))) await item.getByRole("checkbox").uncheck();
   // -- WP WEB7 -- as Qt: the auto-tune measures nothing itself; with no measurement it says where to take one
   await expect(tune("Tune layout").getByLabel("Measurement to tune from")).toHaveAttribute("data-source", "none");
   await expect(page.locator("#one").getByRole("status").filter({ hasText: "No measurement yet: measure on the Measure tab, or open one on Results." })).toBeVisible();

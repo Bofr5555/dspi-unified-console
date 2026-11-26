@@ -362,8 +362,9 @@ void checkMode(SmokeDriver &d) {
     const int setters = device->settersRun();
     QWindow *window = d.app().shell->openWindow(QStringLiteral("window.mode"));
     auto *w = qobject_cast<QQuickWindow *>(window);
-    // -- WP QPI5 -- the menu row is hidden until the modes come; the window stays
-    d.check(QStringLiteral("qpi5: the Window menu offers no Mode row"), d.object(QStringLiteral("Menu.window.mode")) == nullptr);
+    // -- WP QPI5 -- the menu row was hidden until the modes came; -- WP UB2 -- (UXP B2, D4) they
+    // have (Simple is Home, a remote): Classic's Window menu offers Mode… again
+    d.check(QStringLiteral("ub2: the Window menu offers the Mode row"), d.object(QStringLiteral("Menu.window.mode")) != nullptr);
     d.check(QStringLiteral("qp18: the Mode window still opens"), w && w->isVisible());
     mode->choose(QStringLiteral("simple"), false);
     d.check(QStringLiteral("qp18: Simple, remembered for this device"),

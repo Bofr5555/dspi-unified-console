@@ -10,7 +10,6 @@ import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
@@ -32,6 +31,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import se.bofr.dspi.feature.firmware.FirmwareVersion
+import se.bofr.dspi.feature.onboarding.BOARD_LATER
 import se.bofr.dspi.feature.onboarding.BoardStatus
 import se.bofr.dspi.feature.onboarding.GETTING_STARTED_TAG
 import se.bofr.dspi.feature.onboarding.GettingStartedScreen
@@ -132,7 +132,7 @@ class OnboardingAn19Test {
         // A new install starts with the notes read
         assertEquals(current, store.settings.value.whatsNewLastShownVersion)
 
-        // Through the stages and out; the board stage's Continue waits for matching firmware
+        // Through the stages and out
         tap(clickable(words.button("continue")))
         assertEquals(1, count(words.stage("board")!!.label))
         tap(clickable(words.button("back")))
@@ -180,9 +180,12 @@ class OnboardingAn19Test {
         rule.onNode(hasText(words.button("continue")) and hasClickAction()).performClick()
         rule.onNodeWithText(board.header("board.prepare")!!.title).assertExists()
         rule.onNodeWithText(board.card("card.waiting")!!.title).assertExists()
-        rule.onNode(hasText(words.button("continue")) and hasClickAction()).assertIsNotEnabled()
         rule.onNodeWithText(board.card("card.ready")!!.action!!).performClick()
         assertEquals(1, installs)
+        // -- WP UAN -- (UXP A11) no dead end: Continue goes on without a board, and the stage says where the firmware waits
+        rule.onNodeWithText(BOARD_LATER).assertExists()
+        rule.onNode(hasText(words.button("continue")) and hasClickAction()).assertIsEnabled().performClick()
+        rule.onNodeWithText(words.stage("done")!!.title).assertExists()
     }
 
     @Test

@@ -29,8 +29,10 @@ pub mod output;
 pub mod overview;
 pub mod panel;
 pub mod presets;
+// -- WP UB11 --
 pub mod psybass;
 pub mod signals;
+pub mod snapshots;
 pub mod spectrum;
 pub mod stats;
 pub mod subharm;
@@ -59,6 +61,7 @@ pub use matrix::MatrixPanel;
 pub use monitor::MonitorPanel;
 pub use output::OutputPage;
 pub use overview::Overview;
+pub use snapshots::SnapshotsPanel; // -- WP UB11 --
 pub mod quick;
 pub use presets::{PresetChoice, PresetMenu};
 pub use psybass::PsybassPanel;
@@ -886,7 +889,8 @@ pub(crate) mod tests {
     #[test]
     fn names_codes_and_tokens_match_the_consoles_tables() {
         assert_eq!(type_name(FilterType::LowShelf), "Low Shelf (12dB)");
-        assert_eq!(type_name(FilterType::from_raw(34)), "LR4 Low Pass");
+        assert_eq!(type_name(FilterType::from_raw(34)), "LR4 Low pass"); // -- INT016 -- (A10)
+        assert_eq!(type_name(FilterType::Peaking), "Bell");
         assert_eq!(type_code(FilterType::Notch), "NO");
         assert_eq!(type_code(FilterType::from_raw(34)), "LR4LP");
         assert_eq!(type_token(FilterType::Peaking), "peak");
@@ -914,7 +918,7 @@ pub(crate) mod tests {
         // An LR4 low pass and high pass.
         assert_eq!(type_code(FilterType::from_raw(34)), "LR4LP");
         assert_eq!(type_code(FilterType::from_raw(35)), "LR4HP");
-        assert_eq!(type_name(FilterType::from_raw(35)), "LR4 High Pass");
+        assert_eq!(type_name(FilterType::from_raw(35)), "LR4 High pass"); // -- INT016 -- (A10)
         use dspi_session::filterfile::{Bank, format_band};
         let band = |t: FilterType| dspi_proto::dsp::Band {
             filter_type: t,

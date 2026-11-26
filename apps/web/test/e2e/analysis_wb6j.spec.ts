@@ -1,5 +1,5 @@
 // WP WB6j e2e on the core's demo device (no audio anywhere: the demo only), in Chromium, Firefox
-// and Chromium at 375 px: the analyser's bar strip (M22) on the main screen and a channel's page,
+// and Chromium at 375 px: the analyser's bar strip (M22) on a channel's page (-- WP UWN -- not on the Overview: UXP C7),
 // the spectrum over the EQ graph (M23), the signal generator and Identify from an output's page
 // and the matrix (M46), Stats for nerbs with Reset Watermarks (M53), the Interrupt Monitor (M54)
 // and dashboard cards per row (M59). What the page did is read back from the core (a direct call).
@@ -40,30 +40,14 @@ test.afterEach(async ({ page }) => {
   await call(page, "siggenControl", { action: "stopNow" }).catch(() => undefined);
 });
 
-test("WB6J M22: the main screen's bar strip shows the chosen tap's channels from the core's analyser", async ({ page }) => {
+// -- WP UWN -- (UXP C7) the Overview has no "Spectrum · Show Bars" row any more (Qt's Overview has none):
+// the bars are Analyse › Spectrum's (below)
+test("UWN C7: the Overview has no spectrum row", async ({ page }) => {
   const errors = errorsOf(page);
   const session = await connect(page);
-  const strip = session.getByRole("region", { name: "Spectrum" });
-  await strip.getByRole("button", { name: "Show Bars" }).click();
-  const cells = strip.locator(".rta-cell");
-  await expect(cells).toHaveCount(2);
-  await expect(cells.first()).not.toHaveAttribute("data-bars", "0");
-  // The core runs the analyser on the inputs, channels 1 and 2.
-  const v = await call<{ snapshot: { tap: number; running: boolean; frames: unknown[] } }>(page, "analyserView");
-  expect(v.snapshot.tap).toBe(0);
-  expect(v.snapshot.frames.length).toBe(2);
-  // The outputs, one channel off.
-  await strip.getByRole("button", { name: "Outputs" }).click();
-  await expect(strip.getByRole("group", { name: "Channels analysed" }).getByRole("button").first()).toHaveAttribute("aria-pressed", "true");
-  await strip.getByRole("group", { name: "Channels analysed" }).getByRole("button").nth(1).click();
-  await expect(cells).toHaveCount(1);
-  await expect.poll(async () => (await call<{ snapshot: { tap: number } }>(page, "analyserView")).snapshot.tap).toBe(1);
-  // Hidden: the strip draws nothing, and stays hidden when the page comes back.
-  await strip.getByRole("button", { name: "Hide Bars" }).click();
-  await expect(cells).toHaveCount(0);
-  await page.reload();
-  const again = await connect(page);
-  await expect(again.getByRole("region", { name: "Spectrum" }).getByRole("button", { name: "Show Bars" })).toBeVisible();
+  await expect(session.getByRole("region", { name: "Device" })).toBeVisible();
+  await expect(session.getByRole("region", { name: "Spectrum" })).toHaveCount(0);
+  await expect(session.getByRole("button", { name: "Show Bars" })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 

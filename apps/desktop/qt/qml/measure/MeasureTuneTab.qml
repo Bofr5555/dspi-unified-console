@@ -9,27 +9,32 @@ import UConsole
 // to, what is withdrawn and why; the mandatory summed check; the guarded
 // apply with its countdown; the verify; Keep or Revert; the A/B compare.
 //
+// -- WP UA2 -- (A2) The actions are the panel's action bar's (MeasureActionBar:
+// Run the Summed Check, Apply…, Forget It; Verify, Revert, Keep with the
+// countdown), always in view. The proposal reads graph, changes, then its
+// details folded; nothing above it comes or goes with the stage (the layout
+// stays, disabled after Apply; the proposal stays, dimmed, while the summed
+// check plays), so the page keeps the reader's place.
+//
+// -- WP UB7 -- (UXP B7) The layout section: the speaker layout's summary, the
+// outputs to tune as tick boxes; roles and groups only in Settings › Speakers.
+//
 // Keep after a verify that did not pass: the core refuses it once
 // (`measure.tune.keep_unverified`) and this tab asks again, in a question of
 // its own; only "Keep Anyway", pressed by the person, keeps the tune.
 ScrollView {
     id: tab
+    objectName: "MeasureTune.page"   // -- WP UA2 --
     clip: true
     contentWidth: availableWidth
 
     readonly property var tc: TuneController
     readonly property var mc: MeasureController
-    readonly property var roles: [
-        { id: "full", text: qsTr("Full range") }, { id: "sub", text: qsTr("Subwoofer") },
-        { id: "low", text: qsTr("Low (woofer)") }, { id: "mid", text: qsTr("Mid") },
-        { id: "high", text: qsTr("High (tweeter)") }
-    ]
-    function indexOf(list, id) {
-        for (let i = 0; i < list.length; ++i) if (list[i].id === id) return i
-        return 0
-    }
     readonly property bool idle: !mc.running && !tc.busy
     readonly property bool beforeApply: !tc.applied && tc.stage !== "kept"
+    // -- WP UB7 -- (was the button "Propose from the Device") the feeds read
+    // again each time the tab shows, before a proposal
+    onVisibleChanged: if (visible && idle && beforeApply && !tc.hasProposal) tc.reloadLayout(true)
 
     // -- WP DL2 -- Modern: the steps as dots over sections (a label, no box,
     // no number), one notice for what is missing, the state of each line in
@@ -37,6 +42,18 @@ ScrollView {
     // plays (the one shown may be an earlier one; its result reads it again).
     // Classic keeps its numbered cards.
     readonly property bool modern: LayoutController.modern
+    // -- INT016 -- (UA1's C5 leftover) Modern folds the outputs nothing is routed to
+    // and nothing plays on (ChannelInfo's `hidden`) under one row; a ticked one stays
+    property bool unusedOpen: false
+    function foldsOutput(row) {
+        if (!modern || unusedOpen || row.on || DeviceModel.revision < 0 || ChannelController.revision < 0) return false
+        const r = DeviceModel.channels.rowOfChannel(ChannelController.outputChannel(row.output))
+        return r >= 0 && DeviceModel.channels.get(r, "hidden") === true
+    }
+    function unusedCount(rows) {
+        if (!modern || DeviceModel.revision < 0 || ChannelController.revision < 0) return 0
+        return rows.filter(row => !row.on && DeviceModel.channels.get(DeviceModel.channels.rowOfChannel(ChannelController.outputChannel(row.output)), "hidden") === true).length
+    }
     readonly property bool afterApply: tc.applied || tc.stage === "kept" || tc.stage === "reverted" || tc.stage === "revertIncomplete" // -- WP REVERTW --
     readonly property bool checking: tc.stage === "sumCheck"
     readonly property int step: afterApply ? 2 : tc.hasProposal || checking ? 1 : 0
@@ -95,7 +112,9 @@ ScrollView {
         Text {
             objectName: "MeasureTune.stage"
             // -- WP DL2 -- Modern: "No tune yet" says what the notice and the dots say
-            visible: !tab.modern || tc.stage !== "idle"
+            // -- WP UA2 -- Modern: the action bar says the stage, the Applied
+            // section how it ended (nothing above the proposal comes and goes)
+            visible: !tab.modern
             Layout.fillWidth: true
             textFormat: Text.PlainText
             text: tc.stageText
@@ -130,33 +149,12 @@ ScrollView {
             kind: "error"
             text: tc.error.length ? tc.error : tc.issueText
         }
-        // -- WP DL2 -- Modern: the summed check's run (the proposal waits for its result)
-        ColumnLayout {
-            objectName: "MeasureTune.checking"
-            visible: tab.modern && tab.checking && !tab.afterApply
-            Layout.fillWidth: true
-            spacing: Theme.spacingSmall
-            Text {
-                visible: text.length > 0
-                textFormat: Text.PlainText
-                text: tc.runText
-                font: Theme.fontBody
-                color: Theme.text
-            }
-            ProgressBar {
-                visible: tc.running
-                Layout.fillWidth: true
-                from: 0
-                to: 100
-                value: tc.progress
-            }
-        }
-
         // 1. The layout
         Section {
             title: tab.modern ? qsTr("Layout") : qsTr("1. Layout")
             Layout.fillWidth: true
-            visible: tab.beforeApply
+            // -- WP UA2 -- stays after Apply (disabled): the proposal under it keeps its place
+            enabled: tab.beforeApply
             Text {
                 visible: !tab.modern || mc.hasResult   // -- WP DL2 -- the notice above says it
                 Layout.fillWidth: true
@@ -167,10 +165,18 @@ ScrollView {
                 color: mc.hasResult ? Theme.text : Theme.warning
                 wrapMode: Text.WordWrap
             }
+            // -- WP UB7 -- (UXP B7) the speaker layout in one line, edited in
+            // Settings › Speakers; this tune's outputs are the tick boxes, each
+            // with the programme it is fed
+            SpeakersSummary {
+                objectName: "MeasureTune.speakers"
+                Layout.fillWidth: true
+            }
             Repeater {
                 model: tc.layout
                 RowLayout {
                     required property var modelData
+                    visible: !tab.foldsOutput(modelData)   // -- INT016 --
                     spacing: Theme.spacingSmall
                     AppCheckBox {
                         objectName: "MeasureTune.output." + modelData.output
@@ -179,31 +185,6 @@ ScrollView {
                         enabled: tab.idle
                         checked: modelData.on
                         onToggled: tc.setOutputOn(modelData.output, checked)
-                    }
-                    AppComboBox {
-                        label: qsTr("Way")
-                        Layout.preferredWidth: 150
-                        enabled: tab.idle && modelData.on
-                        model: tab.roles
-                        textRole: "text"
-                        currentIndex: tab.indexOf(tab.roles, modelData.role)
-                        onActivated: index => tc.setOutputRole(modelData.output, tab.roles[index].id)
-                    }
-                    BorderedField {
-                        label: qsTr("Speaker")
-                        Layout.preferredWidth: 60
-                        enabled: tab.idle && modelData.on
-                        text: modelData.speaker
-                        onCommitted: t => tc.setOutputSpeaker(modelData.output, t)
-                    }
-                    AppSpinBox {
-                        label: qsTr("Group")
-                        implicitWidth: 90
-                        enabled: tab.idle && modelData.on
-                        realFrom: 0
-                        realTo: 15
-                        realValue: modelData.group
-                        onCommitted: value => tc.setOutputGroup(modelData.output, Math.round(value))
                     }
                     Text {
                         Layout.fillWidth: true
@@ -214,6 +195,13 @@ ScrollView {
                         elide: Text.ElideRight
                     }
                 }
+            }
+            EqualiserUnusedRow {
+                objectName: "MeasureTune.unused"
+                Layout.fillWidth: true
+                count: tab.unusedCount(tc.layout)
+                open: tab.unusedOpen
+                onClicked: tab.unusedOpen = !tab.unusedOpen
             }
             Text {
                 visible: text.length > 0
@@ -235,11 +223,6 @@ ScrollView {
             RowLayout {
                 spacing: Theme.spacingSmall
                 AppButton {
-                    text: qsTr("Propose from the Device")
-                    enabled: tab.idle
-                    onClicked: tc.reloadLayout()
-                }
-                AppButton {
                     objectName: "MeasureTune.propose"
                     text: qsTr("Propose a Tune")
                     // -- WP DL2 -- no disabled primary, and the proposal's action is the next one
@@ -251,28 +234,22 @@ ScrollView {
         }
 
         // 2. The proposal
+        // -- WP UA2 -- (A2) graph, the changes, then the details folded; shown
+        // dimmed while the summed check plays (its result reads it again), never
+        // taken away, so the page does not jump; the actions are the bar's
         Section {
             objectName: "MeasureTune.proposal"
             title: tab.modern ? qsTr("Proposal") : qsTr("2. Proposal")
             Layout.fillWidth: true
-            visible: tc.hasProposal && !(tab.modern && tab.checking)
-            StatusLine {
-                visible: !tc.timingReliable
+            visible: tc.hasProposal
+            enabled: !tab.checking
+            opacity: tab.checking ? 0.5 : 1
+            MeasureGraph {
+                objectName: "MeasureTune.graph"
+                title: qsTr("Before and predicted")
                 Layout.fillWidth: true
-                kind: "warning"
-                text: qsTr("Timing unreliable: the measurement's timing is not trusted, so no delay, polarity or crossover change is offered.")
-                classicColor: Theme.warning
-            }
-            Repeater {
-                model: tc.warnings
-                StatusLine {
-                    required property string modelData
-                    Layout.fillWidth: true
-                    kind: "warning"
-                    // -- WP DL2 -- Modern: the icon says it is a warning
-                    text: tab.modern ? modelData : qsTr("Warning: %1").arg(modelData)
-                    classicColor: Theme.warning
-                }
+                Layout.preferredHeight: 260
+                graph: tc.graph
             }
             Text {
                 textFormat: Text.PlainText
@@ -294,62 +271,6 @@ ScrollView {
                     wrapMode: Text.WordWrap
                 }
             }
-            Text {
-                visible: tc.held.length > 0
-                text: qsTr("Held to:")
-                font.pixelSize: Theme.fontBody.pixelSize
-                font.weight: Font.DemiBold
-                color: Theme.text
-            }
-            Repeater {
-                model: tc.held
-                Text {
-                    required property string modelData
-                    Layout.fillWidth: true
-                    textFormat: Text.PlainText
-                    text: "• " + modelData
-                    font: Theme.fontSmall
-                    color: Theme.textMuted
-                    wrapMode: Text.WordWrap
-                }
-            }
-            Text {
-                visible: tc.withdrawn.length > 0
-                text: qsTr("Withdrawn:")
-                font.pixelSize: Theme.fontBody.pixelSize
-                font.weight: Font.DemiBold
-                color: Theme.text
-            }
-            Repeater {
-                objectName: "MeasureTune.withdrawn"
-                model: tc.withdrawn
-                StatusLine {
-                    required property string modelData
-                    Layout.fillWidth: true
-                    kind: "warning"
-                    text: tab.modern ? modelData : "• " + modelData
-                    classicColor: Theme.warning
-                }
-            }
-            Repeater {
-                model: tc.notes
-                Text {
-                    required property string modelData
-                    Layout.fillWidth: true
-                    textFormat: Text.PlainText
-                    text: modelData
-                    font: Theme.fontSmall
-                    color: Theme.textMuted
-                    wrapMode: Text.WordWrap
-                }
-            }
-            MeasureGraph {
-                objectName: "MeasureTune.graph"
-                title: qsTr("Before and predicted")
-                Layout.fillWidth: true
-                Layout.preferredHeight: 260
-                graph: tc.graph
-            }
             StatusLine {
                 objectName: "MeasureTune.sumCheck"
                 visible: text.length > 0
@@ -358,28 +279,84 @@ ScrollView {
                 text: tc.sumCheckText
                 classicColor: tc.sumCheck === "failed" ? Theme.warning : tc.sumCheck === "passed" ? Theme.success : Theme.text
             }
-            RowLayout {
-                visible: tab.beforeApply
-                spacing: Theme.spacingSmall
-                AppButton {
-                    objectName: "MeasureTune.sumCheckRun"
-                    visible: tc.needsSumCheck
-                    text: qsTr("Run the Summed Check")
-                    primary: true
-                    enabled: tab.idle
-                    onClicked: tc.sumCheckRun()
+            StatusLine {
+                visible: !tc.timingReliable
+                Layout.fillWidth: true
+                kind: "warning"
+                text: qsTr("Timing unreliable: the measurement's timing is not trusted, so no delay, polarity or crossover change is offered.")
+                classicColor: Theme.warning
+            }
+            Repeater {
+                model: tc.warnings
+                StatusLine {
+                    required property string modelData
+                    Layout.fillWidth: true
+                    kind: "warning"
+                    // -- WP DL2 -- Modern: the icon says it is a warning
+                    text: tab.modern ? modelData : qsTr("Warning: %1").arg(modelData)
+                    classicColor: Theme.warning
                 }
-                AppButton {
-                    objectName: "MeasureTune.apply"
-                    text: qsTr("Apply with a Way Back…")
-                    primary: !tc.needsSumCheck
-                    enabled: tab.idle && tc.writes.length > 0
-                    onClicked: applyQuestion.open()
+            }
+            // -- WP UA2 -- what the tune was held to, what it withdrew and its
+            // notes: folded, the counts at the heading's right
+            InspectorSection {
+                id: details
+                objectName: "MeasureTune.details"
+                visible: tc.held.length + tc.withdrawn.length + tc.notes.length > 0
+                Layout.fillWidth: true
+                title: qsTr("Details")
+                expanded: false
+                summary: [tc.held.length ? qsTr("%n limit(s)", "", tc.held.length) : "",
+                          tc.withdrawn.length ? qsTr("%n withdrawn", "", tc.withdrawn.length) : "",
+                          tc.notes.length ? qsTr("%n note(s)", "", tc.notes.length) : ""].filter(t => t.length).join(" · ")
+                Text {
+                    visible: tc.held.length > 0
+                    text: qsTr("Held to:")
+                    font.pixelSize: Theme.fontBody.pixelSize
+                    font.weight: Font.DemiBold
+                    color: Theme.text
                 }
-                AppButton {
-                    text: qsTr("Forget It")
-                    enabled: tab.idle
-                    onClicked: tc.stop()
+                Repeater {
+                    model: tc.held
+                    Text {
+                        required property string modelData
+                        Layout.fillWidth: true
+                        textFormat: Text.PlainText
+                        text: "• " + modelData
+                        font: Theme.fontSmall
+                        color: Theme.textMuted
+                        wrapMode: Text.WordWrap
+                    }
+                }
+                Text {
+                    visible: tc.withdrawn.length > 0
+                    text: qsTr("Withdrawn:")
+                    font.pixelSize: Theme.fontBody.pixelSize
+                    font.weight: Font.DemiBold
+                    color: Theme.text
+                }
+                Repeater {
+                    objectName: "MeasureTune.withdrawn"
+                    model: tc.withdrawn
+                    StatusLine {
+                        required property string modelData
+                        Layout.fillWidth: true
+                        kind: "warning"
+                        text: tab.modern ? modelData : "• " + modelData
+                        classicColor: Theme.warning
+                    }
+                }
+                Repeater {
+                    model: tc.notes
+                    Text {
+                        required property string modelData
+                        Layout.fillWidth: true
+                        textFormat: Text.PlainText
+                        text: modelData
+                        font: Theme.fontSmall
+                        color: Theme.textMuted
+                        wrapMode: Text.WordWrap
+                    }
                 }
             }
         }
@@ -389,29 +366,15 @@ ScrollView {
             title: tab.modern ? qsTr("Applied") : qsTr("3. Applied")
             Layout.fillWidth: true
             visible: tab.afterApply
-            Text {
-                objectName: "MeasureTune.guard"
-                visible: tc.applied
+            // -- WP UA2 -- (A2) the countdown, the verify's run and Verify, Keep and
+            // Revert are the action bar's; here what the verify found, and in
+            // Modern the stage in words (Classic says it at the top)
+            StatusLine {
+                objectName: "MeasureTune.stageLine"
+                visible: tab.modern && tc.stage !== "kept"
                 Layout.fillWidth: true
-                textFormat: Text.PlainText
-                text: tc.guardText
-                font: Theme.fontBody
-                color: Theme.text
-                wrapMode: Text.WordWrap
-            }
-            Text {
-                visible: tc.running
-                textFormat: Text.PlainText
-                text: tc.runText
-                font: Theme.fontBody
-                color: Theme.text
-            }
-            ProgressBar {
-                visible: tc.running
-                Layout.fillWidth: true
-                from: 0
-                to: 100
-                value: tc.progress
+                kind: tc.stage === "revertIncomplete" ? "error" : "info"
+                text: tc.stageText
             }
             StatusLine {
                 objectName: "MeasureTune.verify"
@@ -420,30 +383,6 @@ ScrollView {
                 kind: tc.verifyPassed ? "ok" : "warning"
                 text: tc.verifyText
                 classicColor: tc.verifyPassed ? Theme.success : Theme.warning
-            }
-            RowLayout {
-                visible: tc.applied
-                spacing: Theme.spacingSmall
-                AppButton {
-                    objectName: "MeasureTune.verifyRun"
-                    text: qsTr("Verify")
-                    enabled: !tc.running && !mc.running && !tc.busy
-                    onClicked: tc.verify()
-                }
-                AppButton {
-                    objectName: "MeasureTune.keep"
-                    text: qsTr("Keep")
-                    primary: tc.verifyPassed
-                    enabled: !tc.busy && !tc.keepConfirmNeeded
-                    onClicked: tc.keep()
-                }
-                AppButton {
-                    objectName: "MeasureTune.revert"
-                    text: qsTr("Revert")
-                    destructive: true
-                    enabled: !tc.busy
-                    onClicked: tc.revert()
-                }
             }
             StatusLine {
                 objectName: "MeasureTune.kept"
@@ -490,17 +429,6 @@ ScrollView {
                 }
             }
         }
-    }
-
-    QuestionDialog {
-        id: applyQuestion
-        objectName: "MeasureTune.applyQuestion"
-        ofDevice: true   // -- WP MDQT2c --
-        parent: Overlay.overlay
-        title: qsTr("Apply the auto-tune?")
-        text: qsTr("Every change above is written as one undo step, after a snapshot \"Before auto-tune\" is filed and the checks are run again. It goes back by itself unless you Keep it.")
-        acceptText: qsTr("Apply")
-        onAnswered: answer => { if (answer === "accept") TuneController.apply(0) }
     }
 
     // The second Keep after a verify that did not pass: the person's own

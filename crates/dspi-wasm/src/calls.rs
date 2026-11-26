@@ -387,6 +387,10 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
     if let Some(r) = crate::firmware::dispatch(&core, &req.method, req.params.clone()) {
         return r;
     }
+    // -- WP GAP1 -- the crossfeed's output pair map (src/pair_map.rs)
+    if let Some(r) = crate::pair_map::dispatch(&core, &req.method, req.params.clone()) {
+        return r;
+    }
     match req.method.as_str() {
         "open" => open(h, &core, params(req.params)?),
         "state" => {
@@ -502,6 +506,14 @@ fn dispatch(h: u32, request: &[u8]) -> CallResult {
         "abDiff" => crate::ab::diff(&core),
         "abKeep" => crate::ab::keep(&core, params(req.params)?),
         "abState" => Ok(crate::ab::state(&core)),
+        "abStartSaved" => crate::ab::start_saved(&core), // -- WP UB34 --
+        // -- WP GAP2 -- solo one output: a listening state, never saved
+        "soloOutput" => solo_output(&core, params(req.params)?),
+        "soloEnd" => core
+            .solo_end()
+            .map(|()| solo_state(&core))
+            .map_err(Into::into),
+        "soloState" => Ok(solo_state(&core)),
         // -- WP P5SES -- the measurement session (src/measure.rs)
         "measurePreflight" => crate::measure::preflight(&core, params(req.params)?),
         "measureStart" => crate::measure::start(&core, params(req.params)?),
@@ -709,6 +721,9 @@ enum Target {
         // -- WP AUSB1 -- an alink USB-direct unit
         #[serde(default, rename = "usbDirect")]
         usb_direct: bool,
+        // -- WP UB12 -- the capture as it is, not the tuned example (tests of a new board)
+        #[serde(default)]
+        blank: bool,
     },
     // -- WP WB4a --
     Usb(usb::UsbTarget),
@@ -742,6 +757,7 @@ fn open(h: u32, core: &DspiCore, target: Target) -> CallResult {
             read_only,
             alink,
             usb_direct,
+            blank,
         } => {
             if read_only {
                 core.open_demo_wire(READ_ONLY_DEMO_WIRE)?;
@@ -751,6 +767,8 @@ fn open(h: u32, core: &DspiCore, target: Target) -> CallResult {
             } else if alink {
                 // -- WP SW1 --
                 core.open_demo_alink()?;
+            } else if blank {
+                core.open_demo_blank()?; // -- WP UB12 --
             } else {
                 core.open_demo()?;
             }
@@ -840,6 +858,9 @@ fn snapshot(core: &DspiCore, demo: bool) -> Value {
         // them, worked out once per snapshot (src/output_labels.rs in the core)
         "outputLabels": tidy(&core.output_labels()),
         "outputCards": tidy(&core.output_cards()),
+        // -- WP GAP1 -- each output's polarity from its routes
+        // (dspi_core::output_polarity): none, normal, inverted, mixed
+        "outputPolarity": tidy(&dspi_core::output_polarity::output_polarities(&s)),
     })
 }
 
@@ -953,6 +974,25 @@ fn rta_start(core: &DspiCore, p: RtaParams) -> CallResult {
     Ok(Value::Null)
 }
 
+// -- WP GAP2 --
+/// `soloOutput`'s parameters: the output to solo, 0-based.
+#[derive(Deserialize)]
+struct SoloParams {
+    output: u8,
+}
+
+/// `soloOutput`: only `output` plays until `soloEnd` (`DspiCore::solo_output`);
+/// answers as `soloState`.
+fn solo_output(core: &DspiCore, p: SoloParams) -> CallResult {
+    core.solo_output(p.output)?;
+    Ok(solo_state(core))
+}
+
+/// `soloState`: `{output}`, the soloed output (0-based) or null. No I/O.
+fn solo_state(core: &DspiCore) -> Value {
+    json!({ "output": core.solo_state() })
+}
+
 /// `rta_tick`: one turn of the analyser, as its thread takes natively. The
 /// wait before the next, in ms, or null when there is nothing to tick.
 fn rta_tick(core: &DspiCore) -> CallResult {
@@ -1024,6 +1064,10 @@ enum DemoAction {
     /// The device clips on the channels in `mask`: the next meter read
     /// shows it and the event log records it.
     Clip { mask: u32 },
+    // -- WP UB12 --
+    /// "Reset Demo": the demo's own settings again (`reset_demo`); the page
+    /// reads the state after it.
+    Reset,
 }
 
 /// `demo_rename_elsewhere`'s target for the device name (input sources are
@@ -1039,6 +1083,7 @@ fn demo_action(core: &DspiCore, demo: bool, a: DemoAction) -> CallResult {
             core.demo_rename_elsewhere(DEVICE_NAME_TARGET, name)?;
         }
         DemoAction::Clip { mask } => core.demo_clip(mask)?,
+        DemoAction::Reset => core.reset_demo()?, // -- WP UB12 --
     }
     Ok(Value::Null)
 }
@@ -1046,6 +1091,9 @@ fn demo_action(core: &DspiCore, demo: bool, a: DemoAction) -> CallResult {
 // -- WP P1NT --
 #[cfg(test)]
 mod tests_wp_p1nt;
+
+#[cfg(test)]
+mod tests_wp_gap2; // -- WP GAP2 --
 // -- WP P1TK --
 #[cfg(test)]
 mod tests_wp_p1tk;
@@ -1433,6 +1481,32 @@ mod tests {
         session_free(h).unwrap();
     }
 
+    // -- WP UB12 --
+    #[test]
+    fn wp_ub12_the_demo_resets_to_its_example() {
+        guard::reset_for_test();
+        let h = session_new().unwrap();
+        let snap = ok(h, "open", json!({ "kind": "demo" }));
+        let gain = |s: &Value| s["state"]["outputGainDb"][2].as_f64().unwrap();
+        assert_eq!(gain(&snap), -3.0, "the example's tweeter level");
+        let core = core_of(h).unwrap();
+        core.set_output_gain(2, -9.0).unwrap();
+        assert_eq!(gain(&ok(h, "state", Value::Null)), -9.0);
+        assert_eq!(ok(h, "demo", json!({ "action": "reset" })), Value::Null);
+        assert_eq!(gain(&ok(h, "state", Value::Null)), -3.0);
+        assert_eq!(ok(h, "speakerLayout", Value::Null)["confirmedByUser"], true);
+        // Not on a document: only the demo DSPi does that
+        let doc = include_str!("../../../tests/fixtures/preset/k340-bug1.dspipreset");
+        ok(
+            h,
+            "documentOpen",
+            json!({ "text": doc, "fileName": "k340.dspipreset" }),
+        );
+        let r = run(h, "demo", json!({ "action": "reset" }));
+        assert_eq!(r["ok"], false, "{r}");
+        session_free(h).unwrap();
+    }
+
     #[test]
     fn wb3_meters_and_the_analyser_answer_in_the_cores_shapes() {
         guard::reset_for_test();
@@ -1594,8 +1668,9 @@ mod tests {
         let snap = ok(h, "open", json!({ "kind": "demo" }));
         let n = snap["state"]["numOutputChannels"].as_u64().unwrap() as usize;
         assert_eq!(snap["outputLabels"].as_array().unwrap().len(), n);
+        // -- WP UB12 -- the demo's tuned example names its outputs
         assert_eq!(
-            snap["outputLabels"][0]["label"], "Out 1 · L",
+            snap["outputLabels"][0]["label"], "Left woofer",
             "{}",
             snap["outputLabels"]
         );

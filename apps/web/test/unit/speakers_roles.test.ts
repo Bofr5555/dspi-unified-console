@@ -132,7 +132,7 @@ after(() => {
 async function demo(): Promise<{ core: WasmCore; serial: string; outputs: number }> {
   const core = new WasmCore(await loadWasmModule(readFileSync(pageModule)));
   made.push(core);
-  const snap = await core.call("open", { kind: "demo" });
+  const snap = await core.call("open", { kind: "demo", blank: true }); // -- WP UB12 -- a new board
   return { core, serial: snap.device.serial, outputs: snap.state.numOutputChannels };
 }
 

@@ -757,7 +757,7 @@ const chain = async (session: Session) => {
 
 test("P5WAT: on the demo's three-way room: measured, proposed, summed-checked, applied, verified by itself and reverted; again and kept, A/B; unreliable timing withdrawn", { skip, timeout: 900_000 }, async () => {
   const session = await sessionOn();
-  await session.open({ kind: "demo" });
+  await session.open({ kind: "demo", blank: true }); // -- WP UB12 -- a new board
   await threeWay(session);
   const desk = new MeasureDesk(session);
   await desk.start();

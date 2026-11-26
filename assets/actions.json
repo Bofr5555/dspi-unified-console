@@ -185,7 +185,7 @@
     },
     {
       "id": "device.commit",
-      "text": "Commit Parameters…",
+      "text": "Save to Device…",
       "menu": "Device",
       "shortcut": "Ctrl+S",
       "places": [
@@ -206,7 +206,15 @@
       "text": "Factory Reset…",
       "menu": "Device",
       "places": [
-        "save.reset"
+        "device.reset"
+      ]
+    },
+    {
+      "id": "device.resetDemo",
+      "text": "Reset Demo",
+      "menu": "Device",
+      "places": [
+        "palette"
       ]
     },
     {
@@ -352,7 +360,7 @@
     },
     {
       "id": "device.aiAgents",
-      "text": "AI Agents…",
+      "text": "Agent Activity…",
       "menu": "Device",
       "places": [
         "page.settings/aiAgents"
@@ -556,9 +564,34 @@
       ]
     },
     {
+      "id": "window.mode",
+      "text": "Mode…",
+      "menu": "Window",
+      "places": [
+        "appMenu.settings"
+      ]
+    },
+    {
       "id": "help.gettingStarted",
       "text": "Getting Started…",
       "menu": "Help",
+      "places": [
+        "appMenu.help"
+      ]
+    },
+    {
+      "id": "help.manual",
+      "text": "User Manual",
+      "menu": "Help",
+      "places": [
+        "appMenu.help"
+      ]
+    },
+    {
+      "id": "help.shortcuts",
+      "text": "Keyboard Shortcuts",
+      "menu": "Help",
+      "optional": true,
       "places": [
         "appMenu.help"
       ]
@@ -680,6 +713,14 @@
       "id": "channel.mute",
       "text": "Mute",
       "textOn": "Unmute",
+      "places": [
+        "channel.act"
+      ]
+    },
+    {
+      "id": "channel.solo",
+      "text": "Solo",
+      "textOn": "End Solo",
       "places": [
         "channel.act"
       ]
@@ -879,10 +920,13 @@
       ],
       [
         "edit.settings",
+        "window.mode",
         "app.classicLayout"
       ],
       [
         "help.gettingStarted",
+        "help.manual",
+        "help.shortcuts",
         "help.whatsNew",
         "help.projectGithub",
         "help.firmwareGithub",
@@ -904,9 +948,6 @@
       [
         "file.saveMasterVolume",
         "file.saveOutputConfiguration"
-      ],
-      [
-        "device.factoryReset"
       ]
     ],
     "history": [
@@ -926,6 +967,9 @@
         "device.identify",
         "device.firmwareUpdate",
         "device.reconnect"
+      ],
+      [
+        "device.factoryReset"
       ],
       [
         "device.close"
@@ -957,6 +1001,7 @@
       [
         "channel.identify",
         "channel.mute",
+        "channel.solo",
         "channel.routing",
         "channel.headphone"
       ],

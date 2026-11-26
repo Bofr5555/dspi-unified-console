@@ -45,7 +45,13 @@ Item {
     // Classic's selection stays, and shows
     Component.onCompleted: {
         if (SidebarController.selectedChannel >= 0) pages.go("equaliser", "peq")
+        if (SectionTable.homeShown) pages.go("overview", "home")   // -- WP UB2 --
         pages.trail = []
+    }
+    // -- WP UB2 -- (UXP B2, D4) Simple, or the installer's lock, opens on Home
+    Connections {
+        target: SectionTable
+        function onHomeShownChanged() { if (SectionTable.homeShown && !shell.wizard) pages.go("overview", "home") }
     }
     Connections {
         target: SidebarController
@@ -64,12 +70,93 @@ Item {
         window: shell.mainWindow
     }
 
+    // -- WP UA5 -- F6 and Shift+F6: the next or previous area that can take the
+    // focus, in the order top bar (and status strip), sections, page (its tabs,
+    // then the page), inspector, dock. The sections give the focus to the one on
+    // show; another area to its first control. Ctrl+/ (and help.shortcuts) shows
+    // every key.
+    function areaOf(item) {
+        for (let i = item; i; i = i.parent) {
+            if (i.objectName === "Inspector") return "inspector"
+            if (i === top || i === strip || i === deviceBar) return "top"
+            if (i === rail || i === railTabs) return "rail"
+            if (i === tabs || i === pages) return "page"
+            if (i === dock) return "dock"
+        }
+        return ""
+    }
+    // The first control of `item` that takes the focus by Tab, depth first in
+    // the order of its children (the Tab order); `skip` an item to leave out
+    function firstStop(item, skip) {
+        if (!item || !item.visible || !item.enabled || item === skip) return null
+        if (item.activeFocusOnTab && item.width > 0 && item.height > 0) return item
+        for (const child of item.children) {
+            const found = firstStop(child, skip)
+            if (found) return found
+        }
+        return null
+    }
+    // The inspector on show: the page's item named Inspector that is open
+    function openInspector(item) {
+        if (!item || !item.visible) return null
+        if (item.objectName === "Inspector") return item.open ? item : null
+        for (const child of item.children) {
+            const found = openInspector(child)
+            if (found) return found
+        }
+        return null
+    }
+    function focusArea(area) {
+        let stop = null
+        if (area === "top") stop = firstStop(deviceBar) || firstStop(top) || firstStop(strip)
+        else if (area === "rail") return (rail.visible && rail.focusCurrent()) || (railTabs.visible && railTabs.focusCurrent())
+        else if (area === "page") {
+            const inspector = openInspector(pages)
+            stop = firstStop(tabs) || firstStop(pages, inspector)
+        } else if (area === "inspector") stop = firstStop(openInspector(pages))
+        else if (area === "dock") stop = firstStop(dock)
+        if (!stop) return false
+        stop.forceActiveFocus(Qt.TabFocusReason)
+        return stop.activeFocus
+    }
+    function cycleAreas(step) {
+        const areas = ["top", "rail", "page", "inspector", "dock"]
+        const now = areas.indexOf(areaOf(shell.mainWindow.activeFocusItem))
+        let at = now < 0 ? (step > 0 ? -1 : 0) : now
+        for (let i = 0; i < areas.length; ++i) {
+            at = (at + step + areas.length) % areas.length
+            if (focusArea(areas[at])) return
+        }
+    }
+    Shortcut {
+        sequences: ["F6"]
+        context: Qt.WindowShortcut
+        enabled: !shell.wizard
+        onActivated: shell.cycleAreas(1)
+    }
+    Shortcut {
+        sequences: ["Shift+F6"]
+        context: Qt.WindowShortcut
+        enabled: !shell.wizard
+        onActivated: shell.cycleAreas(-1)
+    }
+    Shortcut {
+        sequences: ["Ctrl+/"]
+        context: Qt.WindowShortcut
+        onActivated: keyList.open()
+    }
+    Connections {
+        target: SettingsController
+        function onShortcutsRequested() { keyList.open() }
+    }
+
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
 
         // ---- The device tabs of several devices
         Rectangle {
+            id: deviceBar   // -- WP UA5 --
             Layout.fillWidth: true
             visible: shell.deviceRow
             implicitHeight: 38
@@ -93,6 +180,7 @@ Item {
             onSearchRequested: PaletteController.open()   // -- WP LAY6 --
         }
         NavRail {
+            id: railTabs   // -- WP UA5 --
             Layout.fillWidth: true
             visible: shell.topTabs && !shell.wizard
             objectName: "NavTabs"
@@ -101,6 +189,7 @@ Item {
             onChosen: section => pages.go(section, "")
         }
         StatusStrip {
+            id: strip   // -- WP UA5 --
             Layout.fillWidth: true
         }
 
@@ -110,6 +199,7 @@ Item {
             spacing: 0
 
             NavRail {
+                id: rail   // -- WP UA5 --
                 Layout.fillHeight: true
                 visible: !shell.topTabs && !shell.wizard
                 current: pages.section
@@ -128,12 +218,25 @@ Item {
                 visible: !shell.wizard
                 spacing: 0
                 PageTabs {
+                    id: tabs   // -- WP UA5 --
                     Layout.fillWidth: true
                     visible: !shell.senderPage
                     section: pages.section
                     tab: pages.tab
                     pills: shell.topTabs
                     onChosen: tab => pages.go(pages.section, tab)
+                }
+                // -- WP UB2 -- (UXP B2) a page the installer's lock shows read-only says so once
+                NoticeRow {
+                    objectName: "ModernShell.lockRead"
+                    Layout.fillWidth: true
+                    Layout.leftMargin: Theme.spacing
+                    Layout.rightMargin: Theme.spacing
+                    visible: pages.lockRead && !shell.senderPage
+                    iconName: "lock"
+                    text: qsTr("Locked by the installer: this page is shown read-only. Volume, mute and presets are on Home.")
+                    actionText: qsTr("Go to Home")
+                    onAction: pages.go("overview", "home")
                 }
                 Item {
                     Layout.fillWidth: true
@@ -202,6 +305,11 @@ Item {
     }
     PresetDialogs {
         id: presetDialogs
+    }
+    // -- WP UA5 -- every key (Ctrl+/, help.shortcuts)
+    ShortcutsDialog {
+        id: keyList
+        parent: Overlay.overlay
     }
     // -- WP LAY6 -- Ctrl+K and the top bar's search (PaletteController.opening)
     CommandPalette {

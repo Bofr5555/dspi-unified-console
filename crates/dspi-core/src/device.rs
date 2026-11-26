@@ -287,7 +287,9 @@ impl DspiCore {
             inner.state = state::default_state();
             inner.cs = crate::cs::CsState::default();
             let worker = rta::take_worker(&mut inner);
-            (inner.conn.take(), worker)
+            let old = inner.conn.take();
+            crate::solo::remember_lost(&mut inner, old.as_ref()); // -- FIX016 -- (REVG F3)
+            (old, worker)
         };
         drop(self.set_meter_path(None)); // -- WP LK2 --
         if let Some(conn) = &old {
@@ -500,6 +502,7 @@ impl DspiCore {
     /// reconnects (WP C1b). Blocks until the notification reader has stopped
     /// (at most about a quarter of a second).
     pub fn disconnect(&self) {
+        let _ = self.solo_end(); // -- WP GAP2 -- the solo's mutes go back first
         self.close_connection()
     }
 
@@ -538,15 +541,28 @@ impl DspiCore {
 
     /// Open the built-in demo device (`dspi_transport::FakeDevice::demo`):
     /// a simulated RP2350 that answers reads and writes and notifies.
-    /// Replaces any open device.
+    /// It runs a tuned example (a stereo two-way on outputs 1-4, LR4 at
+    /// 2.2 kHz, a few cuts, named outputs) with its roles confirmed: the
+    /// speaker layout kept for the demo's serial becomes the example's.
+    /// [`DspiCore::open_demo_blank`] opens the capture as it is. Replaces any
+    /// open device.
+    // -- WP UB12 -- the tuned example (`demo_example`)
     pub fn open_demo(&self) -> Result<()> {
         // -- WP FUNC1 -- the function test's next device
         #[cfg(feature = "sim-scenario")]
-        let demo = crate::measure_sim::scenario::next_demo().unwrap_or_else(FakeDevice::demo);
-        #[cfg(not(feature = "sim-scenario"))]
-        let demo = FakeDevice::demo();
+        if let Some(demo) = crate::measure_sim::scenario::next_demo() {
+            let serial = demo.descriptor().serial.clone();
+            return self.attach_probed(Box::new(demo), serial, 0);
+        }
+        let demo = crate::demo_example::device();
         let serial = demo.descriptor().serial.clone();
-        self.attach_probed(Box::new(demo), serial, 0)
+        self.attach_probed(Box::new(demo), serial, 0)?;
+        self.demo_baseline();
+        // The device is open whatever becomes of its roles' file
+        if let Err(e) = self.keep_demo_layout() {
+            log::warn!("the demo's speaker layout could not be kept: {e}");
+        }
+        Ok(())
     }
 
     /// Open a DSPi through the USB MIDI control channel (Android

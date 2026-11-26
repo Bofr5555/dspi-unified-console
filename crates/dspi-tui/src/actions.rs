@@ -1394,7 +1394,7 @@ pub fn import_options_dialog(doc: &preset_file::PresetDocument, state: &DeviceSt
 // Tools
 // ---------------------------------------------------------------------------
 
-/// Commit Parameters: the Console's confirm, naming the slot.
+/// Save to Device (the Console's Commit Parameters): its confirm, naming the slot.
 pub fn commit_dialog(slot: u8) -> Dialog {
     Dialog::confirm(
         "Save Preset",
@@ -1415,7 +1415,7 @@ pub fn factory_reset_dialog() -> Dialog {
     Dialog::confirm(
         "Factory Reset",
         "Do you wish to clear all active parameters?\n\nThis will not overwrite your saved \
-         parameters unless you run 'Commit Parameters'.",
+         parameters unless you run 'Save to Device'.",
         vec![Button::destructive("Reset"), Button::new("Cancel")],
     )
     .critical()
@@ -1981,7 +1981,7 @@ mod tests {
         assert_eq!(
             r.body,
             "Do you wish to clear all active parameters?\n\nThis will not overwrite your saved \
-             parameters unless you run 'Commit Parameters'."
+             parameters unless you run 'Save to Device'."
         );
         let f = firmware_dialog();
         assert!(f.critical);

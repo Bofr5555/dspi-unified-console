@@ -370,7 +370,10 @@ void aivisSection(SmokeDriver &d) {
     d.check("aivis: the agent hears paused, not an error",
             !r.value(QLatin1String("isError")).toBool(true)
                 && r.value(QLatin1String("structuredContent")).toObject().value(QLatin1String("status")).toString() == QLatin1String("paused"));
-    d.check("aivis: the strip stays while they are paused", d.waitFor(2000, [&] { return s.strip().contains(QLatin1String("paused")); })
+    // -- FIX016 -- (R1-QT) the refusal just above is said first for kRefusalMs: under
+    // a loaded CI it was still there after 2 s (part-3 failed it twice in five runs)
+    d.check("aivis: the strip stays while they are paused",
+            d.waitFor(AiController::kRefusalMs + 2000, [&] { return s.strip().contains(QLatin1String("paused")); })
             && textOf(s.item(QStringLiteral("AiWorkBanner.pause"))) == QLatin1String("Resume"));
     d.grab(d.mainWindow(), QStringLiteral("aivis-paused.png"));
     if (trayPause) trayPause->trigger();
@@ -436,8 +439,12 @@ void aivisSection(SmokeDriver &d) {
     s.ok("dspi_get_overview");
     d.waitFor(1000, [&] { return !s.strip().isEmpty(); });
     d.check("aivis: a while after the last call it no longer counts as working",
-            d.waitFor(AiController::kWorkingMs + 3000, [&] { return !ai->working(); }) && s.strip().contains(QLatin1String("Last")));
-    d.check("aivis: and then the strip goes", d.waitFor(AiController::kLingerMs, [&] { return s.strip().isEmpty(); }));
+            d.waitFor(AiController::kWorkingMs + 3000, [&] { return !ai->working(); })
+                && (s.strip().contains(QLatin1String("Last")) || s.strip().contains(QLatin1String("not saved yet"))));   // -- WP UB5 --
+    // -- WP UB5 -- (UXP B5) or says what the agent's changes left unsaved, until the device is saved
+    d.check("aivis: and then the strip goes", d.waitFor(AiController::kLingerMs, [&] {
+        return s.strip().isEmpty() || s.strip().contains(QLatin1String("not saved yet"));
+    }));
     s.ok("dspi_get_overview");
     d.waitFor(1000, [&] { return !s.strip().isEmpty(); });
     d.check("aivis: Stop on the strip turns agents off", click(s.item(QStringLiteral("AiWorkBanner.stop")))

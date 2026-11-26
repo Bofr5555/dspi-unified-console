@@ -37,7 +37,7 @@
 # Logs, summary.txt and summary.md: $DSPI_BUILD_CACHE/work/ci-full/<commit>-<time>/
 # (never tmpfs). qt-packages builds from a commit: run it on a clean tree; its
 # files end up in that directory too (release-<version>-ci), never in
-# work/release-<version>, and it will not run while that folder exists.
+# work/release-<version>; it builds in work/release-ci-<branch>/ (-- INT016 --).
 set -uo pipefail
 cd "$(dirname "$0")/.."
 B=${DSPI_BUILD_CACHE:-$HOME/.cache/dspi-build}
@@ -85,19 +85,19 @@ export DSPI_TEST_PAR=${DSPI_TEST_PAR:-2} DSPI_SMOKE_SHARDS=${DSPI_SMOKE_SHARDS:-
 started=$(date +%s)
 echo "full.sh: commit $commit, $max lanes at once, DSPI_JOBS $jobs per lane (proptest $((jobs * 2))), DSPI_TEST_PAR $DSPI_TEST_PAR, DSPI_SMOKE_SHARDS $DSPI_SMOKE_SHARDS, one at a time: ${solo:-none}; logs $out" | tee "$sum"
 
-# qt-packages: build-release.sh empties and fills work/release-<version>, the
-# release folder's name. A folder already there is never touched (the step
-# fails instead); the one this run makes moves into the run's directory.
+# qt-packages: build-release.sh empties and fills its own folder, the one this
+# run makes moves into the run's directory. -- INT016 -- Folder and scratch are
+# this worktree's (work/release-ci-<branch>/), never a release's
+# work/release-<version> or work/release-build, so two worktrees' runs at once
+# and a release beside them share nothing.
 qt_packages() {
-  local v
+  local v ci=$B/work/release-ci-$branch
   v=$(sed -n 's/^project(uconsole-for-dspi VERSION \([0-9.]*\).*/\1/p' apps/desktop/qt/CMakeLists.txt)
-  if [ -e "$B/work/release-$v" ]; then
-    echo "full.sh: $B/work/release-$v is there (a release's files?); move it away to run qt-packages" >&2
-    return 1
-  fi
-  DSPI_RELEASE_JOBS=${DSPI_RELEASE_JOBS:-3} ci/release-desktop.sh --test
+  rm -rf "$ci/release-$v" "$ci/release-$v-test"
+  DSPI_RELEASE_SCRATCH=$ci/build DSPI_RELEASE_DIR=$ci/release-$v \
+    DSPI_RELEASE_JOBS=${DSPI_RELEASE_JOBS:-3} ci/release-desktop.sh --test
   local rc=$?
-  [ ! -d "$B/work/release-$v" ] || mv "$B/work/release-$v" "$out/release-$v-ci"
+  [ ! -d "$ci/release-$v" ] || mv "$ci/release-$v" "$out/release-$v-ci"
   return "$rc"
 }
 

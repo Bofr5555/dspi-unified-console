@@ -1439,9 +1439,10 @@ pub fn enum_value_label(cx: &dyn CsContext, cs: &CsData, n: u8, value: i32) -> S
             }
         }
         // PEQ passes read as cuts (`DSPi_ConsoleApp.swift:7426-7428`).
+        // -- INT016 -- (A10 one filter vocabulary) Bell, as every screen says
         noun::FILTER_TYPE => [
             "Flat",
-            "Peaking",
+            "Bell",
             "Low Shelf",
             "High Shelf",
             "High Cut",

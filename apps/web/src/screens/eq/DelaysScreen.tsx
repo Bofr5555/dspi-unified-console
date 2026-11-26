@@ -7,6 +7,11 @@
 // -- WP WEB3 -- (DL8 on the web) Qt's Delay & Gain: a §9 table (caps header over one rule, striped
 // 28 px rows), each output's pill and name, its ON switch (`out.enable`, with the PDM question),
 // mono right-aligned fields, the arrival bar, the mute icon and the limiter; Qt's help sentence.
+//
+// -- WP GAP1 -- Qt's Polarity column (EqualiserDelayRow's flip): Normal, Inverted, Mixed from the
+// routes that feed the output (the core's, in the snapshot); a click inverts a normal output and
+// makes an inverted or mixed one normal, on every feeding route in one undo step. A dash, and no
+// click, while no input feeds it.
 
 import { useEffect, useState } from "preact/hooks";
 import { useSessionState } from "../../ui/components";
@@ -20,6 +25,7 @@ import { EmptyState, Glyph, Switch } from "../../ui/design"; // -- WP WEB -- -- 
 import { Pill } from "../../ui/Pill"; // -- WP WEB3 --
 import { toggleOutput } from "../outputs/enable"; // -- WP WEB3 --
 import "./eq.css"; // -- WP WEB3 --
+import { flipTo, polarityOf, polarityText, setOutputPolarity } from "../outputs/polarity"; // -- WP GAP1 --
 
 const DEFAULT_GAIN: [number, number] = [-60, 20];
 const DEFAULT_DELAY: [number, number] = [0, 21];
@@ -64,6 +70,7 @@ export function DelaysScreen(props: ScreenProps) {
               <th scope="col" class="c-arrival">
                 Arrival
               </th>
+              <th scope="col">Polarity</th>
               <th scope="col">Mute</th>
               {limiter ? <th scope="col">Limiter</th> : null}
             </tr>
@@ -116,6 +123,27 @@ export function DelaysScreen(props: ScreenProps) {
                     >
                       <span style={{ width: `${(bars[i]! * 100).toFixed(1)}%`, background: channelColour(s, r.wire) }} />
                     </span>
+                  </td>
+                  {/* -- WP GAP1 -- */}
+                  <td>
+                    {(() => {
+                      const pol = polarityOf(snap, o);
+                      return (
+                        <button
+                          type="button"
+                          class="eq-polarity"
+                          data-polarity={pol}
+                          aria-pressed={pol === "inverted" || pol === "mixed"}
+                          aria-label={`Invert ${who}`}
+                          aria-description={polarityText(pol)}
+                          title={pol === "none" ? `No input is connected to ${who}` : `Invert ${who}`}
+                          disabled={ro || pol === "none"}
+                          onClick={() => void setOutputPolarity(session, o, flipTo(pol))}
+                        >
+                          {polarityText(pol)}
+                        </button>
+                      );
+                    })()}
                   </td>
                   <td>
                     <button

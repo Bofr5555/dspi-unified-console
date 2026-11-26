@@ -28,6 +28,9 @@ Shell::Shell(QQmlEngine *engine, QObject *parent) : QObject(parent), m_engine(en
                [this]() { openUrl(AppIdentity::projectUrl()); });
     addHandler(QStringLiteral("help.firmwareGithub"), this,
                [this]() { openUrl(AppIdentity::firmwareUrl()); });
+    // -- WP UFW -- (UXP A8) Help › User Manual: the manuals' index on the project's page
+    addHandler(QStringLiteral("help.manual"), this,
+               [this]() { openUrl(AppIdentity::projectUrl() + QStringLiteral("/blob/main/docs/manual/README.md")); });
 }
 
 Shell::~Shell() {

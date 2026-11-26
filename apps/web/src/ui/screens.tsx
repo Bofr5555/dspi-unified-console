@@ -21,7 +21,7 @@ import { Dialog } from "../screens/main/Dialog";
 import { MainScreen } from "../screens/main/MainScreen";
 // -- WP WB6c --
 import { MatrixScreen } from "../screens/matrix/MatrixScreen";
-import { PRESET_SLOTS, changeSummary } from "../screens/main/model";
+import { PRESET_SLOTS, changeSummary, occupied, presetLabel } from "../screens/main/model"; // -- WP UWN -- occupied, presetLabel
 import type { Session } from "./session";
 // -- WP SW3 -- the System view (WB6d), the scene bar (WB6e), the status rail (WB6f)
 import { safeLocalStorage } from "../fleet/local";
@@ -42,7 +42,7 @@ import { SnapshotsScreen } from "../screens/snapshots/SnapshotsScreen";
 import { FilesScreen } from "../screens/files/FilesScreen";
 import { useConsoleKeys, type ConsoleKey } from "./keys";
 // -- WP P1WB2 -- the Installer page, the lock, the mode from the core's manifest
-import type { ModeChoice, ModeManifest } from "../core/protocol";
+import type { DspState, ModeChoice, ModeManifest } from "../core/protocol"; // -- WP UWN -- DspState
 import { InstallerScreen } from "../screens/installer/InstallerScreen";
 import { LockedBanner, UnlockDialog } from "../screens/installer/Unlock";
 import { RecoveryCode } from "../screens/installer/HubAdmin"; // -- WP HUBADMIN --
@@ -61,7 +61,7 @@ import { AnalyserScreen, GeneratorScreen, MonitorScreen, StatsScreen } from "../
 
 // -- WP WB6L -- the control-surface editor, the quick strip, the app shortcuts
 // -- WP WEB7 -- the editor is Settings › Control (screens/settings), no screen of its own
-import { QuickStrip, ShortcutsDialog, useAppShortcuts } from "../screens/shortcuts/Shortcuts";
+import { ShortcutsDialog, useAppShortcuts } from "../screens/shortcuts/Shortcuts"; // -- WP UWN -- (UXP C7) no quick strip
 import type { OpenAction, ShortcutRow } from "../screens/shortcuts/table";
 // -- WP WBCLIP -- the channel clipboard's keys
 import { channelClipboard, clipKey } from "../screens/clipboard/model";
@@ -83,6 +83,7 @@ import { HistoryScreen } from "../screens/history/HistoryScreen"; // -- WP WEBM3
 // -- WP WEB7 -- Library's Presets and AutoEQ tabs (Qt's LibraryPresets, AutoEqPanel)
 import { PresetsScreen } from "../screens/presets/PresetsScreen";
 import { AutoEqScreen } from "../screens/autoeq/AutoEqScreen";
+import { HomeScreen } from "../screens/home/HomeScreen"; // -- WP UB2 -- (UXP B2) the remote
 
 // -- WP WEBM1 -- the Modern shell
 import { Frame } from "./shell/Frame";
@@ -131,6 +132,11 @@ export interface ScreenProps {
   // -- WP P2WB1 --
   /** The session's hub: its devices, health and alarms (the hub screen). */
   hub?: HubFeed;
+  // -- WP UB2 --
+  /** The session's health, for Home's one line. */
+  health?: HealthFeed;
+  /** The locked-user state (the installer's lock): Home leaves out what the lock refuses. */
+  locked?: boolean;
 }
 
 export interface ScreenDef {
@@ -140,6 +146,7 @@ export interface ScreenDef {
 }
 
 export const SCREENS: ScreenDef[] = [
+  { id: "home", label: "Home", View: HomeScreen }, // -- WP UB2 -- (UXP B2) Simple's first page, the locked user's only one
   { id: "main", label: "Dashboard", View: MainScreen },
   // -- WP WB6b --
   { id: "eq", label: "PEQ", View: EqScreen }, // -- WP WEBM2 -- the Equaliser's PEQ tab (MODLAY 2)
@@ -197,9 +204,11 @@ const TOOLS = new Set(["generator", "analyser", "stats", "monitor", "measure" /*
  */
 export function screensFor(mode: Mode, installation: boolean): ScreenDef[] {
   // -- WP WB8 -- the event log last, in Advanced and Installer
-  const today = SCREENS.filter((x) => x.id !== "system" && !isSystemPage(x.id) /* -- WP WEB7 -- */ && x.id !== "events" && x.id !== "installer" && !TOOLS.has(x.id) && x.id !== "settings"); // -- WP WB6J -- tools -- WP WB6I -- settings
+  // -- WP UB2 -- (UXP B2, D4) Home, the remote, is Simple's first page (and the locked user's only one), in no other mode
+  const home = SCREENS.filter((x) => x.id === "home");
+  const today = SCREENS.filter((x) => x.id !== "home" && x.id !== "system" && !isSystemPage(x.id) /* -- WP WEB7 -- */ && x.id !== "events" && x.id !== "installer" && !TOOLS.has(x.id) && x.id !== "settings"); // -- WP WB6J -- tools -- WP WB6I -- settings
   const settings = SCREENS.filter((x) => x.id === "settings"); // -- WP WB6I -- last, in every mode
-  if (mode === "simple") return [...today.filter((x) => !SETUP.has(x.id)), ...settings]; // -- WP P1WB1 -- -- WP WB6I -- settings
+  if (mode === "simple") return [...home, ...today.filter((x) => !SETUP.has(x.id)), ...settings]; // -- WP UB2 -- home // -- WP P1WB1 -- -- WP WB6I -- settings
   const tools = SCREENS.filter((x) => TOOLS.has(x.id)); // -- WP WB6J --
   const system = SCREENS.find((x) => x.id === "system")!;
   const systemTabs = SCREENS.filter((x) => isSystemPage(x.id)); // -- WP WEB7 --
@@ -210,9 +219,9 @@ export function screensFor(mode: Mode, installation: boolean): ScreenDef[] {
 }
 
 // -- WP P1WB2 --
-/** The locked-user state's screens: the front page alone (the manifest's `lockedUser.screens`). */
+/** The locked-user state's screens: the front page alone (the manifest's `lockedUser.screens`). -- WP UB2 -- Home, the remote */
 export function lockedScreens(): ScreenDef[] {
-  return SCREENS.filter((x) => x.id === "main");
+  return SCREENS.filter((x) => x.id === "home");
 }
 
 // -- WP P2WB1 --
@@ -299,6 +308,11 @@ export function Screens(props: {
   const modes = (manifest?.modes ?? []).filter((m) => isMode(m.id)).map((m) => ({ id: m.id as Mode, label: m.label }));
   const [unlocking, setUnlocking] = useState(false);
   const hubCaps = useHubCaps(session, st.link?.phase ?? "").caps; // -- WP P2WB2 --
+  // -- WP UWN -- (UXP A15) where this device is, for its tab: the hub's location for it, its unit's name on the audio link
+  const here = st.snapshot?.device.serial ?? "";
+  const location = (here && hubView?.devices.find((d) => d.serial === here)?.location) || "";
+  const unit = (here && feed.kind === "hub" && feed.model?.units.find((u) => u.serial === here)?.name) || "";
+  useEffect(() => session.setPlace({ location, unit }), [session, location, unit]);
   const shown = lockedUser ? lockedScreens() : withDeviceScreen(withHubSettings(withHubScreen(screensFor(mode, feed.kind === "hub"), mode, hubScreenShown(hubView?.caps ?? null)), mode, hubSettingsShown(hubCaps), HUB_SETTINGS_DEF)); // -- WP P2WB1 -- the hub screen; -- WP P2WB2 -- withHubSettings; -- WP PGWEB -- withDeviceScreen
   // -- WP WEBM1 -- the page is the session's, not the view's; the devices' page is the shell's
   const place = useMemo(() => placeOf(session), [session]);
@@ -468,6 +482,7 @@ export function Screens(props: {
   // -- WP WEBM1 -- the scenes and the preset slots are the Overview's and their own pages' (the bar's picker recalls on every page)
   const section = sectionOf(page);
   const pro = mode !== "simple" && !lockedUser;
+  const away = session.away; // -- WP UWN -- (UXP A16)
   return (
     <Frame
       root={root}
@@ -504,12 +519,7 @@ export function Screens(props: {
       page={page}
       last={place.last}
       onPage={setCurrent}
-      tools={
-        // -- WP WB6L -- the quick strip (M60); -- WP WEBM1 -- the Overview's: the sections reach the rest from every page
-        section === "overview" && !lockedUser ? (
-          <QuickStrip session={session} screens={shownIds} current={screen.id} open={openScreen} leave={() => setCurrent(shown[0]!.id)} onHelp={() => setShortcutsOpen(true)} />
-        ) : null
-      }
+      // -- WP UWN -- (UXP C7) no quick strip: its nine icons' pages are the rail's and the palette's, as on Qt's Overview
       foot={
         // -- WP SW3 -- the status rail, below the screen as a status bar
         <StatusRail
@@ -528,7 +538,12 @@ export function Screens(props: {
           <HealthRail session={session} feed={health} />
         </StatusRail>
       }
-      dock={<Dock session={session} state={st} locked={lockedUser} meters={props.meters} load={<CoreLoad feed={health} /> /* -- WP REVEFIX -- */} />}
+      dock={
+        // -- WP UWN -- (UXP A16) the link away: nothing here writes (the strip says why), as the hub page fences itself
+        <fieldset class="link-fence" disabled={away}>
+          <Dock session={session} state={st} locked={lockedUser} simple={mode === "simple" || lockedUser /* -- WP UB2 -- */} meters={props.meters} load={<CoreLoad feed={health} /> /* -- WP REVEFIX -- */} />
+        </fieldset>
+      }
     >
       {/* -- WP SW3 -- on an installation, the scene bar */}
       {pro && (section === "overview" || section === "system") ? <SceneBar feed={system} session={session} ask={ask} /> : null}
@@ -536,7 +551,10 @@ export function Screens(props: {
       {page === CONNECT ? (
         shell.connect
       ) : (
-        <screen.View key={`${screen.id}:${jump}` /* -- WP WEBM4 -- */} session={session} ask={ask} unsaved={unsaved} system={system} mode={mode} desk={desk} open={openAt} target={target} hub={hub} /* -- WP P2WB1 -- */ go={setCurrent} /* -- WP INTD -- */ />
+        // -- WP UWN -- (UXP A16) fenced while the link is away; the fieldset is always there, so a screen keeps its state
+        <fieldset class="link-fence" disabled={away} aria-disabled={away || undefined} title={away ? "The DSPi is not reached now: nothing can be changed until the link is back" : undefined}>
+          <screen.View key={`${screen.id}:${jump}` /* -- WP WEBM4 -- */} session={session} ask={ask} unsaved={unsaved} system={system} mode={mode} desk={desk} open={openAt} target={target} hub={hub} /* -- WP P2WB1 -- */ go={setCurrent} /* -- WP INTD -- */ health={health} locked={lockedUser} /* -- WP UB2 -- */ />
+        </fieldset>
       )}
       {shortcutsOpen ? <ShortcutsDialog screens={shownIds} onClose={() => setShortcutsOpen(false)} /> : null}
       {question ? (
@@ -550,6 +568,14 @@ export function Screens(props: {
       ) : null}
     </Frame>
   );
+}
+
+// -- WP UWN -- (UXP A17)
+/** Save to Device's question: the preset it writes, by its name ("Save the current settings to preset 1: Demo?"). */
+export function saveQuestion(s: Pick<DspState, "activePresetSlot" | "presetNames" | "presetOccupied">): string {
+  const slot = s.activePresetSlot;
+  const which = occupied(s, slot) ? presetLabel(s, slot) : `${slot + 1}, empty until now`;
+  return `Save the current settings to preset ${which}?`;
 }
 
 // -- WP P1WB1 --
@@ -574,7 +600,8 @@ export async function runKey(k: ConsoleKey, session: Session, desk: SnapshotDesk
       return;
     }
     case "commit":
-      if (await confirm("Save Preset", `Save current parameters to preset slot ${st.activePresetSlot + 1}?`, "Save")) await session.savePreset(st.activePresetSlot);
+      // -- WP UWN -- (UXP A17, D1) the button's words for the title, and the preset by its name
+      if (await confirm("Save to Device", saveQuestion(st), "Save")) await session.savePreset(st.activePresetSlot);
       return;
     case "revert":
       if (await confirm("Revert to Saved", "Revert to last saved parameters? Current unsaved changes will be lost.", "Revert"))

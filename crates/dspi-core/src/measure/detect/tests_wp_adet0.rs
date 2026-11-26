@@ -867,7 +867,7 @@ fn unwired() -> Driver {
 /// crossovers and the given drivers in the room, the others off.
 fn demo(drivers: Vec<Driver>) -> Arc<DspiCore> {
     let core = DspiCore::new();
-    core.open_demo().unwrap();
+    core.open_demo_blank().unwrap(); // -- WP UB12 --
     core.fetch_all().unwrap();
     core.set_user_volume(-20.0).unwrap();
     let s = core.get_state();
