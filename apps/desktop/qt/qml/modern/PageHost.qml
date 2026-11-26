@@ -47,6 +47,9 @@ Item {
         return sectionId.length > 0
     }
     readonly property bool noDevice: !DeviceModel.connected && needsDevice(section, tab)
+    // -- WP UB2 -- (UXP B2, D4) the page on show is read-only under the installer's lock:
+    // its controls are off (it still scrolls), its tools too; the shell says why
+    readonly property bool lockRead: LimitsController.locked && DeviceModel.connected && !SectionTable.lockFree(section, tab)
     // -- WP DL3b -- A panel's own buttons for the row over its page (its
     // `pageTools`, a Component), PageTabs shows them beside the section's
     property Component pageTools: null
@@ -179,6 +182,8 @@ Item {
                                          && pageHost.needsDevice(entry.section, entry.tab)
         readonly property bool shown: current && pageHost !== null && pageHost.onScreen && !inWindow && !noDevice
         readonly property bool locked: action.length > 0 && DeviceInfoController.sender && !DeviceInfoController.senderKeeps(action)
+        // -- WP UB2 -- read-only under the installer's lock (PageHost.lockRead)
+        readonly property bool lockRead: entry !== null && LimitsController.locked && !SectionTable.lockFree(entry.section, entry.tab)
 
         // -- WP LAY5b -- Which of its panel's parts; kept while the page is not current
         readonly property string wanted: current && pageHost.entry ? pageHost.entry.part : ""
@@ -229,7 +234,7 @@ Item {
                     width: Math.min(scroll.contentWidth, most)
                     height: scroll.contentHeight
                     visible: !page.inWindow
-                    enabled: !page.locked
+                    enabled: !page.locked && !page.lockRead   // -- WP UB2 --
                     Component.onCompleted: {
                         const type = page.row ? page.row.panel : page.entry ? page.entry.content : ""
                         if (!type.length) return
@@ -267,7 +272,7 @@ Item {
                 anchors.right: parent.right
                 width: item ? item.implicitWidth : 0
                 height: parent.height
-                enabled: !page.locked
+                enabled: !page.locked && !page.lockRead   // -- WP UB2 --
                 visible: !page.noDevice   // -- WP DL4 --
                 active: type.length > 0
                 Component.onCompleted: if (type.length) sourceComponent = Qt.createComponent("UConsole", type)

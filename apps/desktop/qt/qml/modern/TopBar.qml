@@ -283,6 +283,7 @@ Rectangle {
         // -- WP LAY3b -- Undo ▾: what was changed last, and History
         SplitButton {
             objectName: "TopBar.undo"
+            visible: !LimitsController.locked   // -- WP UB2 -- (UXP B2) the lock refuses an undo, and there is nothing to save
             window: bar.window
             action: "edit.undo"
             place: "history"
@@ -299,6 +300,7 @@ Rectangle {
         }
         IconButton {
             objectName: "TopBar.redo"
+            visible: !LimitsController.locked   // -- WP UB2 --
             iconName: "redo-2"
             toolTip: MenuTable.textOf("edit.redo", false)
             enabled: HistoryController.canRedo && MenuTable.available("edit.redo")
@@ -307,7 +309,7 @@ Rectangle {
         SplitButton {
             id: save
             objectName: "TopBar.save"
-            visible: !DeviceInfoController.sender
+            visible: !DeviceInfoController.sender && !LimitsController.locked   // -- WP UB2 --
             window: bar.window
             action: "device.commit"
             place: "save"   // -- WP LAY3b --

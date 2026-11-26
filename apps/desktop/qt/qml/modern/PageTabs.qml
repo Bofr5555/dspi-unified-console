@@ -23,6 +23,8 @@ Item {
     readonly property string action: entry && entry.row ? entry.row.action : ""
     // -- WP DL4 -- the page shows the host's "No device": its tools are off
     readonly property bool noDevice: Shell.pageHost !== null && Shell.pageHost.noDevice === true
+    // -- WP UB2 -- a page read-only under the installer's lock: its tools are off too
+    readonly property bool lockRead: Shell.pageHost !== null && Shell.pageHost.lockRead === true
     signal chosen(string tab)
 
     implicitHeight: 38
@@ -173,7 +175,7 @@ Item {
         Loader {
             objectName: "PageTabs.panelTools"
             visible: active
-            enabled: !bar.noDevice   // -- WP DL4 --
+            enabled: !bar.noDevice && !bar.lockRead   // -- WP DL4 -- -- WP UB2 --
             active: Shell.pageHost !== null && Shell.pageHost.pageTools !== null && Shell.pageHost.pageTools !== undefined
             sourceComponent: active ? Shell.pageHost.pageTools : null
         }
@@ -182,7 +184,7 @@ Item {
             objectName: "PageTabs.tools"
             readonly property string type: bar.entry && bar.entry.tools ? bar.entry.tools : ""
             visible: active
-            enabled: !bar.noDevice   // -- WP DL4 --
+            enabled: !bar.noDevice && !bar.lockRead   // -- WP DL4 -- -- WP UB2 --
             active: type.length > 0
             sourceComponent: active ? Qt.createComponent("UConsole", type) : null
         }
