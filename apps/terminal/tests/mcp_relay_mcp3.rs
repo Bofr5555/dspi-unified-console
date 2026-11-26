@@ -47,7 +47,8 @@ fn relay(port: u16, config: &PathBuf, lines: &[Value]) -> (Vec<Value>, Vec<Value
         stdin.flush().unwrap();
         if l.get("id").is_some() {
             loop {
-                let line: Value = serde_json::from_str(&lines_out.next().unwrap().unwrap()).unwrap();
+                let line: Value =
+                    serde_json::from_str(&lines_out.next().unwrap().unwrap()).unwrap();
                 if line.get("id").is_some() {
                     replies.push(line);
                     break;
@@ -59,7 +60,11 @@ fn relay(port: u16, config: &PathBuf, lines: &[Value]) -> (Vec<Value>, Vec<Value
     drop(stdin);
     let out = child.wait_with_output().unwrap();
     assert!(out.status.success(), "{:?}", out.status);
-    (replies, notices, String::from_utf8_lossy(&out.stderr).into_owned())
+    (
+        replies,
+        notices,
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    )
 }
 
 #[test]
@@ -126,8 +131,12 @@ fn wp_mcp3_uconsole_mcp_relays_an_agent_to_the_app() {
     assert!(err.contains("Claude Desktop"), "{err}");
     // -- INT016 -- (WP UAG) the pairing's code reaches the host's log too
     assert!(
-        notices.iter().any(|n| n["method"] == "notifications/message"
-            && n["params"]["data"].as_str().is_some_and(|d| d.contains("click Allow"))),
+        notices
+            .iter()
+            .any(|n| n["method"] == "notifications/message"
+                && n["params"]["data"]
+                    .as_str()
+                    .is_some_and(|d| d.contains("click Allow"))),
         "{notices:?}"
     );
     let token_file = config.join("uconsole").join("mcp-token");

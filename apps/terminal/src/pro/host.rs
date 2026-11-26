@@ -323,7 +323,9 @@ mod tests_wp_ub11 {
     #[test]
     fn ub11_the_host_suggests_then_keeps_the_persons_confirmed_layout() {
         let dir = scratch("ub11_speakers");
-        let (_o, host) = opened(&dir);
+        let (o, host) = opened(&dir);
+        // -- INT016 -- (WP UB12) a new board: the demo's example keeps a confirmed layout
+        o.handle.core.open_demo_blank().expect("the blank demo");
         let s = host.speakers().expect("a layout");
         assert!(!s.confirmed, "nothing kept yet: the suggestion");
         assert!(s.stamp.starts_with("Suggested"), "{}", s.stamp);

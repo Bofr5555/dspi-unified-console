@@ -77,7 +77,12 @@ fn ub11_plain_greets_with_sentences_and_says_each_change_back() {
         "{out}"
     );
     assert!(out.contains("Volume "), "{out}");
-    assert!(out.contains("Out 1"), "an output's sentence: {out}");
+    // -- INT016 -- (WP UB12) the demo is the tuned example: its outputs by their speakers' names
+    assert!(
+        out.lines()
+            .any(|l| l.starts_with("Left woofer: ") && l.contains(", gain ")),
+        "an output's sentence: {out}"
+    );
     assert!(out.contains("not muted"), "{out}");
     assert!(
         out.contains("Type a command, help for the list, or quit."),

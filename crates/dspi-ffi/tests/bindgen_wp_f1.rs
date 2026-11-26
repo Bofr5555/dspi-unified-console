@@ -62,6 +62,15 @@ const NOT_EXPORTED: &[&str] = &[
     // -- WP PGQT -- the Qt smoke driver's fake generations, through the C ABI
     "open_demo_generation",
     "demo_generation_violations",
+    // -- INT016 -- not on Android yet (the C ABI and wasm have them): UB34's A/B
+    // as saved against now (Qt, web), GAP2's solo (Qt, web), UB12's blank demo
+    // (the Qt smoke build's and the web e2e's fixture)
+    "ab_start_saved",
+    "ab_is_saved",
+    "solo_output",
+    "solo_end",
+    "solo_state",
+    "open_demo_blank",
     // -- WP CG23 -- The C drain's too-small buffer; Rust-only (doc(hidden)).
     "notify_tap_note_dropped",
     // -- WP CG32 -- The web's runtime without threads (WB2, WB3): not exported

@@ -835,7 +835,6 @@ fn wp_p5ses_device_preflight_refuses_what_the_rules_forbid() {
     );
 }
 
-#[cfg(feature = "link")]
 // -- WP UFW -- (UXP A10) the tweeter rule's refusal in the Speakers page's
 // words: "tweeter" and "mid driver", never "high way" or "middle way"
 #[test]
@@ -874,6 +873,7 @@ fn wp_ufw_the_tweeter_refusal_names_the_driver() {
     }
 }
 
+#[cfg(feature = "link")] // -- INT016 -- back on its test (UFW's insert took it)
 #[test]
 fn wp_p5ses_device_a_viewer_through_the_hub_is_denied() {
     use dspi_link::fakehub::{Auth, FakeHub, HubConfig};

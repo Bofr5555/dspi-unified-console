@@ -15,7 +15,8 @@ const doc = (name: string) => JSON.stringify({ meta: { kind: "snapshot", name, s
 function fakeSession(serial: string) {
   const watchers = new Set<() => void>();
   const s = {
-    state: { status: "open", snapshot: { device: { serial } } } as Record<string, unknown>,
+    // -- INT016 -- with the state UB34's "as saved" watch reads (activePresetSlot)
+    state: { status: "open", snapshot: { device: { serial }, state: { activePresetSlot: 0 } } } as Record<string, unknown>,
     deviceId: "",
     readOnlyReason: "",
     refresh: async () => undefined,
@@ -25,7 +26,7 @@ function fakeSession(serial: string) {
     },
     /** Another DSPi in the same session (a hub's chooser). */
     open(next: string) {
-      s.state = { status: "open", snapshot: { device: { serial: next } } };
+      s.state = { status: "open", snapshot: { device: { serial: next }, state: { activePresetSlot: 0 } } };
       for (const w of [...watchers]) w();
     },
     core: {

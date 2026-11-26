@@ -231,7 +231,11 @@ fn int016_as_saved_holds_a_tweeter_the_load_guard_held() {
     let outputs = (0..core.get_state().num_output_channels)
         .map(|n| SpeakerLayoutOutput {
             output: n,
-            role: if n == 1 { MeasureRole::High } else { MeasureRole::Full },
+            role: if n == 1 {
+                MeasureRole::High
+            } else {
+                MeasureRole::Full
+            },
             speaker: "L".into(),
             group: 0,
             source: Default::default(),
@@ -244,12 +248,18 @@ fn int016_as_saved_holds_a_tweeter_the_load_guard_held() {
     })
     .unwrap();
     core.load_preset(8).unwrap();
-    assert!(core.get_state().output_muted[1], "the load holds the tweeter");
+    assert!(
+        core.get_state().output_muted[1],
+        "the load holds the tweeter"
+    );
     edit(&core);
 
     let c = core.ab_start_saved().unwrap();
     assert_eq!(c.side, Some(AbSide::A));
-    assert!(core.get_state().output_muted[1], "A unmuted the held tweeter");
+    assert!(
+        core.get_state().output_muted[1],
+        "A unmuted the held tweeter"
+    );
     let c = core.ab_toggle().unwrap();
     assert_eq!(c.side, Some(AbSide::B));
     assert!(core.get_state().output_muted[1], "B is now: still held");
