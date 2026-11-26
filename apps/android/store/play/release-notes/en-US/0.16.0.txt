@@ -1,0 +1,6 @@
+• Mute beside the volume on Home.
+• Settings › Speakers: say which output drives a woofer or a tweeter.
+• Edit EQ bands by touch, and set a crossover in two rows.
+• A tap the installer's lock refuses says why, with Unlock.
+• The demo is a tuned two-way speaker; Reset demo starts it again.
+• The app opens in Advanced, and tells you when the USB DSPi goes away.
