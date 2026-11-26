@@ -181,18 +181,19 @@ void measureBarSection(SmokeDriver &d) {
     // The setup: the layout's first speaker, short sweeps, no name (the core's default)
     mc->fillFromLayout();
     d.waitIdle();
-    d.waitFor(5000, [&] { return !mc->setupOutputs().isEmpty() && !mc->setupProblem().contains(QLatin1String("at least one")); });
-    QList<int> on;
-    QString speaker;
-    for (const QVariant &v : mc->setupOutputs()) {
-        const QVariantMap m = v.toMap();
-        if (!m.value(QStringLiteral("on")).toBool()) continue;
-        if (speaker.isEmpty()) speaker = m.value(QStringLiteral("speaker")).toString();
-        if (m.value(QStringLiteral("speaker")).toString() == speaker && on.size() < 3) on << m.value(QStringLiteral("output")).toInt();
-    }
+    d.waitFor(5000, [&] { return !mc->setupOutputs().isEmpty(); });
+    // The two ways, whatever the setup held before (the layout's answer comes
+    // on the loop): Out 1 the woofer, Out 2 the tweeter of speaker L
+    const QList<int> on{ 0, 1 };
     for (const QVariant &v : mc->setupOutputs()) {
         const int o = v.toMap().value(QStringLiteral("output")).toInt();
         mc->setOutputOn(o, on.contains(o));
+    }
+    mc->setOutputRole(0, QStringLiteral("low"));
+    mc->setOutputRole(1, QStringLiteral("high"));
+    for (int o : on) {
+        mc->setOutputSpeaker(o, QStringLiteral("L"));
+        mc->setOutputGroup(o, 0);
     }
     mc->setPlacement(QStringLiteral("listeningPosition"));
     mc->setSweepMs(1000);
@@ -271,6 +272,12 @@ void measureBarSection(SmokeDriver &d) {
             return false;
         });
     };
+    // The tune's own choices (an earlier section may have left one on)
+    const bool keptWas[4] = { tc->keepCrossover(), tc->keepDelays(), tc->keepLevels(), tc->keepEq() };
+    tc->setKeepCrossover(false);
+    tc->setKeepDelays(false);
+    tc->setKeepLevels(false);
+    tc->setKeepEq(false);
     tc->reloadLayout();
     d.waitIdle();
     d.spin(300);
@@ -284,6 +291,17 @@ void measureBarSection(SmokeDriver &d) {
     const int detailCount = int(tc->held().size() + tc->withdrawn().size() + tc->notes().size());
     d.check(QStringLiteral("ua2: the proposal's %1 detail line(s) are folded").arg(detailCount),
             proposed && (detailCount == 0 || (details && details->isVisible() && !details->property("expanded").toBool())));
+    {
+        QStringList rows;
+        for (const QVariant &v : tc->layout()) {
+            const QVariantMap m = v.toMap();
+            rows << QStringLiteral("%1:%2:%3:%4:%5").arg(m.value(QStringLiteral("output")).toInt()).arg(m.value(QStringLiteral("on")).toBool())
+                        .arg(m.value(QStringLiteral("role")).toString(), m.value(QStringLiteral("speaker")).toString()).arg(m.value(QStringLiteral("group")).toInt());
+        }
+        QStringList measured;
+        for (const QVariant &v : mc->resultOutputs()) measured << v.toMap().value(QStringLiteral("label")).toString();
+        std::printf("smoke: ua2: tune layout %s; measured %s; keep %d%d%d%d\n", qPrintable(rows.join(QLatin1Char(' '))), qPrintable(measured.join(QStringLiteral(", "))), tc->keepCrossover(), tc->keepDelays(), tc->keepLevels(), tc->keepEq());
+    }
     std::printf("smoke: ua2: proposal: %d write(s), timing %s; withdrawn: %s; notes: %s\n", int(tc->writes().size()),
                 tc->timingReliable() ? "reliable" : "unreliable", qPrintable(tc->withdrawn().join(QStringLiteral(" | "))),
                 qPrintable(tc->notes().join(QStringLiteral(" | "))));
@@ -374,6 +392,10 @@ void measureBarSection(SmokeDriver &d) {
     }
 
     tc->stop();
+    tc->setKeepCrossover(keptWas[0]);
+    tc->setKeepDelays(keptWas[1]);
+    tc->setKeepLevels(keptWas[2]);
+    tc->setKeepEq(keptWas[3]);
     mc->clearError();
     writeVolume(d, volumeWas);
     if (woofer >= 0 && tweeter >= 0) {
