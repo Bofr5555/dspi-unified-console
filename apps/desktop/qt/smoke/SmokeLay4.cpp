@@ -778,6 +778,11 @@ void equaliserSection(SmokeDriver &d) {
     DeviceModel *device = d.app().device;
     if (!device->connected() || !device->demo() || device->remote()) device->openDemo();
     e.check("on the demo", d.waitFor(10000, [&] { return device->connected() && device->demo(); }) && d.waitIdle());
+    // -- FIX016 -- (R1-QT) the speaker layout as it found it: the crossover part's
+    // write-back keeps one where there was none (lay5a-pages after it found its
+    // Routing inspector 40 px lower, under the dock)
+    auto *speakersAt = Registrar::instance<SpeakersController>();
+    const QString layoutWas = speakersAt ? speakersAt->status() : QString();
     for (const QString &action : e.shell->shownWindows()) e.shell->closeWindow(action);
     if (e.g->poppedOut()) e.g->closePopOut();
     e.main->requestActivate();
@@ -809,6 +814,13 @@ void equaliserSection(SmokeDriver &d) {
     e.check("back in Classic, with its own colours and none of these", switchTo(e, QStringLiteral("classic"), "ClassicShell") && e.main->color() == classic
                 && !e.shown("ChannelStrip") && !e.cc->crossoverTabShown());
     e.main->resize(was);
+    // -- FIX016 -- (R1-QT) no speaker layout where there was none: the demo opened
+    // anew drops the one the write-back kept
+    if (speakersAt && layoutWas == QLatin1String("none") && speakersAt->status() != QLatin1String("none")) {
+        device->openDemo();
+        d.waitFor(10000, [&] { return device->connected() && device->demo() && speakersAt->status() == QLatin1String("none"); });
+        d.waitIdle();
+    }
     d.spin(200);
 }
 
