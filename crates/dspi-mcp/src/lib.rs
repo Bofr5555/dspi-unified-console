@@ -173,3 +173,7 @@ mod tests_wp_ub5;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
 mod tests_fix016_r2;
+// -- FIX016 --
+#[cfg(test)]
+#[allow(clippy::arithmetic_side_effects, clippy::indexing_slicing)]
+mod tests_fix016_r4;
