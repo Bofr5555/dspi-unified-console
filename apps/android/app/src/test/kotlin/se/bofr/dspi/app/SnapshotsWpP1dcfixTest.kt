@@ -125,7 +125,7 @@ class SnapshotsWpP1dcfixTest {
         pumpUntil("rows") { textShown("Warm") }
         rule.onNodeWithTag(snapshotRecallTag(m.items.value.single().id)).assertExists()
         rule.onNodeWithTag(AB_START_TAG).assertExists()
-        rule.onNodeWithTag(CAPTURE_TAG).assertDoesNotExist()
+        rule.onNodeWithTag(CAPTURE_TAG).assertExists() // -- WP UAN -- (UXP A11) Capture in Simple: A/B needs it
         rule.onNodeWithTag(SAFE_APPLY_TIMEOUT_TAG).assertDoesNotExist()
         assertFalse("no rollback choice in Simple", textShown("Recall with rollback"))
         assertFalse(textShown("Import Snapshot File"))

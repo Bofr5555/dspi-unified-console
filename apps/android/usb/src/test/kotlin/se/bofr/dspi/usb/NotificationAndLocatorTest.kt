@@ -44,7 +44,17 @@ class NotificationTest {
         assertFalse(NotificationActions.apply(NotificationAction.VOLUME_UP, connected.copy(userVolumeDb = 0f), c))
         assertTrue(NotificationActions.apply(NotificationAction.VOLUME_DOWN, connected.copy(userVolumeDb = -59f), c))
         assertFalse(NotificationActions.apply(NotificationAction.VOLUME_DOWN, connected.copy(userVolumeDb = -60f), c))
-        assertEquals(listOf("vol(-18.0)", "vol(-22.0)", "vol(0.0)", "vol(-60.0)"), c.calls)
+        // -- WP UAN -- (UXP A11) 1 dB, the volume keys' step (was 2 dB: -18, -22)
+        assertEquals(listOf("vol(-19.0)", "vol(-21.0)", "vol(0.0)", "vol(-60.0)"), c.calls)
+    }
+
+    // -- WP UAN -- the keys' grid: a fixed-point echo counts as its whole dB, an odd level steps to the next one
+    @Test
+    fun volumeStepsOnTheKeysWholeDbGrid() {
+        val c = RecordingControls()
+        NotificationActions.apply(NotificationAction.VOLUME_DOWN, connected.copy(userVolumeDb = -23.0039f), c)
+        NotificationActions.apply(NotificationAction.VOLUME_UP, connected.copy(userVolumeDb = -20.5f), c)
+        assertEquals(listOf("vol(-24.0)", "vol(-20.0)"), c.calls)
     }
 
     @Test

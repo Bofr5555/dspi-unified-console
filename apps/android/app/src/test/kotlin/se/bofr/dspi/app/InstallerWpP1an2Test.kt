@@ -90,7 +90,8 @@ class InstallerWpP1an2Test {
     @Test
     fun p1an2NoPinAsksNothingAndEveryModeOpens() = withDemo {
         val m = modes()
-        assertEquals("the app opens in Simple", UiModes.SIMPLE, m.mode.value)
+        // -- WP UAN -- owner D9: a phone opens in Advanced until Simple means something there (was Simple)
+        assertEquals("the app opens in Advanced", UiModes.ADVANCED, m.mode.value)
         val c = m.choice.value!!
         assertFalse(c.needsPin)
         assertTrue(c.openModes.containsAll(listOf(UiModes.SIMPLE, UiModes.ADVANCED, UiModes.INSTALLER)))
@@ -163,7 +164,7 @@ class InstallerWpP1an2Test {
         assertTrue(m.dialog.value!!.error, m.dialog.value!!.error.startsWith("Wrong PIN"))
         onMain { m.confirm("4321") }
         until("unlocked") { m.mode.value != UiModes.LOCKED_USER && m.dialog.value == null }
-        assertEquals(UiModes.SIMPLE, m.mode.value)
+        assertEquals(UiModes.ADVANCED, m.mode.value) // -- WP UAN -- the phone's default (owner D9)
         onMain { bridge.setOutputGain(0, -5f) }
         until("written") { bridge.outputGainDB(0) == -5f }
         onMain { bridge.installer.clearPin() }.getOrThrow()

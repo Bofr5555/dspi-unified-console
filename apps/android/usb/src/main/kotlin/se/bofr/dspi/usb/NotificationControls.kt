@@ -6,6 +6,9 @@
 package se.bofr.dspi.usb
 
 import java.util.Locale
+import kotlin.math.ceil
+import kotlin.math.floor
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -64,15 +67,26 @@ interface NotificationControls {
 object NotificationActions {
     const val USER_VOLUME_MIN_DB = -60f
     const val USER_VOLUME_MAX_DB = 0f
-    const val VOLUME_STEP_DB = 2f
+
+    // -- WP UAN -- (UXP A11) one step size: the volume keys' (VolumeKeys.nextLevel), 1 dB on the whole-dB grid
+    const val VOLUME_STEP_DB = 1f
+
+    /**
+     * -- WP UAN -- One [VOLUME_STEP_DB] from [db] in [direction] (+1 up, -1 down) on the whole-dB grid, held to
+     * the range; [db] is first rounded to 0.01 dB, so the firmware's fixed-point echo (-23.0039) counts as -23.
+     */
+    fun nextLevel(db: Float, direction: Int): Float {
+        val d = if (db.isFinite()) (db * 100f).roundToInt() / 100f else USER_VOLUME_MAX_DB
+        val next = if (direction > 0) floor(d) + VOLUME_STEP_DB else ceil(d) - VOLUME_STEP_DB
+        return next.coerceIn(USER_VOLUME_MIN_DB, USER_VOLUME_MAX_DB)
+    }
 
     /** Applies [action] against [model]. Returns false when it was not applicable. */
     fun apply(action: NotificationAction, model: NotificationModel, controls: NotificationControls): Boolean {
         if (!model.connected) return false
         when (action) {
             NotificationAction.VOLUME_DOWN, NotificationAction.VOLUME_UP -> {
-                val step = if (action == NotificationAction.VOLUME_UP) VOLUME_STEP_DB else -VOLUME_STEP_DB
-                val target = (model.userVolumeDb + step).coerceIn(USER_VOLUME_MIN_DB, USER_VOLUME_MAX_DB)
+                val target = nextLevel(model.userVolumeDb, if (action == NotificationAction.VOLUME_UP) 1 else -1)
                 if (target == model.userVolumeDb) return false
                 controls.setUserVolume(target)
             }

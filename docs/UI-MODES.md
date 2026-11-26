@@ -26,7 +26,7 @@ status rail and the rest of section 2) are called the *Pro layer* in plans and c
 
 | | Simple | Advanced | Installer | Locked user (a state) |
 |---|---|---|---|---|
-| **For** | Listening on one device; the default on phones | Setting up and tuning; the default on desktops and the web | Installing and handing over a system | A system an installer has set up for someone else |
+| **For** | Listening on one device | Setting up and tuning; the default everywhere (phones too, owner D9 2026-11-25, until Simple means more there) | Installing and handing over a system | A system an installer has set up for someone else |
 | **First screen** | A front page: device and connection, volume, mute and bypass, presets, source, output meters, one health line | The classic main window today; the System view once the Pro layer exists (desktop, web). Phones: the front page | As Advanced | The front page, with a lock badge, one line saying what is locked, and the installer's contact |
 | **Navigation** | Home, EQ, Tools, Settings: today's screens, under the front page | Today's screens, plus the Pro layer: System view, Channels and EQ, Routing, Dynamics and effects, Hardware, History; a scene bar; a status rail | Advanced plus Limits and power-on; firmware, factory reset, core voltage | Home only; Settings shows About and the installer's note |
 | **Changes** | Everything today's screens offer | Everything the limits allow | Everything, the limits included | Volume, mute and preset, within the installer's ranges |
@@ -42,7 +42,7 @@ Notes:
   today's screens, and Simple as a front page in front of them.
 - **Installer** shows the pages that change how the system behaves for others: limits, power-on state, firmware, factory reset,
   core voltage. With no PIN set it is reachable like any other mode (section 1). With a PIN set it opens after the PIN.
-- **Phones** get Simple first. Their Advanced is a subset of the Pro layer: the System view read-mostly, scenes, alarms and
+- **Phones** open in Advanced for now (owner D9, 2026-11-25: until Simple means more there than fewer snapshot buttons). Their Advanced is a subset of the Pro layer: the System view read-mostly, scenes, alarms and
   history; strip editing stays on the desktop and the web.
 
 ## 3. The locked-user state and the installer PIN
@@ -92,7 +92,7 @@ PIN and roles fit into it as follows.
 
 - **Remembered per device, with an app default.** The console keeps the last mode for each device (by serial). A device it has
   never seen opens in the app default.
-- **Defaults:** phones (Android, iPhone) open in **Simple**; desktops (Qt, macOS) and the web open in **Advanced**. A device
+- **Defaults:** every client opens in **Advanced** (phones too since owner D9, 2026-11-25; they opened in Simple before). A device
   with a lock, or a hub role that pins a mode, overrides the default (sections 3 and 4).
 - **Switching:** a Mode control in each client's usual place (the desktop menu bar, the phone's top-bar menu, the web header)
   opens a small dialog: Simple, Advanced, Installer (with the PIN field only when a PIN is set), and a choice between
@@ -115,8 +115,8 @@ the `diagnostics` and `installer_pin` operations:
   "version": 1,
   "platforms": ["phone", "desktop", "web"],
   "modes": [
-    { "id": "simple", "label": "Simple", "defaultOn": ["phone"], "needsPinWhenSet": false },
-    { "id": "advanced", "label": "Advanced", "defaultOn": ["desktop", "web"], "needsPinWhenSet": false },
+    { "id": "simple", "label": "Simple", "defaultOn": [], "needsPinWhenSet": false },
+    { "id": "advanced", "label": "Advanced", "defaultOn": ["phone", "desktop", "web"], "needsPinWhenSet": false },
     { "id": "installer", "label": "Installer", "defaultOn": [], "needsPinWhenSet": true }
   ],
   "lockedUser": { "label": "Locked", "screens": ["front"], "settings": ["about", "installer_note"],
@@ -132,8 +132,8 @@ The proposal it was built from:
 {
   "version": 1,
   "modes": [
-    { "id": "simple",    "label": "Simple",    "default_on": ["phone"] },
-    { "id": "advanced",  "label": "Advanced",  "default_on": ["desktop", "web"] },
+    { "id": "simple",    "label": "Simple",    "default_on": [] },
+    { "id": "advanced",  "label": "Advanced",  "default_on": ["phone", "desktop", "web"] },
     { "id": "installer", "label": "Installer", "needs_pin_when_set": true }
   ],
   "locked_user": { "screens": ["front"], "settings": ["about", "installer_note"] },

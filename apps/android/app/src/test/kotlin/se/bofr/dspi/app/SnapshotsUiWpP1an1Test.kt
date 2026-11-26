@@ -213,7 +213,7 @@ class SnapshotsUiWpP1an1Test {
         val m = twoSnapshots(bridge, "simple")
         show { SnapshotsView(m, SnapshotsMode.SIMPLE, onBack = {}) }
         pumpUntil("rows") { textShown("Bright") }
-        rule.onNodeWithTag(CAPTURE_TAG).assertDoesNotExist()
+        rule.onNodeWithTag(CAPTURE_TAG).assertExists() // -- WP UAN -- (UXP A11) Capture in Simple: A/B needs it
         assertFalse(textShown("Import Snapshot File"))
         rule.onNodeWithTag(snapshotRecallTag(m.items.value.first().id)).assertExists()
         rule.onNode(hasContentDescription("More for Bright")).performClick()

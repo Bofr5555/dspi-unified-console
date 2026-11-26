@@ -50,9 +50,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -720,6 +724,7 @@ fun UserVolumeSection(bridge: DspiBridge, prefs: AppSettingsStore, modifier: Mod
             VolumeModeSelector(prefs.sidebarVolumeMode(), { prefs.setSidebarVolumeMode(it) })
             Spacer(Modifier.weight(1f))
             Text(UserVolumeTaper.displayString(db(drag.value)), style = DspiType.bodyMono, color = c.label)
+            MuteButton(bridge, s.userMute, connected) // -- WP UAN --
         }
         CustomSlider(
             value = drag.value,
@@ -731,6 +736,33 @@ fun UserVolumeSection(bridge: DspiBridge, prefs: AppSettingsStore, modifier: Mod
             modifier = Modifier.fillMaxWidth(),
             label = "User Volume",
             stateText = { UserVolumeTaper.displayString(db(it)) }
+        )
+    }
+}
+
+// -- WP UAN -- (UXP A11) UI-MODES: the phone's front page has volume and mute
+/** Test tag of Home's mute button, beside the volume. */
+const val HOME_MUTE_TAG = "home-mute"
+
+/**
+ * Mute beside the volume: the user mute (`vol.mute`, the Mute key's and the
+ * notification's), which a locked user may still change. 48dp to touch.
+ */
+@Composable
+internal fun MuteButton(bridge: DspiBridge, muted: Boolean, connected: Boolean) {
+    val c = DspiTheme.colors
+    IconButton(
+        onClick = { bridge.setUserMute(!muted) },
+        enabled = connected,
+        modifier = Modifier.testTag(HOME_MUTE_TAG).semantics {
+            role = Role.Switch
+            stateDescription = if (muted) "Muted" else "Not muted"
+        }
+    ) {
+        Icon(
+            if (muted) DspiIcons.speakerMute else DspiIcons.speaker,
+            contentDescription = "Mute",
+            tint = if (muted) c.red else c.secondaryLabel
         )
     }
 }
@@ -762,6 +794,7 @@ fun MasterModeSection(bridge: DspiBridge, prefs: AppSettingsStore, modifier: Mod
                 style = DspiType.bodyMono,
                 color = c.label
             )
+            MuteButton(bridge, s.userMute, connected) // -- WP UAN --
         }
         CustomSlider(
             value = drag.value,

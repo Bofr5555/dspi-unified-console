@@ -135,12 +135,14 @@ fun GettingStartedScreen(
                     OutlinedButton(onClick = { index = stageIndex - 1 }) { Text(words.button("back")) }
                     Spacer(Modifier.width(8.dp))
                 }
-                // Qt/macOS: the board stage moves on once the firmware is there; Skip is always offered
-                val canContinue = stage?.id != "board" || board.match == BoardMatch.MATCH
+                // -- WP UAN -- (UXP A11) Continue always goes on (it waited for matching firmware, so a phone
+                // without a board could only Skip and never saw Done); the board stage says where the firmware waits
                 if (last) {
                     Button(onClick = onDone) { Text(words.button("finish")) }
                 } else {
-                    Button(onClick = { index = stageIndex + 1 }, enabled = canContinue) { Text(words.button("continue")) }
+                    Button(onClick = { index = stageIndex + 1 }, modifier = Modifier.testTag(CONTINUE_TAG)) {
+                        Text(words.button("continue"))
+                    }
                 }
             }
         }
@@ -205,7 +207,18 @@ private fun BoardStage(stage: OnboardingStage, board: BoardStatus, onInstall: ()
             }
         }
     }
+    // -- WP UAN --
+    if (board.match != BoardMatch.MATCH) {
+        Text(BOARD_LATER, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
 }
+
+// -- WP UAN --
+/** Test tag of the wizard's Continue button. */
+const val CONTINUE_TAG = "getting-started-continue"
+
+/** Under the board stage until the firmware matches: Continue goes on all the same (UXP A11). */
+const val BOARD_LATER = "No board yet, or not now? Continue: you can install the firmware later from Tools › Firmware Update."
 
 /** A labelled dot per stage, the current one bold (macOS step strip). */
 @Composable
