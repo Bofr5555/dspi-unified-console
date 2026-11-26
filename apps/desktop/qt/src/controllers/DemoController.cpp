@@ -3,7 +3,9 @@
 #include "DeviceModel.h"
 #include "DevicesController.h"
 #include "LinkController.h"
-#include "Shell.h"   // -- WP UB12 --
+#include "Shell.h"                // -- WP UB12 --
+#include "Snapshot.h"             // -- WP UB12 --
+#include "SpeakersController.h"   // -- WP UB12 --
 
 #include <QJSEngine>
 
@@ -12,6 +14,7 @@ static const Registrar::Banner demoBanner("DemoBanner", 35, Registrar::Blocking)
 
 DemoController::DemoController(const AppContext &ctx, QObject *parent) : QObject(parent), m_ctx(ctx) {
     connect(ctx.device, &DeviceModel::snapshotApplied, this, &DemoController::changed);
+    connect(ctx.device, &DeviceModel::snapshotApplied, this, &DemoController::onSnapshot);   // -- WP UB12 --
     // -- WP UB12 -- Device > Reset Demo, the palette and the banner's button
     ctx.shell->addHandler(QStringLiteral("device.resetDemo"), this, [this] { resetDemo(); });
     // -- WP QPI4 -- a Link session's start ends "nothing connected" before its
@@ -42,7 +45,21 @@ bool DemoController::nothingConnected() const {
 }
 
 void DemoController::resetDemo() {
-    if (demoOpen()) m_ctx.device->resetDemo();
+    if (!demoOpen()) return;
+    m_ctx.device->resetDemo();
+    // After the reset on the same worker: the example's roles, kept again
+    if (auto *speakers = Registrar::instance<SpeakersController>()) speakers->reload();
+}
+
+// The Speakers page reads a device's roles when another device shows; the
+// demo opened again (Reconnect, Open Demo) is the same serial, and the core
+// kept the example's roles for it again
+void DemoController::onSnapshot() {
+    const uint64_t generation = m_ctx.device->snapshot().generation;
+    if (generation == m_generation) return;
+    m_generation = generation;
+    if (!demoOpen()) return;
+    if (auto *speakers = Registrar::instance<SpeakersController>()) speakers->reload();
 }
 
 void DemoController::openDemo() {

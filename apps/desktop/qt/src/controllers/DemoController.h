@@ -37,7 +37,11 @@ signals:
     void changed();
 
 private:
+    // -- WP UB12 -- a demo opened again keeps its serial: its roles are read again
+    void onSnapshot();
+
     AppContext m_ctx;
+    uint64_t m_generation = 0;   // -- WP UB12 -- the connection the last snapshot was of
 };
 
 #endif // DEMOCONTROLLER_H

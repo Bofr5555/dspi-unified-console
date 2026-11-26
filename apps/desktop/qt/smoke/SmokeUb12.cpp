@@ -20,9 +20,11 @@
 #include "SessionModel.h"
 #include "Shell.h"
 #include "SidebarController.h"
+#include "SpeakersController.h"
 #include "Snapshot.h"
 
 #include <QDir>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QQuickItem>
@@ -113,8 +115,10 @@ void demoSection(SmokeDriver &d) {
                                                                                           : Qt::ColorScheme::Light);
             if (auto *notices = Registrar::instance<NoticeCenter>()) notices->clear();
             for (const char *page : { "overview/overview", "equaliser/crossover" }) {
-                d.goTo(QLatin1String(page), 400);
+                // Selecting a channel shows the Equaliser: before the page
                 sc->select(cc->outputChannel(0));
+                d.spin(200);
+                d.goTo(QLatin1String(page), 400);
                 d.spin(400);
                 const QString file = QStringLiteral("ub12/%1-%2-%3.png")
                                          .arg(QLatin1String(when), QString::fromLatin1(page).section(QLatin1Char('/'), 1),
@@ -143,6 +147,10 @@ void demoSection(SmokeDriver &d) {
     const QJsonObject layout = speakerLayout(d);
     d.check("ub12: its roles are confirmed", layout.value(QLatin1String("confirmedByUser")).toBool());
     d.check("ub12: nothing unsaved, after the blank demo", !dirty());
+    auto *speakers = Registrar::instance<SpeakersController>();
+    d.check("ub12: the Speakers page reads them confirmed", speakers && d.waitFor(3000, [&] {
+        return speakers->status() == QLatin1String("confirmed");
+    }));
     shoot("after");
 
     // The strip's Reset Demo puts a changed level and name back
@@ -151,6 +159,20 @@ void demoSection(SmokeDriver &d) {
     d.check("ub12: the demo strip offers Reset Demo", reset && reset->property("text").toString() == QStringLiteral("Reset Demo"));
     d.check("ub12: and not Open Demo", !shownItem(w->contentItem(), QStringLiteral("DemoBanner.open")));
     const auto changeThenReset = [&](const QString &how, const std::function<void()> &doReset) {
+        // A changed role: the tweeter as full range, the user's word
+        QJsonObject mine = speakerLayout(d);
+        QJsonArray rows = mine.value(QLatin1String("outputs")).toArray();
+        QJsonObject third = rows.at(2).toObject();
+        third.insert(QStringLiteral("role"), QStringLiteral("full"));
+        rows.replace(2, third);
+        mine.insert(QStringLiteral("outputs"), rows);
+        const QByteArray text = QJsonDocument(mine).toJson(QJsonDocument::Compact);
+        onWorker<bool>(d, [text](FfiCore *c) {
+            QByteArray buf(1 << 14, '\0');
+            return dspi_speaker_layout_set(c, text.constData(), buf.data(), uint32_t(buf.size())) > 0;
+        });
+        if (speakers) speakers->reload();
+        d.waitFor(3000, [&] { return speakers && speakers->stored().value(QLatin1String("outputs")).toArray().at(2).toObject().value(QLatin1String("role")) == QLatin1String("full"); });
         cc->setOutputGain(2, -9.0);
         device->setChannelName(cc->outputChannel(0), QStringLiteral("Mine"));
         d.waitIdle();
@@ -165,6 +187,11 @@ void demoSection(SmokeDriver &d) {
         d.check(QStringLiteral("ub12: %1 leaves nothing unsaved").arg(how), !dirty());
         d.check(QStringLiteral("ub12: %1 keeps the roles confirmed").arg(how),
                 speakerLayout(d).value(QLatin1String("confirmedByUser")).toBool());
+        d.check(QStringLiteral("ub12: %1: the Speakers page shows the example's roles").arg(how), speakers && d.waitFor(3000, [&] {
+            return speakers->status() == QLatin1String("confirmed")
+                && speakers->stored().value(QLatin1String("outputs")).toArray().at(2).toObject().value(QLatin1String("role"))
+                       == QLatin1String("high");
+        }));
         d.check(QStringLiteral("ub12: %1 keeps the demo open").arg(how), device->connected() && device->demo());
     };
     changeThenReset(QStringLiteral("the strip's button"), [&] {
