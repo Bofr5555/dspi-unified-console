@@ -1,7 +1,7 @@
 # Using uConsole for DSPi's AI agents from another computer (SSH)
 
 *Part of the AI agents manual: [docs/manual/ai-agents.md](manual/ai-agents.md), which covers turning agents on, each
-agent's configuration, the questions and undo.* <!-- WP MCP6 -->
+agent's configuration, the questions and undo. Written for uConsole for DSPi 0.16.0.*
 
 uConsole for DSPi serves AI agents only on its own computer: it listens on `127.0.0.1` and
 `::1` (port 47860 unless you changed it in Settings › AI Agents) and on no network
@@ -42,7 +42,10 @@ uConsole for DSPi must be running on `dspi-pc` with Settings › AI Agents turne
 
 ## Agents that start a program (Claude Desktop)
 
-Run the relay on `dspi-pc` through SSH. This needs the DSPi Terminal (`uconsole`)
+**Install in Claude Desktop…** in Settings › AI Agents is for a Claude Desktop on the same computer: the extension it
+writes starts the app there. For a Claude Desktop on another computer, add the entry below by hand instead.
+
+Run the relay on `dspi-pc` through SSH. This needs the Terminal (`uconsole`)
 installed there, and an SSH key, so that SSH does not stop to ask for a password:
 
 ```json
@@ -54,9 +57,13 @@ installed there, and an SSH key, so that SSH does not stop to ask for a password
 ```
 
 The first time, uConsole for DSPi on `dspi-pc` asks **Allow this AI agent?** with a
-four-digit code. Check that the agent app shows the same code (in its log of the dspi
-server, or in the chat when it asks for a tool while the question waits), then click
-**Allow**. The relay keeps its token on `dspi-pc`. <!-- WP UAG (UXP A9) -->
+four-digit pairing code. Check that the agent shows the same code (in the chat when it
+asks for a tool while the question waits, or in the agent app's log of the dspi server),
+then click **Allow**. The relay keeps its token on `dspi-pc`.
+
+The relay handles one request at a time, so this agent's questions come one by one,
+never grouped on one sheet. Agents over the HTTP tunnel above get grouped sheets as on
+`dspi-pc` itself.
 
 ## Good to know
 
