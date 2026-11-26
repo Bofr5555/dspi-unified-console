@@ -50,6 +50,10 @@ use dspi_session::meters::Ballistics;
 const REVEAL: Duration = Duration::from_millis(400);
 /// How long a remotely changed value takes to reach its new position.
 const EASE: Duration = Duration::from_millis(120);
+// -- WP UB11 --
+/// How long after the core wrote for the interface (`Live::host_wrote`) the
+/// device's notice of it is taken as that write's, not as another's.
+const HOST_ECHO: Duration = Duration::from_secs(2);
 
 /// Makes the screens the shell shows. The default makes placeholders; later
 /// phases replace it.
@@ -913,6 +917,9 @@ pub struct Live {
     // -- WP UB11 --
     /// The console core's PRO calls ([`Live::set_host`]).
     host: Option<std::rc::Rc<dyn crate::host::ProHost>>,
+    /// When the core last wrote for the interface (a recall, an A/B switch,
+    /// a way back): the device's notice of it is not "changed elsewhere".
+    host_wrote: Option<Instant>,
     /// A shell verb's words, for the run loop to run with the terminal
     /// handed back.
     pub shell_run: Option<Vec<String>>,
@@ -984,6 +991,7 @@ impl Live {
             opener: None,
             shell_verbs: None, // -- WP UTM --
             host: None,        // -- WP UB11 --
+            host_wrote: None,
             shell_run: None,
         };
         live.sync_model();
@@ -1024,21 +1032,24 @@ impl Live {
             ["snapshot"] | ["ab"] => self.open_tool(Tool::Snapshots),
             ["snapshot", "recall", wanted] => match named(wanted) {
                 Err(e) => self.note(e),
-                Ok(row) => match host.snapshot_recall(&row.id) {
-                    Ok(Recalled::Done { changes, .. }) => {
-                        self.refresh(session);
-                        self.note(match changes.len() {
-                            0 => format!("Recalled “{}”: nothing differed", row.name),
-                            1 => format!("Recalled “{}”: 1 change", row.name),
-                            n => format!("Recalled “{}”: {n} changes", row.name),
-                        });
+                Ok(row) => {
+                    self.host_wrote = Some(Instant::now());
+                    match host.snapshot_recall(&row.id) {
+                        Ok(Recalled::Done { changes, .. }) => {
+                            self.refresh(session);
+                            self.note(match changes.len() {
+                                0 => format!("Recalled “{}”: nothing differed", row.name),
+                                1 => format!("Recalled “{}”: 1 change", row.name),
+                                n => format!("Recalled “{}”: {n} changes", row.name),
+                            });
+                        }
+                        Ok(Recalled::Guarded(_)) => {
+                            self.refresh(session);
+                            self.open_tool(Tool::Snapshots);
+                        }
+                        Err(e) => self.note(format!("Not recalled: {e}")),
                     }
-                    Ok(Recalled::Guarded(_)) => {
-                        self.refresh(session);
-                        self.open_tool(Tool::Snapshots);
-                    }
-                    Err(e) => self.note(format!("Not recalled: {e}")),
-                },
+                }
             },
             ["snapshot", "recall", ..] => self.note(
                 ":snapshot recall takes a name, a number or an id here; --guard and --no-guard \
@@ -2490,6 +2501,10 @@ impl Live {
             ShellEvent::Command(c) => self.run_screen_commands(session, &c),
             ShellEvent::Session(req, owner) => {
                 let reply = (req.run)(session);
+                // -- WP UB11 -- the Snapshots panel's writes are the core's
+                if matches!(self.shell.tool, Some((Tool::Snapshots, _))) {
+                    self.host_wrote = Some(Instant::now());
+                }
                 self.refresh(session);
                 let follow = self.shell.deliver(owner, req.tag, reply, &self.state);
                 for ev in follow {
@@ -3607,6 +3622,7 @@ impl Live {
             s.poll(session, &self.state);
             // -- WP UB11 --
             if s.wants_refresh() {
+                self.host_wrote = Some(Instant::now());
                 self.refresh(session);
             }
         }
@@ -3824,7 +3840,12 @@ impl Live {
             None if fresh && fx.preset_bulk => self.state.mark_saved(),
             _ => {}
         }
-        if let Some((name, words)) = fx.changed_elsewhere {
+        // -- WP UB11 -- not the core writing for the interface just now
+        if let Some((name, words)) = fx.changed_elsewhere
+            && !self
+                .host_wrote
+                .is_some_and(|t| now.saturating_duration_since(t) < HOST_ECHO)
+        {
             self.echo(format!("{} {words}", name.replace('_', " ")));
         }
         // -- WP FIN015 -- an unused output the generator plays on keeps its
@@ -4410,6 +4431,24 @@ mod tests_wp_r1 {
             std::thread::sleep(Duration::from_millis(10));
         }
         assert_eq!(l.shell.model.echo, "settings changed elsewhere");
+    }
+
+    // -- WP UB11 --
+    /// The core's write for the interface (a recall, an A/B switch from the
+    /// Snapshots panel) comes back as a bulk apply: it is not someone else's.
+    #[test]
+    fn ub11_the_cores_write_for_the_interface_is_not_a_change_elsewhere() {
+        let (mut l, mut s, r) = on_demo();
+        l.host_wrote = Some(Instant::now());
+        r.load_image(r.image(), nfy::PARAM_SRC_BULK_SET as u8);
+        let deadline = Instant::now() + Duration::from_millis(800);
+        while Instant::now() < deadline {
+            let notes = l.notes.take();
+            l.tick(&mut s, notes.as_ref());
+            l.notes = notes;
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_ne!(l.shell.model.echo, "settings changed elsewhere");
     }
 
     #[test]

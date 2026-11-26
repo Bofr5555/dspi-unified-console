@@ -131,12 +131,16 @@ per line and says every change back as the command that makes it:
 uconsole 0.15.0, plain mode. Connected to the demo device.
 Volume 0.0 dB, not muted.
 No unsaved changes.
-USB L: no filters, trim 0.0 dB
-Out 1 · L: 1 filter (high-pass 80 Hz LR4), gain 0.0 dB, not muted
+USB 1: no filters, trim 0.0 dB
+…
+Out 1 · L: no filters, gain 0.0 dB, not muted
+Out 2 · R: no filters, gain 0.0 dB, not muted
 7 unused outputs are not listed (overview all lists them).
 Type a command, help for the list, or quit.
-dspi> vol.user -20
-vol.user -20.0
+dspi> out.gain 0 -3
+out.gain 0 -3
+dspi> show out 1
+Out 1 · L: no filters, gain -3.0 dB, not muted
 ```
 
 Every parameter and command of the shell's grammar works, as do `overview`

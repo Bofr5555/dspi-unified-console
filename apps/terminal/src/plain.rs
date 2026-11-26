@@ -309,8 +309,8 @@ impl Plain {
         }
         println!(
             "Any parameter or command the shell takes runs here too, as `{COMMAND} COMMAND` \
-             would: vol.user -20, out.mute 2 on, eq 1 1 pk 1k 1.4 -3, undo. After each change \
-             its command is said again."
+             would: vol.user -20, out.gain 0 -3 (the grammar counts outputs from 0: out 0 is \
+             Out 1), eq in.1 1 peak 1k 1.4 -3, undo. After each change its command is said again."
         );
     }
 

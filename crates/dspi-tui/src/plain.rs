@@ -168,7 +168,8 @@ pub const HELP: &[(&str, &str)] = &[
     ),
     (
         "ab",
-        "A/B: ab ID compares the device now (A) with a snapshot (B)",
+        "A/B: ab ID compares the device now (A) with a snapshot (B); then t switches, d shows \
+         the differences, a or b keeps that side",
     ),
     ("diff", "What differs from the saved preset or a snapshot"),
     (
