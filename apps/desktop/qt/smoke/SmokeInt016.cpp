@@ -5,12 +5,14 @@
 // pages do (unprotectedTextOf, an empty name is the label); Classic's menu bar
 // has no Help › Keyboard Shortcuts (`modernOnly`: the list is Modern's). (The menu row
 // "Agent Activity…", C4, is in assets/actions.json, which lay3b-actions compares.)
+// Leaves the layout as it found it.
 #include "SmokeDriver.h"
 
 #include "ChannelListModel.h"
 #include "DeviceModel.h"
 #include "MeasureController.h"
 #include "Registrar.h"
+#include "Shell.h"
 #include "ToolsController.h"
 #include "TuneController.h"
 
@@ -78,6 +80,7 @@ void int016Section(SmokeDriver &d) {
     auto *tools = Registrar::instance<ToolsController>();
     check("the controllers exist", mc && tc && tools);
     if (!mc || !tc || !tools) return;
+    const bool wasModern = d.app().shell->pageHost() != nullptr;   // left as found (lay0 counts on it)
     check("Modern", d.switchLayout("modern"));
     const QList<int> hidden = int016Hidden(device);
 
@@ -104,7 +107,7 @@ void int016Section(SmokeDriver &d) {
     QObject *keys = nullptr;
     d.waitFor(3000, [&] { return (keys = d.object(QStringLiteral("Menu.help.shortcuts"))) != nullptr; });
     check("Classic's Help menu has no Keyboard Shortcuts row", !keys || !keys->property("visible").toBool());
-    check("Modern again", d.switchLayout("modern"));
+    check("the layout as found", d.switchLayout(wasModern ? "modern" : "classic"));
 }
 
 } // namespace
