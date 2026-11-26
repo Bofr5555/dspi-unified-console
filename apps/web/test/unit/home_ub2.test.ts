@@ -40,10 +40,10 @@ test("UB2 B2: the Recall list holds the stored presets and the one that plays, b
   assert.equal(recallRows({ ...s, activePresetSlot: 255 }).length, 4);
 });
 
-test("UB2 B2: the locked user sees the source as words, never a control the lock would refuse", () => {
-  assert.equal(sourceChoosable(false, 3), true);
-  assert.equal(sourceChoosable(true, 3), false);
-  assert.equal(sourceChoosable(false, 1), false, "one source: nothing to choose");
+// -- FIX016 -- (LOCKSRC, owner D4) the lock lets the source through: the locked user chooses it too
+test("UB2 B2: Home offers the source when there is a choice, the locked user's Home too", () => {
+  assert.equal(sourceChoosable(3), true);
+  assert.equal(sourceChoosable(1), false, "one source: nothing to choose");
 });
 
 test("UB2 B2: one health line and a room's level in the dock's words", () => {

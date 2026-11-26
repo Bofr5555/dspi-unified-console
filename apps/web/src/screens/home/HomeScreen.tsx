@@ -2,9 +2,9 @@
 // the locked user's only page (UI-MODES section 2). The device and its connection, one big
 // User volume with Mute, the source as segments, the presets as a Recall list, the rooms' and
 // zones' volumes on an installation, one health line; nothing else. Nothing here is refused:
-// under the installer's lock the source is words (the lock lets volume, mute and preset loads
-// through, nothing else), and Save, Copy Here and the Master volume are not on the page at all
-// (the Master is the Installer's; Library › Presets and the bar's popover keep the rest).
+// the installer's lock lets volume, mute, the source (-- FIX016 -- LOCKSRC, owner D4) and preset
+// loads through, and Save, Copy Here and the Master volume are not on the page at all (the Master
+// is the Installer's; Library › Presets and the bar's popover keep the rest).
 
 import { useCallback, useEffect, useState } from "preact/hooks";
 import { useSessionState } from "../../ui/components";
@@ -98,7 +98,7 @@ export function HomeScreen(props: ScreenProps) {
             <Glyph name="volume-x" />
             Mute
           </button>
-          {sourceChoosable(locked, sources.length) ? (
+          {sourceChoosable(sources.length) ? (
             <Segments
               label="Source"
               options={sources.map((x) => ({ value: x, text: sourceTitle(s, x, names) }))}

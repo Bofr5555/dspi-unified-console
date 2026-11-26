@@ -13,7 +13,7 @@ import type { Session, SessionState } from "../session";
 export function Dock(props: {
   session: Session;
   state: SessionState;
-  /** The locked-user state: volume, mute and presets only. */
+  /** The locked-user state: volume, mute, the source (-- FIX016 -- LOCKSRC) and presets only. */
   locked: boolean;
   /** -- WP UB2 -- (UXP B2, D4) Simple and the locked user: the User volume and Mute, no Master and no Bypass EQ. */
   simple?: boolean;
@@ -27,7 +27,8 @@ export function Dock(props: {
   const off = session.readOnlyReason !== "";
   return (
     <footer class="dock" aria-label="Dock">
-      <SourcePicker session={session} s={s} disabled={off || props.locked} />
+      {/* -- FIX016 -- (LOCKSRC, owner D4) the lock lets the source through */}
+      <SourcePicker session={session} s={s} disabled={off} />
       <VolumeCard session={session} userDb={s.userVolumeDb} masterDb={s.masterVolumeDb} mute={s.userMute} bypass={s.bypass} disabled={off} simple={props.simple} />
       <div class="dock-meters">{props.meters}</div>
       {props.load}

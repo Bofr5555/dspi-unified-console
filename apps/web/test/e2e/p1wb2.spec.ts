@@ -369,13 +369,30 @@ test.describe("P1WB2 on a hub", () => {
     await volume.dispatchEvent("change");
     await expect(home.locator(".home-volume-value")).not.toHaveText(shown!);
     await expect(session.locator("p.error")).toHaveCount(0);
-    // -- WP UB2 -- (UXP B2) nothing that the lock refuses is offered: no Bypass EQ, no Master, no undo, the source as words
+    // -- WP UB2 -- (UXP B2) nothing that the lock refuses is offered: no Bypass EQ, no Master, no undo
     await expect(session.getByRole("button", { name: "Bypass EQ", exact: true })).toHaveCount(0);
     await expect(session.getByRole("button", { name: "Master", exact: true })).toHaveCount(0);
     await expect(session.getByRole("button", { name: "Undo", exact: true })).toHaveCount(0);
-    await expect(home.getByRole("group", { name: "Source" })).toHaveCount(0);
-    await expect(home.locator(".home-source")).toContainText("Source: ");
-    await expect(session.locator(".dock-source")).toBeDisabled();
+    // -- FIX016 -- (LOCKSRC, owner D4) the lock lets the source through: Home and the dock offer it as a control
+    const source = home.getByRole("group", { name: "Source" });
+    await expect(source).toBeVisible();
+    await expect(home.locator(".home-source")).toHaveCount(0);
+    await expect(session.locator(".dock-source")).toBeEnabled();
+    await expect(source.getByRole("button").first()).toBeEnabled();
+    // A choice goes to the core: it plays the other source, or, until the core's LOCKSRC rule is in
+    // this tree (the core agent's commit), the core's lock refuses it; never the page on its own
+    const other = source.locator("button[aria-pressed=false]").first();
+    const otherName = (await other.textContent())!.trim();
+    await other.click();
+    await expect(async () => {
+      const played = (await source.getByRole("button", { name: otherName, exact: true }).getAttribute("aria-pressed")) === "true";
+      const refused = (await session.locator("p.error").filter({ hasText: /locked/i }).count()) > 0;
+      expect(played || refused, "the core was asked").toBe(true);
+    }).toPass({ timeout: 10_000 });
+    // a write that passes clears a refusal's line
+    await volume.fill("90");
+    await volume.dispatchEvent("change");
+    await expect(session.locator("p.error")).toHaveCount(0);
     // The mode switch says why it is not switchable.
     await rail.getByRole("button", { name: "Mode: Locked" }).click();
     const modes = page.getByRole("dialog", { name: "Mode" });
