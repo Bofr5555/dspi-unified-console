@@ -9,6 +9,8 @@ import UConsole
 // to device, the installer's lock and the notifications. Actions are MenuTable
 // ids, so a row greyed in Classic is greyed here.
 // -- WP DL5 -- The preset picker is one button and its popover (PresetPopover).
+// -- WP UA3 -- Save to Device: its count explained, greyed with no device,
+// Save All with several devices, no Factory Reset; A/B only while a compare runs.
 Rectangle {
     id: bar
     objectName: "TopBar"
@@ -26,6 +28,30 @@ Rectangle {
     readonly property Item deviceAnchor: devices
     signal bellClicked()
     signal searchRequested()
+
+    // -- WP UA3 -- Save to Device's count, explained: what is unsaved, as the
+    // Unsaved Changes question lists it (15 lines, then how many more)
+    function unsavedTip(lines) {
+        const shown = lines.slice(0, 15).map(l => "• " + l)
+        const more = lines.length - shown.length
+        if (more === 1) shown.push(qsTr("…and 1 more change"))
+        else if (more > 1) shown.push(qsTr("…and %1 more changes").arg(more))
+        const head = lines.length === 1 ? qsTr("1 unsaved change on this device:") : qsTr("%1 unsaved changes on this device:").arg(lines.length)
+        //: %1 is the shortcut, Ctrl+S
+        return head + "\n" + shown.join("\n") + "\n\n" + qsTr("Save to Device (%1)").arg(MenuTable.shortcutOf("device.commit"))
+    }
+    // -- WP UA3 -- With several devices open: Save All, one question for every
+    // device with unsaved changes (UnsavedGuard)
+    readonly property int unsavedDevices: DeviceRegistry.devices.filter(r => r.dirty === true).length
+    readonly property var saveAllRows: DeviceRegistry.devices.length < 2 ? [] : [{
+        name: "saveAll",
+        text: unsavedDevices === 0 ? qsTr("Save All…")
+            : unsavedDevices === 1 ? qsTr("Save All (1 device)…")
+            //: %1 is how many devices have unsaved changes, 2 or more
+            : qsTr("Save All (%1 devices)…").arg(unsavedDevices),
+        enabled: unsavedDevices > 0 && !UnsavedGuard.asking,
+        run: () => UnsavedGuard.askSaveAll()
+    }]
 
     implicitHeight: Theme.topBarHeight   // -- INTC (DL5 fold) -- 40, the token (was 48)
     color: Theme.sidebar
@@ -133,18 +159,33 @@ Rectangle {
             Accessible.description: shownName
             Accessible.onPressAction: toggle(true)
         }
+        // -- WP UA3 -- (UXP C2) Shown while a compare runs, and then it says what
+        // A and B are; never a way to a page. B3 (next wave) makes A "as saved
+        // on the device" and B "now", from the first edit: then `abShown` is
+        // true whenever a device is open and the segment keeps this place.
         ToolSegments {
+            id: ab
             objectName: "TopBar.ab"
+            readonly property bool abShown: SnapshotsController.abActive
             track: Theme.barControl   // -- WP REVDFIX -- D1
-            visible: !DeviceInfoController.sender
+            visible: !DeviceInfoController.sender && abShown
             label: qsTr("A/B compare")
             model: ["A", "B"]
             current: !SnapshotsController.abActive ? -1 : SnapshotsController.abSide === "b" ? 1 : 0
             enabled: DeviceModel.connected
-            // With no compare running it is started in Library › Snapshots
+            readonly property string toolTip: SnapshotsController.abActive
+                //: %1 and %2 are snapshots' names; B is the key that switches
+                ? qsTr("A/B compare: A is “%1”, B is “%2”. Click the other one, or press B, to switch.")
+                      .arg(SnapshotsController.abAName).arg(SnapshotsController.abBName)
+                : ""
             onChosen: index => {
-                if (!SnapshotsController.abActive) Shell.trigger("device.snapshots")
-                else if (index !== current && SnapshotsController.canToggle) Shell.trigger("device.abToggle")
+                if (index !== current && SnapshotsController.canToggle) Shell.trigger("device.abToggle")
+            }
+            HoverHandler { id: abHover }
+            HelpTip {
+                objectName: "TopBar.ab.tip"
+                text: ab.toolTip
+                visible: abHover.hovered && text.length > 0
             }
         }
 
@@ -264,6 +305,7 @@ Rectangle {
             onClicked: MenuTable.trigger(bar.window, "edit.redo")
         }
         SplitButton {
+            id: save
             objectName: "TopBar.save"
             visible: !DeviceInfoController.sender
             window: bar.window
@@ -274,6 +316,13 @@ Rectangle {
             toolTip: qsTr("Save to Device")
             primary: SidebarController.unsaved
             count: SidebarController.unsaved ? SidebarController.unsavedChanges.length : 0
+            // -- WP UA3 -- the count explained: the Unsaved Changes list
+            countToolTip: count === 0 ? "" : bar.unsavedTip(SidebarController.unsavedChanges)
+            actionEnabled: DeviceModel.connected
+            // -- WP UA3 -- (UXP C1) Factory Reset is no save: it is on Devices ›
+            // This Computer and the device menu, not here
+            handlers: ({ "device.factoryReset": { shown: () => false } })
+            leadRows: bar.saveAllRows
         }
 
         // ---- The installer's lock (only with a PIN set) and the notifications
@@ -311,6 +360,23 @@ Rectangle {
                     color: Theme.textOnAccent
                 }
             }
+        }
+    }
+
+    // -- WP UA3 -- Save All's question
+    QuestionDialog {
+        id: saveAllQuestion
+        objectName: "TopBar.saveAllQuestion"
+        parent: Overlay.overlay
+        acceptText: qsTr("Save All")
+        onAnswered: answer => UnsavedGuard.answerSaveAll(answer)
+    }
+    Connections {
+        target: UnsavedGuard
+        function onSaveAllQuestion(title, text) {
+            saveAllQuestion.title = title
+            saveAllQuestion.text = text
+            saveAllQuestion.open()
         }
     }
 

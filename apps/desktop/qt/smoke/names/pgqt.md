@@ -4,9 +4,9 @@ Section: `pgqt-generations` (order 215, `smoke/SmokeGenerations.cpp`).
 
 | Name | What |
 |---|---|
-| `About.device` | Settings > About's "Connected Device" group |
-| `About.raw` | its Raw Request… button |
-| `DeviceInfoRows` | the device's protocol rows (About, the sender's page) |
+| `Advanced.protocol` | Settings > Advanced's "Protocol" group (-- WP UA5 -- was About's `About.device`) |
+| `Advanced.raw` | its Raw Request… button (was `About.raw`) |
+| `DeviceInfoRows` | the device's protocol rows (Advanced, the sender's page) |
 | `DeviceInfoRows.<key>` (`.value`) | one row: `board`, `generation`, `protocol`, `pages`, `extensions` |
 | `DeviceInfoRows.note.<n>`, `DeviceInfoRows.none` | a note under the rows; the line shown before a record is read |
 | `RawRequestDialog` | the raw request dialog |

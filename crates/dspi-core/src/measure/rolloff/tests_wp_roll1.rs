@@ -967,7 +967,7 @@ fn wp_rcfix_a_stale_full_on_a_confirmed_tweeter_gets_the_1khz_floor() {
         .measure_start(setup(MeasureRunKind::LiveSweep, one))
         .unwrap_err()
         .to_string();
-    assert!(e.contains("is a high way in the speaker layout"), "{e}");
+    assert!(e.contains("is a tweeter in the speaker layout"), "{e}"); // -- WP UFW --
     assert!(!core.measure_state().active);
     // The tune takes the layout's role over the caller's copy of it.
     let lo = |output, role| crate::measure::MeasureLayoutOutput {

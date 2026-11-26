@@ -10,6 +10,9 @@ import UConsole
 // BodePlot's own), the table striped; the four bands only where the table
 // cannot show them: a family other than Linkwitz-Riley, or a second high or
 // low pass. The inspector has the rest (its HP/LP).
+// -- WP UA1 -- (UXP A1, C5) a row names its output as the page's list does,
+// name first and number second ("Left woofer · 1"); the outputs nothing is
+// routed to fold under one row ("5 unused"), which opens them as "3 · None".
 EqualiserSection {
     id: page
     objectName: "EqualiserCrossover"
@@ -29,6 +32,25 @@ EqualiserSection {
         if (ChannelController.revision < 0) return list
         for (let o = 0; o < ChannelController.numOutputs; ++o)
             if (ChannelController.output(o).enabled === true) list.push(ChannelController.outputChannel(o))
+        return list
+    }
+    // -- WP UA1 -- the outputs the table shows: every one while the unused are
+    // open, else those with a route, those a test signal plays on (the core's
+    // `hidden` is unused and silent: a playing output never folds) and the selected one
+    property bool unusedOpen: false
+    readonly property var unusedOutputs: {
+        const list = []
+        if (DeviceModel.revision < 0 || ChannelController.revision < 0) return list
+        for (let o = 0; o < ChannelController.numOutputs; ++o) {
+            const r = DeviceModel.channels.rowOfChannel(ChannelController.outputChannel(o))
+            if (r >= 0 && DeviceModel.channels.get(r, "hidden") === true) list.push(o)
+        }
+        return list
+    }
+    readonly property var shownOutputs: {
+        const list = []
+        for (let o = 0; o < ChannelController.numOutputs; ++o)
+            if (unusedOpen || unusedOutputs.indexOf(o) < 0 || ChannelController.outputChannel(o) === channel) list.push(o)
         return list
     }
     readonly property var colors: {
@@ -130,7 +152,8 @@ EqualiserSection {
                     Accessible.name: qsTr("Crossovers")
                     Column {
                         id: table
-                        readonly property real nameWidth: width < 620 ? 130 : 150
+                        // -- WP UA1 -- room for "Right tweeter · 4"
+                        readonly property real nameWidth: width < 620 ? 150 : 210
                         width: parent.width
                         // -- WP DL8 -- the table of DESIGN-LANGUAGE §9: a 24 px header over
                         // the one rule that stays, 28 px rows in stripes, the hover tone
@@ -156,13 +179,15 @@ EqualiserSection {
                                 required property int index
                                 readonly property int channel: ChannelController.revision < 0 ? -1 : ChannelController.outputChannel(index)
                                 readonly property bool enabledOut: ChannelController.revision >= 0 && ChannelController.output(index).enabled === true
+                                readonly property int place: page.shownOutputs.indexOf(index)   // -- WP UA1 --
                                 objectName: "EqualiserCrossover.row." + index
+                                visible: place >= 0
                                 width: table.width
                                 height: Theme.rowHeight
                                 color: channel === page.channel ? Theme.selection : "transparent"
                                 Rectangle {
                                     anchors.fill: parent
-                                    visible: row.index % 2 === 0 && row.channel !== page.channel
+                                    visible: row.place % 2 === 0 && row.channel !== page.channel
                                     color: Theme.stripe
                                 }
                                 Rectangle {
@@ -190,21 +215,34 @@ EqualiserSection {
                                             tint: info.tint
                                         }
                                         Text {
+                                            objectName: row.objectName + ".name"
                                             Layout.fillWidth: true
+                                            Layout.maximumWidth: implicitWidth
                                             textFormat: Text.PlainText
                                             // -- WP FIN015 -- (REVF D1) the name the page's list and header use
-                                            text: info.displayName || info.label
+                                            text: info.name
                                             font: Theme.fontBody
                                             color: Theme.text
                                             elide: Text.ElideRight
                                         }
+                                        // -- WP UA1 -- its number second, "· 1"
+                                        Text {
+                                            objectName: row.objectName + ".number"
+                                            Layout.leftMargin: -4
+                                            visible: info.numberText.length > 0
+                                            textFormat: Text.PlainText
+                                            text: "· " + info.numberText
+                                            font: Theme.fontBody
+                                            color: Theme.textMuted
+                                        }
+                                        Item { Layout.fillWidth: true }
                                     }
                                     EqualiserCrossoverSide {
                                         objectName: row.objectName + ".highPass"
                                         Layout.fillWidth: true
                                         Layout.preferredWidth: 1
                                         channel: row.channel
-                                        owner: info.label
+                                        owner: info.title
                                         brief: true
                                         highPass: true
                                     }
@@ -213,14 +251,22 @@ EqualiserSection {
                                         Layout.fillWidth: true
                                         Layout.preferredWidth: 1
                                         channel: row.channel
-                                        owner: info.label
+                                        owner: info.title
                                         brief: true
                                         highPass: false
                                     }
                                 }
                                 Accessible.role: Accessible.Row
-                                Accessible.name: info.label
+                                Accessible.name: info.title
                             }
+                        }
+                        // -- WP UA1 -- (C5) the unused outputs, folded under one row
+                        EqualiserUnusedRow {
+                            objectName: "EqualiserCrossover.unused"
+                            width: table.width
+                            count: page.unusedOutputs.filter(o => page.unusedOpen || page.shownOutputs.indexOf(o) < 0).length
+                            open: page.unusedOpen
+                            onClicked: page.unusedOpen = !page.unusedOpen
                         }
                     }
                 }
@@ -243,8 +289,8 @@ EqualiserSection {
                     visible: page.detailed
                     Layout.fillWidth: true
                     Layout.topMargin: Theme.spacingSection - lists.spacing
-                    //: %1 is an output's name ("Out 1")
-                    text: qsTr("Crossover bands of %1").arg(named.label)
+                    //: %1 is an output's name ("Left tweeter · 2")
+                    text: qsTr("Crossover bands of %1").arg(named.title)
                     ChannelInfo { id: named; channel: page.channel }
                 }
                 FilterList {

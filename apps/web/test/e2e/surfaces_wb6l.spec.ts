@@ -196,7 +196,7 @@ test("WB6l M24: Ctrl+Shift+M opens the Matrix, Shift+? lists the keys, never whi
   const list = page.getByRole("dialog", { name: "Keyboard Shortcuts" });
   await expect(list).toBeVisible();
   await expect(list.getByText("Matrix Mixer…")).toBeVisible();
-  await expect(list.getByText("Commit Parameters…")).toBeVisible();
+  await expect(list.getByText("Save to Device…")).toBeVisible(); // -- WP UFW -- (UXP A10, D1)
   await expect(list.getByText("Recall Preset 1-9")).toBeVisible();
   // No effects screen on this build: its keys are not listed.
   await list.getByRole("button", { name: "Close" }).click();

@@ -67,7 +67,9 @@ pub const NOTICE_READ_ONLY_CLIENT: &str = "read_only.client";
 pub const NOTICE_READ_ONLY_GUARD_PENDING: &str = "read_only.guard_pending";
 
 /// The words of that refusal (an `InvalidArgument`'s message).
-pub const GUARD_PENDING: &str = "A safe apply is waiting for Keep or Revert: keep or revert it before turning read-only mode on.";
+// -- WP UFW -- (UXP D10) "trial", the countdown's one user word
+pub const GUARD_PENDING: &str =
+    "A trial is waiting for Keep or Revert: keep or revert it before turning read-only mode on.";
 
 /// The hub requests that only read, the ones the client read-only mode lets
 /// out: the limits and pinned mode (the lock's refresh), the guarded apply's

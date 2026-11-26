@@ -613,6 +613,8 @@ void delayPart(Eq &e) {
 
     // An enable that switches the other side of Core 1 off asks, here too
     const int pdm = e.cc->pdmOutput();
+    // -- WP UA1 -- (UXP C5) outputs 4 and the PDM one have no route: open the fold they are under
+    if (!e.shown(QStringLiteral("EqualiserDelay.row.%1.enable").arg(pdm))) e.click(QStringLiteral("EqualiserDelay.unused"));
     e.check("an output's enable", e.click(QStringLiteral("EqualiserDelay.row.3.enable")) && e.state()->output_enabled[3]);
     e.check("the PDM output would take its core", e.cc->enableWouldConflict(pdm));
     QObject *question = popup(e, QStringLiteral("EqualiserDelay.enableQuestion"));

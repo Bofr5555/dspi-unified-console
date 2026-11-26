@@ -131,7 +131,7 @@ test("WEBM4: the top bar's search; greyed rows say why; other devices are a swit
   await expect(session.locator(".read-only-reason")).toBeVisible(); // -- WP REVEFIX -- said in the strip (the badge is gone with the session bar)
   await page.keyboard.press(`${mod}+k`);
   await field(page).fill("commit");
-  const commit = option(page, /^Commit Parameters…/);
+  const commit = option(page, /^Save to Device…/); // -- WP UFW -- (UXP A10, D1) found by its old words too
   await expect(commit).toHaveAttribute("aria-disabled", "true");
   await expect(commit).toHaveAttribute("aria-selected", "false");
   await expect(commit.locator(".palette-where")).toHaveText("You can view this DSPi but not change it");

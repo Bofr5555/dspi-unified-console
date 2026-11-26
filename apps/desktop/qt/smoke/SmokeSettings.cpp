@@ -128,8 +128,9 @@ void settingsSection(SmokeDriver &d) {
     if (!w) return;
     Ui ui{ d, w };
     d.spin(300);
-    d.check(QStringLiteral("qp10: a fresh profile opens on About"), s->currentPage() == QLatin1String("about"));
-    d.check(QStringLiteral("qp10: the title row names the page"), ui.text("Settings.title") == s->pageTitle(QStringLiteral("about")));
+    // -- WP UA5 -- where the work is: Device › Speakers (was About)
+    d.check(QStringLiteral("qp10: a fresh profile opens on Speakers"), s->currentPage() == QLatin1String("speakers"));
+    d.check(QStringLiteral("qp10: the title row names the page"), ui.text("Settings.title") == s->pageTitle(QStringLiteral("speakers")));
     // -- WP QTPOP -- taller when the page needs it (About does)
     d.check(QStringLiteral("qp10: the default size is 860 x 630 or taller"), w->width() == 860 && w->height() >= 630);
 
@@ -142,7 +143,7 @@ void settingsSection(SmokeDriver &d) {
                 all.indexOf(QStringLiteral("overview")) > all.indexOf(QStringLiteral("spectrum")));
     int headings = 0;
     for (const QVariant &row : s->sidebarRows(QString())) headings += row.toMap().contains(QStringLiteral("heading"));
-    d.check(QStringLiteral("qp10: Application, Display and System headings show with a device"), headings >= 3);
+    d.check(QStringLiteral("qp10: Application, Display and Device headings show with a device"), headings >= 3);
     d.check(QStringLiteral("qp10: a page row is in the sidebar"), ui.get("Settings.row.graphing") != nullptr);
 
     // ---- The registration API ----------------------------------------------------
@@ -160,7 +161,8 @@ void settingsSection(SmokeDriver &d) {
     d.check(QStringLiteral("qp10: a registered page opens"), ui.get("SmokeSettingsPage") != nullptr);
     s->setPageAvailable(QStringLiteral("smokeprobe"), false);
     d.spin(200);
-    d.check(QStringLiteral("qp10: the page showing falls back to About when it goes"), s->currentPage() == QLatin1String("about"));
+    // -- WP UA5 -- to the landing page: the page last chosen is the one that went, so Speakers
+    d.check(QStringLiteral("qp10: the page showing falls back to Speakers when it goes"), s->currentPage() == QLatin1String("speakers"));
     d.check(QStringLiteral("qp10: a registered footer shows on every page"), ui.get("SmokeSettingsFooter") != nullptr);
 
     // ---- Search (behaviour.md §9) ---------------------------------------------------
