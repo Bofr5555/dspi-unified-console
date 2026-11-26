@@ -15,6 +15,7 @@ import type { FunctionComponent } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import type { HubAlarmRecord, HubStatsRecord } from "../../core/protocol";
 import type { ScreenDef, ScreenProps } from "../../ui/screens";
+import type { Session } from "../../ui/session"; // -- WP UB6 --
 import { HubFeed, type HubView, type Said } from "./feed";
 import { alarmSummary, alarmTitle, durationText, shortTime } from "./model";
 import { useSessionState } from "../../ui/components";
@@ -44,8 +45,24 @@ export function useHubView(feed: HubFeed | undefined): HubView | null {
   return feed ? feed.view : null;
 }
 
+// -- WP UB6 --
+/** The hub pages on show, told when a part is chosen from outside them (the banner's Show Alarms). */
+const partWatchers = new Set<() => void>();
+
+/** Show part `id` of `session`'s hub page: now when the page is on show, else when it opens. */
+export function showHubPart(session: Session, id: string): void {
+  placeOf(session).parts.set(HUB_SCREEN_ID, id);
+  for (const w of [...partWatchers]) w();
+}
+
 export const HubScreen: FunctionComponent<ScreenProps> = (props) => {
   const feed = props.hub;
+  const [, chosenElsewhere] = useState(0); // -- WP UB6 --
+  useEffect(() => {
+    const w = () => chosenElsewhere((n) => n + 1);
+    partWatchers.add(w);
+    return () => void partWatchers.delete(w);
+  }, []);
   const view = useHubView(feed);
   const st = useSessionState(props.session);
   const hubName = st.hubName; // -- WP P2WB3 --
@@ -280,7 +297,7 @@ export function HubAlarmBanner(props: { feed: HubFeed; onShow: (() => void) | nu
         <button
           type="button"
           onClick={() => {
-            placeOf(props.feed.session).parts.set(HUB_SCREEN_ID, "alarms"); // -- WP UB6 -- the Alarms part
+            showHubPart(props.feed.session, "alarms"); // -- WP UB6 -- the Alarms part
             props.onShow!();
           }}
         >
