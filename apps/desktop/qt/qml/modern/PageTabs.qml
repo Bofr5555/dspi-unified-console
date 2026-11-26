@@ -191,7 +191,7 @@ Item {
         IconButton {
             objectName: "PageTabs.openWindow"
             visible: bar.action.length > 0
-            enabled: !bar.noDevice && Shell.allows(bar.action) && Shell.shownWindows.indexOf(bar.action) < 0   // -- WP DL4 -- noDevice
+            enabled: !bar.noDevice && !bar.lockRead && Shell.allows(bar.action) && Shell.shownWindows.indexOf(bar.action) < 0   // -- WP DL4 -- noDevice -- FIX016 -- (F8) lockRead
             iconName: "app-window"
             toolTip: qsTr("Open in Window")
             // -- WP LAY5b -- on the part shown here

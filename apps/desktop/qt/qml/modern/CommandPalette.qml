@@ -188,6 +188,7 @@ Popup {
         for (const r of MenuTable.flatRows()) {
             if (r.optional && !Shell.handles(r.id)) continue
             if (r.platformHidden && DeviceModel.platformName === r.platformHidden) continue
+            if (LimitsController.locked && LimitsController.lockRefuses(r.id)) continue   // -- FIX016 -- (REVG F8) not offered
             const panel = PanelTable.row(r.id)
             const section = panel ? SectionTable.section(panel.section) : null
             const tab = panel ? panel.tabTitle || panel.title : ""

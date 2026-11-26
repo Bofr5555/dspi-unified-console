@@ -18,13 +18,17 @@ ApplicationWindow {
     property string actionId: ""
     readonly property bool senderLocked: actionId.length > 0 && DeviceInfoController.sender
                                          && !DeviceInfoController.senderKeeps(actionId)
-    contentItem.enabled: !senderLocked
+    // -- FIX016 -- (REVG F8) A panel's window under the installer's lock in Modern
+    // (PanelWindow sets it): shown read-only, as its page is
+    property bool lockRead: false
+    contentItem.enabled: !senderLocked && !lockRead
     header: Banner {
         objectName: "ToolWindow.senderBanner"
-        visible: window.senderLocked
+        visible: window.senderLocked || window.lockRead
         kind: "info"
-        iconName: "radio"
-        text: qsTr("This is an audio link sender. It has no DSP, so this window has nothing to show or change.")
+        iconName: window.senderLocked ? "radio" : "lock"
+        text: window.senderLocked ? qsTr("This is an audio link sender. It has no DSP, so this window has nothing to show or change.")
+                                  : qsTr("Locked by the installer: this window is shown read-only. Volume, mute and presets are on Home.")
     }
 
     // -- WP QTPOP -- Fitted to its content: when it shows, and when the

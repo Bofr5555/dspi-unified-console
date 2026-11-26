@@ -5,6 +5,7 @@
 #include "Core.h"
 #include "DeviceModel.h"
 #include "DeviceSession.h"   // -- WP MDQT2b --
+#include "LimitsController.h"   // -- FIX016 --
 #include "Shell.h"
 #include "Snapshot.h"
 
@@ -125,7 +126,11 @@ DeviceInfoController::DeviceInfoController(const AppContext &ctx, QObject *paren
     connect(ctx.device, &DeviceModel::snapshotApplied, this, &DeviceInfoController::onSnapshot);
     // -- WP QTSENDER -- nothing that needs a DSP runs on the sender
     if (ctx.shell)
-        ctx.shell->setActionGate(this, [this](const QString &action) { return !sender() || senderKeeps(action); });
+        ctx.shell->setActionGate(this, [this](const QString &action) {
+            // -- FIX016 -- (REVG F8) and in Modern not what the installer's lock fences
+            const auto *limits = Registrar::instance<LimitsController>();
+            return (!sender() || senderKeeps(action)) && !(limits && limits->lockFences(action));
+        });
 }
 
 // -- WP QTSENDER --

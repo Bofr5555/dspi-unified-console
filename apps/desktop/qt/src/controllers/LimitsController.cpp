@@ -2,6 +2,8 @@
 // (LimitsController.h; PLAN-CLIENTS 5.9, OD-P1c, OD-P1d, OD-P1e)
 #include "LimitsController.h"
 
+#include "LayoutController.h"   // -- FIX016 --
+
 #include "Core.h"
 #include "CoreWorker.h"
 #include "DeviceModel.h"
@@ -719,4 +721,22 @@ void LimitsController::onHubEvent(const QJsonObject &event) {
         emit lockChanged();
     }
     refresh();
+}
+
+// -- FIX016 -- (REVG F8)
+bool LimitsController::lockRefuses(const QString &action) {
+    static const QStringList refused{
+        QStringLiteral("edit.undo"),           QStringLiteral("edit.redo"),               QStringLiteral("edit.history"),
+        QStringLiteral("device.commit"),       QStringLiteral("device.revert"),           QStringLiteral("device.factoryReset"),
+        QStringLiteral("device.resetDemo"),    QStringLiteral("device.bypass"),           QStringLiteral("device.abToggle"),
+        QStringLiteral("device.snapshots"),    QStringLiteral("device.firmwareUpdate"),   QStringLiteral("file.importFilters"),
+        QStringLiteral("file.importConfiguration"), QStringLiteral("file.saveMasterVolume"), QStringLiteral("file.saveOutputConfiguration"),
+        QStringLiteral("autoeq.browse"),
+    };
+    return action.startsWith(QLatin1String("slot.")) || refused.contains(action);
+}
+
+bool LimitsController::lockFences(const QString &action) const {
+    const auto *layout = Registrar::instance<LayoutController>();
+    return locked() && layout && layout->modern() && lockRefuses(action);
 }

@@ -370,6 +370,109 @@ void speakersUnderTheLock(SmokeDriver &d) {
 }
 // ==== end R4-QT ====
 
+// ==== F8 ====
+// ---- F8: Modern under the installer's lock: what the top bar hides, the keyboard,
+// the palette, Open in Window, a panel's window and A|B do not offer either
+QVariant menuCall(SmokeDriver &d, const char *function, const QString &id) {
+    QObject *table = d.app().engine->singletonInstance<QObject *>("UConsole", "MenuTable");
+    QVariant out;
+    if (table) QMetaObject::invokeMethod(table, function, Q_RETURN_ARG(QVariant, out), Q_ARG(QVariant, id));
+    return out;
+}
+
+void modernUnderTheLock(SmokeDriver &d) {
+    auto *lc = Registrar::instance<LimitsController>();
+    Shell *shell = d.app().shell;
+    DeviceModel *device = d.app().device;
+    QQuickWindow *main = d.mainWindow();
+    if (!lc || !main || !device->state()) {
+        d.check("fix016 F8: the controllers", false);
+        return;
+    }
+    const QSize sizeWas = main->size();
+    d.check("fix016 F8: in Modern", d.switchLayout("modern"));
+    main->resize(1600, 1000);
+    d.goTo(QStringLiteral("overview/overview"), 200);
+    // A change to undo, made before the lock
+    const float gainWas = device->state()->output_gain_db[0];
+    device->write(QStringLiteral("fix016 gain"), [](FfiCore *c) { return dspi_set_output_gain(c, 0, -13.0f); });
+    d.waitIdle();
+    const auto gain0 = [&] { return device->state() ? device->state()->output_gain_db[0] : 99.0f; };
+    const auto available = [&](const char *id) { return menuCall(d, "available", QString::fromLatin1(id)).toBool(); };
+    d.check("fix016 F8: unlocked: Save, Factory Reset, Bypass are offered", available("device.commit") && available("device.factoryReset")
+            && available("device.bypass") && shell->allows(QStringLiteral("device.commit")));
+    {
+        InstallerLock lock(d, lc);
+        d.check("fix016 F8: locked", lc->locked());
+        d.goTo(QStringLiteral("overview/home"), 300);
+        main->requestActivate();
+        QTest::qWaitForWindowActive(main, 2000);
+        QSignalSpy triggered(shell, &Shell::triggered);
+        // Ctrl+S: no Save question; and the action is refused however it comes
+        QTest::keyClick(main, Qt::Key_S, Qt::ControlModifier);
+        d.spin(300);
+        shell->trigger(QStringLiteral("device.commit"));
+        d.spin(100);
+        bool commit = false;
+        for (const QList<QVariant> &a : triggered) commit = commit || a.value(0).toString() == QLatin1String("device.commit");
+        d.check("fix016 F8: locked: Ctrl+S does not ask to save, and Save to Device is refused", !commit && !available("device.commit")
+                && !shell->allows(QStringLiteral("device.commit")));
+        QTest::keyClick(main, Qt::Key_Z, Qt::ControlModifier);
+        d.spin(300);
+        d.waitIdle();
+        d.check("fix016 F8: locked: Ctrl+Z does nothing", std::abs(gain0() + 13.0f) < 0.05f && !available("edit.undo"));
+        d.check("fix016 F8: locked: Ctrl+B (Bypass), Factory Reset… (also on Devices › This Computer), Revert and the slots are not offered",
+                !available("device.bypass") && !menuCall(d, "can", QStringLiteral("device.factoryReset")).toBool()
+                    && !available("device.revert") && !available("slot.clear") && !available("device.abToggle"));
+        // The palette lists none of them
+        QObject *palette = d.object(QStringLiteral("CommandPalette"));
+        QVariant entries;
+        if (palette) QMetaObject::invokeMethod(palette, "makeEntries", Q_RETURN_ARG(QVariant, entries));
+        QStringList ids;
+        const QVariant list = entries.canConvert<QJSValue>() ? entries.value<QJSValue>().toVariant() : entries;
+        for (const QVariant &e : list.toList()) ids << e.toMap().value(QStringLiteral("id")).toString();
+        d.check(QStringLiteral("fix016 F8: locked: the palette lists no Factory Reset, Bypass, Save or undo (%1 rows)").arg(ids.size()),
+                !ids.isEmpty() && !ids.contains(QLatin1String("device.factoryReset")) && !ids.contains(QLatin1String("device.bypass"))
+                    && !ids.contains(QLatin1String("device.commit")) && !ids.contains(QLatin1String("edit.undo")));
+        d.check("fix016 F8: locked: the palette still has Mute and the presets",
+                ids.contains(QLatin1String("device.mute")) && ids.contains(QLatin1String("device.preset1")));
+        // Volume, mute and presets still work
+        triggered.clear();
+        shell->trigger(QStringLiteral("device.mute"));
+        d.spin(200);
+        bool muted = false;
+        for (const QList<QVariant> &a : triggered) muted = muted || a.value(0).toString() == QLatin1String("device.mute");
+        shell->trigger(QStringLiteral("device.mute"));
+        d.spin(200);
+        d.check("fix016 F8: locked: mute and the presets are still offered and taken",
+                muted && available("device.mute") && available("device.preset1") && shell->allows(QStringLiteral("device.preset1")));
+        // A page the lock shows read-only: no Open in Window; a panel's window read-only
+        d.goTo(QStringLiteral("equaliser/peq"), 300);
+        QQuickItem *openWindow = d.item(QStringLiteral("PageTabs.openWindow"));
+        d.check("fix016 F8: locked: Open in Window is off", !openWindow || !openWindow->isVisible() || !openWindow->isEnabled());
+        const bool matrixWas = shell->shownWindows().contains(QStringLiteral("tools.matrix"));
+        auto *panel = qobject_cast<QQuickWindow *>(shell->openWindow(QStringLiteral("tools.matrix")));
+        d.spin(300);
+        // (ApplicationWindow's contentItem, under its header: not the window's root item)
+        auto *content = panel ? panel->property("contentItem").value<QQuickItem *>() : nullptr;
+        d.check("fix016 F8: locked: a panel's window is read-only", panel && panel->property("lockRead").toBool() && content && !content->isEnabled());
+        if (panel && !matrixWas) shell->closeWindow(QStringLiteral("tools.matrix"));
+        QQuickItem *ab = d.item(QStringLiteral("TopBar.ab"));
+        d.check("fix016 F8: locked: A|B is off", !ab || !ab->isVisible() || !ab->isEnabled());
+        d.grab(main, QStringLiteral("fix016-f8-locked-peq.png"));
+        // Classic under the lock is as it was (owner: D4 is Modern, the web and Android)
+        d.switchLayout("classic");
+        d.check("fix016 F8: locked in Classic: the menus and keys are as before",
+                available("device.commit") && available("device.bypass") && shell->allows(QStringLiteral("device.commit")));
+        d.switchLayout("modern");
+    }
+    d.check("fix016 F8: unlocked: offered again", available("device.commit") && available("device.bypass") && shell->allows(QStringLiteral("device.bypass")));
+    device->write(QStringLiteral("fix016 gain"), [gainWas](FfiCore *c) { return dspi_set_output_gain(c, 0, gainWas); });
+    d.waitIdle();
+    main->resize(sizeWas);
+    d.switchLayout("classic");
+}
+// ==== end F8 ====
 
 
 
@@ -379,6 +482,7 @@ void fix016Section(SmokeDriver &d) {
     micWithTheDemo(d);
     groupedQuestions(d);
     speakersUnderTheLock(d);   // R4-QT
+    modernUnderTheLock(d);   // F8
 }
 
 const SmokeDriver::Section fix016("fix016-qt", 1000, &fix016Section);

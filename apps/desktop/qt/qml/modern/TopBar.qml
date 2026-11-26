@@ -177,7 +177,7 @@ Rectangle {
             model: ["A", "B"]
             // B, now, is what plays until a compare starts
             current: !SnapshotsController.abActive ? (abShown ? 1 : -1) : SnapshotsController.abSide === "b" ? 1 : 0
-            enabled: DeviceModel.connected
+            enabled: DeviceModel.connected && !LimitsController.locked   // -- FIX016 -- (REVG F8)
             readonly property string toolTip: !abShown ? ""
                 : !SnapshotsController.abActive
                 //: B is the key that switches

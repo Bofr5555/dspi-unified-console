@@ -354,6 +354,8 @@ QtObject {
     // Edit rows that act on a focused text field. Menus and TableShortcuts
     // bind a row's enabled to it (greyed, not hidden); Shell refuses the rest.
     function available(id) {
+        // -- FIX016 -- (REVG F8) nor, in Modern under the installer's lock, a write the top bar hides
+        if (LayoutController.modern && LimitsController.locked && LimitsController.lockRefuses(id)) return false
         return !DeviceInfoController.sender || textEdits[id] !== undefined || DeviceInfoController.senderKeeps(id)
     }
 

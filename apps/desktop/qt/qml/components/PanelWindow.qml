@@ -15,6 +15,9 @@ ToolWindow {
 
     windowId: panel.windowId
     title: panel.title
+    // -- FIX016 -- (REVG F8) in Modern, a page the lock shows read-only is so in its window too
+    lockRead: LayoutController.modern && LimitsController.locked && DeviceModel.connected
+              && !SectionTable.lockFree(panel.section || "", panel.tab || "")
     defaultWidth: panel.width
     defaultHeight: panel.height
     minimumWidth: panel.minWidth || 0
