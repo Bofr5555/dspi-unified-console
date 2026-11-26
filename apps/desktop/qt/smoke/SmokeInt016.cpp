@@ -2,7 +2,8 @@
 // Measure and Auto-tune fold the outputs nothing is routed to and nothing plays
 // on (UA1's C5, the `hidden` role) under one "N unused" row, a ticked one stays;
 // Settings › Installer's "No limiter on …" row names the outputs as Modern's
-// pages do (unprotectedTextOf, an empty name is the label). (The menu row
+// pages do (unprotectedTextOf, an empty name is the label); Classic's menu bar
+// has no Help › Keyboard Shortcuts (`modernOnly`: the list is Modern's). (The menu row
 // "Agent Activity…", C4, is in assets/actions.json, which lay3b-actions compares.)
 #include "SmokeDriver.h"
 
@@ -37,9 +38,10 @@ QList<int> int016Hidden(DeviceModel *device) {
     return out;
 }
 
-bool int016On(const QVariantList &rows, int output) {
+// Whether `output` is a row of the tab's list and not ticked (Auto-tune lists only the layout's outputs)
+bool int016Unticked(const QVariantList &rows, int output) {
     for (const QVariant &v : rows)
-        if (v.toMap().value(QStringLiteral("output")).toInt() == output) return v.toMap().value(QStringLiteral("on")).toBool();
+        if (v.toMap().value(QStringLiteral("output")).toInt() == output) return !v.toMap().value(QStringLiteral("on")).toBool();
     return false;
 }
 
@@ -48,7 +50,7 @@ void int016Fold(SmokeDriver &d, const char *tab, QQuickItem *page, const QString
     auto check = [&](const QString &what, bool ok) { d.check(QStringLiteral("int016: %1: %2").arg(QLatin1String(tab), what), ok); };
     QList<int> folded;
     for (int o : hidden)
-        if (!int016On(rows, o)) folded << o;
+        if (int016Unticked(rows, o)) folded << o;
     QQuickItem *row = int016Shown(page, prefix + QStringLiteral(".unused"));
     std::printf("smoke: int016: %s: hidden %d, folded %d, row %p\n", tab, int(hidden.size()), int(folded.size()), (void *)row);
     if (folded.isEmpty()) {
@@ -96,6 +98,13 @@ void int016Section(SmokeDriver &d) {
         check("the row takes the names given", named.startsWith(QStringLiteral("No limiter on Left woofer · 1")));
         check("an output with no name given keeps its label", tools->unprotectedTextOf({}) == tools->unprotectedText());
     }
+
+    // ---- Classic: Help › Keyboard Shortcuts is Modern's list, not a dead row there -----------
+    check("Classic", d.switchLayout("classic"));
+    QObject *keys = nullptr;
+    d.waitFor(3000, [&] { return (keys = d.object(QStringLiteral("Menu.help.shortcuts"))) != nullptr; });
+    check("Classic's Help menu has no Keyboard Shortcuts row", !keys || !keys->property("visible").toBool());
+    check("Modern again", d.switchLayout("modern"));
 }
 
 } // namespace

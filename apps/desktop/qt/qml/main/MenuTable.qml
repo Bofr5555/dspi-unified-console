@@ -11,7 +11,9 @@ import UConsole
 // A row: { id, text, shortcut (optional), optional (shown only while
 // Shell.handles(id)), platformHidden (a platform name it is hidden on),
 // enabled (optional: a function, bound to the row's and shortcut's enabled),
-// modern (optional: its places in the Modern layout, see `places`) }.
+// modern (optional: its places in the Modern layout, see `places`),
+// modernOnly (-- INT016 --: not in Classic's menu bar, for a row only Modern
+// answers) }.
 // { separator: true } is a line; { submenu: "<title>", rows: [...] } nests.
 // Work packages add rows under their own marker; ids are "<menu>.<name>".
 QtObject {
@@ -152,7 +154,7 @@ QtObject {
                 // -- WP UFW -- (UXP A8) the manual, and the shortcut list (its
                 // dialog is UXP A5's: the row shows once it handles the id)
                 { id: "help.manual", text: qsTr("User Manual"), modern: ["appMenu.help"] },
-                { id: "help.shortcuts", text: qsTr("Keyboard Shortcuts"), optional: true, modern: ["appMenu.help"] },
+                { id: "help.shortcuts", text: qsTr("Keyboard Shortcuts"), optional: true, modernOnly: true, modern: ["appMenu.help"] },   // -- INT016 -- the list is Modern's (Classic's menu bar names every key)
                 { separator: true },
                 //: %1 is the app's name
                 { id: "help.whatsNew", text: qsTr("What's New in %1").arg(AppIdentity.displayName), modern: ["appMenu.help"] },

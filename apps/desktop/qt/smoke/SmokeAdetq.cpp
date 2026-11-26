@@ -174,6 +174,11 @@ void speakersSection(SmokeDriver &d) {
     d.switchLayout("classic");
     quieten(d);
     const QJsonObject was = storedLayout(d);
+    // -- INT016 -- (UB7's finding) from an empty, unconfirmed layout, whatever an
+    // earlier section (roleq-speakers, ub7-speakers) left confirmed
+    setLayout(d, { { QStringLiteral("outputs"), QJsonArray{} }, { QStringLiteral("confirmedByUser"), false } });
+    sc->reload();
+    d.waitFor(3000, [&] { return sc->loaded() && sc->status() != QLatin1String("confirmed"); });
 
     // ---- A layout the detection wrote: auto-detected ---------------------------------
     const QJsonObject kept = setLayout(d, detectedLayout(d));
