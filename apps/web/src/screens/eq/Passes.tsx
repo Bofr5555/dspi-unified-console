@@ -82,7 +82,7 @@ export function PassFields(props: {
             {select}
             {off}
           </td>
-          <td class="c-freq">{pass ? field : null}</td>
+          <td class="c-freq">{field /* -- WP UWN -- (UXP A17) always beside its type ("–" while the pass is off) */}</td>
         </>
       );
     return (

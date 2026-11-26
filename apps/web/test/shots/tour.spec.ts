@@ -140,7 +140,8 @@ test.describe("one device: the core's demo", () => {
     await openPage(session, "Matrix");
     await shot(page, "demo-matrix");
     await openPage(session, "System");
-    await expect(session.getByRole("region", { name: "System" }).getByText("One device, shown as a single unit.")).toBeVisible();
+    // -- WP UWN -- (UXP A17) the System of a device on its own is Qt's empty state now (WEB7)
+    await expect(session.getByRole("status").filter({ hasText: "Not on a hub" })).toBeVisible();
     await shot(page, "demo-single-unit");
     // -- WP WB8 -- Undo and Redo beside the tabs, after a change; the event log and Save Diagnostics…
     await openPage(session, "Main");
@@ -174,10 +175,12 @@ test.describe("snapshots and files on the core's demo", () => {
     await openPage(session, "Snapshots");
     const screen = session.getByRole("region", { name: "Snapshots" });
     const capture = async (name: string, note: string) => {
-      await screen.getByRole("button", { name: "Capture…" }).click(); // -- WP INTD -- Capture is a popover
-      await screen.getByLabel("Name").fill(name);
-      await screen.getByLabel("Note").fill(note);
-      await Promise.all([page.waitForEvent("download"), screen.getByRole("button", { name: "Capture", exact: true }).click()]);
+      // -- WP UWN -- (UXP A17) Capture… is the empty state's or the page tools' (WEB7), its popover a dialog
+      await session.getByRole("button", { name: "Capture…" }).first().click();
+      const pop = session.getByRole("dialog", { name: "Capture Snapshot" });
+      await pop.getByLabel("Name").fill(name);
+      await pop.getByLabel("Note").fill(note);
+      await Promise.all([page.waitForEvent("download"), pop.getByRole("button", { name: "Capture", exact: true }).click()]);
     };
     await capture("Evening", "Warm, -3 dB on the tops");
     await setOutputGain(session, -4); // -- WP INTD -- on Delay & gain
@@ -186,7 +189,9 @@ test.describe("snapshots and files on the core's demo", () => {
     await expect(screen.getByRole("list", { name: "Held snapshots" }).getByRole("listitem")).toHaveCount(2);
     await shot(page, "demo-snapshots");
     const row = (n: string) => screen.getByRole("list", { name: "Held snapshots" }).getByRole("listitem", { name: n });
-    await row("Evening").getByRole("button", { name: "Compare" }).click();
+    // -- WP UWN -- (UXP A17) Compare is in the row's menu (WEB7, Qt's sheet)
+    await screen.getByRole("button", { name: "More, Evening" }).first().click();
+    await session.getByRole("menu", { name: "More, Evening" }).getByRole("menuitem", { name: "Compare with Current" }).click();
     const bar = session.getByRole("group", { name: "A/B compare" });
     await bar.getByRole("button", { name: /switch/ }).click();
     await expect(bar).toContainText("Now B");
@@ -197,7 +202,10 @@ test.describe("snapshots and files on the core's demo", () => {
     await shot(page, "demo-ab-bar", { of: bar });
     await bar.getByRole("button", { name: "Keep A" }).click();
     await expect(bar).toHaveCount(0);
-    await row("Bright").getByRole("button", { name: "Recall with Rollback" }).click();
+    // -- WP UWN -- (UXP A17) Recall with rollback is the page's switch, then the row's Recall (WEB7, Qt's)
+    const rollback = screen.getByRole("switch", { name: "Recall with rollback" });
+    if ((await rollback.getAttribute("aria-checked")) !== "true") await rollback.click();
+    await row("Bright").getByRole("button", { name: "Recall", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Recall Snapshot" });
     const guard = session.getByRole("alert", { name: "Safe apply" });
     // Asked first when the settings are unsaved.
@@ -307,6 +315,7 @@ test.describe("an audio link installation on the hub", () => {
     hub = await linkHub(["--open", "--forget-clients"]);
     const session = await openUnit(page, hub, "DEMO-ALINK-A");
     await setMode(session, page, "Installer");
+    await openPage(session, "Clock and Links"); // -- WP UWN -- (UXP A17) the clock is its own tab (WEB7)
     const panel = session.getByRole("region", { name: "Clock and audio links" });
     await expect(panel.getByRole("table", { name: "Units on the audio link" }).getByRole("row", { name: "Clock of Main right" })).toContainText("3 frames");
     await expect(panel.getByRole("table", { name: "Audio link stats" }).getByRole("row", { name: "Audio link stats of Main left" })).toContainText("locked");
@@ -347,22 +356,26 @@ test.describe("an audio link installation on the hub", () => {
     await expect(rail.getByLabel("Alarms")).not.toHaveText("No alarms", { timeout: 15_000 });
     await shot(page, "link-holdover");
     await shot(page, "link-holdover-rail", { of: rail });
+    await openPage(session, "Clock and Links"); // -- WP UWN -- (UXP A17) the clock is its own tab (WEB7)
     const stats = session.getByRole("region", { name: "Clock and audio links" }).getByRole("table", { name: "Audio link stats" });
     await expect(stats.getByRole("row", { name: "Audio link stats of Main right" })).toContainText("holdover", { timeout: 15_000 });
     await shot(page, "link-holdover-stats", { of: stats });
     await alinkSim(hub, "DEMO-ALINK-B", ALINK_SIM_LOCK);
-    await expect(right).toContainText("Audio link: Locked", { timeout: 15_000 });
     await expect(stats.getByRole("row", { name: "Audio link stats of Main right" })).toContainText("locked", { timeout: 15_000 });
+    await openPage(session, "System");
+    await expect(right).toContainText("Audio link: Locked", { timeout: 15_000 });
     await page.waitForTimeout(3500);
     await shot(page, "link-relocked");
-    await shot(page, "link-relocked-stats", { of: stats });
     await shot(page, "link-relocked-rail", { of: rail });
+    await openPage(session, "Clock and Links");
+    await shot(page, "link-relocked-stats", { of: stats });
   });
 
   test("Control: the installer panel read only, an admin-only scene refused", async ({ page }) => {
     hub = await linkHub(["--pair"], true);
     const session = await openUnit(page, hub, "DEMO-ALINK-C");
     await setMode(session, page, "Installer");
+    await openPage(session, "Clock and Links"); // -- WP UWN -- (UXP A17) the clock is its own tab (WEB7)
     const panel = session.getByRole("region", { name: "Clock and audio links" });
     await expect(panel.getByText("this panel is read only")).toBeVisible();
     await session.getByLabel("Scenes", { exact: true }).getByRole("button", { name: "Recall Test click" }).click();
@@ -386,6 +399,7 @@ test.describe("an audio link installation on the hub", () => {
     await expect(rail.getByRole("button", { name: "System mute" })).toBeDisabled();
     await shot(page, "role-viewer");
     await setMode(session, page, "Installer");
+    await openPage(session, "Clock and Links"); // -- WP UWN -- (UXP A17) the clock is its own tab (WEB7)
     await expect(session.getByRole("region", { name: "Clock and audio links" }).getByRole("button", { name: "Compute" })).toBeDisabled();
     await shot(page, "role-viewer-installer");
   });

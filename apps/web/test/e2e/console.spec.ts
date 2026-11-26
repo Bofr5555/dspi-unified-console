@@ -151,7 +151,7 @@ test("embedded: two consoles on one page, each with its user, roles and sessions
   await one.getByRole("region", { name: "Venue B" }).getByRole("button", { name: "Connect" }).click();
   // -- WP WB6b -- the sessions' tabs (a session's own screens have tabs too)
   await expect(one.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab")).toHaveCount(2);
-  await expect(one.getByRole("tab", { name: "Venue B · DSPi" })).toHaveAttribute("aria-selected", "true");
+  await expect(one.getByRole("tab", { name: /, Venue B · / })).toHaveAttribute("aria-selected", "true"); // -- WP UWN -- (UXP A15) the name, then the site when two are open
   const venueB = one.getByRole("article", { name: "DSPi" });
   await expect(venueB.getByRole("slider", { name: "Volume" })).toBeDisabled();
   await expect(venueB.locator(".read-only-reason")).toHaveText("You can view this DSPi but not change it");

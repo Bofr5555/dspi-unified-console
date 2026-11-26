@@ -306,8 +306,11 @@ test("WB6a tools: Save to device, Revert to Saved and Factory Reset ask first, t
   await setOutputGain(session, -2);
   await unsavedShown(session);
   await session.getByRole("button", { name: /^Save to Device/ }).click();
-  const commit = page.getByRole("dialog", { name: "Save Preset" });
-  await expect(commit).toContainText(`preset slot ${(await coreState(page)).activePresetSlot + 1}`);
+  const commit = page.getByRole("dialog", { name: "Save to Device" });
+  // -- WP UWN -- (UXP A17) the preset by its number and name, not "preset slot N"
+  const cs = await coreState(page);
+  await expect(commit).toContainText(`to preset ${cs.activePresetSlot + 1}`);
+  await expect(commit).not.toContainText("preset slot");
   await commit.getByRole("button", { name: "Save" }).click();
   await nothingUnsaved(session);
   expect(await unsavedLines(page)).toEqual([]);

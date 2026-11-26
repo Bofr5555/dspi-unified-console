@@ -18,6 +18,12 @@ import type { Session, SessionState } from "../session";
 import { LockIcon, SaveIcon } from "./icons";
 import { saveMasterVolume, saveOutputConfig } from "../../screens/files/model"; // -- WP WEB7 --
 
+// -- WP UWN -- (UXP A15)
+/** Save to Device's accessible name: the count in words. */
+export function saveName(n: number): string {
+  return n ? `Save to Device, ${n} unsaved ${n === 1 ? "change" : "changes"}` : "Save to Device";
+}
+
 /**
  * -- WP REVEFIX -- (REVE §3.1, Qt's TopBar) The device's parts of the one top bar: `left` beside its tab (the presets),
  * `right` before the bell (Undo, Redo, Save to Device ▾ and the lock). Save to Device is the primary only while
@@ -38,6 +44,8 @@ export function useSessionBar(props: {
   const s = state.snapshot?.state;
   if (!s) return undefined;
   const off = !!session.readOnlyReason || busy;
+  // -- WP UWN -- (UXP A16) while the link is away nothing is written: Save and its menu wait for it
+  const away = !!state.link && state.link.phase !== "bound";
   const run = async (f: () => Promise<unknown>) => {
     setBusy(true);
     try {
@@ -72,16 +80,24 @@ export function useSessionBar(props: {
         <UndoButtons session={session} state={state} />
         {props.locked ? null : (
           <span class={`save-split${n ? " primary" : ""}`}>
-            <button type="button" class={`bar-save${n ? " primary" : ""}`} disabled={off} title={`Save to the active preset (${mod}S)`} onClick={() => key("commit")}>
+            {/* -- WP UWN -- (UXP A15) one name with the count in words ("Save to Device, 1 unsaved change"), never "Save to Device0" */}
+            <button
+              type="button"
+              class={`bar-save${n ? " primary" : ""}`}
+              disabled={off || away}
+              aria-label={saveName(n)}
+              title={away ? "The DSPi is not connected now" : `Save to the active preset (${mod}S)`}
+              onClick={() => key("commit")}
+            >
               <SaveIcon />
               <span class="bar-save-text">Save to Device</span>
-              <span class={`bar-count${n ? " on" : ""}`} aria-label={n ? `${n} unsaved` : undefined} aria-hidden={!n}>
+              <span class={`bar-count${n ? " on" : ""}`} aria-hidden="true">
                 {n || 0}
               </span>
             </button>
             <ActionMenuButton
               label="Save options"
-              disabled={off}
+              disabled={off || away}
               items={() =>
                 menuItems("save", {
                   "device.revert": { run: () => key("revert") },
