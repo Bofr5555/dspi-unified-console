@@ -249,7 +249,9 @@ private fun SettingsDetail(
         SettingsCategory.POWER_ON -> PowerOnSettingsTab(bridge, onOpen)
         SettingsCategory.EVENTS -> WritesExempt { EventsSettingsTab(bridge) } // -- WP P2AN -- read-only
         // -- WP UAN -- the app's own files: the layout is kept on this phone, nothing is sent to the device
-        SettingsCategory.SPEAKERS -> WritesExempt { SpeakersSettingsTab(bridge) }
+        // -- FIX016 -- (REVG R4, agent C F7) but it is the device's layout, which the measurement and the preset
+        // guard trust: a read-only session sees it and cannot Confirm (under the write gate, not exempt)
+        SettingsCategory.SPEAKERS -> SpeakersSettingsTab(bridge)
     }
 }
 

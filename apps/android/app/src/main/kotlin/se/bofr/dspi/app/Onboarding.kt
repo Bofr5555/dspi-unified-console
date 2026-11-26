@@ -33,6 +33,8 @@ import se.bofr.dspi.feature.settings.SpeakersEditor
 import se.bofr.dspi.feature.settings.SpeakersModel
 import se.bofr.dspi.ui.DspiRoutes
 import se.bofr.dspi.ui.LocalDemoMode
+import se.bofr.dspi.ui.LocalUiMode
+import se.bofr.dspi.ui.UiModes
 import se.bofr.dspi.ui.settings.LocalAppSettings
 
 /**
@@ -82,10 +84,16 @@ internal fun GettingStartedRoute(bridge: DspiBridge, go: (String) -> Unit, back:
             store.update { it.copy(onboardingSetupDone = true) }
             back()
         },
-        speakersStage = {
-            Text(SpeakerWords.TITLE, style = MaterialTheme.typography.headlineSmall)
-            SpeakersEditor(bridge, speakers)
-            if (!speakersState.confirmed) Text(SpeakerWords.LATER, style = MaterialTheme.typography.bodyMedium)
+        // -- FIX016 -- (REVG R4) not in the locked-user state: the roles are the installer's (the tweeter
+        // guard trusts them), as Settings › Speakers is not there either; Getting Started is a locked route
+        speakersStage = if (LocalUiMode.current == UiModes.LOCKED_USER) {
+            null
+        } else {
+            {
+                Text(SpeakerWords.TITLE, style = MaterialTheme.typography.headlineSmall)
+                SpeakersEditor(bridge, speakers)
+                if (!speakersState.confirmed) Text(SpeakerWords.LATER, style = MaterialTheme.typography.bodyMedium)
+            }
         },
         speakersConfirmed = speakersState.confirmed && !speakersState.changed
     )
