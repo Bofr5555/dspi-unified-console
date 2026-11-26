@@ -1,6 +1,6 @@
 # AI agents
 
-*User manual of uConsole for DSPi 0.15.0: AI agents in the desktop app (both layouts). How the owner checks it
+*User manual of uConsole for DSPi 0.16.0: AI agents in the desktop app (both layouts). How the owner checks it
 on real agent hosts before a release: [`docs/testing/ai-agents-checklist.md`](../testing/ai-agents-checklist.md).*
 
 An AI agent on your computer, such as Claude Desktop, Claude Code, Cursor or VS Code, can read the settings of the DSPi
@@ -329,7 +329,10 @@ told the question is still open and can ask again with `dspi_get_confirmation`. 
 <!-- WP UB5 (UXP B5, D2) --> Questions one agent raises together (calls sent at once, within about 1.5 s; night mode on
 three devices) are one sheet: "Claude Code wants to make 6 changes", each device once with its rows. **Allow** and
 **Deny** answer exactly the rows shown; a question raised while the sheet is up comes as the next sheet, never onto it.
-**Answer One by One** splits the sheet. (Through the relay, `--mcp`, an agent's calls come one at a time: see section 7.)
+<!-- FIX016 R2 --> A sheet takes another question only while everything fits its 12 rows (each device's heading, the
+changes asked about first, then the call's other changes); what does not fit is the next sheet. One call with more than
+12 changes is a sheet of its own, its changes asked about first; if those do not all fit, its Allow is off and you
+answer it **One by One**. **Answer One by One** splits the sheet. (Through the relay, `--mcp`, an agent's calls come one at a time: see section 7.)
 
 **Test signals for 10 minutes.** <!-- WP ODEC --> A question about test signals says that **Allow** also lets that agent
 play test signals on that device for the next 10 minutes, for the task it is doing: its next measurements, low-end

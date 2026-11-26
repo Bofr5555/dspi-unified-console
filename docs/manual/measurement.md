@@ -1,6 +1,6 @@
 # Measuring and auto-tune
 
-*User manual of uConsole for DSPi 0.15.0: measuring in the web console and in the desktop app (both layouts). The
+*User manual of uConsole for DSPi 0.16.0: measuring in the web console and in the desktop app (both layouts). The
 technical contract is [docs/integrator/measurement.md](../integrator/measurement.md).*
 
 With a measurement microphone you can see what each output of your DSPi really does in the room or on a headphone

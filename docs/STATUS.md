@@ -3,7 +3,7 @@
 Where each client stands, what each PRO phase built, and what is still owed. The short view of
 what works where is [`FEATURES.md`](FEATURES.md); the front page is [`../README.md`](../README.md).
 
-As of 2026-11-25, on `int/B` at `1dbaf49f`, for release **0.15.0** (what came after 0.14.0 is [below](#release-0150-the-modern-programme-2026-11-21-to-2026-11-25); 0.14.0 was `main` at `7d681a73`, 2026-11-20). The detail, one row per work package,
+As of 2026-11-26, on `int/016`, for release **0.16.0** (what came after 0.15.0 is [below](#release-0160-everyday-use-2026-11-26); 0.15.0 was `main` at `201118b9`, 2026-11-26, and what it added after 0.14.0 is [below too](#release-0150-the-modern-programme-2026-11-21-to-2026-11-25)). The detail, one row per work package,
 is in [`docs/core-merge/PLAN-CLIENTS.md`](core-merge/PLAN-CLIENTS.md#status-2026-11-19)
 and, for the PRO phases and the later plans, in the plan files under
 [`docs/core-merge/`](core-merge/) (`PLAN-P2.md`, `PLAN-P3.md`, `PLAN-P5.md`,
@@ -269,6 +269,30 @@ Round R1 (`2dcd5f41`; the firmware half on the fork's `bofr-main`, `48bba52`) cl
   sender behind our hub** (LINKFIX), and a bare (v1) DSPi Link token is refused without the hub's id.
 - **Qt packaging** (APPIMG, QTCLI): the AppImage's release test, `--version` and `--help` without a display, and the
   rule the app offers to install is the packages' own file.
+
+## Release 0.16.0: everyday use (2026-11-26)
+
+Merged on `int/016` after 0.15.0 (`201118b9`): the user-experience proposal's quick wins and larger ideas (UXP A1-A17,
+B1-B15 without the deferred phone bar, large fonts and low-resolution PC work), then the fixes of the release review
+(FIX016). The user's view is [`../CHANGELOG-0.16.0.md`](../CHANGELOG-0.16.0.md).
+
+- **Qt.** From Speaker Layout for crossovers and routes (refused below the tweeter floor or to a tweeter without a
+  high-pass), A/B as saved against now (B's edits unsaved on A), the Overview's setup list, unsaved per device tab and
+  Save All, Home for Simple and locked users, the All-devices link, Solo, Modern's names per output and folds, the
+  Measure action bar, one speaker table, the Accessibility options, the question sheet in the screen's words with
+  grouped questions (a sheet holds only what it shows), Install in Claude Desktop (untried in a real Claude Desktop).
+- **Core.** `ab_start_saved`, the solo (`solo_output`/`_end`/`_state`, lost solos lifted on the next connect), the
+  tuned demo and `reset_demo`, the group delay curve; under the installer lock the source passes and the speaker
+  layout is refused.
+- **Web.** Fleet and the hub page in parts, recovery that tells the truth, device tabs you can tell apart, snapshots
+  kept per DSPi, phase, crossfeed pairs, polarity, Home, Solo.
+- **Android.** Mute on Home, the lock's notice, Settings › Speakers, the touch band editor, crossover rows, USB
+  notices; phones open in Advanced.
+- **Terminal.** Plain mode for screen readers and scripts, search by words, the no-device page, the shell's verbs on
+  `:`, the volume keys everywhere.
+- **Testing.** CI as before, green on the release commit; the new Qt pages walked in the function test's simulated
+  home theatre, and the agent stories replayed. **No real hardware**: nothing of 0.16.0 has run on a real DSPi or a
+  phone, and the Claude Desktop extension has not been installed in a real Claude Desktop.
 
 ## Release 0.15.0: the Modern programme (2026-11-21 to 2026-11-25)
 
