@@ -33,11 +33,13 @@ async function noSidewaysScroll(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
 }
 
-/** Venue A's demo device on the embedding page, on its PEQ page with three bands. */
-async function openEq(page: Page): Promise<{ one: Locator; session: Locator; list: Locator }> {
-  await page.goto("/test/embed.html?one");
-  const one = page.locator("#one");
-  await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
+/** A demo device's PEQ page, OUT1's bands: Venue A's on the embedding page, or (`phone`) the Demo DSPi on
+ *  the console's own page, whose viewport is the device's width. */
+async function openEq(page: Page, phone = false): Promise<{ one: Locator; session: Locator; list: Locator }> {
+  await page.goto(phone ? "/" : "/test/embed.html?one");
+  const one = phone ? page.locator("body") : page.locator("#one");
+  if (phone) await page.getByRole("listitem").filter({ hasText: "Demo DSPi" }).getByRole("button", { name: "Connect" }).click();
+  else await one.getByRole("region", { name: "Venue A" }).getByRole("button", { name: "Connect" }).click();
   const session = one.getByRole("article").first();
   await expect(session).toHaveAttribute("data-status", "open");
   await openPage(session, "EQ");
@@ -109,7 +111,7 @@ test.describe("UB13 on a touch screen", () => {
 
   test("UB13: Automatic is Comfortable on a touch screen; Standard is not", async ({ page }) => {
     const errors = errorsOf(page);
-    const { one, session, list } = await openEq(page);
+    const { one, session, list } = await openEq(page, true);
     const root = one.locator(".dspi-web");
     expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true);
     await expect(root).toHaveAttribute("data-density", "comfortable");
