@@ -20,6 +20,7 @@ on your computer (Claude, Cursor and other MCP clients) can work with you, under
 - **AI agents, safely.** Turn them on in Settings › AI Agents and an agent such as Claude Desktop, Claude Code or
   Cursor can read and change your DSPi, measure and tune it. Risky changes wait for your answer, every change can be
   undone, and a tweeter's protection holds whatever the agent is told ([manual](docs/manual/ai-agents.md)).
+  To start: [connect Claude in three steps](docs/manual/ai-agents.md#connect-claude-in-three-steps). <!-- WP UAG -->
 - **Your speaker setup.** Settings › Speakers says which output drives what (woofer, midrange, tweeter, sub); the
   console can detect it with quiet test sweeps, and measurement and agents follow it.
 - **Multi-unit systems over the alink** †. A sender, fan-outs and receivers, USB-direct units and S/PDIF followers on
