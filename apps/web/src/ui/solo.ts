@@ -2,6 +2,10 @@
 // the other outputs muted on the device only, never saved, not an undo step; a save, a preset load, a recall
 // or a disconnect ends it. One store per session follows it: asked again after every new snapshot, as the
 // unsaved list is (no device I/O).
+// -- FIX016 -- (REVG F3) A reload or a closed tab is a connection lost without a close: the core cannot lift
+// the solo then, and the outputs it muted stay muted on the device, where the next connect reads them as the
+// user's own (and a Save keeps them). So while a solo stands the page holds the browser's leave question, and a
+// page that goes all the same ends the solo on its way out (best effort: `pagehide`, the last event a page gets).
 
 import { useEffect, useState } from "preact/hooks";
 import type { DeviceSnapshot } from "../core/protocol";
@@ -13,6 +17,11 @@ export class SoloStore {
   private asked: DeviceSnapshot | null | undefined = undefined;
   private running = false;
   private readonly listeners = new Set<() => void>();
+  // -- FIX016 -- (REVG F3) the leave question while soloed, and the solo's end when the page goes
+  private readonly hold = (e: Event) => e.preventDefault();
+  private readonly leave = () => {
+    void this.session.core.call("soloEnd", undefined).catch(() => undefined);
+  };
 
   constructor(private readonly session: Session) {
     session.watch(() => void this.follow());
@@ -82,8 +91,23 @@ export class SoloStore {
 
   private set(output: number | null): void {
     if (output === this.output) return;
+    const was = this.output !== null;
     this.output = output;
+    if (was !== (output !== null)) this.guardLeaving(output !== null);
     for (const l of this.listeners) l();
+  }
+
+  // -- FIX016 -- (REVG F3)
+  /** While soloed: the page's leave question (`beforeunload`) and the solo's end on `pagehide`. */
+  private guardLeaving(on: boolean): void {
+    if (typeof window === "undefined") return;
+    if (on) {
+      window.addEventListener("beforeunload", this.hold);
+      window.addEventListener("pagehide", this.leave);
+    } else {
+      window.removeEventListener("beforeunload", this.hold);
+      window.removeEventListener("pagehide", this.leave);
+    }
   }
 }
 
