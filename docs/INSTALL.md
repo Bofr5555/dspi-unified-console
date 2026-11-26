@@ -186,7 +186,7 @@ The Swift apps for macOS and iOS ([`apps/apple/`](../apps/apple/)) exist and run
 ## After installing: the layout and AI agents
 
 The desktop app (Windows, Linux, macOS) has two layouts. A **new install opens in Modern** (a rail of sections, the
-open devices as tabs); an install that finished its Getting Started before 0.15.0 keeps **Classic** (the menu bar and
+open devices as tabs); an install that finished its Getting Started in 0.14.0 or earlier keeps **Classic** (the menu bar and
 tool windows of earlier versions). Settings › Appearance switches between them at any time; in Modern, the uConsole
 menu also has "Switch to the Classic Layout". The web console has the Modern layout only.
 
@@ -199,7 +199,7 @@ To connect Claude Desktop or Claude Code: [Connect Claude in three steps](manual
 
 The apps work with stock Weeb Labs firmware. The features marked † in [`FEATURES.md`](FEATURES.md#firmware-stock-vs-fork)
 need the DSPi fork firmware, release [**v1.1.6-bofr1**](https://github.com/Bofr5555/DSPi/releases/tag/v1.1.6-bofr1), the
-firmware 0.16.0 was tested against (the same as for 0.14.0 and 0.15.0). Not an official Weeb Labs release. Pick the image for your board:
+firmware 0.16.0 was tested against (the same as for 0.14.0). Not an official Weeb Labs release. Pick the image for your board:
 
 | Board | Image |
 |---|---|

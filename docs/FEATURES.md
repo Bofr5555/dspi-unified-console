@@ -69,12 +69,12 @@ alink sender already speaks both ([`STATUS.md`](STATUS.md)). On our hub the fork
 | Device volume buttons set the DSPi's User Volume while the app is in front | stock | – | ✓ (Settings > Advanced, on by default) | – | – | – |
 | Diagnostics bundle | stock | ✓ Help > Save Diagnostics | – | ✓ Events screen (Advanced and up) | ✓ `uconsole diag` | – |
 
-## Layouts, several devices and the look (new in 0.15.0)
+## Layouts, several devices and the look (new in 0.16.0)
 
 | Feature | Firmware | Qt desktop | Android | Web | Terminal | Apple (not in 0.16.0) |
 |---|---|---|---|---|---|---|
 | Modern layout: a rail of sections, tools on pages with tabs, a dock with volume and meters, Ctrl+K command palette | – | ✓ (new installs; Settings › Appearance) | – | ✓ (the web's only layout) | – | – |
-| Classic layout: menu bar and tool windows, as before | – | ✓ (installs from before 0.15.0) | – | – | – | – |
+| Classic layout: menu bar and tool windows, as before | – | ✓ (installs from 0.14.0 or earlier) | – | – | – | – |
 | Several devices open at once, one tab each, each with its own edits, history and measurement | – | ✓ Modern (Classic shows one and lists the others) | – | ✓ device tabs | – (one per command) | – |
 | Light, dark or the system's theme | – | ✓ | ✓ (the system's) | ✓ | – | – |
 | Outline controls (a 3:1 line round fields, menus and buttons) and a Comfortable control size, automatic on a touch screen (both off on a mouse desktop; 0.16, WP UB13) | – | ✓ Settings › Appearance › Accessibility (the size in Modern) | – | ✓ Settings › Appearance | – | – |
@@ -82,7 +82,7 @@ alink sender already speaks both ([`STATUS.md`](STATUS.md)). On our hub the fork
 | Presets in one popover (Recall, Save, Copy Here, the slot's menu) | stock | ✓ Modern | – | ✓ | – | – |
 | Outputs nothing is routed to left out of the views that only show (meters, Overview, Spectrum, Stats) and named "3 · None" where they must show | stock | ✓ | ✓ | ✓ | ✓ | – |
 
-## Speaker setup (new in 0.15.0)
+## Speaker setup (new in 0.16.0)
 
 Which output drives what (full range, sub, woofer, midrange, tweeter), kept per device. Measurement and AI agents
 take the roles from it, and a tweeter in it keeps its protective high-pass whenever an agent works.
@@ -93,7 +93,7 @@ take the roles from it, and a tweeter in it keeps its protective high-pass whene
 | Detect…: quiet test sweeps with the measurement microphone find which output drives what | stock | ✓ | – | ✓ | – | – |
 | Roles an AI agent set from your words or detected, marked until you confirm them | stock | ✓ | – | ✓ (shown) | – | – |
 
-## AI agents (MCP, new in 0.15.0)
+## AI agents (MCP, new in 0.16.0)
 
 The user's page is [`manual/ai-agents.md`](manual/ai-agents.md); from another computer, through SSH:
 [`mcp-ssh-forwarding.md`](mcp-ssh-forwarding.md). Agents are off until you turn them on, and the console listens on
@@ -107,7 +107,7 @@ this computer only.
 | An agent sets up a hub's installation (sources, zones, slots, scenes) and a room's or zone's volume | fork † for the audio link | ✓ | – | – | – | – |
 | An agent's work on a hub's device is shown to the other consoles | stock | ✓ | – | ✓ a strip and a mark on the device's tab | – | – |
 
-## Installation setup on a hub (new in 0.15.0)
+## Installation setup on a hub (new in 0.16.0)
 
 | Feature | Firmware | Qt desktop | Android | Web | Terminal | Apple (not in 0.16.0) |
 |---|---|---|---|---|---|---|
