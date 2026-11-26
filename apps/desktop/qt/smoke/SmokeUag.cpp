@@ -14,6 +14,7 @@
 
 #include "AiController.h"
 #include "DeviceModel.h"
+#include "LayoutController.h"   // -- FIX016 --
 #include "Registrar.h"
 #include "Shell.h"
 
@@ -99,6 +100,7 @@ void picturesSection(SmokeDriver &d) {
     }
     QDir(QDir(d.outDir()).filePath(QStringLiteral("uag"))).removeRecursively();
     QDir().mkpath(QDir(d.outDir()).filePath(QStringLiteral("uag")));
+    const bool modernWas = Registrar::instance<LayoutController>()->modern();   // -- FIX016 -- (R1-QT)
     d.switchLayout("modern");
     const QSize size = main->size();
     main->resize(1600, 1000);
@@ -206,6 +208,7 @@ void picturesSection(SmokeDriver &d) {
     ai->setPort(AiController::kDefaultPort);
     for (const QVariant &c : ai->clients()) ai->revoke(c.toMap().value(QStringLiteral("id")).toDouble());
     main->resize(size);
+    if (!modernWas) d.switchLayout("classic");   // -- FIX016 -- (R1-QT) the layout as it found it
     d.waitIdle();
 }
 
