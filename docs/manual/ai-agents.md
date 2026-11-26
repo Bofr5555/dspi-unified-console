@@ -308,6 +308,10 @@ checking Settings › Speakers afterwards); how it works is under **Details**. *
 app is in the tray, the question brings its window back. The agent waits up to 45 s for your answer; after that it is
 told the question is still open and can ask again with `dspi_get_confirmation`. A question nobody answers lapses after
 2 minutes, and nothing is changed. Several questions queue up ("2 more waiting").
+<!-- WP UB5 (UXP B5, D2) --> Questions one agent raises together (calls sent at once, within about 1.5 s; night mode on
+three devices) are one sheet: "Claude Code wants to make 6 changes", each device once with its rows. **Allow** and
+**Deny** answer exactly the rows shown; a question raised while the sheet is up comes as the next sheet, never onto it.
+**Answer One by One** splits the sheet. (Through the relay, `--mcp`, an agent's calls come one at a time: see section 7.)
 
 **Test signals for 10 minutes.** <!-- WP ODEC --> A question about test signals says that **Allow** also lets that agent
 play test signals on that device for the next 10 minutes, for the task it is doing: its next measurements, low-end
@@ -330,6 +334,10 @@ of a hub is still asked each time. Under **Never** nothing is asked, so nothing 
   and no sound plays. The agent gets the rule in its own words, so what it tells you can be checked here.
   **Show** brings the device to the front when it is another one. The strip is there while a call or a job runs, while a
   question waits for you or a timed preview waits for Keep, for 20 s after the last call, and as long as agents are paused.
+- **What an agent left unsaved.** <!-- WP UB5 (UXP B5) --> Agents' changes are live at once but kept only once saved on
+  the device. When an agent's work rests, the strip's last line says so: "Claude Code Changed 12 settings, not saved yet"
+  with **Save to Device** (**Save All…** when it changed several devices), and it stays until the changes are saved, put
+  back or the agents are turned off. Agents are told to say this at the end of a task and to offer to save.
 - **The AI button** (Modern) and the **robot icon** (Classic) turn while an agent works. In the tray, the icon has a blue dot,
   and its tooltip and menu say what the agent does, with **Pause AI Agents**.
 - **What an agent changes** is marked for a moment: the control, its section in the rail, and the tab of a device that is
@@ -562,6 +570,8 @@ a headphone **coupler**, the headphones' lower limits apply, in the low-end sear
   Left tweeter and Right tweeter at 1 kHz" when the limits profile held part of it. <!-- WP UAG (UXP A7) -->
 - **Forget Agent** in the AI popover (Modern) stops that agent's token: it has to be allowed again. **Pause** and
   **Stop Agents** keep its token. <!-- WP UAG (UXP A7) -->
+- **The guide.** <!-- WP UB5 (UXP B5) --> Agents are told to read the server's guide first: the `dspi://guide` resource,
+  or the `dspi_get_guide` tool in agent apps that cannot read resources.
 - **The relay handles one message at a time.** An agent that starts the app with `--mcp` waits for each answer: while a
   question waits for you (up to 45 s), that agent's other requests wait too. HTTP agents do not have this limit.
 - **A computer shared with other people.** Anyone signed in to this computer can reach the agents' port, as with any
