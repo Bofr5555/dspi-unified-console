@@ -46,10 +46,12 @@ export const VolumeCard = memo(function VolumeCard(props: {
   mute: boolean;
   bypass: boolean;
   disabled: boolean;
+  /** -- WP UB2 -- (UXP B2, D4) Simple and the locked user: the User volume and Mute only (the Master is the Installer's, Bypass EQ is setting up). */
+  simple?: boolean;
 }) {
   const { session, disabled } = props;
   const [mode, setMode] = useState<Mode>(savedMode);
-  const master = mode === "master";
+  const master = !props.simple && mode === "master";
   const path = master ? "vol.master" : "vol.user";
   const live = useLiveWrite((db) => session.write(path, { float: db }), session);
   const db = live.draft ?? (master ? props.masterDb : props.userDb);
@@ -65,6 +67,7 @@ export const VolumeCard = memo(function VolumeCard(props: {
   return (
     <section class="card volume-card" aria-label="Volume">
       <div class="card-head">
+        {props.simple ? null : (
         <div class="segments volume-mode" role="group" aria-label="Volume shown">
           {(["user", "master"] as const).map((m) => (
             <button
@@ -81,6 +84,7 @@ export const VolumeCard = memo(function VolumeCard(props: {
             </button>
           ))}
         </div>
+        )}
         <Glyph name={props.mute ? "volume-x" : "volume"} class="volume-icon" />
         <output class="volume-value" aria-live="polite">
           {volumeText(db, master)}
@@ -114,6 +118,7 @@ export const VolumeCard = memo(function VolumeCard(props: {
           <Glyph name="volume-x" />
           Mute
         </button>
+        {props.simple ? null : (
         <button
           type="button"
           class="toggle bypass"
@@ -124,6 +129,7 @@ export const VolumeCard = memo(function VolumeCard(props: {
           <Glyph name="circle-x" />
           Bypass EQ
         </button>
+        )}
       </div>
     </section>
   );

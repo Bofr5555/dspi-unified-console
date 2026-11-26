@@ -6,6 +6,7 @@ import { expect, type Locator, type Page } from "@playwright/test";
 
 /** Each screen's section and id, and its tab's label when that is not the screen's name here. */
 const PLACES: Record<string, { section: string; id: string; tab?: string; part?: string }> = {
+  Home: { section: "Overview", id: "home" }, // -- WP UB2 -- (UXP B2) Simple's first page, the locked user's only one
   Main: { section: "Overview", id: "main", tab: "Dashboard" },
   Overview: { section: "Overview", id: "overview", tab: "All Channels" },
   Sender: { section: "Overview", id: "sender" },

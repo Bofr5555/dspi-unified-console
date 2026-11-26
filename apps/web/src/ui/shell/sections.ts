@@ -36,7 +36,7 @@ export const CONNECT = "connect";
 export const CONNECT_PAGE: Page = { id: CONNECT, label: "This Computer" }; // -- WP WEB7 -- Qt's Devices tab
 
 export const SECTIONS: readonly SectionDef[] = [
-  { id: "overview", title: "Overview", pages: ["main", "overview", "sender"] },
+  { id: "overview", title: "Overview", pages: ["home", "main", "overview", "sender"] }, // -- WP UB2 -- Home (Simple, locked) first
   { id: "equaliser", title: "Equaliser", pages: ["eq", "xover", "delays", "inputs"] }, // -- WP WEBM2 -- PEQ | Crossover | Delay & gain
   { id: "routing", title: "Routing", pages: ["matrix"] },
   { id: "effects", title: "Effects", pages: ["effects"] },

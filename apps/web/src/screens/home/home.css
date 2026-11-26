@@ -1,0 +1,41 @@
+/* -- WP UB2 -- (UXP B2) Home, the remote: one column, big targets, apart by tone (DESIGN-LANGUAGE rule 1);
+   the accent only on the volume's fill and the preset that plays (rule 2). */
+
+.dspi-web .home-screen { display: flex; flex-direction: column; gap: 0.75rem; max-width: 44rem; min-width: 0; }
+.dspi-web .home-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.75rem; }
+.dspi-web .home-name { margin: 0; font-size: 1.35rem; font-weight: 600; overflow-wrap: anywhere; }
+.dspi-web .home-where { color: var(--muted); }
+.dspi-web .home-link { margin-left: auto; display: inline-flex; align-items: center; gap: 0.4rem; color: var(--muted); font-size: 0.9rem; }
+.dspi-web .home-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.dspi-web .home-link.ok .home-dot { background: var(--ok); }
+
+.dspi-web .home-volume { display: flex; flex-direction: column; gap: 0.75rem; padding: 1rem; }
+.dspi-web .home-volume-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; min-width: 0; }
+.dspi-web .home-volume-icon { width: 22px; height: 22px; flex: none; }
+.dspi-web .home-slider { flex: 1 1 12rem; height: 32px; margin: 0; }
+.dspi-web .home-volume-value { flex: none; min-width: 5.5rem; text-align: right; font: 600 1.25rem/1 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; }
+.dspi-web .home-mute { min-height: 40px; padding: 0 1rem; display: inline-flex; align-items: center; gap: 0.4rem; }
+.dspi-web .home-volume .segments { align-self: center; }
+.dspi-web .home-volume .segments > button { min-height: 36px; padding: 0 0.9rem; font-size: 0.9rem; }
+.dspi-web .home-source { color: var(--muted); }
+
+.dspi-web .home-presets, .dspi-web .home-rooms { padding: 0.75rem 1rem; }
+.dspi-web .home-recall { list-style: none; margin: 0.5rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.dspi-web .home-recall-row {
+  min-height: 40px; padding: 0 1rem 0 0.6rem; display: inline-flex; align-items: center; gap: 0.25rem;
+  border: 0; border-radius: var(--radius-control); background: var(--control); color: var(--text); font-size: 0.95rem;
+}
+.dspi-web .home-recall-row:hover:not(:disabled) { background: var(--control-hover); }
+.dspi-web .home-recall-row[aria-pressed="true"] { background: var(--selection); color: var(--accent-text); font-weight: 600; }
+.dspi-web .home-recall-mark { width: 0.9rem; text-align: center; }
+
+.dspi-web .home-room-list { list-style: none; margin: 0.5rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+.dspi-web .home-room { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.dspi-web .home-room-name { flex: 1 1 8rem; min-width: 0; overflow-wrap: anywhere; }
+.dspi-web .home-room-level { min-width: 7rem; text-align: right; font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; }
+.dspi-web .home-room > button { min-width: 40px; min-height: 36px; font-size: 1.1rem; }
+.dspi-web .home-room-note { flex-basis: 100%; margin: 0; }
+
+.dspi-web .home-health { margin: 0; color: var(--muted); }
+.dspi-web .home-health.health-warn { color: var(--warn); }
+.dspi-web .home-health.health-bad { color: var(--bad); font-weight: 600; }

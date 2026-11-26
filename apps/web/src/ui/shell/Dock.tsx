@@ -15,6 +15,8 @@ export function Dock(props: {
   state: SessionState;
   /** The locked-user state: volume, mute and presets only. */
   locked: boolean;
+  /** -- WP UB2 -- (UXP B2, D4) Simple and the locked user: the User volume and Mute, no Master and no Bypass EQ. */
+  simple?: boolean;
   meters: ComponentChildren;
   /** -- WP REVEFIX -- the two cores' load, at the right end */
   load?: ComponentChildren;
@@ -26,7 +28,7 @@ export function Dock(props: {
   return (
     <footer class="dock" aria-label="Dock">
       <SourcePicker session={session} s={s} disabled={off || props.locked} />
-      <VolumeCard session={session} userDb={s.userVolumeDb} masterDb={s.masterVolumeDb} mute={s.userMute} bypass={s.bypass} disabled={off} />
+      <VolumeCard session={session} userDb={s.userVolumeDb} masterDb={s.masterVolumeDb} mute={s.userMute} bypass={s.bypass} disabled={off} simple={props.simple} />
       <div class="dock-meters">{props.meters}</div>
       {props.load}
     </footer>
