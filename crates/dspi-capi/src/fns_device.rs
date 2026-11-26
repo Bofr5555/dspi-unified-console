@@ -876,6 +876,27 @@ pub extern "C" fn dspi_set_output_mute(core: *mut FfiCore, output: u8, muted: bo
     flag(core, |c| c.set_output_mute(output, muted))
 }
 
+// -- WP GAP2 --
+/// Solo an output (0-based): every other output is muted on the device only,
+/// until `dspi_solo_end`. A listening state: never saved, not an undo step;
+/// the state's mutes stay the user's. Another output moves the solo.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_solo_output(core: *mut FfiCore, output: u8) -> bool {
+    flag(core, |c| c.solo_output(output))
+}
+
+/// End the solo: unmute what it muted. True with no solo.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_solo_end(core: *mut FfiCore) -> bool {
+    flag(core, DspiCore::solo_end)
+}
+
+/// The soloed output (0-based), -1 with none. No I/O.
+#[unsafe(no_mangle)]
+pub extern "C" fn dspi_solo_state(core: *mut FfiCore) -> i32 {
+    value_or(core, -1, |c| Ok(c.solo_state().map_or(-1, i32::from)))
+}
+
 /// Set an output's delay, in ms.
 #[unsafe(no_mangle)]
 pub extern "C" fn dspi_set_output_delay(core: *mut FfiCore, output: u8, ms: f32) -> bool {

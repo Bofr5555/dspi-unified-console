@@ -4151,6 +4151,23 @@ bool dspi_set_output_gain(struct FfiCore *core, uint8_t output, float db);
 bool dspi_set_output_mute(struct FfiCore *core, uint8_t output, bool muted);
 
 /**
+ * Solo an output (0-based): every other output is muted on the device only,
+ * until `dspi_solo_end`. A listening state: never saved, not an undo step;
+ * the state's mutes stay the user's. Another output moves the solo.
+ */
+bool dspi_solo_output(struct FfiCore *core, uint8_t output);
+
+/**
+ * End the solo: unmute what it muted. True with no solo.
+ */
+bool dspi_solo_end(struct FfiCore *core);
+
+/**
+ * The soloed output (0-based), -1 with none. No I/O.
+ */
+int32_t dspi_solo_state(struct FfiCore *core);
+
+/**
  * Set an output's delay, in ms.
  */
 bool dspi_set_output_delay(struct FfiCore *core, uint8_t output, float ms);
