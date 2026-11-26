@@ -525,8 +525,17 @@ void SidebarController::setSidebarWidth(int width) {
 }
 
 void SidebarController::setUserVolume(double db) {
+    // -- FIX016 -- (REVG F2) linked: every device moves, keeping its offset
+    if (auto *link = Registrar::instance<DeviceLinkController>(); link && link->linked()) {
+        link->setUserVolume(db);
+        return;
+    }
+    writeUserVolume(db);
+}
+
+void SidebarController::writeUserVolume(double db, std::function<void(bool)> done) {
     const float v = float(qBound(kUserMinDb, db, 0.0));
-    apply(QStringLiteral("user volume"), [v](FfiCore *c) { return dspi_set_user_volume(c, v); });
+    apply(QStringLiteral("user volume"), [v](FfiCore *c) { return dspi_set_user_volume(c, v); }, std::move(done));
 }
 
 void SidebarController::setMasterVolume(double db) {

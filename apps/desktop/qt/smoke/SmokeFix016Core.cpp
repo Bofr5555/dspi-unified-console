@@ -5,12 +5,17 @@
 // - "fix016-ab" (R3): on side A of "as saved" against "now" B's edit is
 //   unsaved: Save to Device counts it, a preset switch asks (and a discard
 //   drops B as asked), a Save on A saves B.
+// - "fix016-link" (F2): with two demos linked in the dock, Home's volume (the
+//   path the tray and Measure's refusal row share) moves both, and a device
+//   moved another way gets its offset again: the next linked move never
+//   jumps it (reviewer B's revgb-link shape: a -40, b -50).
 // Each section leaves the layout, the mode, the lock and the device as it
 // found them.
 #include "SmokeDriver.h"
 
 #include "Confirm.h"
 #include "DeviceModel.h"
+#include "DeviceLinkController.h"
 #include "DeviceRegistry.h"
 #include "DeviceSession.h"
 #include "FilesController.h"
@@ -18,6 +23,7 @@
 #include "PresetModel.h"
 #include "ModeController.h"
 #include "Registrar.h"
+#include "SessionModel.h"
 #include "Shell.h"
 #include "SidebarController.h"
 #include "SnapshotsController.h"
@@ -246,7 +252,89 @@ void abSection(SmokeDriver &d) {
     d.spin(200);
 }
 
+// ---- F2 ------------------------------------------------------------------------------------------
+bool fixWriteOn(SmokeDriver &d, DeviceSession *s, std::function<bool(FfiCore *)> job) {
+    bool done = false, ok = false;
+    s->model()->write(QStringLiteral("fix016 write"), std::move(job), [&](bool r) { done = true; ok = r; });
+    return d.waitFor(5000, [&] { return done; }) && ok && d.waitIdle();
+}
+float fixVolume(DeviceSession *s) { return s->model()->state() ? s->model()->state()->user_volume_db : 99.0f; }
+
+void linkSection(SmokeDriver &d) {
+    d.allowSectionTime(120);
+    Fix t{ d, "link" };
+    DeviceModel *device = d.app().device;
+    auto *link = Registrar::instance<DeviceLinkController>();
+    auto *sidebar = Registrar::instance<SidebarController>();
+    DeviceRegistry *r = DeviceRegistry::instance();
+    QQuickWindow *w = d.mainWindow();
+    t.check("the controllers", link && sidebar && r && w);
+    if (!link || !sidebar || !r || !w) return;
+    if (!device->connected() || !device->demo() || device->remote()) device->openDemo();
+    t.check("the demo is open", d.waitFor(10000, [&] { return device->connected() && device->demo(); }) && d.waitIdle());
+    const bool wasModern = d.app().shell->pageHost() != nullptr;
+    t.check("Modern", d.switchLayout("modern"));
+    while (r->sessions().size() > 2) {
+        DeviceSession *other = r->sessions().last();
+        r->close(other->id());
+        d.waitFor(5000, [&] { return !r->sessions().contains(other); });
+    }
+    while (r->sessions().size() < 2) {
+        const int before = int(r->sessions().size());
+        r->openDemo();
+        if (!d.waitFor(10000, [&] { return r->opening() == 0 && r->sessions().size() > before; })) break;
+    }
+    t.check("two demos open", r->sessions().size() == 2);
+    if (r->sessions().size() != 2) return;
+    DeviceSession *a = r->sessions().at(0), *b = r->sessions().at(1);
+    r->activate(a);
+    t.settle();
+    t.check("a -40, b -50", fixWriteOn(d, a, [](FfiCore *c) { return dspi_set_user_volume(c, -40.0f); })
+                                && fixWriteOn(d, b, [](FfiCore *c) { return dspi_set_user_volume(c, -50.0f); }));
+    link->setLinked(true);
+    t.check("linked", link->linked());
+    // One dock move takes the offsets (b 10 dB below a)
+    link->setUserVolume(-40.0);
+    d.waitIdle();
+    t.check("the offset taken", d.waitFor(3000, [&] { return std::fabs(fixVolume(b) + 50.0f) < 0.05f; }));
+
+    // ---- Home's volume (SidebarController.setUserVolume, as the tray's and Measure's) follows the link
+    sidebar->setUserVolume(-10.0);
+    t.check(QStringLiteral("Home's move moves both (a %1, b %2)").arg(fixVolume(a)).arg(fixVolume(b)),
+            d.waitFor(3000, [&] { return std::fabs(fixVolume(a) + 10.0f) < 0.05f && std::fabs(fixVolume(b) + 20.0f) < 0.05f; }));
+    float bWas = fixVolume(b);
+    link->setUserVolume(-9.0);
+    d.waitIdle();
+    t.check(QStringLiteral("the next dock move does not jump b (%1 to %2)").arg(bWas).arg(fixVolume(b)),
+            d.waitFor(3000, [&] { return std::fabs(fixVolume(a) + 9.0f) < 0.05f; }) && std::fabs(fixVolume(b) - bWas) < 1.05f
+                && std::fabs(fixVolume(b) + 19.0f) < 0.05f);
+
+    // ---- b turned down another way (a remote, another client): its offset is taken again
+    t.check("b turned down another way", fixWriteOn(d, b, [](FfiCore *c) { return dspi_set_user_volume(c, -45.0f); }));
+    bWas = fixVolume(b);
+    link->setUserVolume(-8.0);
+    d.waitIdle();
+    t.check(QStringLiteral("a +1 dB moves b by as much, never back up (%1 to %2)").arg(bWas).arg(fixVolume(b)),
+            d.waitFor(3000, [&] { return std::fabs(fixVolume(a) + 8.0f) < 0.05f; }) && std::fabs(fixVolume(b) + 44.0f) < 0.05f);
+
+    // ---- a moved another way: every offset is taken again
+    t.check("a turned down another way", fixWriteOn(d, a, [](FfiCore *c) { return dspi_set_user_volume(c, -30.0f); }));
+    bWas = fixVolume(b);
+    link->setUserVolume(-29.0);
+    d.waitIdle();
+    t.check(QStringLiteral("a +1 dB moves b by as much (%1 to %2)").arg(bWas).arg(fixVolume(b)),
+            d.waitFor(3000, [&] { return std::fabs(fixVolume(a) + 29.0f) < 0.05f; }) && std::fabs(fixVolume(b) + 43.0f) < 0.05f);
+
+    // ---- As found
+    link->setLinked(false);
+    if (r->sessions().contains(b)) r->close(b->id());
+    d.waitFor(5000, [&] { return r->sessions().size() == 1; });
+    d.switchLayout(wasModern ? "modern" : "classic");
+    d.spin(200);
+}
+
 } // namespace
 
+const SmokeDriver::Section fix016Link("fix016-link", 1001, &linkSection);
 const SmokeDriver::Section fix016Ab("fix016-ab", 1001, &abSection);
 const SmokeDriver::Section fix016LockSource("fix016-locksrc", 1001, &lockSourceSection);

@@ -156,8 +156,13 @@ public:
     // and it shows
     Q_INVOKABLE void toggleWindow(const QString &action);
 
-    // Volume, live while dragging and on release (the writes coalesce)
+    // Volume, live while dragging and on release (the writes coalesce).
+    // -- FIX016 -- (REVG F2) The User volume follows the dock's All devices
+    // link when it is on (DeviceLinkController), from wherever it is moved:
+    // Home, the tray, Measure's refusal row
     Q_INVOKABLE void setUserVolume(double db);
+    // The shown device's User volume alone (the link's own write of it)
+    void writeUserVolume(double db, std::function<void(bool)> done = {});
     Q_INVOKABLE void setMasterVolume(double db);
 
     // Source

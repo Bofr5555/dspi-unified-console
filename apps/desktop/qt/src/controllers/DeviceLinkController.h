@@ -28,6 +28,11 @@ class QQmlEngine;
 //   requestPresetSwitch), recalls that slot on every linked device after
 //   one question that names each device, its preset and the unsaved
 //   changes the recall drops.
+// -- FIX016 -- (REVG F2) Every User volume move follows the link (Home, the
+// tray and Measure's refusal row go through SidebarController::setUserVolume,
+// which hands a linked move here), and a device whose volume another way
+// changed (another client, an agent, a remote) has its offset taken again
+// from where it is, so the next linked move never jumps it.
 // Each write is the device's own (the core's limits and the installer's
 // lock apply as ever); the Master volume, the source and everything else
 // stay per device. Hub zones stay the way for a whole installation.
@@ -81,6 +86,13 @@ private:
     AppContext m_ctx;
     bool m_linked = false;
     QHash<QString, double> m_offsets;
+    // -- FIX016 -- (REVG F2) by device id: the User volume the link last
+    // asked for, and its writes not answered yet
+    QHash<QString, float> m_asked;
+    QHash<QString, int> m_inFlight;
+    bool movedElsewhere(DeviceSession *s) const;
+    void track(DeviceSession *s, float to);
+    void untrack(const QString &id);
     int m_askedSlot = -1;
     QList<QPointer<DeviceSession>> m_recall;
     int m_recalled = 0;

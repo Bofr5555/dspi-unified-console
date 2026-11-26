@@ -36,6 +36,7 @@ DeviceLinkController::DeviceLinkController(const AppContext &ctx, QObject *paren
     // The shown device is the one the others keep their offsets from
     connect(ctx.registry, &DeviceRegistry::activeChanged, this, [this] {
         m_offsets.clear();
+        m_asked.clear();   // -- FIX016 --
         emit changed();
     });
     connect(ctx.registry, &DeviceRegistry::devicesChanged, this, [this] {
@@ -78,6 +79,7 @@ void DeviceLinkController::setLinked(bool on) {
     if (on == m_linked) return;
     m_linked = on;
     m_offsets.clear();
+    m_asked.clear();   // -- FIX016 --
     emit changed();
 }
 
@@ -99,25 +101,64 @@ QString DeviceLinkController::help() const {
 
 // ---- Volume and mute ---------------------------------------------------------------
 
+// -- FIX016 -- (REVG F2) Whether `s`'s User volume is not what the link last
+// asked of it, with nothing of the link's in flight: another way moved it.
+// (The core rounds a volume to its step, so a step's half is no move.)
+bool DeviceLinkController::movedElsewhere(DeviceSession *s) const {
+    const DspState *st = s->model()->state();
+    return st && m_inFlight.value(s->id()) == 0 && m_asked.contains(s->id())
+           && std::abs(double(st->user_volume_db) - double(m_asked.value(s->id()))) > 0.3;
+}
+
+// -- FIX016 -- A write of `to` to `s` asked; its answer comes later
+void DeviceLinkController::track(DeviceSession *s, float to) {
+    m_asked.insert(s->id(), to);
+    m_inFlight[s->id()] += 1;
+}
+
+void DeviceLinkController::untrack(const QString &id) {
+    if (m_inFlight.value(id) > 0) m_inFlight[id] -= 1;
+}
+
 void DeviceLinkController::setUserVolume(double db) {
     const double v = qBound(SidebarController::kUserMinDb, db, 0.0);
     const QList<DeviceSession *> all = targets();
     if (all.isEmpty()) return;
     DeviceSession *shown = all.first();
     const DspState *here = shown->model()->state();
-    if (linked() && here) {
-        for (DeviceSession *s : all.mid(1)) {
-            const DspState *st = s->model()->state();
-            if (!st) continue;
-            // Taken once, while the link is on and this device is shown
-            if (!m_offsets.contains(s->id())) m_offsets.insert(s->id(), double(st->user_volume_db) - double(here->user_volume_db));
-            const float to = float(qBound(SidebarController::kUserMinDb, v + m_offsets.value(s->id()), 0.0));
-            if (std::abs(to - st->user_volume_db) < 0.005f) continue;
-            s->model()->write(QStringLiteral("user volume (all devices)"), [to](FfiCore *c) { return dspi_set_user_volume(c, to); });
+    auto *sidebar = Registrar::instance<SidebarController>();
+    if (!linked() || !here) {
+        if (sidebar) sidebar->writeUserVolume(v);
+        return;
+    }
+    // -- FIX016 -- (REVG F2) the shown device moved another way: every offset
+    // is taken again from where the devices are
+    if (movedElsewhere(shown)) m_offsets.clear();
+    for (DeviceSession *s : all.mid(1)) {
+        const DspState *st = s->model()->state();
+        if (!st) continue;
+        // -- FIX016 -- this one moved another way: its offset from where it is
+        if (movedElsewhere(s)) m_offsets.remove(s->id());
+        // Taken once, while the link is on and this device is shown
+        if (!m_offsets.contains(s->id())) m_offsets.insert(s->id(), double(st->user_volume_db) - double(here->user_volume_db));
+        const float to = float(qBound(SidebarController::kUserMinDb, v + m_offsets.value(s->id()), 0.0));
+        if (std::abs(to - st->user_volume_db) < 0.005f) {
+            if (m_inFlight.value(s->id()) == 0) m_asked.insert(s->id(), st->user_volume_db);   // -- FIX016 --
+            continue;
         }
+        track(s, to);   // -- FIX016 --
+        const QString id = s->id();
+        s->model()->write(QStringLiteral("user volume (all devices)"), [to](FfiCore *c) { return dspi_set_user_volume(c, to); },
+                          [self = QPointer<DeviceLinkController>(this), id](bool) {
+                              if (self) self->untrack(id);
+                          });
     }
     // The shown device as the dock's own move
-    if (auto *sidebar = Registrar::instance<SidebarController>()) sidebar->setUserVolume(v);
+    if (!sidebar) return;
+    track(shown, float(v));   // -- FIX016 --
+    sidebar->writeUserVolume(v, [self = QPointer<DeviceLinkController>(this), id = shown->id()](bool) {
+        if (self) self->untrack(id);
+    });
 }
 
 void DeviceLinkController::setMute(bool on) {
