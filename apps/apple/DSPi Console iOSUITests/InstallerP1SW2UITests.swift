@@ -95,15 +95,15 @@ final class InstallerP1SW2UITests: XCTestCase {
     }
 
     func testP1SW2ModeSwitchInstallerPinLockedBannerAndUnlock() {
-        // 1. No PIN, iOS opens in Simple; Settings > Mode switches to Installer
-        //    with no prompt.
+        // 1. No PIN, iOS opens in Advanced (owner D9; -- FIX016 -- REVG F9);
+        //    Settings > Mode switches to Installer with no prompt.
         var app = launch(["-ResetInstaller", "YES", "-OpenTool", "settings", "-SettingsPage", "mode"])
         let modePage = app.descendants(matching: .any)["modeSwitch"].firstMatch
         XCTAssertTrue(modePage.waitForExistence(timeout: 60), "Settings > Mode")
         let now = app.staticTexts["modeNow"].firstMatch
         XCTAssertTrue(now.waitForExistence(timeout: 10))
-        XCTAssertTrue(now.label.contains("Simple"), "iOS opens in Simple: \(now.label)")
-        keep(app, "ios-p1sw2-01-mode-simple")
+        XCTAssertTrue(now.label.contains("Advanced"), "iOS opens in Advanced: \(now.label)")
+        keep(app, "ios-p1sw2-01-mode-advanced")
         app.buttons["Installer"].firstMatch.tap()
         tap(app, app.buttons["modeSwitchApply"].firstMatch, until: { now.label.contains("Installer") },
             "the mode switch applies: \(now.label)")

@@ -116,8 +116,8 @@ shows the other pages read-only, so nothing you press is refused.
 
 **Simple and Home.** Simple is a mode for listening (Mode… in the app menu; on the web, Mode in the status bar).
 It opens on **Home**, a remote: the volume, Mute, the source, the presets to recall and, on a hub's installation,
-each room's volume. Every other page stays a tab away. Advanced, the desktop's and the web's default, opens where
-the work is.
+each room's volume. Every other page stays a tab away. Advanced, the default everywhere (desktops, the web and
+phones), opens where the work is.
 
 ## AI agents
 

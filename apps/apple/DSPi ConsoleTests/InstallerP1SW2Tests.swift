@@ -55,8 +55,9 @@ final class InstallerP1SW2Tests: XCTestCase, CoreDomainTesting {
         XCTAssertEqual(installer.mode, "advanced", "the Mac opens in Advanced (the manifest's desktop default)")
         XCTAssertFalse(installer.simple)
         #else
-        XCTAssertEqual(installer.mode, "simple", "iOS opens in Simple (the manifest's phone default)")
-        XCTAssertTrue(installer.simple)
+        // -- FIX016 -- (REVG F9) owner D9: "phone" opens in Advanced, as on Android
+        XCTAssertEqual(installer.mode, "advanced", "iOS opens in Advanced (the manifest's phone default, owner D9)")
+        XCTAssertFalse(installer.simple)
         #endif
         XCTAssertEqual(installer.choice?.reason, "default")
         XCTAssertTrue(installer.switchable)
@@ -392,11 +393,8 @@ final class InstallerP1SW2Tests: XCTestCase, CoreDomainTesting {
         XCTAssertEqual(CoreInstaller.retryLine(29_001), "Try again in 30 s.")
         XCTAssertEqual(CoreInstaller.retryLine(900_000), "Try again in 15 min.")
         let m = modeManifest()
-        #if os(macOS)
+        // -- FIX016 -- (REVG F9) Advanced on the Mac, and on iOS since owner D9 ("phone")
         XCTAssertEqual(CoreInstaller.defaultMode(m), "advanced")
-        #else
-        XCTAssertEqual(CoreInstaller.defaultMode(m), "simple")
-        #endif
         // A draft keeps fields it does not know and drops the serial.
         var draft = LimitsDraft(document: """
             {"schemaVersion":1,"meta":{"kind":"limits"},"limits":{"serial":"X","future":5,"outputs":[{"output":2,"maxGainDb":3}]}}

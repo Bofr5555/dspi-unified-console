@@ -234,8 +234,8 @@ From `docs/UI-MODES.md`; the words a client shows.
 
 | Term | Meaning |
 |---|---|
-| **Simple** | The front page first; the default on phones. It hides nothing permanently |
-| **Advanced** | Today's screens; the default on desktops and the web |
+| **Simple** | The front page first; a phone's default until owner D9 (2026-11-25: phones open in Advanced too). It hides nothing permanently |
+| **Advanced** | Today's screens; the default everywhere: desktops, the web and (since owner D9) phones |
 | **Installer** | Advanced plus limits, power-on state, firmware, factory reset and core voltage; behind the PIN when one is set |
 | **Locked user** | A state, not a mode: what an installer has left a user to change (volume, mute, preset) |
 | **Installer PIN** | A UI lock an installer sets; not a security boundary |

@@ -200,7 +200,7 @@ The other clients follow when their Pro work or polish pass reaches the screen.
 | **Qt** (Linux, Windows) | The classic port as planned on `qtport`: today's screens, i.e. Advanced without the Pro layer | The Pro track after the swap to the new tree: the mode switch from the manifest, then the Pro screens |
 | **Android** | **Simple first.** Home reordered for the phone (UIM1): volume, preset and source, output meters with a health line, then the graph and the lists | The mode switch from the manifest; later the phone's subset of the Pro layer |
 | **Web** | **The Pro layer first**, since fleet handling is what the web is for: the WB6 slices put the System view (WB6d), the scene bar (WB6e) and the status rail (WB6f) before the remaining tool screens | The locked-user view as its simple page; the fleet screens with the hub's accounts and roles |
-| **Swift** (macOS, iOS) | Nothing before OD3 | After OD3: the same manifest and the same order as Qt and Android (macOS Advanced by default, iOS Simple) |
+| **Swift** (macOS, iOS) | Nothing before OD3 | After OD3: the same manifest and the same order as Qt and Android (Advanced by default on macOS and, since owner D9, on iOS too) |
 | **Terminal** | Nothing new: the TUI is an Advanced view already | A one-line health summary for scripts |
 
 ## 9. Open questions

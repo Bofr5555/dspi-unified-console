@@ -104,7 +104,7 @@ it could not read the device is `DspiError::LimitsUnknown` (`limits_unknown`).
 ## Modes
 
 `mode_manifest()` is `assets/modes/modes.json` as a typed record: the modes (Simple, Advanced, Installer) with their
-default platform classes (`phone` Simple; `desktop` and `web` Advanced), the locked-user state (its screens, its
+default platform classes (all three, `phone`, `desktop` and `web`, Advanced since owner D9, 2026-11-25), the locked-user state (its screens, its
 Settings and its writes), the screens in order (`layer: "pro"` for a Pro screen a client shows once built) and the
 operations per mode. A client renders what it is given.
 

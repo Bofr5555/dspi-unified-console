@@ -95,8 +95,9 @@ final class CoreInstaller: ObservableObject {
     /// S2: "an output above -10 dB gain has no limiter".
     static let withoutLimiterAboveDb: Float = -10
 
-    /// The platform class the manifest knows this app by.  The Mac opens in
-    /// Advanced, the iPhone and iPad in Simple (the manifest's defaults).
+    /// The platform class the manifest knows this app by.  The Mac, the
+    /// iPhone and the iPad open in Advanced (the manifest's defaults; "phone"
+    /// is Advanced since owner D9, 2026-11-25, as on Android).  -- FIX016 -- (REVG F9)
     static var platform: String {
         #if os(macOS)
         return "desktop"
