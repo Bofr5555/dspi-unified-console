@@ -263,6 +263,8 @@ test.describe("FEATUI: sources, slots, programme sources and scenes; a zone's vo
     await expect(strip).toContainText("Claude");
     await expect(strip).toContainText("is working on this device: Changing the gain: OUT1");
     await expect(strip).not.toContainText("\u202e");
+    // -- WP UAG -- (UXP A7) it names; it says where Pause and Stop are
+    await expect(strip).toContainText(/Pause and Stop are in the console on \S.*; Mute here silences this device\./);
     const tab = page.getByRole("tablist", { name: "Open DSPi" }).getByRole("tab", { selected: true });
     await expect(tab.getByLabel("AI agent working")).toBeVisible();
     // On every screen

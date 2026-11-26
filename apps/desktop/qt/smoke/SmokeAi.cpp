@@ -174,6 +174,15 @@ void aiSection(SmokeDriver &d) {
     d.check("mcp4: Copy copies it", QGuiApplication::clipboard()->text() == ai->desktopConfig());
     d.check("mcp4: another computer's way is only a link", ai->otherComputerUrl().endsWith(QLatin1String("/docs/mcp-ssh-forwarding.md")));
     d.grab(w, QStringLiteral("settings-ai.png"));
+    // -- WP UAG -- (UXP A9) with no agent paired, Connect an Agent is right under the switch
+    {
+        QQuickItem *connect = item("AiAgents.connect");
+        QQuickItem *permissions = item("AiAgents.permissions");
+        d.check("uag: no agent yet: Connect an Agent comes before the settings", ai->clients().isEmpty() && connect && permissions
+                && connect->mapToScene(QPointF()).y() < permissions->mapToScene(QPointF()).y());
+        QQuickItem *hostAsks = item("AiAgents.hostAsks");
+        d.check("uag: it says the agent app may ask too", hostAsks && hostAsks->property("text").toString().contains(QLatin1String("this app still asks you")));
+    }
 
     QObject *question = item("AiAgentsPage")->property("enableDialog").value<QObject *>();
     QQuickItem *allow = item("AiAgents.allow");
@@ -229,6 +238,11 @@ void aiSection(SmokeDriver &d) {
     d.check("mcp4: a click in the first moment answers nothing", !answerAtOnce && opened(pairing));
     d.waitFor(3000, [&] { return pairing->property("armed").toBool(); });
     d.grab(main, QStringLiteral("ai-pairing.png"));
+    // -- WP UAG -- (UXP A9) where the person checks the code
+    d.check("uag: the pairing sheet says where the code shows", [&] {
+        QObject *where = d.object(QStringLiteral("AiPairingSheet.where"));
+        return where && where->property("text").toString().contains(QLatin1String("The agent's chat or its log shows the same code"));
+    }());
     d.check("mcp4: Deny", click(overlay("AiPairingSheet.deny")) && d.waitFor(2000, [&] { return !opened(pairing); }));
     const auto waitFor = [&](const std::unique_ptr<Exchange> &request) {
         auto e = std::make_unique<Exchange>(port, "/pair/wait", QByteArray(),
@@ -244,6 +258,12 @@ void aiSection(SmokeDriver &d) {
     d.check("mcp4: the allowed agent gets its token, and is listed", agent.token.startsWith("dspi-mcp-")
             && d.waitFor(3000, [&] { return ai->clients().size() == 1; })
             && ai->clients().first().toMap().value(QStringLiteral("name")) == QLatin1String("Fake agent"));
+    // -- WP UAG -- (UXP A9) and Connect an Agent moves down, after the settings
+    d.check("uag: once an agent is paired, Connect an Agent comes after the settings", d.waitFor(3000, [&] {
+        QQuickItem *connect = item("AiAgents.connect");
+        QQuickItem *permissions = item("AiAgents.permissions");
+        return connect && permissions && connect->mapToScene(QPointF()).y() > permissions->mapToScene(QPointF()).y();
+    }));
 
     // ---- A change made at once, and undone -----------------------------------------------
     setGain(-10);
@@ -311,9 +331,13 @@ void aiSection(SmokeDriver &d) {
     armed();
     d.check("mcp4: Allow makes it, and the agent gets its result", click(overlay("AiConfirmSheet.allow")) && !failed(agent.result(*e))
             && d.waitFor(3000, [&] { return gainIs(-3); }));
-    // Two at once: one answer does not answer the next
+    // Two waiting: one answer does not answer the next
+    // -- WP UAG -- (UXP D2) asked apart; two asked together are one sheet (below, "uag: two raises …")
     setGain(-12);
-    auto first = agent.gain(-9), second = agent.gain(-8);
+    auto first = agent.gain(-9);
+    sheetOpen();
+    d.spin(1600);
+    auto second = agent.gain(-8);
     sheetOpen();
     d.waitFor(3000, [&] { return ai->confirmations().size() == 2; });
     armed();
@@ -377,10 +401,78 @@ void aiSection(SmokeDriver &d) {
         armed();
         d.grab(main, QStringLiteral("modern-ai-confirm.png"));
         // -- WP LAY8 -- each risk with its kind
+        // -- WP UAG -- (UXP A6) the change heads the sheet; its row in the screen's words
+        const auto textOf = [](QObject *o) { return o ? o->property("text").toString() : QString(); };
         QQuickItem *risk = overlay("AiConfirmSheet.risk.0");
-        d.check("lay8: the sheet names the risk's kind", risk && risk->property("text").toString().contains(QStringLiteral("Louder: Out %1").arg(out + 1)));
+        const QVariantMap asked = ai->confirmations().value(0).toMap();
+        const QVariantMap row = asked.value(QStringLiteral("batch")).toList().value(0).toMap();
+        d.check("uag: the sheet is headed by the change, without the AI mark",
+                d.object(QStringLiteral("AiConfirmSheet"))->property("heading").toString().startsWith(QLatin1String("Fake agent wants to make "))
+                    && d.object(QStringLiteral("AiConfirmSheet"))->property("heading").toString().contains(QLatin1String(" louder")));
+        d.check("uag: its row is the asked change in the screen's words, from → to",
+                risk && row.value(QStringLiteral("risky")).toBool() && risk->property("text").toString() == row.value(QStringLiteral("said")).toString()
+                    && risk->property("text").toString().contains(QStringLiteral("→")) && !risk->property("text").toString().contains(QLatin1String("Louder:")));
+        d.check("uag: it promises the Undo the activity has",
+                textOf(d.object(QStringLiteral("AiConfirmSheet.after"))).contains(QLatin1String("undo it afterwards")));
         click(overlay("AiConfirmSheet.deny"));
         agent.result(*e);
+        // -- WP UAG -- (UXP A6, C11) a flash write: no "(flash)", and no Undo promised
+        e = agent.call("dspi_preset_set_startup", { { QStringLiteral("mode"), QStringLiteral("slot") }, { QStringLiteral("slot"), 2 } });
+        d.check("uag: a flash write is asked", sheetOpen());
+        armed();
+        d.check("uag: its row names the preset without (flash)", d.waitFor(2000, [&] {
+            QQuickItem *r = overlay("AiConfirmSheet.risk.0");
+            return r && r->property("text").toString().startsWith(QLatin1String("Start with preset 2")) && !r->property("text").toString().contains(QLatin1String("flash"));
+        }));
+        d.check("uag: and says Undo cannot take it back",
+                textOf(d.object(QStringLiteral("AiConfirmSheet.after"))).contains(QLatin1String("Undo cannot take it back"))
+                    && !textOf(d.object(QStringLiteral("AiConfirmSheet.after"))).contains(QLatin1String("undo it afterwards")));
+        d.check("uag: and what happens if nobody answers", textOf(d.object(QStringLiteral("AiConfirmSheet.left"))).contains(QLatin1String("nothing is changed and the agent is told so")));
+        d.grab(main, QStringLiteral("uag-flash-question.png"));
+        click(overlay("AiConfirmSheet.deny"));
+        agent.result(*e);
+        // -- WP UAG -- (UXP D2) two questions one agent raises together are one sheet; one Allow answers
+        // exactly those; Answer One by One splits them
+        {
+            const auto userGain = [&](int o, float db) {
+                device->write(QStringLiteral("uag gain"), [o, db](FfiCore *c) { return dspi_set_output_gain(c, uint8_t(o), db); });
+                d.waitIdle();
+            };
+            const auto gainOf = [&](int o) { return device->state() ? double(device->state()->output_gain_db[o]) : 99.0; };
+            const auto raise = [&](int o, double db) {
+                return agent.call("dspi_set_gain", { { QStringLiteral("output"), o + 1 }, { QStringLiteral("gain_db"), db } });
+            };
+            userGain(6, -20);
+            userGain(7, -20);
+            auto first = raise(6, -10);
+            auto second = raise(7, -10);
+            QObject *confirm = d.object(QStringLiteral("AiConfirmSheet"));
+            d.check("uag: two raises sent together are one sheet", d.waitFor(5000, [&] {
+                return ai->confirmations().size() == 2 && confirm->property("heading").toString().contains(QLatin1String("wants to make 2 changes"));
+            }));
+            armed();
+            d.grab(main, QStringLiteral("uag-grouped-question.png"));
+            click(overlay("AiConfirmSheet.allow"));
+            d.check("uag: one Allow answers both", !failed(agent.result(*first)) && !failed(agent.result(*second))
+                    && d.waitFor(3000, [&] { return std::abs(gainOf(6) + 10) < 0.05 && std::abs(gainOf(7) + 10) < 0.05; }));
+            // (other outputs: those the agent set and the person then set are the person's)
+            userGain(4, -20);
+            userGain(5, -20);
+            first = raise(4, -12);
+            second = raise(5, -12);
+            d.waitFor(5000, [&] { return ai->confirmations().size() == 2; });
+            armed();
+            click(overlay("AiConfirmSheet.oneByOne"));
+            d.check("uag: Answer One by One shows one question", d.waitFor(2000, [&] {
+                return !confirm->property("heading").toString().contains(QLatin1String("changes"));
+            }));
+            armed();
+            click(overlay("AiConfirmSheet.deny"));
+            d.check("uag: Deny answers that one only", failed(agent.result(*first)) && ai->confirmations().size() == 1 && opened(confirm));
+            armed();
+            click(overlay("AiConfirmSheet.deny"));
+            agent.result(*second);
+        }
         // -- WP LAY8 -- The AI button and its popover, on the real server
         {
             QQuickItem *button = d.item(QStringLiteral("TopBar.ai"));
@@ -445,6 +537,33 @@ void aiSection(SmokeDriver &d) {
         d.waitFor(5000, [&] { return x->done; });
         return x->status() == 401;
     }());
+
+    // ---- -- WP UAG -- (UXP A7) A refusal the person can see, for a few seconds; one meaning per Stop
+    {
+        out = 5;
+        ai->setConfirmMode(QStringLiteral("never_ask"));
+        const QJsonObject hp{ { QStringLiteral("family"), QStringLiteral("linkwitz_riley") }, { QStringLiteral("order"), 4 },
+                              { QStringLiteral("freq_hz"), 2000 } };
+        e = agent.call("dspi_set_crossover", { { QStringLiteral("output"), out + 1 }, { QStringLiteral("high_pass"), hp } });
+        const bool set = !failed(agent.result(*e));
+        e = agent.call("dspi_set_crossover", { { QStringLiteral("output"), out + 1 }, { QStringLiteral("high_pass"), QJsonValue(QJsonValue::Null) } });
+        d.check("uag: the console refuses taking a tweeter's high-pass away", set && failed(agent.result(*e)));
+        QObject *line = d.object(QStringLiteral("AiWorkBanner.text"));
+        d.check("uag: the strip says why, in the person's words", d.waitFor(3000, [&] {
+            const QString t = line ? line->property("text").toString() : QString();
+            return t.startsWith(QLatin1String("Refused: Kept ")) && t.contains(QLatin1String("high-pass at 1 kHz"));
+        }));
+        d.grab(main, QStringLiteral("uag-refusal-strip.png"));
+        d.check("uag: the activity says it under Not done", d.waitFor(3000, [&] {
+            return row(0).value(QStringLiteral("refused")).toBool() && row(0).value(QStringLiteral("outcomeText")) == QLatin1String("Not done")
+                   && row(0).value(QStringLiteral("detail")).toString().startsWith(QLatin1String("Kept "));
+        }));
+        d.check("uag: and the strip lets it go after a few seconds",
+                d.waitFor(AiController::kRefusalMs + 2000, [&] { return ai->refusal().isEmpty(); }));
+        QQuickItem *stop = inPanel("AiAgents.stop");
+        d.check("uag: the panel's Stop says what it stops", stop && stop->property("text").toString() == QLatin1String("Stop Agents"));
+        ai->setConfirmMode(QStringLiteral("ask_risky"));
+    }
 
     // ---- The timed preview, and Stop ----------------------------------------------------------------
     out = 4;

@@ -271,9 +271,10 @@ void showfixFollowSection(SmokeDriver &d) {
                 d.spin(1000);
                 d.check(QStringLiteral("showfix 10: following off, the tab stays"), registry->active() == a);
             }
-            QObject *who = d.object(QStringLiteral("AiConfirmSheet.who"));
+            // -- WP UAG -- (UXP A6) in its heading, the change's line
+            QObject *sheet = d.object(QStringLiteral("AiConfirmSheet"));
             d.check(QStringLiteral("showfix 10: the sheet names the device"),
-                    d.waitFor(2000, [&] { return who && who->property("text").toString().contains(b->title()); }));
+                    d.waitFor(2000, [&] { return sheet && sheet->property("heading").toString().contains(b->title()); }));
             ai->answer(q.value(QStringLiteral("id")).toDouble(), false);
             s.result(held);
             d.waitFor(3000, [&] { return ai->confirmations().isEmpty(); });
