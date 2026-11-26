@@ -30,6 +30,9 @@
 # per Containerfile: tags uconsole-for-dspi-*:<hash>, image.sh -- WP APPIMG --)
 # and runs each build as this user, with the network
 # (cargo's crates) and without USB. Scratch under $DSPI_BUILD_CACHE/work/release-build.
+# -- INT016 -- DSPI_RELEASE_SCRATCH names another scratch and DSPI_RELEASE_DIR
+# another own folder (ci/full.sh gives each worktree its own, so two workers'
+# qt-packages never share one); a release keeps the defaults and their kept builds.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../../.." && pwd)
@@ -41,7 +44,7 @@ if [ "${1:-}" = --key ]; then key=${2:?--key needs a file}; shift 2; fi
 if [ "${1:-}" = --appimage-only ]; then only=appimage; key=; shift; fi
 version=$(sed -n 's/^project(uconsole-for-dspi VERSION \([0-9.]*\).*/\1/p' "$here/../qt/CMakeLists.txt")
 [ -n "$version" ] || { echo "build-release: no version in qt/CMakeLists.txt" >&2; exit 1; }
-own=$B/work/release-$version${only:+-appimage}
+own=${DSPI_RELEASE_DIR:-$B/work/release-$version${only:+-appimage}}
 out=${1:-$own}
 if [ "$out" != "$own" ] && [ -d "$out" ] && [ -n "$(ls -A "$out")" ]; then
     echo "build-release: $out is not empty; name an empty or new folder" >&2; exit 2
@@ -49,7 +52,7 @@ fi
 [ -z "$(git -C "$repo" status --porcelain)" ] || { echo "build-release: the work tree has changes; a release is built from a commit" >&2; exit 1; }
 [ -z "$key" ] || [ -f "$key" ] || { echo "build-release: no key file at $key" >&2; exit 2; }
 
-scratch=$B/work/release-build
+scratch=${DSPI_RELEASE_SCRATCH:-$B/work/release-build}
 mkdir -p "$scratch/empty" "$scratch/dist" "$B/cargo-home" "$out"
 dist=$scratch/dist
 rm -f "$dist"/*

@@ -39,7 +39,7 @@ if [ "$version" != "$app" ]; then
   echo "release-desktop.sh: the app's version is $app, not $version (apps/desktop/qt/CMakeLists.txt)" >&2
   exit 2
 fi
-built=$B/work/release-$version
+built=${DSPI_RELEASE_DIR:-$B/work/release-$version}   # -- INT016 -- as build-release.sh's own folder
 # build-release.sh empties its own folder first, so a copy into it is refused
 if [ -n "$out" ]; then
   mkdir -p "$out"
@@ -49,7 +49,7 @@ fi
 DSPI_MINISIGN_KEY= "$here/apps/desktop/packaging/build-release.sh"
 if [ "$test" = 1 ]; then
   # test-packages.sh writes its logs next to the files: test them in a copy
-  t=$B/work/release-desktop-test
+  t=${DSPI_RELEASE_DIR:-$B/work/release-$version}-test   # -- INT016 -- beside the files, not shared
   rm -rf "$t"; mkdir -p "$t"
   cp "$built"/* "$t/"
   "$here/apps/desktop/packaging/linux/test-packages.sh" "$t"
