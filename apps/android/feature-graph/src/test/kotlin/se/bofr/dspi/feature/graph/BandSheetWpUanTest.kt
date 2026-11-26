@@ -11,6 +11,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
@@ -18,11 +19,11 @@ import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performMouseInput
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
@@ -158,14 +159,15 @@ class BandSheetWpUanTest {
         settle()
         val pill = rule.onNodeWithTag(GRAPH_LEGEND_PILL_TAG + out1)
         assertEquals(false, pill.fetchSemanticsNode().config.getOrNull(SemanticsProperties.Selected))
-        pill.performClick()
+        // TalkBack's tap and long-press (the actions the pill offers)
+        pill.performSemanticsAction(SemanticsActions.OnClick)
         settle { chosen.value == out1 }
         assertEquals(
             true,
             rule.onNodeWithTag(GRAPH_LEGEND_PILL_TAG + out1).fetchSemanticsNode().config.getOrNull(SemanticsProperties.Selected)
         )
         val shown = bridge.channelVisible(out1)
-        rule.onNodeWithTag(GRAPH_LEGEND_PILL_TAG + out1).performTouchInput { longClick() }
+        rule.onNodeWithTag(GRAPH_LEGEND_PILL_TAG + out1).performSemanticsAction(SemanticsActions.OnLongClick)
         settle { bridge.channelVisible(out1) != shown }
         assertEquals("a long-press chooses nothing", out1, chosen.value)
     }
