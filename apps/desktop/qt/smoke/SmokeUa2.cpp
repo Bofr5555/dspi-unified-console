@@ -129,6 +129,7 @@ void measureBarSection(SmokeDriver &d) {
         d.check("ua2: in Modern", false);
         return;
     }
+    QDir(d.outDir() + QStringLiteral("/ua2")).removeRecursively();   // this run's pictures only
     QDir().mkpath(d.outDir() + QStringLiteral("/ua2"));
     const float volumeWas = device->state()->user_volume_db;
     // A two-way left speaker, so the tune has a transition to check: Out 1 its
@@ -243,7 +244,7 @@ void measureBarSection(SmokeDriver &d) {
     press(item("MeasureSetup.start"));
     const bool started = d.waitFor(8000, [&] { return mc->measuring(); });
     bool barShown = false, progressShown = false;
-    if (started) d.waitFor(110000, [&] {
+    if (started) d.waitFor(3000, [&] {
         barShown = barShown || (inView(w, item("Measure.stop")) && inView(w, item("Measure.runningText")));
         progressShown = progressShown || inView(w, item("Measure.progress"));
         return (barShown && progressShown) || !mc->measuring();
