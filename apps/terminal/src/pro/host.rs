@@ -244,6 +244,10 @@ impl ProHost for CoreHost {
 
     fn speakers_confirm(&self, rows: &[SpeakerRow]) -> Result<Speakers, String> {
         let (core, _) = self.core()?;
+        // -- FIX016 -- (REVG R4) the page offers nothing under the lock; a stale one is refused here too
+        if let Some(why) = locked_words(&core) {
+            return Err(why);
+        }
         let layout = SpeakerLayout {
             outputs: rows
                 .iter()
@@ -262,6 +266,26 @@ impl ProHost for CoreHost {
             .map(|l| speakers_view(l, true))
             .map_err(|e| e.to_string())
     }
+
+    // -- FIX016 -- (REVG R4)
+    fn speakers_locked(&self) -> Option<String> {
+        self.core().ok().and_then(|(core, _)| locked_words(&core))
+    }
+}
+
+// -- FIX016 -- (REVG R4)
+/// The installer's lock on the open device, in the core's words (its
+/// `installer_lock.banner`): the speaker layout is the installer's then.
+fn locked_words(core: &DspiCore) -> Option<String> {
+    if !core.installer_lock_state().locked {
+        return None;
+    }
+    let n = dspi_core::notice_for_key(dspi_core::LOCK_BANNER_NOTICE.into(), String::new());
+    Some(if n.action.is_empty() {
+        n.reason
+    } else {
+        format!("{} {}", n.reason, n.action)
+    })
 }
 
 #[cfg(test)]
@@ -350,6 +374,36 @@ mod tests_wp_ub11 {
         assert!(
             dir.join("speaker-layouts").exists(),
             "kept in the console's folder"
+        );
+    }
+
+    // -- FIX016 -- (REVG R4)
+    #[test]
+    fn fix016_under_the_installers_lock_the_host_keeps_no_layout() {
+        let dir = scratch("fix016_speakers_lock");
+        let (o, host) = opened(&dir);
+        assert_eq!(host.speakers_locked(), None, "no PIN: nothing locked");
+        let before = host.speakers().expect("the demo's layout");
+        assert!(!before.rows.is_empty(), "{before:?}");
+        let core = &o.handle.core;
+        core.installer_pin_set("2468-gate".into()).expect("a PIN");
+        core.installer_lock_cover(vec!["front".into()])
+            .expect("the lock covers the front");
+        core.installer_lock().expect("locked");
+        assert!(core.installer_lock_state().locked);
+        let why = host.speakers_locked().expect("the lock says why");
+        assert!(why.starts_with("Locked by the installer"), "{why}");
+        let mut rows = before.rows.clone();
+        rows[0].role = if rows[0].role == Role::High {
+            Role::Low
+        } else {
+            Role::High
+        };
+        assert_eq!(host.speakers_confirm(&rows).unwrap_err(), why);
+        assert_eq!(
+            host.speakers().expect("read back").rows,
+            before.rows,
+            "the layout as it was"
         );
     }
 }

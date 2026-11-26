@@ -68,6 +68,10 @@ pub struct SpeakersPage {
     /// The last action's sentence, and whether it failed.
     said: Option<(String, bool)>,
     asking: Option<Asking>,
+    // -- FIX016 -- (REVG R4)
+    /// The installer's lock, in the core's words: the layout is shown and
+    /// nothing on the page changes it. Asked again each time the page looks.
+    locked: Option<String>,
 }
 
 impl SpeakersPage {
@@ -117,6 +121,10 @@ impl SpeakersPage {
         let Some(s) = &self.shown else {
             return out;
         };
+        // -- FIX016 -- (REVG R4) under the installer's lock: the layout as it is kept, nothing to change
+        if let Some(why) = &self.locked {
+            return self.build_locked(cx, s, why, out);
+        }
         out.push((
             None,
             if self.changed {
@@ -184,6 +192,38 @@ impl SpeakersPage {
         out
     }
 
+    // -- FIX016 -- (REVG R4)
+    /// The page under the installer's lock: why, and each output's role as
+    /// words. No row to change, no Confirm, no suggestion.
+    fn build_locked(
+        &self,
+        cx: &Cx<'_>,
+        s: &Speakers,
+        why: &str,
+        mut out: Vec<(Option<Item>, Row)>,
+    ) -> Vec<(Option<Item>, Row)> {
+        out.push((None, Row::Status(s.stamp.clone(), !s.confirmed)));
+        out.push((None, Row::Status(why.to_owned(), true)));
+        out.push((None, Row::Blank));
+        for r in &s.rows {
+            let speaker = if r.speaker.is_empty() {
+                "speaker not set".to_owned()
+            } else {
+                format!("speaker {}", r.speaker)
+            };
+            out.push((
+                None,
+                Row::pair(
+                    Self::label(cx, r.output),
+                    format!("{} · {speaker} · group {}", r.role.words(), r.group),
+                ),
+            ));
+        }
+        out.push((None, Row::Blank));
+        out.push((None, Row::note(FOOTER)));
+        out
+    }
+
     fn item(&self, index: usize, cx: &Cx<'_>) -> Option<Item> {
         self.build(cx)
             .into_iter()
@@ -210,6 +250,9 @@ impl SpeakersPage {
         let (Some(host), Some(s)) = (self.host.clone(), self.shown.as_ref()) else {
             return PageEvent::Handled;
         };
+        if self.locked.is_some() {
+            return PageEvent::Handled; // -- FIX016 --
+        }
         match host.speakers_confirm(&s.rows) {
             Ok(kept) => {
                 self.shown = Some(kept);
@@ -293,7 +336,7 @@ impl SettingsPage for SpeakersPage {
     }
 
     fn keys(&self) -> &'static [KeyHelp] {
-        if self.shown.is_some() {
+        if self.shown.is_some() && self.locked.is_none() {
             KEYS
         } else {
             KEYS_EMPTY
@@ -377,6 +420,16 @@ impl SettingsPage for SpeakersPage {
 
     fn observe(&mut self, _cx: &Cx<'_>) {
         self.load();
+        // -- FIX016 -- (REVG R4) locked or unlocked since: the page follows
+        let locked = self.host.as_ref().and_then(|h| h.speakers_locked());
+        if locked.is_some() && self.locked.is_none() {
+            // what the person had changed is not theirs to keep now
+            self.shown = None;
+            self.changed = false;
+            self.said = None;
+            self.load();
+        }
+        self.locked = locked;
     }
 }
 
@@ -393,6 +446,8 @@ mod tests {
     #[derive(Default)]
     struct Layouts {
         kept: RefCell<Option<Speakers>>,
+        /// -- FIX016 -- the installer's lock, as the core words it
+        locked: Option<String>,
     }
 
     fn suggestion() -> Speakers {
@@ -470,6 +525,9 @@ mod tests {
             };
             *self.kept.borrow_mut() = Some(kept.clone());
             Ok(kept)
+        }
+        fn speakers_locked(&self) -> Option<String> {
+            self.locked.clone()
         }
     }
 
@@ -565,6 +623,43 @@ mod tests {
         s.dialog_result(DialogOutcome::Text("3".into()), &st);
         let f = frame(&mut s, &st);
         assert!(f.contains("speaker L · group 3"), "{f}");
+    }
+
+    // -- FIX016 -- (REVG R4)
+    #[test]
+    fn fix016_under_the_installers_lock_the_page_changes_nothing() {
+        let why = "Locked by the installer: only volume, mute and presets can be changed.";
+        let layouts = Rc::new(Layouts {
+            locked: Some(why.into()),
+            ..Layouts::default()
+        });
+        let host: Rc<dyn ProHost> = layouts.clone();
+        let (mut s, st) = opened(Some(host));
+        let f = frame(&mut s, &st);
+        assert!(f.contains(why), "{f}");
+        assert!(f.contains("Full range · speaker L · group 0"), "{f}");
+        assert!(!f.contains("Use the Suggestion"), "{f}");
+        assert!(!f.contains("Confirm"), "no Confirm: {f}");
+        // what changed the role and kept it, unlocked (ub11_a_role_changed_is_kept_only_when_confirmed)
+        s.handle(key(KeyCode::Tab), &st);
+        for _ in 0..4 {
+            s.handle(key(KeyCode::Right), &st);
+        }
+        assert!(!matches!(
+            s.handle(key(KeyCode::Char('n')), &st),
+            ScreenEvent::Dialog(_)
+        ));
+        assert!(!matches!(
+            s.handle(key(KeyCode::Char('g')), &st),
+            ScreenEvent::Dialog(_)
+        ));
+        s.handle(key(KeyCode::Down), &st);
+        s.handle(key(KeyCode::Down), &st);
+        s.handle(key(KeyCode::Enter), &st);
+        assert!(layouts.kept.borrow().is_none(), "nothing kept");
+        let f = frame(&mut s, &st);
+        assert!(!f.contains("High (tweeter)"), "{f}");
+        assert!(!f.contains("Changed: not kept"), "{f}");
     }
 
     #[test]

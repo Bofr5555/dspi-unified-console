@@ -140,6 +140,13 @@ pub trait ProHost {
     fn speakers_suggest(&self) -> Result<Speakers, String>;
     /// Keep `rows` as the person's confirmed layout.
     fn speakers_confirm(&self, rows: &[SpeakerRow]) -> Result<Speakers, String>;
+    // -- FIX016 -- (REVG R4)
+    /// Why the person may not change the speaker layout here, in the core's
+    /// words: the installer's lock (the roles are the installer's; the preset
+    /// guard holds a tweeter by them). `None` when they may.
+    fn speakers_locked(&self) -> Option<String> {
+        None
+    }
 }
 
 /// The host the screens share: set once a device is open on a core.
