@@ -49,6 +49,17 @@ async function openEq(page: Page, phone = false): Promise<{ one: Locator; sessio
   return { one, session, list };
 }
 
+/** Band 1's disc is a 44 px target, clear of its number; then centred for the picture. */
+async function bigDisc(list: Locator) {
+  const disc = list.getByRole("checkbox", { name: "Band 1 plays" });
+  const box = await disc.boundingBox();
+  const number = await list.getByRole("button", { name: "Band 1", exact: true }).boundingBox();
+  expect(box?.width).toBeGreaterThanOrEqual(43.5);
+  expect(box?.height).toBeGreaterThanOrEqual(43.5);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(number!.x + 0.5);
+  await disc.evaluate((e) => e.scrollIntoView({ block: "center" }));
+}
+
 const borderColour = (l: Locator) => l.evaluate((e) => getComputedStyle(e).borderTopColor);
 const height = async (l: Locator) => (await l.boundingBox())?.height ?? 0;
 
@@ -66,7 +77,7 @@ test("UB13: a mouse desktop has neither; Outline controls draws the 3:1 line, Co
   const sourceHeight = await height(source);
   const disc = list.getByRole("checkbox", { name: "Band 1 plays" });
   expect((await disc.boundingBox())?.width).toBeLessThan(20);
-  await disc.scrollIntoViewIfNeeded();
+  await disc.evaluate((e) => e.scrollIntoView({ block: "center" }));
   await shot(page, "peq-off");
 
   await openPage(session, "Settings");
@@ -84,11 +95,8 @@ test("UB13: a mouse desktop has neither; Outline controls draws the 3:1 line, Co
   expect(await borderColour(button)).toBe(OUTLINE);
   expect(await type.evaluate((e) => getComputedStyle(e).boxShadow)).toContain(OUTLINE); // the drawn combo: inside
   expect(await height(source)).toBeGreaterThanOrEqual(Math.max(31.5, sourceHeight));
-  const box = await list.getByRole("checkbox", { name: "Band 1 plays" }).boundingBox();
-  expect(box?.width).toBeGreaterThanOrEqual(43.5);
-  expect(box?.height).toBeGreaterThanOrEqual(43.5);
+  await bigDisc(list);
   await noSidewaysScroll(page);
-  await list.getByRole("checkbox", { name: "Band 1 plays" }).scrollIntoViewIfNeeded();
   await shot(page, "peq-both");
 
   // Kept in this browser
@@ -118,10 +126,8 @@ test.describe("UB13 on a touch screen", () => {
     expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true);
     await expect(root).toHaveAttribute("data-density", "comfortable");
     await expect(root).not.toHaveAttribute("data-outline", /./);
-    const box = await list.getByRole("checkbox", { name: "Band 1 plays" }).boundingBox();
-    expect(box?.width).toBeGreaterThanOrEqual(43.5);
+    await bigDisc(list);
     await noSidewaysScroll(page);
-    await list.getByRole("checkbox", { name: "Band 1 plays" }).scrollIntoViewIfNeeded();
     await shot(page, "touch-peq");
     await openPage(session, "Settings");
     await openSetting(session, "Appearance");
@@ -131,7 +137,7 @@ test.describe("UB13 on a touch screen", () => {
     await openPage(session, "EQ");
     const disc = list.getByRole("checkbox", { name: "Band 1 plays" });
     expect((await disc.boundingBox())?.width).toBeLessThan(20);
-    await disc.scrollIntoViewIfNeeded();
+    await disc.evaluate((e) => e.scrollIntoView({ block: "center" }));
     await shot(page, "touch-peq-standard"); // as before this package
     expect(errors).toEqual([]);
   });

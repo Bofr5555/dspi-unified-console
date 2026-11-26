@@ -21,6 +21,7 @@
 }
 .dspi-web[data-density="comfortable"] :is(.seg, .segments, .screen-tabs) > button,
 .dspi-web[data-density="comfortable"] .tool-chip { min-height: 28px; }
+.dspi-web[data-density="comfortable"] .eq-bands .c-on { width: 44px; padding: 0; }
 .dspi-web[data-density="comfortable"] .band-disc {
   position: relative; width: 44px; height: 44px; min-height: 0; border: 0; background: none;
 }
