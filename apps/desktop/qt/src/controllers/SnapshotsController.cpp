@@ -116,6 +116,8 @@ SnapshotsController::SnapshotsController(const AppContext &ctx, QObject *parent)
     ctx.shell->addHandler(QStringLiteral("device.abToggle"), this, [this] {
         if (!typing() && !dialogOpen()) abToggle();
     });
+    // -- WP UB34 -- canStartSaved follows the shown device's unsaved changes
+    connect(ctx.registry, &DeviceRegistry::devicesChanged, this, &SnapshotsController::abChanged);
     // -- WP P1DCFIX -- the timeout set before, and the countdown's words (the
     // notice table: no handle, no I/O)
     m_timeoutS = std::clamp(QSettings().value(kTimeoutKey, kGuardTimeoutDefaultS).toInt(), kGuardTimeoutMinS, kGuardTimeoutMaxS);
@@ -199,6 +201,10 @@ void SnapshotsController::onSnapshotApplied() {
     m_serial = serial;
     if (changed) {
         reload();
+        reloadAb();
+    } else if (m_abSaved && m_abActive) {
+        // -- WP UB34 -- a save or a load ends a compare of "as saved" (the
+        // core's rule): read it again (no I/O)
         reloadAb();
     }
     // Over DSPi Link the default may change with the session; no I/O
@@ -554,10 +560,15 @@ void SnapshotsController::recall(const QString &id) {
 void SnapshotsController::setAb(const QJsonObject &o) {
     const bool active = o.value(QLatin1String("active")).toBool();
     const QString side = o.value(QLatin1String("side")).toString();
-    const QString a = o.value(QLatin1String("aName")).toString();
-    const QString b = o.value(QLatin1String("bName")).toString();
+    // -- WP UB34 -- the sides of "as saved" against "now" in this app's words
+    const bool saved = o.value(QLatin1String("saved")).toBool();
+    //: A/B compare: side A, the preset as saved on the device
+    const QString a = saved ? tr("As saved") : o.value(QLatin1String("aName")).toString();
+    //: A/B compare: side B, the device's settings now
+    const QString b = saved ? tr("Now") : o.value(QLatin1String("bName")).toString();
     const bool pairChanged = a != m_abAName || b != m_abBName || active != m_abActive;
     m_abActive = active;
+    m_abSaved = active && saved;   // -- WP UB34 --
     m_abSide = active ? side : QString();
     m_abAName = active ? a : QString();
     m_abBName = active ? b : QString();
@@ -604,6 +615,11 @@ void SnapshotsController::abStart(const QString &aId, const QString &bId) {
 }
 
 void SnapshotsController::abToggle() {
+    // -- WP UB34 -- (UXP B3) with nothing compared, B (now) goes to A (as saved)
+    if (!m_abActive) {
+        if (canStartSaved()) abStartSaved();
+        return;
+    }
     if (!canToggle()) return;
     ++m_toggling;
     emit abChanged();
@@ -614,6 +630,29 @@ void SnapshotsController::abToggle() {
                   if (ok) setAb(o);
                   else {
                       failed(o, tr("The other side was not recalled."));
+                      emit abChanged();
+                  }
+              });
+}
+
+// -- WP UB34 --
+bool SnapshotsController::canStartSaved() const {
+    DeviceSession *shown = m_ctx.activeSession();
+    return !m_abActive && !guardWaiting() && m_ctx.device->connected() && !m_ctx.device->readOnly()
+           && m_ctx.registry && m_ctx.registry->dirty(shown);
+}
+
+void SnapshotsController::abStartSaved() {
+    if (!canStartSaved() || m_toggling > 0) return;
+    ++m_toggling;
+    emit abChanged();
+    writeCall(QStringLiteral("ab start saved"),
+              [](FfiCore *c) { return once([&](char *b, uint32_t n) { return dspi_ab_start_saved(c, b, n); }); },
+              [this](bool ok, const QJsonObject &o) {
+                  --m_toggling;
+                  if (ok) setAb(o);
+                  else {
+                      failed(o, tr("The saved settings could not be recalled for the compare."));
                       emit abChanged();
                   }
               });

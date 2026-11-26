@@ -11,6 +11,7 @@ import UConsole
 // -- WP DL5 -- The preset picker is one button and its popover (PresetPopover).
 // -- WP UA3 -- Save to Device: its count explained, greyed with no device,
 // Save All with several devices, no Factory Reset; A/B only while a compare runs.
+// -- WP UB34 -- A/B also from the first edit: as saved against now.
 Rectangle {
     id: bar
     objectName: "TopBar"
@@ -160,26 +161,41 @@ Rectangle {
             Accessible.onPressAction: toggle(true)
         }
         // -- WP UA3 -- (UXP C2) Shown while a compare runs, and then it says what
-        // A and B are; never a way to a page. B3 (next wave) makes A "as saved
-        // on the device" and B "now", from the first edit: then `abShown` is
-        // true whenever a device is open and the segment keeps this place.
+        // A and B are; never a way to a page.
+        // -- WP UB34 -- (UXP B3, owner D7) Also from the first edit: A is the
+        // preset as saved on the device, B is now (SnapshotsController's
+        // abStartSaved); a click on A, or the B key, starts that compare. A
+        // compare of two snapshots (Library › Snapshots) shows its names.
         ToolSegments {
             id: ab
             objectName: "TopBar.ab"
-            readonly property bool abShown: SnapshotsController.abActive
+            readonly property bool abShown: SnapshotsController.abActive || SnapshotsController.canStartSaved
+            readonly property bool saved: SnapshotsController.abSaved || !SnapshotsController.abActive
             track: Theme.barControl   // -- WP REVDFIX -- D1
             visible: !DeviceInfoController.sender && abShown
             label: qsTr("A/B compare")
             model: ["A", "B"]
-            current: !SnapshotsController.abActive ? -1 : SnapshotsController.abSide === "b" ? 1 : 0
+            // B, now, is what plays until a compare starts
+            current: !SnapshotsController.abActive ? (abShown ? 1 : -1) : SnapshotsController.abSide === "b" ? 1 : 0
             enabled: DeviceModel.connected
-            readonly property string toolTip: SnapshotsController.abActive
+            readonly property string toolTip: !abShown ? ""
+                : !SnapshotsController.abActive
+                //: B is the key that switches
+                ? qsTr("A/B compare: A is the preset as saved on the device, B is now, with your unsaved changes. Click A, or press B, to hear the saved settings.")
+                : saved && SnapshotsController.abSide === "a"
+                //: B is the key that switches
+                ? qsTr("A/B compare: you hear A, the preset as saved on the device. B is now, with your changes. Click B, or press B, to go back.")
+                : saved
+                //: B is the key that switches
+                ? qsTr("A/B compare: you hear B, now, with your changes. A is the preset as saved on the device. Click A, or press B, to switch.")
                 //: %1 and %2 are snapshots' names; B is the key that switches
-                ? qsTr("A/B compare: A is “%1”, B is “%2”. Click the other one, or press B, to switch.")
+                : qsTr("A/B compare: A is “%1”, B is “%2”. Click the other one, or press B, to switch.")
                       .arg(SnapshotsController.abAName).arg(SnapshotsController.abBName)
-                : ""
             onChosen: index => {
-                if (index !== current && SnapshotsController.canToggle) Shell.trigger("device.abToggle")
+                if (index === current) return
+                if (!SnapshotsController.abActive) {
+                    if (index === 0) SnapshotsController.abStartSaved()
+                } else if (SnapshotsController.canToggle) Shell.trigger("device.abToggle")
             }
             HoverHandler { id: abHover }
             HelpTip {

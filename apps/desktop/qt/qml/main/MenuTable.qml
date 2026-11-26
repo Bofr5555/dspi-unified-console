@@ -76,7 +76,7 @@ QtObject {
                 { separator: true },
                 { id: "device.snapshots", text: qsTr("Snapshots…") },
                 // -- WP P1DCFIX -- a bare B (never while typing or while a dialog asks)
-                { id: "device.abToggle", text: qsTr("Toggle A/B"), shortcut: "B", enabled: () => SnapshotsController.canToggle, modern: ["topBar"] },
+                { id: "device.abToggle", text: qsTr("Toggle A/B"), shortcut: "B", enabled: () => SnapshotsController.canToggle || SnapshotsController.canStartSaved, modern: ["topBar"] },   // -- WP UB34 -- also as saved against now
                 // -- WP P2QT -- the device's events (this console's and the hub's) and Identify
                 { id: "device.events", text: qsTr("Events…") },
                 { id: "device.identify", text: qsTr("Identify"), enabled: () => IdentifyController.available, modern: ["device.act"] },

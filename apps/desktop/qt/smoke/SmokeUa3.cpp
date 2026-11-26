@@ -272,7 +272,8 @@ void saveStateSection(SmokeDriver &d) {
     t.settle();
 
     // ---- A/B: hidden with no compare, then says what A and B are
-    t.check("A/B is not shown with no compare", !snaps->abActive() && !t.shown(QStringLiteral("TopBar.ab")));
+    // -- WP UB34 -- with unsaved changes A/B shows (as saved against now, ub34-ab)
+    t.check("A/B is not shown with no compare", !snaps->abActive() && (t.shown(QStringLiteral("TopBar.ab")) != nullptr) == sidebar->unsaved());
     QSignalSpy stored(snaps, &SnapshotsController::stored);
     const auto capture = [&](const QString &name) {
         stored.clear();
@@ -294,7 +295,9 @@ void saveStateSection(SmokeDriver &d) {
         QTest::mouseMove(t.main, QPoint(t.main->width() / 2, t.main->height() / 2));
     }
     snaps->abKeep(QStringLiteral("b"));
-    t.check("the compare ends, A/B goes", d.waitFor(5000, [&] { return !snaps->abActive(); }) && t.d.waitIdle() && !t.shown(QStringLiteral("TopBar.ab")));
+    // -- WP UB34 -- it stays to offer as saved against now while there are unsaved changes
+    t.check("the compare ends, A/B goes", d.waitFor(5000, [&] { return !snaps->abActive(); }) && t.d.waitIdle()
+                                              && (t.shown(QStringLiteral("TopBar.ab")) != nullptr) == sidebar->unsaved());
 
     // ---- A Keep that leaves the preset unsaved says so, and offers Save to Device
     snaps->setRollback(true);
