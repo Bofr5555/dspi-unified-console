@@ -116,7 +116,7 @@ test.describe("P2WB3 on a hub", () => {
     await own.getByRole("button", { name: "Identify" }).click();
     await expect(devices.getByRole("status", { name: "Action result" })).toContainText(/blinking for \d+ s\./);
     // An offline row: no Identify, an Admin's Edit and Forget (-- WP UB6 -- in its details).
-    const away = devices.getByRole("row", { name: "Bar" });
+    const away = devices.getByRole("row", { name: "Bar", exact: true });
     await expect(away.getByRole("button", { name: "Identify" })).toHaveCount(0);
     await expect(devices.locator("tbody").filter({ hasText: DEMO }).getByRole("button", { name: /^Forget/ })).toHaveCount(0);
     let awayBody = await hubDetails(devices, "Bar");

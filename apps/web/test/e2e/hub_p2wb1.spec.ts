@@ -141,7 +141,7 @@ test.describe("P2WB1 on a hub", () => {
     await setMode(session, page, "Advanced");
     await openPage(session, "Hub");
     const devices = session.getByRole("region", { name: "Devices on the hub" });
-    const awayRow = devices.getByRole("row", { name: "Bar" });
+    const awayRow = devices.getByRole("row", { name: "Bar", exact: true });
     await expect(awayRow).toContainText("Offline");
     await expect(awayRow).toContainText(AWAY);
     // -- WP P2WB3 -- an offline DSPi is not identified or opened; an Admin edits or forgets it (-- WP UB6 -- in its details)
