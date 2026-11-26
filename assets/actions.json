@@ -352,7 +352,7 @@
     },
     {
       "id": "device.aiAgents",
-      "text": "AI Agents…",
+      "text": "Agent Activity…",
       "menu": "Device",
       "places": [
         "page.settings/aiAgents"
