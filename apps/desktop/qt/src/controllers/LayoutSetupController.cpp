@@ -369,7 +369,8 @@ QVariantList LayoutSetupController::routePlan(const QJsonObject &layout, QString
             from.append(QVariantMap{ { QStringLiteral("input"), input }, { QStringLiteral("gainDb"), gain } });
             feeds[input] << outputTitle(o);
         }
-        routed.append(QVariantMap{ { QStringLiteral("output"), o }, { QStringLiteral("from"), from } });
+        routed.append(QVariantMap{ { QStringLiteral("output"), o }, { QStringLiteral("from"), from },
+                                   { QStringLiteral("role"), r.value(QLatin1String("role")).toString() } });   // -- FIX016 -- (F5)
         if (!s->output_enabled[o])
             //: An output the routing reaches that is switched off
             notes->append(tr("%1 is off: it plays nothing until you turn it on in Delay & Gain.").arg(outputTitle(o)));
@@ -462,6 +463,45 @@ QString LayoutSetupController::check(const QVariantList &values) const {
     return {};
 }
 
+// -- FIX016 -- (F5, owner: refuse) A route the Apply turns on to a tweeter or a mid
+// driver that has no active high pass at its floor, and gets none in the same
+// Apply, would play it full range: refused, the outputs named
+QString LayoutSetupController::routeRefusal(bool crossovers) const {
+    const auto *cc = Registrar::instance<ChannelController>();
+    const DspState *s = m_ctx.device->state();
+    const QVariantMap p = plan();
+    if (!cc || !s || !p.value(QStringLiteral("blocker")).toString().isEmpty()) return {};
+    QSet<int> getsHighPass;   // the upper ways of the crossovers this Apply writes
+    if (crossovers && cc->crossoverSupported())
+        for (const QVariant &row : p.value(QStringLiteral("speakers")).toList())
+            for (const QVariant &t : row.toMap().value(QStringLiteral("transitions")).toList())
+                for (const QVariant &o : t.toMap().value(QStringLiteral("upperOutputs")).toList()) getsHighPass.insert(o.toInt());
+    QStringList bare;
+    for (const QVariant &v : p.value(QStringLiteral("routed")).toList()) {
+        const QVariantMap r = v.toMap();
+        const int o = r.value(QStringLiteral("output")).toInt();
+        const QString role = r.value(QStringLiteral("role")).toString();
+        if ((role != QLatin1String("high") && role != QLatin1String("mid")) || getsHighPass.contains(o)) continue;
+        bool turnsOn = false;
+        for (const QVariant &f : r.value(QStringLiteral("from")).toList()) {
+            const int i = f.toMap().value(QStringLiteral("input")).toInt();
+            turnsOn = turnsOn || (i >= 0 && i < MAX_INPUTS && !s->matrix_routing[i][o]);
+        }
+        if (!turnsOn) continue;   // fed already: this Apply adds nothing it plays
+        const Floor floor = floorFor(role, o);
+        const std::vector<Band> bands = bandsOf(s, cc->outputChannel(o));
+        bool covered = false;
+        for (const Band &b : bands)
+            covered = covered || (isCrossoverType(b.type) && !b.bypass && !cc->isLowPass(b.type) && b.freq >= floor.hz - 0.5
+                                  && cc->orderOf(b.type) * 6 >= floor.slopeDb);
+        if (!covered) bare << outputTitle(o);
+    }
+    if (bare.isEmpty()) return {};
+    //: %1 the outputs ("Left tweeter · 2, Right tweeter · 4")
+    return tr("%1 would play full range: a tweeter or mid driver needs its high pass first. Set the crossovers in the same Apply, or give it a high pass on the Crossover page.")
+        .arg(bare.join(QStringLiteral(", ")));
+}
+
 QString LayoutSetupController::apply(const QVariantList &values, bool crossovers, bool routing) {
     if (!crossovers && !routing) return tr("Choose crossovers, routing or both.");
     const QString refusal = crossovers ? check(values) : plan().value(QStringLiteral("blocker")).toString();
@@ -469,6 +509,9 @@ QString LayoutSetupController::apply(const QVariantList &values, bool crossovers
     auto *cc = Registrar::instance<ChannelController>();
     const DspState *s = m_ctx.device->state();
     if (!cc || !s) return tr("Open a DSPi first.");
+    // -- FIX016 -- (F5) nothing is written when a route would feed a bare tweeter
+    if (routing)
+        if (const QString why = routeRefusal(crossovers); !why.isEmpty()) return why;
     const QVariantMap p = plan();
 
     // Each output's high and low pass, then the band each goes to

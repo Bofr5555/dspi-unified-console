@@ -70,6 +70,10 @@ public:
     Q_INVOKABLE QString check(const QVariantList &speakers) const;
     // Writes what is ticked as one undo step; "" when sent, else why not
     Q_INVOKABLE QString apply(const QVariantList &speakers, bool crossovers, bool routing);
+    // -- FIX016 -- (F5) Why apply() refuses its routing: a route it turns on to a
+    // tweeter or mid output with no active high pass at its floor that this
+    // Apply's crossovers (`crossovers`) do not give one; "" when none
+    Q_INVOKABLE QString routeRefusal(bool crossovers) const;
     // The frequency a new high (or low) pass on wire channel `channel` opens
     // at: its partner way's low (high) pass in the layout, never under the
     // floor; 0 for none

@@ -474,6 +474,153 @@ void modernUnderTheLock(SmokeDriver &d) {
 }
 // ==== end F8 ====
 
+// ==== F5 ====
+// ---- The layout sheet's setup (F5, F6, F7): the device's routes, crossovers and
+// speaker layout as they were, put back at the end
+QByteArray fill(const std::function<uint32_t(char *, uint32_t)> &call) {
+    QByteArray buf(1 << 16, '\0');
+    const uint32_t n = call(buf.data(), uint32_t(buf.size()));
+    if (n == 0 || n > uint32_t(buf.size())) return {};
+    buf.truncate(int(n) - 1);
+    return buf;
+}
+
+QJsonObject onWorker(SmokeDriver &d, std::function<QByteArray(FfiCore *)> job) {
+    QByteArray out;
+    bool done = false;
+    QObject ctx;
+    d.app().core->worker()->call(&ctx, std::move(job), [&](const QByteArray &r) {
+        out = r;
+        done = true;
+    });
+    d.waitFor(5000, [&] { return done; });
+    return QJsonDocument::fromJson(out).object();
+}
+
+struct DeviceSetup {
+    SmokeDriver &d;
+    SpeakersController *sc;
+    QJsonValue layoutWas;
+    DspState was{};
+    int outputs = 0, inputs = 0;
+    explicit DeviceSetup(SmokeDriver &driver) : d(driver), sc(Registrar::instance<SpeakersController>()) {
+        if (const DspState *s = d.app().device->state()) was = *s;
+        outputs = std::min<int>(was.num_output_channels, MAX_OUTPUTS);
+        inputs = std::min<int>(was.num_input_channels, MAX_INPUTS);
+        layoutWas = onWorker(d, [](FfiCore *c) { return fill([c](char *b, uint32_t l) { return dspi_speaker_layout(c, b, l); }); })
+                        .value(QLatin1String("value"));
+    }
+    void layout(const QJsonArray &rows, bool confirmed = true) {
+        const QByteArray text = QJsonDocument(QJsonObject{ { QStringLiteral("outputs"), rows }, { QStringLiteral("confirmedByUser"), confirmed } })
+                                    .toJson(QJsonDocument::Compact);
+        onWorker(d, [text](FfiCore *c) { return fill([c, &text](char *b, uint32_t n) { return dspi_speaker_layout_set(c, text.constData(), b, n); }); });
+        sc->reload();
+        d.waitFor(3000, [&] { return sc->loaded() && (sc->status() == QLatin1String("confirmed")) == confirmed; });
+    }
+    // Nothing routed to outputs `outs`, no crossover band on them
+    void bare(const QList<int> &outs, bool crossovers = true) {
+        const int channelBase = int(was.num_input_channels);
+        const int ins = inputs;
+        d.app().device->write(QStringLiteral("fix016 bare"), [outs, ins, channelBase, crossovers](FfiCore *c) {
+            bool ok = true;
+            for (int o : outs) {
+                for (int i = 0; i < ins; ++i) ok = dspi_set_matrix_route(c, uint8_t(i), uint8_t(o), false, 0.0f, false) && ok;
+                if (crossovers)
+                    for (int b = 0; b < MAX_XOVER_BANDS; ++b) ok = dspi_set_crossover(c, uint8_t(channelBase + o), uint8_t(b), FilterParams{}) && ok;
+            }
+            return ok;
+        });
+        d.waitIdle();
+        d.app().device->refresh();
+        d.waitIdle();
+    }
+    ~DeviceSetup() {
+        const DspState w = was;
+        const int ins = inputs, outs = outputs, base = int(was.num_input_channels);
+        d.app().device->write(QStringLiteral("fix016 back"), [w, ins, outs, base](FfiCore *c) {
+            bool ok = true;
+            for (int o = 0; o < outs; ++o) {
+                for (int i = 0; i < ins; ++i)
+                    ok = dspi_set_matrix_route(c, uint8_t(i), uint8_t(o), w.matrix_routing[i][o], w.matrix_gain[i][o], w.matrix_invert[i][o]) && ok;
+                for (int b = 0; b < MAX_XOVER_BANDS; ++b) ok = dspi_set_crossover(c, uint8_t(base + o), uint8_t(b), w.xover[base + o][b]) && ok;
+            }
+            return ok;
+        });
+        d.waitIdle();
+        if (layoutWas.isObject()) {
+            const QByteArray text = QJsonDocument(layoutWas.toObject()).toJson(QJsonDocument::Compact);
+            onWorker(d, [text](FfiCore *c) { return fill([c, &text](char *b, uint32_t n) { return dspi_speaker_layout_set(c, text.constData(), b, n); }); });
+        }
+        sc->reload();
+        d.app().device->refresh();
+        d.waitIdle();
+    }
+};
+
+QJsonObject way(int output, const char *role, const char *speaker, int group) {
+    return QJsonObject{ { QStringLiteral("output"), output }, { QStringLiteral("role"), QLatin1String(role) },
+                        { QStringLiteral("speaker"), QLatin1String(speaker) }, { QStringLiteral("group"), group },
+                        { QStringLiteral("source"), QStringLiteral("user") } };
+}
+
+// The sheet's values as it opens: each row's transitions as offered
+QVariantList offered(const QVariantMap &plan) {
+    QVariantList values;
+    for (const QVariant &row : plan.value(QStringLiteral("speakers")).toList()) {
+        QVariantList ts;
+        for (const QVariant &t : row.toMap().value(QStringLiteral("transitions")).toList()) {
+            const QVariantMap m = t.toMap();
+            ts.append(QVariantMap{ { QStringLiteral("hz"), m.value(QStringLiteral("hz")) }, { QStringLiteral("family"), m.value(QStringLiteral("family")) },
+                                   { QStringLiteral("order"), m.value(QStringLiteral("order")) } });
+        }
+        values.append(QVariantMap{ { QStringLiteral("transitions"), ts } });
+    }
+    return values;
+}
+
+const QJsonArray kTwoWays{ way(0, "low", "L", 0), way(1, "high", "L", 0), way(2, "low", "R", 1), way(3, "high", "R", 1) };
+
+// ---- F5: routing alone never feeds a tweeter that has no high pass
+void routingToABareTweeter(SmokeDriver &d) {
+    auto *ls = Registrar::instance<LayoutSetupController>();
+    DeviceModel *device = d.app().device;
+    if (!ls || !device->state() || device->state()->num_output_channels < 4) {
+        d.check("fix016 F5: the controller and four outputs", false);
+        return;
+    }
+    DeviceSetup setup(d);
+    setup.layout(kTwoWays);
+    setup.bare({ 0, 1, 2, 3 });
+    const auto fedTweeter = [&] {
+        bool on = false;
+        for (int i = 0; i < setup.inputs; ++i) on = on || device->state()->matrix_routing[i][1] || device->state()->matrix_routing[i][3];
+        return on;
+    };
+    d.check("fix016 F5: a confirmed 2-way layout, nothing routed, no crossover", ls->plan().value(QStringLiteral("blocker")).toString().isEmpty() && !fedTweeter());
+    // revgb-route: the Routing tool's sheet (crossovers unticked)
+    const QString refusal = ls->apply({}, false, true);
+    d.waitIdle();
+    std::printf("smoke: fix016 F5: routing alone: \"%s\"\n", qPrintable(refusal));
+    d.check("fix016 F5: routing alone to the bare tweeters is refused, and says why",
+            refusal.contains(QLatin1String("full range")) && refusal.contains(QLatin1String("high pass")));
+    d.check("fix016 F5: and nothing is written (no route to the tweeters)", !fedTweeter());
+    d.check("fix016 F5: the sheet says so before Apply (routeRefusal), not with the crossovers in the same Apply",
+            !ls->routeRefusal(false).isEmpty() && ls->routeRefusal(true).isEmpty());
+    // Crossovers and routing in one Apply: allowed, the tweeters fed with their high pass
+    const QString both = ls->apply(offered(ls->plan()), true, true);
+    d.waitIdle();
+    device->refresh();
+    d.waitIdle();
+    const int tweeter = int(device->state()->num_input_channels) + 1;
+    bool highPass = false;
+    for (int b = 0; b < MAX_XOVER_BANDS; ++b) {
+        const FilterParams &f = device->state()->xover[tweeter][b];
+        highPass = highPass || (f.filter_type >= 32 && f.filter_type <= 63 && !f.bypass && f.freq >= 999.5f && f.filter_type % 2 == 1);
+    }
+    d.check(QStringLiteral("fix016 F5: crossovers and routing in one Apply are allowed (%1)").arg(both), both.isEmpty() && fedTweeter());
+    d.check("fix016 F5: and the tweeter has its high pass at 1 kHz or above", highPass);
+}
+// ==== end F5 ====
 
 
 
@@ -483,6 +630,7 @@ void fix016Section(SmokeDriver &d) {
     groupedQuestions(d);
     speakersUnderTheLock(d);   // R4-QT
     modernUnderTheLock(d);   // F8
+    routingToABareTweeter(d);   // F5
 }
 
 const SmokeDriver::Section fix016("fix016-qt", 1000, &fix016Section);

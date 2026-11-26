@@ -308,7 +308,24 @@ void layoutSection(SmokeDriver &d) {
                 d.waitFor(4000, [&] { return flat(0) && flat(1) && flat(2) && flat(3); }));
 
         // ---- Routing: its button, the routing part, one undo ----
+        // -- FIX016 -- (REVG F5, owner: refuse) with the tweeters bare, routing alone
+        // would feed them full range: the sheet says why and Apply waits
         d.goTo(QStringLiteral("routing/matrix"), 300);
+        if (first) {
+            press(QStringLiteral("RoutingTools.fromLayout"));
+            sheetOpen();
+            QQuickItem *why = shown(QStringLiteral("CrossoverFromLayout.routeProblem"));
+            QQuickItem *applyBare = shown(QStringLiteral("CrossoverFromLayout.apply"));
+            const QStringList whyTexts = textsUnder(why);
+            d.check(QStringLiteral("fix016 F5: the tweeters bare, routing alone: the sheet says why and Apply waits (%1)").arg(whyTexts.join(QLatin1Char('|'))),
+                    why && whyTexts.join(QLatin1Char(' ')).contains(QLatin1String("full range")) && applyBare && !applyBare->isEnabled());
+            shoot(QStringLiteral("sheet-routing-bare"), sn);
+            closeSheet();
+        }
+        // The tweeters' high passes, as the Crossover page sets them; then the routing goes
+        cc->setBandType(cc->outputChannel(1), 0, true, lr24hp, 2000);
+        cc->setBandType(cc->outputChannel(3), 0, true, lr24hp, 2000);
+        settle();
         press(QStringLiteral("RoutingTools.fromLayout"));
         d.check(QStringLiteral("ub1: Routing's From Speaker Layout… opens the sheet (%1)").arg(sn), sheetOpen());
         if (first) {
@@ -329,13 +346,17 @@ void layoutSection(SmokeDriver &d) {
                 && !st->matrix_routing[1][0] && !st->matrix_routing[1][1] && st->matrix_routing[1][2] && st->matrix_routing[1][3];
         });
         d.check(QStringLiteral("ub1: L feeds Out 1-2, R Out 3-4, and R no longer Out 2 (%1)").arg(sn), routed);
-        d.check("ub1: the crossovers stay off (not ticked)", flat(0) && flat(1));
+        d.check("ub1: the crossovers stay as they were (not ticked)", flat(0) && pass(1, true).type == lr24hp && flat(2));   // -- FIX016 --
         shoot(QStringLiteral("routing-after"), sn);
         undo();
         d.check(QStringLiteral("ub1: one undo puts the routes back (%1)").arg(sn), d.waitFor(4000, [&] {
                     const DspState *st = s();
                     return st->matrix_routing[0][0] && !st->matrix_routing[0][1] && st->matrix_routing[1][1] && !st->matrix_routing[1][2];
                 }));
+        // -- FIX016 -- the tweeters bare again, as the walk goes on
+        cc->clearBands(cc->outputChannel(1), true);
+        cc->clearBands(cc->outputChannel(3), true);
+        settle();
 
         // ---- The installer's floor: 2.5 kHz on Left tweeter · 2 ----
         limits->setOutputLimit(1, QStringLiteral("highpassMinHz"), 2500);

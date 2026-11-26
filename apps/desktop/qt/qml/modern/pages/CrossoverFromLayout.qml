@@ -33,7 +33,10 @@ Dialog {
     readonly property string blocker: plan.blocker || ""
     // Why Apply waits, in the controller's words ("" when it may run)
     readonly property string problem: !doCrossovers || blocker.length ? "" : LayoutSetupController.check(values())
-    readonly property bool canApply: blocker.length === 0 && problem.length === 0
+    // -- FIX016 -- (F5) routing that would feed a tweeter or mid driver with no high pass
+    readonly property string routeProblem: !doRouting || !hasRoutes || blocker.length ? ""
+        : (LayoutSetupController.revision, LayoutSetupController.routeRefusal(doCrossovers && hasCrossovers))
+    readonly property bool canApply: blocker.length === 0 && problem.length === 0 && routeProblem.length === 0
                                      && ((doCrossovers && hasCrossovers) || (doRouting && hasRoutes))
     // The slopes the firmware takes, as the Crossover page lists them
     readonly property var slopes: {
@@ -386,9 +389,17 @@ Dialog {
                 color: Theme.textMuted
                 wrapMode: Text.Wrap
             }
+            // -- FIX016 -- (F5)
+            NoticeRow {
+                objectName: "CrossoverFromLayout.routeProblem"
+                visible: sheet.routeProblem.length > 0
+                Layout.fillWidth: true
+                kind: "warning"
+                text: sheet.routeProblem
+            }
             NoticeRow {
                 objectName: "CrossoverFromLayout.refusal"
-                visible: sheet.refusal.length > 0 && sheet.refusal !== sheet.problem
+                visible: sheet.refusal.length > 0 && sheet.refusal !== sheet.problem && sheet.refusal !== sheet.routeProblem
                 Layout.fillWidth: true
                 kind: "error"
                 text: sheet.refusal
