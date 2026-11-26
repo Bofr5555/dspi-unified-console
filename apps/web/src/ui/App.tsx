@@ -16,7 +16,7 @@ import { NoDeviceFrame, NoDeviceStrip } from "./shell/NoDevice"; // -- WP REVEFI
 import { Session } from "./session";
 // -- WP WEBM1 -- the Modern shell
 import { alreadyOpenText, holderOf, serialOf, transportName } from "./shell/open-rule"; // -- WP WEBM3 -- transportName
-import { CONNECT, type Navigation } from "./shell/sections";
+import { CONNECT, FLEET, type Navigation } from "./shell/sections";
 import { TopBar } from "./shell/TopBar";
 // -- WP WB6b --
 import { UnsavedWatch } from "./unsaved";
@@ -33,6 +33,9 @@ import { deviceTabsInRail, inspectorShown, loadArrangement, saveArrangement, set
 import { AppearanceDialog, ArrangementContext, RailTopContext } from "./arrangement/Appearance";
 import { DeviceTabs } from "./shell/DeviceTabs";
 import { useFollowAgent } from "./follow-agent"; // -- WP ODEC --
+// -- WP UB6 -- (UXP B6, D13) a hub-served console starts on the hub's Fleet
+import { FleetPage, fleetHubOf, sharedCount, useFleet, withoutFleetEntry } from "../screens/hub/FleetPage";
+import { useHubView } from "../screens/hub/HubScreen";
 import { appleKeys } from "./undo";
 
 export interface ConsoleOptions {
@@ -69,6 +72,7 @@ export function App(props: { options: ConsoleOptions }) {
   const [aboutOpen, setAboutOpen] = useState(false);
   const [listError, setListError] = useState("");
   const [addHubError, setAddHubError] = useState("");
+  const [listed, setListed] = useState(false); // -- WP UB6 -- the backend's list read once
   // -- WP WEBM1 -- the devices' page in place of the session's; what the page has to say; a tab being closed; the shortcut list
   const [picking, setPicking] = useState(false);
   const [said, setSaid] = useState("");
@@ -111,6 +115,7 @@ export function App(props: { options: ConsoleOptions }) {
     } catch (e) {
       setListError(e instanceof Error ? e.message : String(e));
     }
+    setListed(true); // -- WP UB6 --
   }, [backend]);
 
   useEffect(() => {
@@ -235,6 +240,16 @@ export function App(props: { options: ConsoleOptions }) {
     : null;
 
   const current = sessions.find((s) => s.id === active) ?? sessions[0] ?? null;
+  // -- WP UB6 -- (UXP B6, D13) the serving hub's Fleet: a session of its own in the hub's choose step, read while no
+  // DSPi is open; on a hub's page the Fleet is shown (asking the hub) until the list says the hub has none for this page
+  const fleetHub = useMemo(() => fleetHubOf(installations), [installations]);
+  const fleet = useFleet(fleetHub, !current, async (hub) => {
+    const source: Source = { kind: "hub", url: hub.url };
+    const access = props.options.readOnly ? "view" : await backend.access(hub.inst.id, source, "");
+    return new Session(`${hub.inst.id}/fleet`, hub.inst.id, hub.inst.name, source, access, spawnCore(), tokens);
+  });
+  const fleetView = useHubView(fleet?.feed);
+  const fleetShown = !!fleetHub || (backend.kind === "hub" && !listed);
   // -- WP ODEC -- the screens follow an AI agent working through another console (ui/follow.ts)
   useFollowAgent(sessions, current, show);
 
@@ -261,7 +276,7 @@ export function App(props: { options: ConsoleOptions }) {
       ) : null}
       <div class="devices-columns">
         <DevicePicker
-          installations={installations}
+          installations={withoutFleetEntry(installations, fleetHub) /* -- WP UB6 -- the serving hub once */}
           env={env}
           openKeys={openKeys}
           onOpen={(i, s) => void open(i, s)}
@@ -454,7 +469,27 @@ export function App(props: { options: ConsoleOptions }) {
           <SessionView key={current.id} session={current} onClose={() => void close(current)} shell={shell} />
         ) : (
           // -- WP REVEFIX -- (REVD D12) no device: the whole rail, the strip, an empty state on every page (Qt's)
-          <NoDeviceFrame shell={shell} start={CONNECT} strip={<NoDeviceStrip openDemo={openDemo} />} />
+          <NoDeviceFrame
+            shell={shell}
+            start={fleetShown ? FLEET : CONNECT /* -- WP UB6 -- */}
+            strip={
+              fleetShown
+                ? (go) => <NoDeviceStrip openDemo={openDemo} hub={{ shared: sharedCount(fleetHub, fleetView), onOpen: fleetHub ? () => go(FLEET) : null }} />
+                : <NoDeviceStrip openDemo={openDemo} />
+            }
+            fleet={
+              fleetShown ? (
+                <FleetPage
+                  fleet={fleet}
+                  name={fleetHub?.inst.name ?? ""}
+                  url={fleetHub?.url ?? ""}
+                  openKeys={openKeys}
+                  readOnly={props.options.readOnly}
+                  onOpen={(s) => (fleetHub ? void open(fleetHub.inst, s) : undefined)}
+                />
+              ) : undefined
+            }
+          />
         )}
       </main>
       {aboutOpen ? <About sourceUrl={props.options.sourceUrl} onClose={() => setAboutOpen(false)} /> : null}

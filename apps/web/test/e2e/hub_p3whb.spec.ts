@@ -10,7 +10,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { openPage } from "../nav";
+import { hubDetails, openHubPart, openOnHub, openPage } from "../nav"; // -- WP UB6 -- the Fleet, the hub page's parts
 
 const DEMO = "DEMO0000DSPI0001";
 const AWAY = "DEMO-OFFLINE-0042";
@@ -109,14 +109,12 @@ test.describe("P3WHB on a hub", () => {
     const errors = errorsOf(page);
     hub = await startHub(seededStore());
     await page.goto(`http://127.0.0.1:${hub.port}/console/`);
-    const picker = page.getByRole("navigation", { name: "DSPi devices" });
-    await picker.getByRole("listitem").filter({ hasText: "· online" }).getByRole("button", { name: "Connect" }).click();
-    const session = page.getByRole("article").last();
-    await expect(session).toHaveAttribute("data-serial", new RegExp(DEMO));
+    const session = await openOnHub(page, { host: `127.0.0.1:${hub.port}`, serial: DEMO }); // -- WP UB6 -- the Fleet's Open
     await setMode(session, page, "Advanced");
     await openPage(session, "Hub");
 
-    const board = session.getByRole("region", { name: "Health board" });
+    // -- WP UB6 -- (UXP B6) the health board is the device table's (one table): its columns in the row, the rest in the details
+    const board = session.getByRole("region", { name: "Devices on the hub" });
     const own = board.locator("tr.hub-health-row").filter({ hasText: DEMO });
     const away = board.locator("tr.hub-health-row").filter({ hasText: AWAY });
     // The offline DSPi listed below the online one.
@@ -126,30 +124,33 @@ test.describe("P3WHB on a hub", () => {
     expect(order.indexOf(DEMO)).toBeLessThan(order.indexOf(AWAY));
 
     // The counters: the hub reads them on a 30 s cycle (the starvation total about 45 s after
-    // the attach), so the columns are hidden at first, then shown with the demo's totals.
-    const counterHead = board.locator("th").filter({ hasText: "Underruns" });
-    await expect(counterHead).toHaveCount(0);
-    await expect(own.locator("td.hub-health-underruns")).toHaveCount(0);
+    // the attach), so they are not in the details at first, then shown with the demo's totals.
+    let ownBody = await hubDetails(board, "DSPi Demo");
+    await expect(ownBody.locator(".hub-health-underruns")).toHaveCount(0);
 
     // The rule's threshold (0 °C) colours the demo's 35 °C; CPU has no rule set here that the demo reaches.
     const temp = own.locator("td.hub-health-temp");
     await expect(temp).toContainText("35.0 °C", { timeout: 20_000 });
     await expect(temp).toHaveAttribute("data-tone", "bad", { timeout: 20_000 });
     await expect(temp).toHaveAttribute("title", /0 °C/);
-    await expect(own.locator("td.hub-health-cpu")).not.toHaveAttribute("data-tone", /./);
+    await expect(ownBody.locator(".hub-health-cpu")).not.toHaveAttribute("data-tone", /./);
     // The demo announces clip events: their count a minute (latch-only firmware: the latch's word).
-    await expect(own.locator("td.hub-health-clip")).toHaveText(/^(\d+\/min|No|Clipped)$/);
+    await expect(ownBody.locator(".hub-health-clip dd")).toHaveText(/^(\d+\/min|No|Clipped)$/);
     await noSidewaysScroll(page);
 
-    // The alarm the rule raises shows in the row and is acknowledged from it.
-    const hot = own.locator("li.hub-row-alarm").filter({ hasText: "Running hot" });
-    await expect(hot).toHaveCount(1, { timeout: 30_000 });
+    // The alarm the rule raises: counted in the row, whose count opens the Alarms part, where it is acknowledged.
+    const count = own.locator("button.hub-alarm-count");
+    await expect(count).toHaveText("1 alarm", { timeout: 30_000 });
+    await expect(count).toHaveClass(/\bbad\b|\bwarn\b/);
+    await count.click();
+    const hot = session.getByRole("region", { name: "Alarms" }).getByRole("listitem").filter({ hasText: "Running hot" });
     await expect(hot).toHaveAttribute("data-key", "alarm.temperature");
     await hot.getByRole("button", { name: "Acknowledge" }).click();
     await expect(hot).toContainText("Acknowledged");
     await expect(hot.getByRole("button", { name: "Acknowledge" })).toHaveCount(0);
-    // The alarm board below says the same.
-    await expect(session.getByRole("region", { name: "Alarms" }).getByRole("listitem").filter({ hasText: "Running hot" })).toContainText("Acknowledged");
+    // The row says the same: still on, nothing left to acknowledge.
+    await openHubPart(session, "Devices");
+    await expect(count).toHaveClass(/\bquiet\b/);
 
     // Sort: the temperature, highest first; the offline DSPi stays below.
     await board.locator("th").filter({ hasText: "Temperature" }).getByRole("button").click();
@@ -169,10 +170,11 @@ test.describe("P3WHB on a hub", () => {
     await filter.fill("");
     await expect(own).toHaveCount(1);
 
-    // Now the counters arrive: the columns show, with the demo's totals.
-    await expect(counterHead).toHaveCount(1, { timeout: 90_000 });
-    await expect(own.locator("td.hub-health-starvation")).toHaveText(/^(\d+|–)$/);
-    await expect(own.locator("td.hub-health-starvation")).toHaveText("0", { timeout: 20_000 });
+    // Now the counters arrive: shown in the details, with the demo's totals.
+    ownBody = await hubDetails(board, "DSPi Demo");
+    await expect(ownBody.locator(".hub-health-underruns")).toHaveCount(1, { timeout: 90_000 });
+    await expect(ownBody.locator(".hub-health-starvation dd")).toHaveText(/^(\d+|–)$/);
+    await expect(ownBody.locator(".hub-health-starvation dd")).toHaveText("0", { timeout: 20_000 });
     await noSidewaysScroll(page);
     expect(errors).toEqual([]);
   });

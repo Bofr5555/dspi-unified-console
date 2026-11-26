@@ -7,8 +7,8 @@
 import { useEffect, useState } from "preact/hooks";
 import type { HubOutboundTargetRecord, HubOutboundTestRecord } from "../../core/hub-settings-protocol";
 import { failure } from "../installer/HubAdmin";
-import { EVENT_KINDS, lastText, newTarget, outboundSetFrom, targetsForSet, transportText, type NewSecret } from "./model";
-import { Done, Problem, type SectionProps } from "./parts";
+import { EVENT_KINDS, lastText, newTarget, outboundSetFrom, targetChanges, targetsForSet, transportText, type NewSecret } from "./model";
+import { Done, Problem, useDraft, type SectionProps } from "./parts";
 
 export function Outbound(props: SectionProps) {
   const { session, edit } = props;
@@ -17,12 +17,16 @@ export function Outbound(props: SectionProps) {
   const [done, setDone] = useState("");
   const [secrets, setSecrets] = useState<NewSecret[]>([]);
   const [tested, setTested] = useState<Record<string, HubOutboundTestRecord>>({});
-  const [dirty, setDirty] = useState(false);
+  // -- WP UB6 -- the hub's copy: what differs from it is the page's unsaved bar's
+  const [saved, setSaved] = useState<HubOutboundTargetRecord[] | null>(null);
+  const changes = targetChanges(saved, targets);
+  const dirty = changes > 0;
   const [busy, setBusy] = useState(false);
   const read = async () => {
     try {
-      setTargets(await session.core.call("hubOutboundGet", undefined));
-      setDirty(false);
+      const now = await session.core.call("hubOutboundGet", undefined);
+      setTargets(now);
+      setSaved(now);
       setProblem("");
     } catch (e) {
       setTargets(null);
@@ -34,25 +38,31 @@ export function Outbound(props: SectionProps) {
   }, [session]);
   const change = (i: number, patch: Partial<HubOutboundTargetRecord>) => {
     setTargets((l) => (l ? l.map((t, j) => (j === i ? { ...t, ...patch } : t)) : l));
-    setDirty(true);
     setDone("");
   };
-  const save = async () => {
-    if (!targets) return;
+  const save = async (): Promise<boolean> => {
+    if (!targets) return true;
     setBusy(true);
     try {
       const r = outboundSetFrom(await session.core.call("hubOutboundSet", { targets: targetsForSet(targets) }));
       setTargets(r.targets);
+      setSaved(r.targets);
       setSecrets(r.secrets);
-      setDirty(false);
       setProblem("");
       setDone("The hub's notification targets are saved.");
+      return true;
     } catch (e) {
       setProblem(failure(e));
+      return false;
     } finally {
       setBusy(false);
     }
   };
+  // -- WP UB6 -- (UXP B6) saved or discarded with the page's other changes, from its one bar
+  useDraft("outbound", edit ? changes : 0, save, () => {
+    setTargets(saved);
+    setDone("");
+  });
   const test = async (t: HubOutboundTargetRecord) => {
     setBusy(true);
     try {
@@ -61,7 +71,10 @@ export function Outbound(props: SectionProps) {
       setProblem("");
       // Its `last` is the test's now.
       const now = await session.core.call("hubOutboundGet", undefined).catch(() => null);
-      if (now && !dirty) setTargets(now);
+      if (now && !dirty) {
+        setTargets(now);
+        setSaved(now);
+      }
     } catch (e) {
       setProblem(failure(e));
     } finally {
@@ -102,10 +115,7 @@ export function Outbound(props: SectionProps) {
               tested={t.id ? tested[t.id] : undefined}
               canTest={!!t.id && !dirty && !disabled}
               onChange={(p) => change(i, p)}
-              onRemove={() => {
-                setTargets((l) => (l ? l.filter((_, j) => j !== i) : l));
-                setDirty(true);
-              }}
+              onRemove={() => setTargets((l) => (l ? l.filter((_, j) => j !== i) : l))}
               onTest={() => void test(t)}
             />
           ))}
@@ -113,21 +123,10 @@ export function Outbound(props: SectionProps) {
             <button
               type="button"
               disabled={disabled || targets.length >= 16}
-              onClick={() => {
-                setTargets([...targets, newTarget()]);
-                setDirty(true);
-              }}
+              onClick={() => setTargets([...targets, newTarget()])}
             >
               Add Target
             </button>
-            <button type="button" disabled={disabled || !dirty} onClick={() => void save()}>
-              Save Targets
-            </button>
-            {dirty ? (
-              <button type="button" disabled={busy} onClick={() => void read()}>
-                Discard Changes
-              </button>
-            ) : null}
           </div>
           <Done text={done} />
         </>

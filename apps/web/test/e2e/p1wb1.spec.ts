@@ -7,7 +7,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { openDevices, openPage } from "../nav";
+import { openDevices, openPage, openOnHub } from "../nav"; // -- WP UB6 -- openOnHub
 
 type Clients = { dspiClients: { call(m: string, p: unknown): Promise<unknown> }[] };
 type State = { outputGainDb: number[]; masterVolumeDb: number; userMute: boolean; bypass: boolean; activePresetSlot: number };
@@ -334,11 +334,7 @@ test.describe("over DSPi Link", () => {
   test("P1WB1: a recall through a hub with the guard is a safe apply: countdown, Keep or Revert", async ({ page }) => {
     hub = await ownHub();
     await page.goto(`http://127.0.0.1:${hub.port}/console/`);
-    const row = page.getByRole("navigation", { name: "DSPi devices" }).getByRole("listitem").filter({ hasText: `Hub 127.0.0.1:${hub.port}` });
-    await row.getByRole("button", { name: "Connect" }).click();
-    const session = page.getByRole("article").last();
-    await session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").first().getByRole("button", { name: "Open" }).click();
-    await expect(session).toHaveAttribute("data-serial", /DEMO/);
+    const session = await openOnHub(page, { host: `127.0.0.1:${hub.port}`, serial: "DEMO0000DSPI0001" }); // -- WP UB6 -- the Fleet's Open
     await openPage(session, "Snapshots");
     const screen = session.getByRole("region", { name: "Snapshots" });
     await expect(screen).toContainText("Every recall here can be taken back");

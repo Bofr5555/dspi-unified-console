@@ -20,7 +20,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { openPage } from "../nav";
+import { openHubPart, openPage, openOnHub, partsOf } from "../nav"; // -- WP UB6 -- openOnHub, the hub page's parts
 
 const DEMO = "DEMO0000DSPI0001";
 const BENCH = "BENCH0000DSPI001";
@@ -112,24 +112,18 @@ async function stopHub(h: OwnHub | undefined): Promise<void> {
 }
 
 /** The console served by the hub (`scheme`, `query` such as "?readonly"): connect (pairing with the PIN when asked), open the demo DSPi, Advanced, the Hub tab. */
-async function openHubScreen(page: Page, hub: OwnHub, scheme: "https" | "http", query = ""): Promise<Locator> {
+async function openHubScreen(page: Page, hub: OwnHub, scheme: "https" | "http", query = "", part = "Updates"): Promise<Locator> {
   await page.goto(`${scheme}://127.0.0.1:${hub.port}/console/${query}`);
-  const row = page.getByRole("navigation", { name: "DSPi devices" }).getByRole("listitem").filter({ hasText: `Hub 127.0.0.1:${hub.port}` });
-  await row.getByRole("button", { name: "Connect" }).click();
-  const session = page.getByRole("article").last();
-  if (hub.pin) {
-    await session.getByLabel("PIN").fill(hub.pin);
-    await session.getByRole("button", { name: "Pair" }).click();
-  }
-  const entry = session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: DEMO.slice(-8) });
-  await entry.getByRole("button", { name: "Open" }).click();
-  await expect(session).toHaveAttribute("data-serial", new RegExp(DEMO));
+  // -- WP UB6 -- the Fleet's Open, or (a hub that wants its PIN) its entry, the PIN and its list
+  const session = await openOnHub(page, { host: `127.0.0.1:${hub.port}`, serial: DEMO, pin: hub.pin });
   await session.getByRole("complementary", { name: "Status" }).getByRole("button", { name: /^Mode:/ }).click();
   const dialog = page.getByRole("dialog", { name: "Mode" });
   await dialog.getByRole("radio", { name: "Advanced" }).check();
   await dialog.getByRole("button", { name: "Use" }).click();
   await openPage(session, "Hub");
   await expect(session.getByRole("region", { name: "Devices on the hub" })).toBeVisible();
+  // -- WP UB6 -- (UXP B6) the rollout is the hub page's Updates part
+  if (part !== "Devices") await openHubPart(session, part);
   return session;
 }
 
@@ -346,9 +340,10 @@ test.describe("P3WRO on a hub", () => {
   test("P3WRO Control: the rollout is not on a Control client's hub screen", async ({ page }) => {
     test.setTimeout(90_000);
     hub = await startHub(["--pair"]);
-    const session = await openHubScreen(page, hub, "https");
+    const session = await openHubScreen(page, hub, "https", "", "Devices");
     await expect(session.locator(".hub-role-tag")).toHaveText("Control");
-    await expect(session.getByRole("region", { name: "Health board" })).toBeVisible();
+    await expect(session.getByRole("region", { name: "Devices on the hub" })).toBeVisible();
+    await expect(partsOf(session, "Hub").getByRole("tab", { name: "Updates" })).toHaveCount(0); // -- WP UB6 --
     await expect(session.getByRole("region", { name: "Firmware rollout" })).toHaveCount(0);
     await expect(session.getByText("Firmware rollout")).toHaveCount(0);
   });

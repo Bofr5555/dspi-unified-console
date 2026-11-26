@@ -13,7 +13,7 @@ import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { expectPage, hasPage, openPage } from "../nav";
+import { expectPage, hasPage, openPage, openOnHub } from "../nav"; // -- WP UB6 -- openOnHub
 
 type OwnHub = { port: number; pin: string; child: ChildProcess; store: string };
 
@@ -74,16 +74,8 @@ const picker = (page: Page) => page.getByRole("navigation", { name: "DSPi device
 /** Connect the serving hub, pair when asked, open unit `serial`'s session. */
 async function openUnit(page: Page, hub: OwnHub, serial: string, pair = !!hub.pin): Promise<Locator> {
   await page.goto(`http://127.0.0.1:${hub.port}/console/`);
-  const row = picker(page).getByRole("listitem").filter({ hasText: `Hub 127.0.0.1:${hub.port}` });
-  await row.getByRole("button", { name: "Connect" }).click();
-  const session = page.getByRole("article").last();
-  if (pair) {
-    await session.getByLabel("PIN").fill(hub.pin);
-    await session.getByRole("button", { name: "Pair" }).click();
-  }
-  const entry = session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: serial.slice(-8) });
-  await entry.getByRole("button", { name: "Open" }).click();
-  await expect(session).toHaveAttribute("data-serial", new RegExp(serial));
+  // -- WP UB6 -- the Fleet's Open, or (a hub that wants its PIN) its entry, the PIN and its list
+  const session = await openOnHub(page, { host: `127.0.0.1:${hub.port}`, serial: serial, pin: pair ? hub.pin : undefined });
   // -- WP FLAKE1 -- the page settles before a test clicks: Link's "bound" phase arrives after the
   // open (its banner above the screens goes then), and the installation's first status after it.
   // A click while either still moves the page lands where the button was (the rail's Mode and

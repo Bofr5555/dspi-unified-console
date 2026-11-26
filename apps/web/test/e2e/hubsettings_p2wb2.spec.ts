@@ -16,7 +16,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { hasPage, openPage } from "../nav";
+import { hasPage, openPage, openOnHub } from "../nav"; // -- WP UB6 -- openOnHub
 
 const DEMO = "DEMO0000DSPI0001";
 
@@ -85,16 +85,8 @@ async function stopHub(h: OwnHub): Promise<void> {
 /** The console served by the hub: connect (pairing with its PIN when it asks), open the demo DSPi. */
 async function openHub(page: Page, hub: OwnHub): Promise<Locator> {
   await page.goto(`http://127.0.0.1:${hub.port}/console/`);
-  const row = page.getByRole("navigation", { name: "DSPi devices" }).getByRole("listitem").filter({ hasText: `Hub 127.0.0.1:${hub.port}` });
-  await row.getByRole("button", { name: "Connect" }).click();
-  const session = page.getByRole("article").last();
-  if (hub.pin) {
-    await session.getByLabel("PIN").fill(hub.pin);
-    await session.getByRole("button", { name: "Pair" }).click();
-  }
-  const entry = session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: DEMO.slice(-8) });
-  await entry.getByRole("button", { name: "Open" }).click();
-  await expect(session).toHaveAttribute("data-serial", new RegExp(DEMO));
+  // -- WP UB6 -- the Fleet's Open, or (a hub that wants its PIN) its entry, the PIN and its list
+  const session = await openOnHub(page, { host: `127.0.0.1:${hub.port}`, serial: DEMO, pin: hub.pin });
   return session;
 }
 
@@ -157,7 +149,11 @@ test.describe("P2WB2 on a hub", () => {
     await target.getByLabel("URL").fill(`http://127.0.0.1:${recv.port}/hook`);
     await target.getByLabel("Unencrypted (http)").check();
     await expect(out.locator(".hub-plaintext")).toContainText("private");
-    await out.getByRole("button", { name: "Save Targets" }).click();
+    // -- WP UB6 -- (UXP B6) one unsaved bar for the page: the new target is its one change
+    const bar = screen.getByRole("region", { name: "Unsaved hub settings" });
+    await expect(bar).toContainText("1 change");
+    await bar.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(bar).toHaveCount(0);
     const secretCard = out.getByRole("status", { name: "New secret" });
     await expect(secretCard).toContainText("Desk");
     const secret = (await secretCard.locator("code").textContent()) ?? "";
@@ -215,10 +211,26 @@ test.describe("P2WB2 on a hub", () => {
     // Alarm rules: a threshold saved.
     const alarms = screen.getByRole("region", { name: "Alarm rules" });
     const cpu = alarms.getByRole("group", { name: "Processing load high" });
+    const was = await cpu.getByLabel("At or above (%)").inputValue();
     await cpu.getByLabel("At or above (%)").fill("80");
     await cpu.getByLabel("At or above (%)").dispatchEvent("change");
-    await alarms.getByRole("button", { name: "Save Alarm Rules" }).click();
+    // -- WP UB6 -- (UXP B6) a rule and an MQTT field: two changes on the page's one bar; Discard puts both back
+    const mqtt = screen.getByRole("region", { name: "MQTT and Home Assistant" });
+    const clientId = await mqtt.getByLabel("Client id").inputValue();
+    await mqtt.getByLabel("Client id").fill(`${clientId}-ub6`);
+    await expect(bar).toContainText("2 changes");
+    await expect(screen.getByRole("button", { name: /^Save (Alarm Rules|Targets|MQTT Settings)$/ })).toHaveCount(0);
+    await noSidewaysScroll(page);
+    await bar.getByRole("button", { name: "Discard" }).click();
+    await expect(bar).toHaveCount(0);
+    await expect(cpu.getByLabel("At or above (%)")).toHaveValue(was);
+    await expect(mqtt.getByLabel("Client id")).toHaveValue(clientId);
+    await cpu.getByLabel("At or above (%)").fill("80");
+    await cpu.getByLabel("At or above (%)").dispatchEvent("change");
+    await expect(bar).toContainText("1 change");
+    await bar.getByRole("button", { name: "Save", exact: true }).click();
     await expect(alarms.getByRole("status")).toContainText("saved");
+    await expect(bar).toHaveCount(0);
     await expect(cpu.getByLabel("At or above (%)")).toHaveValue("80");
 
     // MQTT: shown, off.
@@ -262,7 +274,7 @@ test.describe("P2WB2 on a hub", () => {
     // Every role reads the alarm rules and the schedule: shown, not editable.
     const alarms = screen.getByRole("region", { name: "Alarm rules" });
     await expect(alarms.getByRole("checkbox").first()).toBeDisabled();
-    await expect(alarms.getByRole("button", { name: "Save Alarm Rules" })).toBeDisabled();
+    await expect(screen.getByRole("region", { name: "Unsaved hub settings" })).toHaveCount(0); // -- WP UB6 -- nothing to save, no bar
     await expect(screen.getByRole("region", { name: "Schedules" }).getByRole("button", { name: "New Schedule…" })).toBeDisabled();
     // The Admin-only reads: the hub's refusal, and no form to send.
     await expect(screen.getByRole("region", { name: "Notifications" }).getByRole("alert")).toBeVisible();

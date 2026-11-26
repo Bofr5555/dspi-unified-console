@@ -6,12 +6,13 @@
 import { useEffect, useState } from "preact/hooks";
 import type { HubApiKeyRecord, HubMqttSettingsRecord, HubMqttStatusRecord } from "../../core/hub-settings-protocol";
 import { failure } from "../installer/HubAdmin";
-import { localTime, mqttForSet, mqttStateText, numberOf, roleWord } from "./model";
-import { Done, Problem, type SectionProps } from "./parts";
+import { localTime, mqttChanges, mqttForSet, mqttStateText, numberOf, roleWord } from "./model";
+import { Done, Problem, useDraft, type SectionProps } from "./parts";
 
 export function Mqtt(props: SectionProps & { keys: boolean }) {
   const { session, edit } = props;
   const [s, setS] = useState<HubMqttSettingsRecord | null>(null);
+  const [saved, setSaved] = useState<HubMqttSettingsRecord | null>(null); // -- WP UB6 -- the hub's copy, for the page's unsaved bar
   const [status, setStatus] = useState<HubMqttStatusRecord | null>(null);
   const [keys, setKeys] = useState<HubApiKeyRecord[]>([]);
   const [password, setPassword] = useState({ typed: "", clear: false });
@@ -21,7 +22,9 @@ export function Mqtt(props: SectionProps & { keys: boolean }) {
   const [busy, setBusy] = useState(false);
   const read = async () => {
     try {
-      setS(await session.core.call("hubMqttGet", undefined));
+      const now = await session.core.call("hubMqttGet", undefined);
+      setS(now);
+      setSaved(now);
       setStatus(await session.core.call("hubMqttStatus", undefined).catch(() => null));
       if (props.keys) setKeys(await session.core.call("hubApiKeys", undefined).catch(() => []));
       setProblem("");
@@ -38,23 +41,34 @@ export function Mqtt(props: SectionProps & { keys: boolean }) {
     setDone("");
   };
   const tls = (p: Partial<HubMqttSettingsRecord["tls"]>) => setS((x) => (x ? { ...x, tls: { ...x.tls, ...p } } : x));
-  const save = async () => {
-    if (!s) return;
+  const save = async (): Promise<boolean> => {
+    if (!s) return true;
     setBusy(true);
     try {
-      setS(await session.core.call("hubMqttSet", { settings: mqttForSet(s, password, clientKey) }));
+      const now = await session.core.call("hubMqttSet", { settings: mqttForSet(s, password, clientKey) });
+      setS(now);
+      setSaved(now);
       setPassword({ typed: "", clear: false });
       setClientKey({ typed: "", clear: false });
       setStatus(await session.core.call("hubMqttStatus", undefined).catch(() => null));
       if (props.keys) setKeys(await session.core.call("hubApiKeys", undefined).catch(() => []));
       setProblem("");
       setDone("The hub's MQTT settings are saved.");
+      return true;
     } catch (e) {
       setProblem(failure(e));
+      return false;
     } finally {
       setBusy(false);
     }
   };
+  // -- WP UB6 -- (UXP B6) saved or discarded with the page's other changes, from its one bar
+  useDraft("mqtt", edit ? mqttChanges(saved, s, password, clientKey) : 0, save, () => {
+    setS(saved);
+    setPassword({ typed: "", clear: false });
+    setClientKey({ typed: "", clear: false });
+    setDone("");
+  });
   const disabled = !edit || busy || !s;
   const on = s?.tls.mode === "on";
   return (
@@ -224,11 +238,6 @@ export function Mqtt(props: SectionProps & { keys: boolean }) {
               </select>
             </label>
           </fieldset>
-          <div class="installer-buttons">
-            <button type="submit" disabled={disabled}>
-              Save MQTT Settings
-            </button>
-          </div>
           <Done text={done} />
         </form>
       ) : null}

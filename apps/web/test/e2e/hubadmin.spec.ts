@@ -15,7 +15,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { openPage } from "../nav";
+import { openPage, openOnHub } from "../nav"; // -- WP UB6 -- openOnHub
 
 const DEMO = "DEMO0000DSPI0001";
 
@@ -100,16 +100,8 @@ const limitsKept = (h: OwnHub) => (kept(h).device_limits?.[DEMO] ?? null) as Rec
 /** The console served by the hub: connect its entry (pairing with its PIN when it asks), open the demo DSPi. */
 async function openHub(page: Page, hub: OwnHub): Promise<Locator> {
   await page.goto(`http://127.0.0.1:${hub.port}/console/`);
-  const row = page.getByRole("navigation", { name: "DSPi devices" }).getByRole("listitem").filter({ hasText: `Hub 127.0.0.1:${hub.port}` });
-  await row.getByRole("button", { name: "Connect" }).click();
-  const session = page.getByRole("article").last();
-  if (hub.pin) {
-    await session.getByLabel("PIN").fill(hub.pin);
-    await session.getByRole("button", { name: "Pair" }).click();
-  }
-  const entry = session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: DEMO.slice(-8) });
-  await entry.getByRole("button", { name: "Open" }).click();
-  await expect(session).toHaveAttribute("data-serial", new RegExp(DEMO));
+  // -- WP UB6 -- the Fleet's Open, or (a hub that wants its PIN) its entry, the PIN and its list
+  const session = await openOnHub(page, { host: `127.0.0.1:${hub.port}`, serial: DEMO, pin: hub.pin });
   return session;
 }
 

@@ -13,7 +13,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
-import { openPage } from "../nav";
+import { openPage, openOnHub } from "../nav"; // -- WP UB6 -- openOnHub
 
 type OwnHub = { port: number; pin: string; child: ChildProcess };
 
@@ -49,19 +49,8 @@ async function stopHub(h: OwnHub): Promise<void> {
 /** Connect the serving hub (pairing with its PIN when it has one) and open unit `serial`, or the hub's one device. */
 async function openOn(page: Page, hub: OwnHub, serial: string): Promise<Locator> {
   await page.goto(`http://127.0.0.1:${hub.port}/console/`);
-  const row = page.getByRole("navigation", { name: "DSPi devices" }).getByRole("listitem").filter({ hasText: `Hub 127.0.0.1:${hub.port}` });
-  await row.getByRole("button", { name: "Connect" }).click();
-  const session = page.getByRole("article").last();
-  if (hub.pin) {
-    await session.getByLabel("PIN").fill(hub.pin);
-    await session.getByRole("button", { name: "Pair" }).click();
-  }
-  const entry = session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: serial.slice(-8) });
-  const meta = page.locator(`article[data-serial="${serial}"]`); // -- WP REVEFIX -- the open DSPi
-  // A hub with one DSPi opens it at once; one with several lists them.
-  await expect(entry.or(meta)).toBeVisible();
-  if (await entry.isVisible()) await entry.getByRole("button", { name: "Open" }).click();
-  await expect(meta).toBeVisible();
+  // -- WP UB6 -- the Fleet's Open, or (a hub that wants its PIN) its entry, the PIN and its list (its one DSPi at once)
+  const session = await openOnHub(page, { host: `127.0.0.1:${hub.port}`, serial, pin: hub.pin || undefined });
   const rail = session.getByRole("complementary", { name: "Status" });
   await expect(rail.getByLabel("Connection")).toHaveText(/^Connected/);
   await expect(session.locator(".banner")).toHaveCount(0);

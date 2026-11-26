@@ -12,7 +12,7 @@
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { openPage, partsOf, rail } from "../nav"; // -- WP WEBM3 -- partsOf
+import { openPage, partsOf, rail, openOnHub } from "../nav"; // -- WP WEBM3 -- partsOf; -- WP UB6 -- openOnHub
 
 test.skip(({ browserName }) => browserName === "webkit", "Chromium and Firefox only");
 // Chromium's headless shell has no getUserMedia: the full Chromium, headless (as capture_p5wcap).
@@ -363,7 +363,7 @@ test.describe("passive", () => {
       const session = await hubSession(page, hub, false);
       await openPage(session, "Measure");
       const screen = session.getByRole("region", { name: "Measure" });
-      await expect(screen.getByRole("region", { name: "Passive microphone RTA" })).toContainText("hub's Viewer role");
+      await expect(screen.getByRole("region", { name: "Passive microphone RTA" })).toContainText(/hub's Viewer role|can view this DSPi but not change it/); // -- WP UB6 -- from the Fleet, the backend's view access says it first
       await passiveListens(page, screen, browserName);
       // Nothing plays: the generator stays idle (its own screen, which a Viewer may read).
       await openPage(session, "Signal Generator");
@@ -413,16 +413,8 @@ async function stopHub(h: OwnHub): Promise<void> {
 /** The hub's page, its entry connected (paired when asked), the demo DSPi opened. */
 async function hubSession(page: Page, hub: OwnHub, pair: boolean): Promise<Locator> {
   await page.goto(`http://127.0.0.1:${hub.port}/console/`);
-  const row = page.getByRole("navigation", { name: "DSPi devices" }).getByRole("listitem").filter({ hasText: `Hub 127.0.0.1:${hub.port}` });
-  await row.getByRole("button", { name: "Connect" }).click();
-  const session = page.getByRole("article").last();
-  if (pair) {
-    await session.getByLabel("PIN").fill(hub.pin);
-    await session.getByRole("button", { name: "Pair" }).click();
-  }
-  const entry = session.getByRole("list", { name: /DSPis on/ }).getByRole("listitem").filter({ hasText: DEMO.slice(-8) });
-  await entry.getByRole("button", { name: "Open" }).click();
-  await expect(session).toHaveAttribute("data-serial", new RegExp(DEMO));
+  // -- WP UB6 -- the Fleet's Open, or (a hub that wants its PIN) its entry, the PIN and its list
+  const session = await openOnHub(page, { host: `127.0.0.1:${hub.port}`, serial: DEMO, pin: pair ? hub.pin : undefined });
   await expect(session.locator(".banner")).toHaveCount(0, { timeout: 10_000 });
   return session;
 }

@@ -12,13 +12,13 @@
 // or Viewer session the page is read-only with the core's row `installer.hub_settings_role`, and the
 // Admin-only reads show the hub's refusal as it answers.
 
-import { useEffect, useState } from "preact/hooks";
+import { useCallback, useEffect, useState } from "preact/hooks";
 import type { HubApiKeyRecord, HubCapsRecord } from "../../core/hub-settings-protocol";
 import { useSessionState } from "../../ui/components";
 import type { ScreenDef, ScreenProps } from "../../ui/screens";
 import type { Session } from "../../ui/session";
 import { NoticeRow, failure } from "../installer/HubAdmin";
-import { Problem, type SectionProps } from "./parts";
+import { DraftContext, Problem, type Draft, type SectionProps } from "./parts";
 import { AlarmRules } from "./AlarmRules";
 import { Mqtt } from "./Mqtt";
 import { Outbound } from "./Outbound";
@@ -27,7 +27,7 @@ import { Schedules } from "./Schedules";
 import { HubLinkSecurity, UpstreamCompatWarning } from "../../ui/LinkSecurity";
 // -- WP WEB5 -- the page in the Modern design (as Settings): its own stylesheet
 import "./hub-settings.css";
-import { HUB_SETTINGS_ROLE_KEY, HUB_SETTINGS_SCREEN, KEY_ROLES, localTime, mayEdit, mintedFrom, roleWord, sectionsOf, type MintedKey } from "./model";
+import { changesText, HUB_SETTINGS_ROLE_KEY, HUB_SETTINGS_SCREEN, KEY_ROLES, localTime, mayEdit, mintedFrom, roleWord, sectionsOf, type MintedKey } from "./model";
 
 /** The hub's caps and this session's role on it, read again when the Link phase changes. */
 export function useHubCaps(session: Session, phase: string): { caps: HubCapsRecord | null; role: string } {
@@ -59,7 +59,19 @@ export function HubSettingsScreen(props: ScreenProps) {
   const edit = mayEdit(role, ro);
   const serial = st.snapshot?.device.serial || session.deviceId || "";
   const p: SectionProps = { session, edit, ask: props.ask, serial };
+  // -- WP UB6 -- (UXP B6, W10) the sections' drafts, saved or discarded together from one bar
+  const [drafts, setDrafts] = useState<ReadonlyMap<string, Draft>>(new Map());
+  const put = useCallback((id: string, d: Draft | null) => {
+    setDrafts((m) => {
+      if (!d && !m.has(id)) return m;
+      const n = new Map(m);
+      if (d) n.set(id, d);
+      else n.delete(id);
+      return n;
+    });
+  }, []);
   return (
+    <DraftContext.Provider value={put}>
     <div class="hub-settings-screen">
       {/* -- WP WEB5 -- the tab says it (§6: no second title); kept for a screen reader's headings */}
       <h2 class="hub-settings-title visually-hidden">Hub Settings</h2>
@@ -75,12 +87,39 @@ export function HubSettingsScreen(props: ScreenProps) {
         </p>
       ) : null}
       {role ? <p class="note hub-role">This console's role on the hub: {roleWord(role)}.</p> : null}
+      <UnsavedBar drafts={drafts} />
       {sections.includes("alarms") ? <AlarmRules {...p} /> : null}
       {sections.includes("schedule") ? <Schedules {...p} /> : null}
       {sections.includes("outbound") ? <Outbound {...p} /> : null}
       {sections.includes("mqtt") ? <Mqtt {...p} keys={sections.includes("apiKeys")} /> : null}
       {sections.includes("apiKeys") ? <ApiKeys {...p} /> : null}
       {caps && !sections.length ? <p class="note">This hub has no settings of its own to show here.</p> : null}
+    </div>
+    </DraftContext.Provider>
+  );
+}
+
+// -- WP UB6 --
+/** "3 changes · Discard · Save": the page's changes not yet on the hub, saved section by section (a refusal stays in its section). */
+function UnsavedBar(props: { drafts: ReadonlyMap<string, Draft> }) {
+  const [busy, setBusy] = useState(false);
+  const list = [...props.drafts.values()];
+  const n = list.reduce((a, d) => a + d.count, 0);
+  if (!n) return null;
+  const save = async () => {
+    setBusy(true);
+    for (const d of list) await d.save();
+    setBusy(false);
+  };
+  return (
+    <div class="hub-unsaved-bar" role="region" aria-label="Unsaved hub settings">
+      <span class="hub-unsaved-count">{changesText(n)}</span>
+      <button type="button" disabled={busy} onClick={() => list.forEach((d) => d.discard())}>
+        Discard
+      </button>
+      <button type="button" class="primary" disabled={busy} onClick={() => void save()}>
+        Save
+      </button>
     </div>
   );
 }

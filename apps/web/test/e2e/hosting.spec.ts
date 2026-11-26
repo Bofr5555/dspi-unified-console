@@ -17,7 +17,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
-import { appMenu, openDevices } from "../nav";
+import { appMenu, fleetOf, openDevices, openOnHub, showThisComputer } from "../nav"; // -- WP UB6 -- the Fleet
 
 const linkWords = (await import("../../../../ci/generated/web/link-words.json", { with: { type: "json" } })).default as {
   link: { key: string; text: string; action: string | null }[];
@@ -111,6 +111,13 @@ const picker = (page: Page) => page.getByRole("navigation", { name: "DSPi device
 /** Connect the hub's entry, choose the demo DSPi from its list, and see it read. */
 async function openHubDemo(page: Page, host: string) {
   const row = picker(page).getByRole("listitem").filter({ hasText: `Hub ${host}` });
+  // -- WP UB6 -- (UXP B6) the page's own hub, when it lists its DSPis to the page: on its Fleet, not as an entry here
+  const fleetTab = page.getByRole("tablist", { name: "Pages" }).getByRole("tab", { name: "Fleet" });
+  await expect(row.or(fleetOf(page)).or(fleetTab).first()).toBeVisible({ timeout: 20_000 });
+  if (!(await row.isVisible())) {
+    if (!(await fleetOf(page).isVisible())) await fleetTab.click();
+    return openOnHub(page, { host, serial: DEMO });
+  }
   await expect(row).toHaveCount(1);
   await row.getByRole("button", { name: "Connect" }).click();
   const session = page.getByRole("article").last();
@@ -186,7 +193,8 @@ test.describe("served by uconsole hub --web", () => {
     });
     await page.goto(`${HUB}/console/`);
     await expect(page.getByRole("heading", { name: "uConsole for DSPi" })).toBeVisible();
-    // The link to the hub's own page, from ours only.
+    // The link to the hub's own page, from ours only (-- WP UB6 -- on This Computer: the page starts on the Fleet).
+    await showThisComputer(page);
     await expect(page.getByRole("link", { name: "Hub page" })).toHaveAttribute("href", "/hub/");
     const session = await openHubDemo(page, new URL(HUB).host);
     await expect(session.locator(".volume-value")).toHaveText(/dB$/);
