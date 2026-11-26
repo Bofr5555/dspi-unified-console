@@ -14,6 +14,7 @@
 #include "CoreWorker.h"
 #include "DeviceModel.h"
 #include "DeviceRegistry.h"
+#include "LayoutController.h"   // -- FIX016 --
 #include "NoticeCenter.h"
 #include "PaletteController.h"
 #include "Registrar.h"
@@ -119,6 +120,7 @@ void wordsSection(SmokeDriver &d) {
     QDir(d.outDir()).mkpath(QStringLiteral("ufw"));
     const QSize original = w->size();
     const Qt::ColorScheme scheme = shell->colorSchemeOverride();
+    const bool modernWas = Registrar::instance<LayoutController>()->modern();   // -- FIX016 -- (R1-QT)
     d.check("ufw: in Modern", d.switchLayout("modern"));
     if (auto *notices = Registrar::instance<NoticeCenter>()) notices->clear();
     w->resize(QSize(1280, 800));
@@ -207,6 +209,7 @@ void wordsSection(SmokeDriver &d) {
     // As it was
     shell->setColorSchemeOverride(scheme);
     w->resize(original);
+    if (!modernWas) d.switchLayout("classic");   // -- FIX016 -- (R1-QT) the layout as it found it
     if (stored.isObject()) setLayout(stored.toObject());
     for (int o = 0; o < outputs; ++o)
         for (int i = 0; i < inputs; ++i)
