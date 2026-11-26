@@ -79,7 +79,7 @@ test("UB13: a mouse desktop has neither; Outline controls draws the 3:1 line, Co
   await openPage(session, "EQ");
   expect(await borderColour(source)).toBe(OUTLINE);
   expect(await borderColour(button)).toBe(OUTLINE);
-  expect(await borderColour(type)).toBe(OUTLINE);
+  expect(await type.evaluate((e) => getComputedStyle(e).boxShadow)).toContain(OUTLINE); // the drawn combo: inside
   expect(await height(source)).toBeGreaterThanOrEqual(Math.max(31.5, sourceHeight));
   const box = await list.getByRole("checkbox", { name: "Band 1 plays" }).boundingBox();
   expect(box?.width).toBeGreaterThanOrEqual(43.5);

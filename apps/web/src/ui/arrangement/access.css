@@ -9,8 +9,9 @@
 .dspi-web[data-outline="on"] :where(button, select, textarea, input:not([type="range"], [type="checkbox"], [type="radio"])) {
   border-color: var(--control-outline);
 }
-/* A bar of segments: one edge round the bar (the line drawn inside, so nothing moves) */
-.dspi-web[data-outline="on"] :where(.seg, .segments, .screen-tabs) { box-shadow: inset 0 0 0 1px var(--control-outline); }
+/* A bar of segments and the drawn combo (Qt's combo box, no border of its own): the edge drawn inside, so
+   nothing moves */
+.dspi-web[data-outline="on"] :where(.seg, .segments, .screen-tabs, select.combo) { box-shadow: inset 0 0 0 1px var(--control-outline); }
 .dspi-web[data-outline="on"] .tool-chip[aria-pressed="true"] { border-color: var(--control-outline); }
 
 /* Comfortable (chosen, or Automatic with a coarse pointer): 32 px controls, 28 px segments and chips, and
