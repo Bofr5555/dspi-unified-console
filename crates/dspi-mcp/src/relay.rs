@@ -514,7 +514,8 @@ impl Relay<'_> {
     fn pair(&mut self, msg: &Value) -> Result<(), String> {
         if self.pair_after.is_some_and(|t| Instant::now() < t) {
             return Err(
-                "pairing with uConsole for DSPi was refused a moment ago; try again in a minute".into(),
+                "pairing with uConsole for DSPi was refused a moment ago; try again in a minute"
+                    .into(),
             );
         }
         let name = self.name_in(msg);
