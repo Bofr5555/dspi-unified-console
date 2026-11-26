@@ -23,8 +23,10 @@ fn scratch(name: &str) -> PathBuf {
     dir
 }
 
-/// Run `uconsole mcp --port <port>` over `lines`; (stdout lines, stderr).
-fn relay(port: u16, config: &PathBuf, lines: &[Value]) -> (Vec<Value>, String) {
+/// Run `uconsole mcp --port <port>` over `lines`; (the replies, the
+/// notifications the relay wrote between them, stderr). -- INT016 -- (UAG's
+/// pairing notice on stdout: a reply is the next line with an id)
+fn relay(port: u16, config: &PathBuf, lines: &[Value]) -> (Vec<Value>, Vec<Value>, String) {
     let mut child = Command::new(env!("CARGO_BIN_EXE_uconsole"))
         .args(["mcp", "--port", &port.to_string()])
         .env("XDG_CONFIG_HOME", config)
@@ -38,19 +40,26 @@ fn relay(port: u16, config: &PathBuf, lines: &[Value]) -> (Vec<Value>, String) {
     let stdout = BufReader::new(child.stdout.take().unwrap());
     // One line at a time, each reply awaited, as a host does.
     let mut replies = Vec::new();
+    let mut notices = Vec::new();
     let mut lines_out = stdout.lines();
     for l in lines {
         writeln!(stdin, "{l}").unwrap();
         stdin.flush().unwrap();
         if l.get("id").is_some() {
-            let reply = lines_out.next().unwrap().unwrap();
-            replies.push(serde_json::from_str(&reply).unwrap());
+            loop {
+                let line: Value = serde_json::from_str(&lines_out.next().unwrap().unwrap()).unwrap();
+                if line.get("id").is_some() {
+                    replies.push(line);
+                    break;
+                }
+                notices.push(line);
+            }
         }
     }
     drop(stdin);
     let out = child.wait_with_output().unwrap();
     assert!(out.status.success(), "{:?}", out.status);
-    (replies, String::from_utf8_lossy(&out.stderr).into_owned())
+    (replies, notices, String::from_utf8_lossy(&out.stderr).into_owned())
 }
 
 #[test]
@@ -93,7 +102,7 @@ fn wp_mcp3_uconsole_mcp_relays_an_agent_to_the_app() {
         "clientInfo": {"name": "claude-ai", "title": "Claude Desktop", "version": "1"}}});
     let meta = json!({"io.modelcontextprotocol/protocolVersion": "2026-07-28",
         "io.modelcontextprotocol/clientCapabilities": {}});
-    let (replies, err) = relay(
+    let (replies, notices, err) = relay(
         port,
         &config,
         &[
@@ -115,6 +124,12 @@ fn wp_mcp3_uconsole_mcp_relays_an_agent_to_the_app() {
     );
     assert_eq!(replies[2]["result"]["resultType"], "complete");
     assert!(err.contains("Claude Desktop"), "{err}");
+    // -- INT016 -- (WP UAG) the pairing's code reaches the host's log too
+    assert!(
+        notices.iter().any(|n| n["method"] == "notifications/message"
+            && n["params"]["data"].as_str().is_some_and(|d| d.contains("click Allow"))),
+        "{notices:?}"
+    );
     let token_file = config.join("uconsole").join("mcp-token");
     // -- WP FFIX -- one token per agent program, by its own name
     let kept = dspi_mcp::relay::tokens_of(&std::fs::read_to_string(&token_file).unwrap());
@@ -130,7 +145,7 @@ fn wp_mcp3_uconsole_mcp_relays_an_agent_to_the_app() {
     assert_eq!(http.clients().len(), 1);
 
     // The second run uses the kept token: no new client.
-    let (replies, _) = relay(port, &config, std::slice::from_ref(&init));
+    let (replies, _, _) = relay(port, &config, std::slice::from_ref(&init));
     assert!(replies[0].get("result").is_some());
     assert_eq!(http.clients().len(), 1);
 
@@ -140,7 +155,7 @@ fn wp_mcp3_uconsole_mcp_relays_an_agent_to_the_app() {
     };
     http.stop();
     drop(user);
-    let (replies, _) = relay(
+    let (replies, _, _) = relay(
         port,
         &config,
         &[init, json!({"jsonrpc": "2.0", "id": 2, "method": "ping"})],

@@ -207,7 +207,7 @@ fn int016_as_saved_holds_a_tweeter_the_load_guard_held() {
     use crate::measure::MeasureRole;
     use crate::speaker_layout::{SpeakerLayout, SpeakerLayoutOutput};
     let core = DspiCore::new();
-    core.open_demo().unwrap();
+    core.open_demo_blank().unwrap(); // -- WP UB12 -- the flat demo, not the tuned example
     let n_in = core.get_state().num_input_channels;
     // Output 1 a confirmed tweeter, fed from input 0, saved with its high
     // pass at 850 Hz (below the 1 kHz floor) in slot 9
