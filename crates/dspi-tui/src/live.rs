@@ -216,12 +216,10 @@ impl Screens for ConsoleScreens {
         let kept = self.config.clone();
         let screen = SettingsScreen::new(state, self.settings.borrow().clone(), config)
             .host(self.host.borrow().clone()) // -- WP UB11 --
-            .on_config(
-            move |c: &AppConfig| {
+            .on_config(move |c: &AppConfig| {
                 shared.borrow_mut().spectrum.adopt_settings(&c.spectrum);
                 *kept.borrow_mut() = c.clone();
-            },
-        );
+            });
         // -- WP TM18 --
         Box::new(match &self.config_path {
             Some(p) => screen.config_path(p.clone()),
@@ -1018,7 +1016,10 @@ impl Live {
             return false;
         };
         let words: Vec<&str> = tokens.iter().map(String::as_str).collect();
-        let named = |wanted: &str| host.snapshots().and_then(|rows| find_snapshot(&rows, wanted));
+        let named = |wanted: &str| {
+            host.snapshots()
+                .and_then(|rows| find_snapshot(&rows, wanted))
+        };
         match words.as_slice() {
             ["snapshot"] | ["ab"] => self.open_tool(Tool::Snapshots),
             ["snapshot", "recall", wanted] => match named(wanted) {

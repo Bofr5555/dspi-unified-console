@@ -183,7 +183,10 @@ impl ProHost for CoreHost {
     }
 
     fn guard(&self) -> GuardView {
-        self.core().map_or_else(|_| GuardView::default(), |(c, _)| guard_view(c.apply_poll()))
+        self.core().map_or_else(
+            |_| GuardView::default(),
+            |(c, _)| guard_view(c.apply_poll()),
+        )
     }
 
     fn guard_keep(&self) -> Result<GuardView, String> {
@@ -201,7 +204,8 @@ impl ProHost for CoreHost {
     }
 
     fn ab(&self) -> AbView {
-        self.core().map_or_else(|_| AbView::default(), |(c, _)| ab_view(c.ab_state()))
+        self.core()
+            .map_or_else(|_| AbView::default(), |(c, _)| ab_view(c.ab_state()))
     }
 
     fn ab_start(&self, b_id: &str) -> Result<AbView, String> {
@@ -308,7 +312,12 @@ mod tests_wp_ub11 {
         let v = host.ab_keep(true).expect("kept");
         assert!(!v.active && v.on_b, "{v:?}");
         host.snapshot_delete(&saved.id).expect("deleted");
-        assert!(host.snapshots().expect("listed").iter().all(|r| r.id != saved.id));
+        assert!(
+            host.snapshots()
+                .expect("listed")
+                .iter()
+                .all(|r| r.id != saved.id)
+        );
     }
 
     #[test]

@@ -123,11 +123,7 @@ impl SnapshotsPanel {
     }
 
     /// A write, run by the runner with the session, its result kept here.
-    fn request(
-        &self,
-        tag: u32,
-        run: impl Fn(&dyn ProHost) -> Found + 'static,
-    ) -> ScreenEvent {
+    fn request(&self, tag: u32, run: impl Fn(&dyn ProHost) -> Found + 'static) -> ScreenEvent {
         let (Some(host), found) = (self.host.clone(), self.found.clone()) else {
             return ScreenEvent::Status(NO_HOST.into());
         };
@@ -189,10 +185,7 @@ impl Screen for SnapshotsPanel {
         let x = area.x + 1;
         let mut y = area.y;
         let Some(_) = self.host else {
-            for (i, line) in crate::widgets::text::wrap(NO_HOST, w, 4)
-                .iter()
-                .enumerate()
-            {
+            for (i, line) in crate::widgets::text::wrap(NO_HOST, w, 4).iter().enumerate() {
                 buf.set_string(x, y + i as u16, line, theme.label());
             }
             return;
@@ -216,7 +209,12 @@ impl Screen for SnapshotsPanel {
         buf.set_string(x, y, truncate(&self.ab_words(), w), ab_style);
         y += 1;
         if let Some(g) = &self.guard {
-            buf.set_string(x, y, truncate(&Self::guard_words(g), w), theme.warning_style());
+            buf.set_string(
+                x,
+                y,
+                truncate(&Self::guard_words(g), w),
+                theme.warning_style(),
+            );
             y += 1;
         }
         y += 1;
@@ -263,11 +261,7 @@ impl Screen for SnapshotsPanel {
                     if b { "B  " } else { "" },
                     row.note
                 );
-                let style = if here {
-                    theme.value()
-                } else {
-                    theme.label()
-                };
+                let style = if here { theme.value() } else { theme.label() };
                 buf.set_string(x, ly, truncate(&line, w), style);
             }
         }
@@ -495,7 +489,7 @@ impl Screen for SnapshotsPanel {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use crate::host::{Speakers, SpeakerRow};
+    use crate::host::{SpeakerRow, Speakers};
     use crate::shell::fixture;
     use crossterm::event::KeyModifiers;
     use std::cell::Cell;
@@ -670,7 +664,10 @@ pub(crate) mod tests {
         p.handle(key(KeyCode::Down), &state);
         let ev = p.handle(key(KeyCode::Enter), &state);
         assert!(matches!(ev, ScreenEvent::Dialog(_)), "Recall asks first");
-        assert!(host.recalled.borrow().is_empty(), "nothing before the answer");
+        assert!(
+            host.recalled.borrow().is_empty(),
+            "nothing before the answer"
+        );
         let ev = p.dialog_result(DialogOutcome::Button(0), &state);
         run(&mut p, ev, &state);
         assert_eq!(*host.recalled.borrow(), vec!["s1".to_string()]);
@@ -734,7 +731,10 @@ pub(crate) mod tests {
             "{f}"
         );
         // other keys wait for the answer
-        assert_eq!(p.handle(key(KeyCode::Char('a')), &state), ScreenEvent::Handled);
+        assert_eq!(
+            p.handle(key(KeyCode::Char('a')), &state),
+            ScreenEvent::Handled
+        );
         assert!(!host.ab.borrow().active);
         let ev = p.handle(key(KeyCode::Char('r')), &state);
         run(&mut p, ev, &state);

@@ -49,7 +49,10 @@ pub struct GuardView {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Recalled {
     /// Recalled: what changed, and what was not written and why.
-    Done { changes: Vec<String>, notes: Vec<String> },
+    Done {
+        changes: Vec<String>,
+        notes: Vec<String>,
+    },
     /// Applied with a way back: Keep or Revert before the countdown ends.
     Guarded(GuardView),
 }
@@ -165,7 +168,9 @@ pub fn find_snapshot(rows: &[SnapshotRow], wanted: &str) -> Result<SnapshotRow, 
     let named: Vec<&SnapshotRow> = rows.iter().filter(|r| r.name == wanted).collect();
     match named.as_slice() {
         [one] => Ok((*one).clone()),
-        [] => Err(format!("No snapshot called “{wanted}” of this DSPi (N lists them)")),
+        [] => Err(format!(
+            "No snapshot called “{wanted}” of this DSPi (N lists them)"
+        )),
         many => Err(format!(
             "{} snapshots are called “{wanted}”: choose one in the Snapshots panel (N)",
             many.len()

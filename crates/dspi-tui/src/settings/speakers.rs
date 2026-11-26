@@ -293,7 +293,11 @@ impl SettingsPage for SpeakersPage {
     }
 
     fn keys(&self) -> &'static [KeyHelp] {
-        if self.shown.is_some() { KEYS } else { KEYS_EMPTY }
+        if self.shown.is_some() {
+            KEYS
+        } else {
+            KEYS_EMPTY
+        }
     }
 
     fn popup_result(&mut self, choice: Option<usize>, _cx: &Cx<'_>) -> PageEvent {
@@ -362,9 +366,7 @@ impl SettingsPage for SpeakersPage {
                 self.asking = Some(Asking::Group(i));
                 PageEvent::Dialog(Dialog::text(
                     "Group",
-                    format!(
-                        "The group of {label}, 0 to 15: the outputs of one speaker share one."
-                    ),
+                    format!("The group of {label}, 0 to 15: the outputs of one speaker share one."),
                     r.group.to_string(),
                     "0",
                 ))
@@ -382,9 +384,7 @@ impl SettingsPage for SpeakersPage {
 mod tests {
     use super::super::{AppConfig, Page, SettingsData, SettingsScreen};
     use super::*;
-    use crate::host::{
-        AbView, GuardView, Recalled, SnapshotRow, SpeakerRow,
-    };
+    use crate::host::{AbView, GuardView, Recalled, SnapshotRow, SpeakerRow};
     use crate::shell::{Screen, ScreenEvent, fixture};
     use crossterm::event::KeyModifiers;
     use std::cell::RefCell;
@@ -501,8 +501,14 @@ mod tests {
         assert!(f.contains(&out1), "{out1}: {f}");
         assert!(f.contains("Full range"), "{f}");
         assert!(f.contains("speaker L · group 0 · suggested"), "{f}");
-        assert!(f.contains("Confirm") && f.contains("Use the Suggestion"), "{f}");
-        assert!(f.contains("An output with an active high-pass at 1 kHz"), "{f}");
+        assert!(
+            f.contains("Confirm") && f.contains("Use the Suggestion"),
+            "{f}"
+        );
+        assert!(
+            f.contains("An output with an active high-pass at 1 kHz"),
+            "{f}"
+        );
         assert!(f.contains("Speakers"), "in the sidebar: {f}");
     }
 
@@ -536,7 +542,10 @@ mod tests {
         assert_eq!(kept.rows[0].speaker, "Left");
         assert_eq!(kept.rows[1].role, Role::Full);
         let f = frame(&mut s, &st);
-        assert!(f.contains("Confirmed: the measurement takes its roles"), "{f}");
+        assert!(
+            f.contains("Confirmed: the measurement takes its roles"),
+            "{f}"
+        );
         assert!(f.contains("Confirmed 2026-11-26"), "{f}");
         assert!(!f.contains("Changed: not kept"), "{f}");
     }
