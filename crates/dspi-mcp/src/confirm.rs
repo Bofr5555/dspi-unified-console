@@ -15,6 +15,16 @@
 //! request (`Server::handle_held`) answers it once the confirmation ends
 //! (`Server::resume`); any other gets "awaiting confirmation" at once and
 //! asks `dspi_get_confirmation`.
+//!
+//! -- WP UB5 -- (UXP B5, D2) One agent's questions raised together are one
+//! sheet: a group. A question joins its agent's open group while that group's
+//! newest question is less than [`GROUP_QUIET_MS`] old and its first less
+//! than [`GROUP_MS`]; then the group seals ([`Confirmations::seal_due`]). The
+//! app shows a group only once it is sealed (`sealed` in the JSON), and a
+//! sealed group never takes another question, so one Allow over a sheet
+//! answers exactly the questions it shows: one raised after the sheet came up
+//! is a group, and a sheet, of its own. Each confirmation keeps its own
+//! grant and its own answer.
 
 use std::collections::VecDeque;
 
@@ -29,6 +39,11 @@ pub const CONFIRM_HOLD_MS: u64 = 120_000;
 pub const WAITING_PER_CLIENT: usize = 3;
 /// Ended confirmations kept for `dspi_get_confirmation`.
 const ENDED_KEPT: usize = 64;
+// -- WP UB5 -- (UXP D2)
+/// A group takes questions for at most this long after its first.
+pub const GROUP_MS: u64 = 1_500;
+/// A group seals once no question has joined it for this long.
+pub const GROUP_QUIET_MS: u64 = 400;
 
 /// Where a confirmation stands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,6 +110,12 @@ pub struct Confirmation {
     /// The call's other changes in the app's words (`policy::Judging::rest`):
     /// what the same Allow also does. The app's alone.
     pub rest: Vec<String>,
+    // -- WP UB5 -- (UXP D2)
+    /// Its group: the id of the group's first question (its own id when it
+    /// is the first). The app's alone.
+    pub group: u64,
+    /// Its group takes no more questions: the app may show it.
+    pub sealed: bool,
 }
 
 impl Confirmation {
@@ -127,6 +148,9 @@ impl Confirmation {
                 v
             }).collect::<Vec<_>>(),
             "batch": self.batch(), // -- WP UAG --
+            // -- WP UB5 -- (UXP D2) one sheet per group, shown once sealed
+            "group": self.group,
+            "sealed": self.sealed,
             "asked_ms": self.asked_ms,
             "expires_ms": self.expires_ms,
             "state": self.state.as_str(),
@@ -213,6 +237,13 @@ impl Confirmation {
     }
 }
 
+// -- WP UB5 -- (UXP D2)
+/// Whether a question may share a sheet: not a speaker detection's (its
+/// warning and what the person does) nor the speaker roles' (their table).
+fn groupable(tool: &str, risks: &[Risk]) -> bool {
+    tool != crate::tools::roles::SET_ROLES_NAME && !crate::grant::asks_detect(risks)
+}
+
 /// What the app hears of.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConfirmEvent {
@@ -273,6 +304,25 @@ impl Confirmations {
         self.next = self.next.saturating_add(1);
         let id = self.next;
         let grouped = device.is_some() && crate::grant::asks_grant(&risks); // -- WP ODEC --
+        // -- WP UB5 -- (UXP D2) its agent's open group, else a new one; a
+        // speaker detection's or the roles' question is a sheet of its own
+        let alone = !groupable(tool, &risks);
+        let group = if alone {
+            None
+        } else {
+            self.list
+                .iter()
+                .rev()
+                .find(|c| {
+                    c.client == client
+                        && c.state == ConfirmState::Waiting
+                        && !c.sealed
+                        && groupable(c.tool, &c.risks)
+                        && now_ms < self.seals_at(c.group)
+                })
+                .map(|c| c.group)
+        }
+        .unwrap_or(id);
         self.list.push_back(Confirmation {
             id,
             client,
@@ -288,6 +338,8 @@ impl Confirmations {
             request: None,
             grouped,          // -- WP ODEC --
             rest: Vec::new(), // -- WP UAG --
+            group,            // -- WP UB5 --
+            sealed: alone,
         });
         self.events.push(ConfirmEvent::Asked(id));
         self.prune();
@@ -299,6 +351,36 @@ impl Confirmations {
     pub(crate) fn set_rest(&mut self, id: u64, rest: Vec<String>) {
         if let Some(c) = self.get_mut(id) {
             c.rest = rest;
+        }
+    }
+
+    // -- WP UB5 -- (UXP D2)
+    /// When `group` seals, on the server's clock: [`GROUP_QUIET_MS`] after
+    /// its newest question, at most [`GROUP_MS`] after its first.
+    pub fn seals_at(&self, group: u64) -> u64 {
+        let asked = self
+            .list
+            .iter()
+            .filter(|c| c.group == group)
+            .map(|c| c.asked_ms);
+        let (first, last) = asked.fold((u64::MAX, 0), |(f, l), a| (f.min(a), l.max(a)));
+        last.saturating_add(GROUP_QUIET_MS)
+            .min(first.saturating_add(GROUP_MS))
+    }
+
+    /// Seal the groups whose time is up by `now_ms`: from then on they take
+    /// no question. Call it before the app reads the waiting ones.
+    pub(crate) fn seal_due(&mut self, now_ms: u64) {
+        let due: Vec<u64> = self
+            .list
+            .iter()
+            .filter(|c| !c.sealed && now_ms >= self.seals_at(c.group))
+            .map(|c| c.group)
+            .collect();
+        for c in &mut self.list {
+            if due.contains(&c.group) {
+                c.sealed = true;
+            }
         }
     }
 

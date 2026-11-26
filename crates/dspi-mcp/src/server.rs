@@ -1304,6 +1304,26 @@ impl Server {
             .collect()
     }
 
+    // -- WP UB5 -- (UXP D2)
+    /// [`Server::waiting_confirmations`] for the app's sheet at `now_ms`: the
+    /// groups whose time is up are sealed first, and each row says when its
+    /// group seals (`seals_ms`, the server's clock). The app shows a group
+    /// once it is `sealed`.
+    pub fn confirmations_at(&mut self, now_ms: u64) -> Vec<Value> {
+        self.confirms.seal_due(now_ms);
+        self.confirms
+            .waiting()
+            .into_iter()
+            .map(|c| {
+                let mut v = c.to_json();
+                if let Some(o) = v.as_object_mut() {
+                    o.insert("seals_ms".into(), json!(self.confirms.seals_at(c.group)));
+                }
+                v
+            })
+            .collect()
+    }
+
     /// What the app should hear of since it last asked.
     pub fn take_confirm_events(&mut self) -> Vec<ConfirmEvent> {
         self.confirms.take_events()
@@ -1316,6 +1336,7 @@ impl Server {
     /// gone.
     pub fn tick(&mut self, now_ms: u64) {
         self.now_ms = now_ms; // -- WP AIVIS --
+        self.confirms.seal_due(now_ms); // -- WP UB5 --
         // -- WP ODEC -- grants end with their time, their agent or device
         let ended = {
             let (clients, set) = (&self.clients, &self.set);

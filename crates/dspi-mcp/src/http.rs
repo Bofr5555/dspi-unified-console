@@ -627,15 +627,21 @@ impl HttpServer {
 
     // -- WP MCP4 --
     /// The confirmations waiting for the user, oldest first:
-    /// `Confirmation::to_json` with `title` (the tool's) and `remaining_ms`.
-    /// Waits as [`HttpServer::with_server`].
+    /// `Confirmation::to_json` with `title` (the tool's) and `remaining_ms`,
+    /// and (-- WP UB5 --) `seals_in_ms`, the groups due sealed first. Waits as [`HttpServer::with_server`].
     pub fn confirmations(&self) -> Vec<Value> {
         let now_ms = self.shared.now_ms();
         self.shared.with_mcp(|m| {
-            let mut rows = m.server.waiting_confirmations();
+            let mut rows = m.server.confirmations_at(now_ms); // -- WP UB5 -- sealed first
             for r in &mut rows {
                 let left = r
                     .get("expires_ms")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0)
+                    .saturating_sub(now_ms);
+                // -- WP UB5 -- (UXP D2) when its group seals: 0 once it has
+                let seals = r
+                    .get("seals_ms")
                     .and_then(Value::as_u64)
                     .unwrap_or(0)
                     .saturating_sub(now_ms);
@@ -643,6 +649,7 @@ impl HttpServer {
                 let title = m.server.tool_title(tool);
                 if let Some(o) = r.as_object_mut() {
                     o.insert("remaining_ms".into(), json!(left));
+                    o.insert("seals_in_ms".into(), json!(seals)); // -- WP UB5 --
                     o.insert("title".into(), json!(title));
                 }
             }
