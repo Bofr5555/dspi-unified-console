@@ -183,6 +183,12 @@ export function App(props: { options: ConsoleOptions }) {
     };
     // -- WP P2WB1 -- the hub screen's Open: another DSPi of the same hub, in a session of its own
     if (source.kind === "hub") session.openDevice = (serial) => void open(inst, { kind: "hub", url: source.url, deviceId: serial });
+    // -- WP UWN -- (UXP A16) Try Again and Connect Again: a new session for the same place (the DSPi it had, if any);
+    // Remove: the hub off this page's list
+    session.reopen = () =>
+      void close(session).then(() => open(inst, source.kind === "hub" && !source.deviceId && session.deviceId ? { ...source, deviceId: session.deviceId } : source));
+    if (source.kind === "hub" && inst.editable && backend.removeSource)
+      session.forget = () => void close(session).then(() => backend.removeSource!(inst.id, source)).then(reload, reload);
     add(session);
     await session.open(targetFor(source));
   };

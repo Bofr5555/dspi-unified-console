@@ -85,7 +85,7 @@ test("WB4a: two DSPis on USB at once: the picker, an allowed DSPi, write with re
   await openDevices(page);
   await expect(rowB).toHaveCount(1);
   await expect(rowA).toHaveCount(0);
-  await tabs.filter({ hasText: "This console · DSPi" }).click();
+  await tabs.filter({ hasNotText: "Stage left" }).click(); // -- WP UWN -- (UXP A15) no installation name on a tab while one is open
   await expect(session).toHaveAttribute("data-serial", /MOCKB002/);
   await slider.fill("98");
   await slider.dispatchEvent("change");
