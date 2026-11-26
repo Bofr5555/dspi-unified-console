@@ -203,6 +203,7 @@ test.describe("SECWEB: the hub's https console", () => {
       const page = await (await browser.newContext()).newPage();
       await page.goto(`${base}/console/`);
       await expect(page.getByRole("heading", { name: "uConsole for DSPi" })).toBeVisible();
+      await showThisComputer(page); // -- WP UB6 -- the page starts on the hub's Fleet
       await expect(picker(page).locator(".source-usb")).toBeVisible();
       const r = await probe(page);
       probeOut("trusted-chromium", r);
@@ -256,6 +257,7 @@ test.describe("SECWEB: uconsole web's pinning proxy", () => {
     remote = await startHub(["hub", "--tls", "require", "--open", "--forget-clients", "--name", "SECWEB rekeyed"], port, store);
     const page2 = await page.context().newPage();
     await page2.goto(`http://localhost:${web!.port}/console/`);
+    await showThisComputer(page2); // -- WP UB6 -- the page starts on its hub's Fleet
     const row = picker(page2).getByRole("listitem").filter({ hasText: `Hub ${at}` });
     await row.getByRole("button", { name: "Connect" }).click();
     const s2 = page2.getByRole("article").last();
