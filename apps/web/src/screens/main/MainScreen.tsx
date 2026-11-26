@@ -1,5 +1,5 @@
 // The Overview's dashboard of one session (WP WB6a; WEB2/WEB3's DL6; INTD): the tiles (the device,
-// its effects and its connection), the channel cards, the analyser's strip and the speaker
+// its effects and its connection), the channel cards and the speaker
 // layout's note. It lives inside its session's view; a fleet page holds several at once, so
 // nothing here is the page's. -- WP INTD -- The presets are the session bar's popover (DL5), the
 // levels are Equaliser › Inputs and Delay & Gain's, and the cards wrap by width (no layout picker),
@@ -8,8 +8,7 @@
 import { useEffect, useState } from "preact/hooks";
 import { useSessionState } from "../../ui/components";
 import type { ScreenProps } from "../../ui/screens";
-// -- WP WB6J -- the analyser's bar strip (M22)
-import { SpectrumStrip, tapNames } from "../analysis/SpectrumStrip";
+// -- WP UWN -- (UXP C7) no "Spectrum · Show Bars" row: the bars are Analyse › Spectrum's, as on Qt's Overview
 import { LayoutNote } from "../settings/speakers/LayoutNote"; // -- WP ADETW --
 import { DashboardTiles } from "./Tiles"; // -- WP WEB2 --
 import { ChannelCards } from "../overview/Cards"; // -- WP WEB3 -- (DL6) the channel cards under the tiles
@@ -56,9 +55,6 @@ export function MainScreen(props: ScreenProps) {
       {/* -- WP WEB2 -- (DL6) the device, its effects and its connection first, as Qt's Overview */}
       <DashboardTiles session={session} open={props.open} />
       <ChannelCards session={session} snap={snap} usbActive={usbActive} open={props.open} />
-      <div class="main-spectrum">
-        <SpectrumStrip session={session} names={tapNames(s, snap.outputLabels)} />
-      </div>
       {/* -- WP ADETW -- a kept speaker layout that is not confirmed, auto-detected or not */}
       <LayoutNote session={session} />
     </div>

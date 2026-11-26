@@ -570,7 +570,7 @@ test("SW3, WEB7: a device on its own is not on a hub (Qt's empty state); Simple 
   await expectPage(session, "Connect");
   await openPage(session, "System");
   const rail = session.getByRole("complementary", { name: "Status" });
-  await expect(rail.getByLabel("Alarms")).toHaveText("No hub alarms");
+  await expect(rail.getByLabel("Alarms")).toHaveCount(0); // -- WP UWN -- (UXP C7) no hub line on a device that has no hub
   await expect(rail.getByRole("button", { name: "System mute" })).toHaveCount(0);
   await expect(session.getByLabel("Scenes", { exact: true })).toHaveCount(0);
   await shot(page, "single-unit");

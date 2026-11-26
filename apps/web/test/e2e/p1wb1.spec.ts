@@ -236,7 +236,7 @@ test("P1WB1 keys: Qt's table, never while a text field has focus", async ({ page
   await expect.poll(async () => (await coreState(page)).userMute).toBe(false);
   // Commit asks first.
   await page.keyboard.press("Control+s");
-  const dialog = page.getByRole("dialog", { name: "Save Preset" });
+  const dialog = page.getByRole("dialog", { name: "Save to Device" });
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Cancel" }).click();
   // Preset 2 (stored first), with an unsaved change: asked, as the picker asks.

@@ -25,7 +25,7 @@ async function openDemo(page: Page): Promise<Locator> {
   await page.goto("/");
   await page.getByRole("navigation", { name: "DSPi devices" }).getByRole("listitem").filter({ hasText: "Demo DSPi" }).getByRole("button", { name: "Connect" }).click();
   const session = page.getByRole("article").last();
-  await expect(session.locator(".device-meta")).toBeVisible();
+  await expect(session).toHaveAttribute("data-status", "open"); // -- WP UWN -- (UXP A17) the tab's second line is hidden at 375 px
   return session;
 }
 

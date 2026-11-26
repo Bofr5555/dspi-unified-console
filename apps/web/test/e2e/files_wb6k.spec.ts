@@ -150,7 +150,7 @@ test("WB6K M31: Browse Profiles and Favorite Profiles in the AutoEQ panel; a fou
   const errors = errorsOf(page);
   const session = await openDemo(page);
   await openPage(session, "EQ");
-  await session.getByRole("button", { name: "Headphone Profile…" }).click(); // -- WP WEB6 -- Qt's tool on an input's page (was AutoEQ…)
+  await session.getByRole("button", { name: "AutoEQ…" }).click(); // -- WP UWN -- (UXP A17) AutoEQ… again, as the docs say
   const panel = session.getByRole("region", { name: "AutoEQ" });
   await panel.getByLabel("Search profiles").fill("sennheiser hd 600");
   const found = panel.getByRole("list", { name: "Profiles found" });

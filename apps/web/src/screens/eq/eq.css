@@ -170,7 +170,11 @@
 .dspi-web .xo-plot .xo-curve { stroke-width: 1.5; opacity: 0.85; }
 .dspi-web .xo-plot .xo-curve.active { stroke-width: 2.2; opacity: 1; }
 .dspi-web .xo-table tbody tr { cursor: pointer; }
-.dspi-web .xo-table tbody tr.xo-disabled > * { opacity: 0.55; }
+.dspi-web .xo-table tbody tr.xo-disabled > th { opacity: 0.55; }
+/* -- WP UWN -- (UXP A17) an output that is off: "Off" in the muted tone and Turn On, not a dimmed editable row */
+.dspi-web .xo-table .xo-off-cell { color: var(--muted); }
+.dspi-web .xo-table .xo-off-word { margin-right: 10px; }
+.dspi-web .xo-table .xo-legend { margin: 0 0 6px; }
 .dspi-web .xo-table .c-pass select.combo { width: 100%; max-width: 210px; min-width: 90px; }
 .dspi-web .xo-table .c-freq { width: 110px; }
 .dspi-web .xo-table .xo-out[aria-pressed="true"] .eq-who-name { font-weight: 600; }

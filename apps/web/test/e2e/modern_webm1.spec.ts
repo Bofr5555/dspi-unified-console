@@ -157,8 +157,8 @@ test("WEBM1: the sections, their pages and the page last open in each; the dock 
   await session.getByRole("group", { name: "Undo and Redo" }).getByRole("button", { name: "Undo" }).click();
   await expect(session.locator(".volume-value")).toHaveText("0.0 dB");
   await session.getByRole("button", { name: /^Save to Device/ }).click();
-  await expect(page.getByRole("dialog", { name: "Save Preset" })).toBeVisible();
-  await page.getByRole("dialog", { name: "Save Preset" }).getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByRole("dialog", { name: "Save to Device" })).toBeVisible();
+  await page.getByRole("dialog", { name: "Save to Device" }).getByRole("button", { name: "Cancel" }).click();
   // The dock's source, read back.
   const source = session.getByRole("combobox", { name: "Source", exact: true });
   await expect(source).toHaveValue("0");

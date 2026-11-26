@@ -259,7 +259,7 @@ test("WEBM4 on the demo: the device's handlers are actions.json's rows, its page
   // Commit asks first
   h["device.commit"]!.run();
   await new Promise((r) => setTimeout(r, 20));
-  assert.deepEqual(asked, ["Save Preset"]);
+  assert.deepEqual(asked, ["Save to Device"]); // -- WP UWN -- (UXP D1) the button's words
   // Locked: presets and mute only
   assert.deepEqual(Object.keys(sessionHandlers({ ...ctx, locked: true })).filter((k) => !k.startsWith("device.preset")), ["device.mute"]);
   // A shown page no row opens is in the palette by itself; a channel; a Settings page
