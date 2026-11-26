@@ -56,6 +56,8 @@ pub enum Tool {
     Subharm,
     Tube,
     Spectrum,
+    // -- WP UB11 -- (UXP B11) the core's snapshots, Recall and A/B
+    Snapshots,
 }
 
 impl Tool {
@@ -75,6 +77,7 @@ impl Tool {
             'S' => Self::Subharm,
             'D' => Self::Tube,
             'A' => Self::Spectrum,
+            'N' => Self::Snapshots, // -- WP UB11 -- sNapshots
             _ => return None,
         })
     }
@@ -94,6 +97,7 @@ impl Tool {
             Self::Subharm => 'S',
             Self::Tube => 'D',
             Self::Spectrum => 'A',
+            Self::Snapshots => 'N',
         }
     }
 
@@ -115,6 +119,7 @@ impl Tool {
             Self::Subharm => "Subharmonic Synthesizer",
             Self::Tube => "Tube Modeller",
             Self::Spectrum => "Spectrum Analyser",
+            Self::Snapshots => "Snapshots",
         }
     }
 }
@@ -251,7 +256,7 @@ const GLOBAL_KEYS: &[KeyHelp] = &[
     KeyHelp::new("m", "Mute, unmute"),
     KeyHelp::new("Ctrl-P", "Search everything"),
     KeyHelp::new(":", "Command line"),
-    KeyHelp::new("M L X P S D U V G A T I B", "Open a tool"),
+    KeyHelp::new("M L X P S D U V G A T I B N", "Open a tool"),
     KeyHelp::new(",", "Settings"),
     KeyHelp::new("Ctrl-S", "Commit parameters to the preset"),
     KeyHelp::new("Ctrl-D", "Device picker"),

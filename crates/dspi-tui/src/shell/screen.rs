@@ -164,6 +164,14 @@ pub trait Screen {
     /// stream does not carry (control-surface display and macro state).
     fn poll(&mut self, _session: &mut Session, _state: &DeviceState) {}
 
+    // -- WP UB11 --
+    /// Whether the device changed without a request of this screen's since
+    /// the last ask (a recall's way back that ran out): the runner reads it
+    /// again. Asked after every [`Screen::poll`].
+    fn wants_refresh(&mut self) -> bool {
+        false
+    }
+
     /// The page grammar behind the `;` command bar, called on every edit.
     /// `None` means this page has no grammar of its own; the bar then says
     /// so and runs the line through the shared `:` grammar as typed.

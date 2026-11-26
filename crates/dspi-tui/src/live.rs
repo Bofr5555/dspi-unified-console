@@ -50,6 +50,10 @@ use dspi_session::meters::Ballistics;
 const REVEAL: Duration = Duration::from_millis(400);
 /// How long a remotely changed value takes to reach its new position.
 const EASE: Duration = Duration::from_millis(120);
+// -- WP UB11 --
+/// How long after the core wrote for the interface (`Live::host_wrote`) the
+/// device's notice of it is taken as that write's, not as another's.
+const HOST_ECHO: Duration = Duration::from_secs(2);
 
 /// Makes the screens the shell shows. The default makes placeholders; later
 /// phases replace it.
@@ -87,6 +91,11 @@ pub trait Screens {
     /// The open device's protocol for Settings > About, as the embedder read
     /// it at connect; `None` clears it. Kept until the next connection.
     fn set_protocol(&self, _protocol: Option<crate::settings::about::DeviceProtocolView>) {}
+
+    // -- WP UB11 --
+    /// The console core's PRO calls, for the Snapshots panel and Settings ›
+    /// Speakers; `None` without a core.
+    fn set_host(&self, _host: Option<std::rc::Rc<dyn crate::host::ProHost>>) {}
 }
 
 /// The Console's screens: the dashboard, the input and output pages, every
@@ -106,6 +115,9 @@ pub struct ConsoleScreens {
     // -- WP TM18 --
     /// Where that file is, when it is not the platform's own location.
     config_path: Option<std::path::PathBuf>,
+    // -- WP UB11 --
+    /// The console core's PRO calls, once the embedder gave them.
+    host: crate::host::HostCell,
 }
 
 // -- WP TM18 --
@@ -155,6 +167,7 @@ impl ConsoleScreens {
             settings: std::rc::Rc::new(std::cell::RefCell::new(SettingsData::default())),
             config: std::rc::Rc::new(std::cell::RefCell::new(config)),
             config_path,
+            host: crate::host::HostCell::default(), // -- WP UB11 --
         }
     }
 }
@@ -193,6 +206,10 @@ impl Screens for ConsoleScreens {
             }
             Tool::Subharm => Box::new(SubharmPanel::new()),
             Tool::Spectrum => Box::new(SpectrumPanel::open(self.shared.clone(), state)),
+            // -- WP UB11 --
+            Tool::Snapshots => Box::new(crate::screens::SnapshotsPanel::new(
+                self.host.borrow().clone(),
+            )),
         }
     }
 
@@ -201,12 +218,12 @@ impl Screens for ConsoleScreens {
         config.spectrum = self.shared.borrow().spectrum.settings.clone();
         let shared = self.shared.clone();
         let kept = self.config.clone();
-        let screen = SettingsScreen::new(state, self.settings.borrow().clone(), config).on_config(
-            move |c: &AppConfig| {
+        let screen = SettingsScreen::new(state, self.settings.borrow().clone(), config)
+            .host(self.host.borrow().clone()) // -- WP UB11 --
+            .on_config(move |c: &AppConfig| {
                 shared.borrow_mut().spectrum.adopt_settings(&c.spectrum);
                 *kept.borrow_mut() = c.clone();
-            },
-        );
+            });
         // -- WP TM18 --
         Box::new(match &self.config_path {
             Some(p) => screen.config_path(p.clone()),
@@ -236,6 +253,10 @@ impl Screens for ConsoleScreens {
     }
 
     // -- WP PGTM --
+    fn set_host(&self, host: Option<std::rc::Rc<dyn crate::host::ProHost>>) {
+        *self.host.borrow_mut() = host;
+    }
+
     fn set_protocol(&self, protocol: Option<crate::settings::about::DeviceProtocolView>) {
         self.settings.borrow_mut().protocol = protocol;
     }
@@ -893,6 +914,12 @@ pub struct Live {
     /// Runs the shell's verbs on this device; `None`: the `:` line says they
     /// are the shell's.
     shell_verbs: Option<std::rc::Rc<ShellVerbs>>,
+    // -- WP UB11 --
+    /// The console core's PRO calls ([`Live::set_host`]).
+    host: Option<std::rc::Rc<dyn crate::host::ProHost>>,
+    /// When the core last wrote for the interface (a recall, an A/B switch,
+    /// a way back): the device's notice of it is not "changed elsewhere".
+    host_wrote: Option<Instant>,
     /// A shell verb's words, for the run loop to run with the terminal
     /// handed back.
     pub shell_run: Option<Vec<String>>,
@@ -963,6 +990,8 @@ impl Live {
             // -- WP TMCORE --
             opener: None,
             shell_verbs: None, // -- WP UTM --
+            host: None,        // -- WP UB11 --
+            host_wrote: None,
             shell_run: None,
         };
         live.sync_model();
@@ -973,6 +1002,70 @@ impl Live {
     /// Run the shell's verbs ([`SHELL_VERBS`]) on the `:` line with `run`.
     pub fn set_shell_verbs(&mut self, run: std::rc::Rc<ShellVerbs>) {
         self.shell_verbs = Some(run);
+    }
+
+    // -- WP UB11 --
+    /// The console core's PRO calls: the Snapshots panel (`N`), Recall and
+    /// A/B from the `:` line, and Settings › Speakers.
+    pub fn set_host(&mut self, host: std::rc::Rc<dyn crate::host::ProHost>) {
+        self.screens.set_host(Some(host.clone()));
+        self.host = Some(host);
+    }
+
+    // -- WP UB11 -- (UXP B11)
+    /// `:snapshot`, `:snapshot recall ID`, `:ab` and `:ab ID` in the
+    /// interface itself: the panel, the core's recall (its way back over
+    /// DSPi Link counts down in the panel) and its compare. The shell's
+    /// forms that wait on standard input (a guard's countdown, the `ab`
+    /// loop) never run under the interface. False: not one of these.
+    fn snapshot_verb(&mut self, session: &mut Session, tokens: &[String]) -> bool {
+        use crate::host::{Recalled, find_snapshot};
+        let Some(host) = self.host.clone() else {
+            return false;
+        };
+        let words: Vec<&str> = tokens.iter().map(String::as_str).collect();
+        let named = |wanted: &str| {
+            host.snapshots()
+                .and_then(|rows| find_snapshot(&rows, wanted))
+        };
+        match words.as_slice() {
+            ["snapshot"] | ["ab"] => self.open_tool(Tool::Snapshots),
+            ["snapshot", "recall", wanted] => match named(wanted) {
+                Err(e) => self.note(e),
+                Ok(row) => {
+                    self.host_wrote = Some(Instant::now());
+                    match host.snapshot_recall(&row.id) {
+                        Ok(Recalled::Done { changes, .. }) => {
+                            self.refresh(session);
+                            self.note(match changes.len() {
+                                0 => format!("Recalled “{}”: nothing differed", row.name),
+                                1 => format!("Recalled “{}”: 1 change", row.name),
+                                n => format!("Recalled “{}”: {n} changes", row.name),
+                            });
+                        }
+                        Ok(Recalled::Guarded(_)) => {
+                            self.refresh(session);
+                            self.open_tool(Tool::Snapshots);
+                        }
+                        Err(e) => self.note(format!("Not recalled: {e}")),
+                    }
+                }
+            },
+            ["snapshot", "recall", ..] => self.note(
+                ":snapshot recall takes a name, a number or an id here; --guard and --no-guard \
+                 are the shell's",
+            ),
+            ["ab", wanted] => match named(wanted).and_then(|row| host.ab_start(&row.id)) {
+                Ok(_) => self.open_tool(Tool::Snapshots),
+                Err(e) => self.note(e),
+            },
+            ["ab", ..] if !words.iter().any(|w| w.starts_with("--keep")) => self.note(
+                "Two snapshots against each other: `uconsole ab A B` in the shell; here N, \
+                 then a, compares the device now with one",
+            ),
+            _ => return false,
+        }
+        true
     }
 
     // -- WP UTM --
@@ -1769,6 +1862,10 @@ impl Live {
         if let Some(first) = tokens.first()
             && SHELL_VERBS.iter().any(|(n, _)| n == first)
         {
+            // -- WP UB11 -- recall and A/B in the Snapshots panel
+            if self.snapshot_verb(session, &tokens) {
+                return;
+            }
             self.shell_verb(tokens);
             return;
         }
@@ -2404,6 +2501,10 @@ impl Live {
             ShellEvent::Command(c) => self.run_screen_commands(session, &c),
             ShellEvent::Session(req, owner) => {
                 let reply = (req.run)(session);
+                // -- WP UB11 -- the Snapshots panel's writes are the core's
+                if matches!(self.shell.tool, Some((Tool::Snapshots, _))) {
+                    self.host_wrote = Some(Instant::now());
+                }
                 self.refresh(session);
                 let follow = self.shell.deliver(owner, req.tag, reply, &self.state);
                 for ev in follow {
@@ -2584,6 +2685,7 @@ impl Live {
             "autoeq" => self.open_tool(Tool::AutoEq),
             "subharm" => self.open_tool(Tool::Subharm),
             "tube" => self.open_tool(Tool::Tube),
+            "snapshots" => self.open_tool(Tool::Snapshots), // -- WP UB11 --
             "spectrum" => {
                 if !self.shared.borrow().spectrum.engine.supported() {
                     self.connect_analyser(session);
@@ -3518,6 +3620,11 @@ impl Live {
             self.refresh_cs_aux(session);
         } else if let Some((_, s)) = self.shell.tool.as_mut() {
             s.poll(session, &self.state);
+            // -- WP UB11 --
+            if s.wants_refresh() {
+                self.host_wrote = Some(Instant::now());
+                self.refresh(session);
+            }
         }
     }
 
@@ -3733,7 +3840,12 @@ impl Live {
             None if fresh && fx.preset_bulk => self.state.mark_saved(),
             _ => {}
         }
-        if let Some((name, words)) = fx.changed_elsewhere {
+        // -- WP UB11 -- not the core writing for the interface just now
+        if let Some((name, words)) = fx.changed_elsewhere
+            && !self
+                .host_wrote
+                .is_some_and(|t| now.saturating_duration_since(t) < HOST_ECHO)
+        {
             self.echo(format!("{} {words}", name.replace('_', " ")));
         }
         // -- WP FIN015 -- an unused output the generator plays on keeps its
@@ -4319,6 +4431,24 @@ mod tests_wp_r1 {
             std::thread::sleep(Duration::from_millis(10));
         }
         assert_eq!(l.shell.model.echo, "settings changed elsewhere");
+    }
+
+    // -- WP UB11 --
+    /// The core's write for the interface (a recall, an A/B switch from the
+    /// Snapshots panel) comes back as a bulk apply: it is not someone else's.
+    #[test]
+    fn ub11_the_cores_write_for_the_interface_is_not_a_change_elsewhere() {
+        let (mut l, mut s, r) = on_demo();
+        l.host_wrote = Some(Instant::now());
+        r.load_image(r.image(), nfy::PARAM_SRC_BULK_SET as u8);
+        let deadline = Instant::now() + Duration::from_millis(800);
+        while Instant::now() < deadline {
+            let notes = l.notes.take();
+            l.tick(&mut s, notes.as_ref());
+            l.notes = notes;
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_ne!(l.shell.model.echo, "settings changed elsewhere");
     }
 
     #[test]
@@ -5296,6 +5426,46 @@ mod tests {
         assert!(l.shell_run.is_none());
         l.run_command(&mut s, "measure docs");
         assert!(l.shell_run.is_some());
+    }
+
+    /// UXP B11: recall and A/B on the `:` line run in the interface (the
+    /// Snapshots panel, the core's calls), never as the shell's verbs that
+    /// wait on standard input under the interface.
+    #[test]
+    fn ub11_recall_and_ab_on_the_command_line_stay_in_the_interface() {
+        use crate::screens::snapshots::tests::FakeHost;
+        let (mut l, mut s, _) = console();
+        l.set_shell_verbs(std::rc::Rc::new(|_: &[String], _: Option<&Target>| 0));
+        let host = std::rc::Rc::new(FakeHost::two());
+        l.set_host(host.clone());
+        l.run_command(&mut s, "snapshot recall s1");
+        assert!(l.shell_run.is_none(), "not the shell's recall");
+        assert_eq!(*host.recalled.borrow(), ["s1"]);
+        assert_eq!(
+            l.shell.model.status.as_deref(),
+            Some("Recalled “Before tuning”: 2 changes")
+        );
+        l.run_command(&mut s, "snapshot recall Nowhere");
+        assert!(l.shell_run.is_none());
+        let said = l.shell.model.status.clone().unwrap_or_default();
+        assert!(said.starts_with("No snapshot called “Nowhere”"), "{said}");
+        // `ab N`: the device now against the first in the list, in the panel
+        l.run_command(&mut s, "ab 1");
+        assert!(l.shell_run.is_none());
+        assert!(host.ab.borrow().active);
+        assert_eq!(host.ab.borrow().b_name, "After EQ");
+        assert!(matches!(l.shell.tool, Some((Tool::Snapshots, _))));
+        // two snapshots against each other: said, not run
+        l.run_command(&mut s, "ab s1 s2");
+        assert!(l.shell_run.is_none());
+        // the forms that print and end are still the shell's
+        l.run_command(&mut s, "snapshot list");
+        assert_eq!(
+            l.shell_run.take().as_deref(),
+            Some(&["snapshot".to_string(), "list".to_string()][..])
+        );
+        // and N opens the panel
+        assert_eq!(Tool::from_key('N'), Some(Tool::Snapshots));
     }
 
     /// UXP C10: an unknown word points inside, not at the shell.

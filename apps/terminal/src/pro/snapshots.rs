@@ -119,7 +119,7 @@ fn info_json(s: &SnapshotInfo) -> Value {
 }
 
 /// When a snapshot was taken, as local-free UTC text.
-fn when(ms: i64) -> String {
+pub(crate) fn when(ms: i64) -> String {
     let secs = ms.div_euclid(1000);
     let days = secs.div_euclid(86_400);
     let rem = secs.rem_euclid(86_400);
@@ -344,7 +344,7 @@ pub(crate) fn cmd_ab(target: &Target, flags: &[&str], json: bool) -> u8 {
     } else {
         Some(stdin_answers())
     };
-    ab_on(&opened.core, a, b, keep, answers.as_ref(), show, json)
+    ab_on(&opened.core, a, b, keep, answers.as_deref(), show, json)
 }
 
 fn print_compare(c: &AbCompare, json: bool) {

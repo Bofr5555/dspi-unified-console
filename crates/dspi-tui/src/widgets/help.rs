@@ -155,7 +155,7 @@ mod tests {
     fn utm_a_long_key_does_not_cut_the_words_beside_the_others() {
         let t = Theme::console(ColorDepth::TrueColor, Glyphs::Braille);
         const KEYS: &[KeyHelp] = &[
-            KeyHelp::new("M L X P S D U V G A T I B", "Open a tool"),
+            KeyHelp::new("M L X P S D U V G A T I B N", "Open a tool"),
             KeyHelp::new("= g p . + -", "Graph height, pop-out, phase, partner, zoom"),
             KeyHelp::new("← →", "Change"),
         ];

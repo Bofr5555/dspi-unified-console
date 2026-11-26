@@ -50,6 +50,10 @@ fn usable(p: String) -> Option<String> {
 }
 
 fn stdin_line() -> Option<String> {
+    // -- WP UB11 -- the shared reader's, when it runs (the plain mode)
+    if crate::pro::stdin_shared() {
+        return crate::pro::stdin_answers().recv().ok().and_then(usable);
+    }
     let mut line = String::new();
     match std::io::stdin().read_line(&mut line) {
         Ok(0) | Err(_) => None,

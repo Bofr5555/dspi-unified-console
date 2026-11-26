@@ -30,8 +30,10 @@
 pub(crate) mod autoeq;
 pub(crate) mod installer;
 pub(crate) mod snapshots;
+// -- WP UB11 -- the interface's Snapshots panel and Settings › Speakers on the core
+pub(crate) mod host;
 
-use std::io::{BufRead, IsTerminal, Write};
+use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
@@ -57,6 +59,9 @@ pub(crate) const GUARD_MAX_S: u32 = 300;
 pub(crate) struct Stores {
     pub snapshots: Option<PathBuf>,
     pub limits: Option<PathBuf>,
+    // -- WP UB11 -- for Settings › Speakers (`uconsole measure` names the
+    // same folder beside its documents)
+    pub speakers: Option<PathBuf>,
 }
 
 impl Stores {
@@ -72,6 +77,7 @@ impl Stores {
         Self {
             snapshots: Some(dir.join("snapshots")),
             limits: Some(dir.join("limits")),
+            speakers: Some(dir.join("speaker-layouts")), // -- WP UB11 --
         }
     }
 }
@@ -100,6 +106,12 @@ pub(crate) fn prepare(stores: &Stores) -> Result<Arc<DspiCore>, u8> {
     }
     if let Some(dir) = name(&stores.limits) {
         core.limits_set_dir(dir).map_err(|e| fail(&e))?;
+    }
+    // -- WP UB11 -- a folder that cannot be named keeps the layout in memory
+    if let Some(dir) = name(&stores.speakers)
+        && let Err(e) = core.speaker_layout_set_dir(dir)
+    {
+        log::warn!("the speaker layouts' folder: {e}");
     }
     Ok(core)
 }
@@ -379,18 +391,66 @@ pub(crate) fn interactive() -> bool {
 
 /// Standard input's lines as they come, from a reader thread, so a
 /// countdown can run while nothing is typed. The channel ends with the input.
-pub(crate) fn stdin_answers() -> Receiver<String> {
-    let (tx, rx) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
-        let stdin = std::io::stdin();
-        for line in stdin.lock().lines() {
-            let Ok(line) = line else { break };
-            if tx.send(line).is_err() {
-                break;
+// -- WP UB11 -- one reader for the process, started on first use: a line it
+// has read and nobody took yet stays for the next taker (the plain mode's
+// next command after an `ab` or a guard), never lost with a dropped channel
+pub(crate) fn stdin_answers() -> std::sync::MutexGuard<'static, Receiver<String>> {
+    STDIN_LINES
+        .get_or_init(|| {
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || pump_lines(&mut std::io::stdin().lock(), &tx));
+            std::sync::Mutex::new(rx)
+        })
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+// -- WP UB11 --
+/// The reader [`stdin_answers`] starts: every line of standard input once.
+static STDIN_LINES: std::sync::OnceLock<std::sync::Mutex<Receiver<String>>> =
+    std::sync::OnceLock::new();
+
+// -- WP UB11 --
+/// Whether [`stdin_answers`]'s reader runs: then every line is its to read,
+/// and [`ask`] and [`ask_secret`] take theirs from it.
+pub(crate) fn stdin_shared() -> bool {
+    STDIN_LINES.get().is_some()
+}
+
+// -- WP UB11 --
+/// Send `input`'s lines to `tx` until it ends or nobody listens. A line ends
+/// at `\n`, `\r` or `\r\n`: in raw mode (a secret typed while the reader
+/// runs) Enter is `\r`.
+fn pump_lines(input: &mut impl std::io::Read, tx: &std::sync::mpsc::Sender<String>) {
+    let mut line = Vec::new();
+    let mut after_cr = false;
+    let mut buf = [0u8; 512];
+    loop {
+        let n = match input.read(&mut buf) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => n,
+        };
+        for &b in buf.get(..n).unwrap_or_default() {
+            let was_cr = std::mem::replace(&mut after_cr, b == b'\r');
+            if b == b'\n' && was_cr {
+                continue;
+            }
+            if b == b'\n' || b == b'\r' {
+                if tx
+                    .send(String::from_utf8_lossy(&line).into_owned())
+                    .is_err()
+                {
+                    return;
+                }
+                line.clear();
+            } else {
+                line.push(b);
             }
         }
-    });
-    rx
+    }
+    if !line.is_empty() {
+        let _ = tx.send(String::from_utf8_lossy(&line).into_owned());
+    }
 }
 
 /// One line from a person at the terminal, after `question` on standard
@@ -401,6 +461,10 @@ pub(crate) fn ask(question: &str) -> Option<String> {
     }
     eprint!("{question}");
     let _ = std::io::stderr().flush();
+    // -- WP UB11 -- the shared reader's, when it runs
+    if stdin_shared() {
+        return stdin_answers().recv().ok().map(|l| l.trim().to_owned());
+    }
     let mut line = String::new();
     match std::io::stdin().read_line(&mut line) {
         Ok(0) | Err(_) => None,
@@ -420,9 +484,33 @@ pub(crate) fn ask_secret(question: &str) -> Option<String> {
     }
     eprint!("{question}");
     let _ = std::io::stderr().flush();
-    let line = read_secret();
+    // -- WP UB11 -- with the shared reader running, the keys are its: raw
+    // mode only hides them, and the line comes from it
+    let line = if stdin_shared() {
+        RawMode::on().and_then(|_raw| stdin_answers().recv().ok().and_then(|l| secret_line(&l)))
+    } else {
+        read_secret()
+    };
     eprintln!();
     line
+}
+
+// -- WP UB11 --
+/// A secret typed in raw mode as the shared reader saw it: Backspace (DEL or
+/// BS) takes back a character; Ctrl+C, Ctrl+D or Esc gives `None`.
+fn secret_line(raw: &str) -> Option<String> {
+    let mut keys = Vec::new();
+    for c in raw.chars() {
+        match c {
+            '\u{3}' | '\u{4}' | '\u{1b}' => return None,
+            '\u{7f}' | '\u{8}' => {
+                keys.pop();
+            }
+            c if c.is_control() => {}
+            c => keys.push(c),
+        }
+    }
+    Some(keys.into_iter().collect::<String>().trim().to_owned())
 }
 
 /// Raw mode on for as long as it lives.
@@ -1379,5 +1467,34 @@ pub(crate) mod tests {
         let v = status_of(&core, "ALINK", "demo");
         assert!(v["alink"]["role"].is_string(), "{v}");
         print_status(&v, false);
+    }
+}
+
+// -- WP UB11 --
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
+mod tests_wp_ub11 {
+    use super::*;
+
+    fn lines(input: &[u8]) -> Vec<String> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        pump_lines(&mut &*input, &tx);
+        drop(tx);
+        rx.iter().collect()
+    }
+
+    #[test]
+    fn ub11_the_reader_splits_lines_at_lf_cr_and_crlf_and_keeps_the_last() {
+        assert_eq!(lines(b"a\nb\r\nc\rd"), ["a", "b", "c", "d"]);
+        assert_eq!(lines(b"\n\nx\n"), ["", "", "x"]);
+        assert_eq!(lines(b""), Vec::<String>::new());
+    }
+
+    #[test]
+    fn ub11_a_secret_from_the_shared_reader_takes_backspace_and_refuses_ctrl_c() {
+        assert_eq!(secret_line("12x\u{7f}34").as_deref(), Some("1234"));
+        assert_eq!(secret_line("12\u{8}\u{8}9").as_deref(), Some("9"));
+        assert_eq!(secret_line("12\u{3}"), None);
+        assert_eq!(secret_line("\u{1b}"), None);
     }
 }

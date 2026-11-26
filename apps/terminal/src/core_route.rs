@@ -734,6 +734,19 @@ pub(crate) fn on_interface_core<T>(f: impl FnOnce() -> T) -> Option<T> {
     Some(out)
 }
 
+// -- WP UB11 --
+/// The interface's core as it is now (a device switch or a reconnect opens a
+/// new one): its serial, and whether it is a DSPi Link session. `None` with
+/// none open.
+pub(crate) fn interface_core() -> Option<(Arc<DspiCore>, bool)> {
+    INTERFACE
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .as_ref()
+        .and_then(Weak::upgrade)
+        .map(|h| (Arc::clone(&h.core), h.caps.kind == TransportKind::Link))
+}
+
 /// [`session_on`] for the interface: the whole state read, the writes
 /// routed, every dangerous one already confirmed by its dialog.
 pub(crate) fn connected_on(opened: &OpenedCore) -> Result<Connected, OpenError> {
@@ -752,6 +765,26 @@ pub(crate) fn connected_on(opened: &OpenedCore) -> Result<Connected, OpenError> 
     c.link = opened.reached.clone();
     // -- WP PGTM -- once per connection (one platform read), for About
     c.protocol = crate::protocol_info::read_view(&opened.handle.core);
+    Ok(c)
+}
+
+// -- WP UB11 -- (UXP B11)
+/// [`connected_on`] for the plain line mode: the shell's verbs run on this
+/// core as on the interface's, and a dangerous write or a locked one asks
+/// as a one-shot command's does (`confirm`, `pins`), there being no dialog.
+pub(crate) fn connected_plain(
+    opened: &OpenedCore,
+    confirm: Confirm,
+    pins: PinSource,
+) -> Result<Connected, OpenError> {
+    let mut c = connected_on(opened)?;
+    let ctx = crate::context_for(&c.session);
+    c.session.set_route(Some(Box::new(CoreRoute::new(
+        Arc::clone(&opened.handle),
+        Some(ctx),
+        confirm,
+        pins,
+    ))));
     Ok(c)
 }
 
