@@ -439,8 +439,14 @@ void DeviceRegistry::open(const QJsonObject &target, Done done, bool activate) {
 }
 
 void DeviceRegistry::openDemo() {
+#ifdef DSPI_SMOKE
+    // -- WP UB12 -- as SessionModel::openDemo: the smoke build's is the blank one
+    const QString kind = SessionModel::smokeDemoExample ? QStringLiteral("demo") : QStringLiteral("demoBlank");
+#else
+    const QString kind = QStringLiteral("demo");
+#endif
     if (isEmpty()) m_main->model()->openDemo();
-    else open({ { QStringLiteral("kind"), QStringLiteral("demo") } });
+    else open({ { QStringLiteral("kind"), kind } });
 }
 
 void DeviceRegistry::openUsb(const QString &serial) {

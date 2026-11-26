@@ -116,10 +116,15 @@ void SessionModel::start(bool demo) {
 void SessionModel::openDemo() {
     if (m_snap.connected && !m_demo) emit replacing();   // -- WP MDQT2c --
     track(1);
+#ifdef DSPI_SMOKE
+    const bool example = smokeDemoExample;   // -- WP UB12 --
+#else
+    const bool example = true;
+#endif
     m_session->worker()->call(
         this,
-        [](FfiCore *c) {
-            const bool ok = dspi_open_demo(c) && dspi_fetch_all(c);
+        [example](FfiCore *c) {
+            const bool ok = (example ? dspi_open_demo(c) : dspi_open_demo_blank(c)) && dspi_fetch_all(c);
             return Outcome{ ok, 0, readSnapshot(c) };
         },
         [this](Outcome r) {
