@@ -95,11 +95,6 @@ QString str(const QJsonObject &o, const char *key) { return o.value(QLatin1Strin
 
 bool portValid(int port) { return port >= 1 && port <= 65535; }
 
-// What starts this app: the AppImage, when it runs from one (its mount goes away)
-QString programPath() {
-    const QString image = qEnvironmentVariable("APPIMAGE");
-    return QDir::toNativeSeparators(image.isEmpty() ? QCoreApplication::applicationFilePath() : image);
-}
 
 QString rowKey(const QJsonObject &e) {
     return QStringLiteral("%1:%2").arg(e.value(QLatin1String("run")).toInteger()).arg(e.value(QLatin1String("id")).toInteger());
@@ -1920,12 +1915,12 @@ void AiController::readMeasureLog() {
 // ---- What to put into an agent's configuration ----------------------------------------
 
 QString AiController::relayCommand() {
-    const QString path = programPath();
+    const QString path = AppIdentity::programPath();   // -- FIX016 -- (F14) one helper
     return (path.contains(QLatin1Char(' ')) ? QLatin1Char('"') + path + QLatin1Char('"') : path) + QStringLiteral(" --mcp");
 }
 
 QString AiController::desktopConfig() {
-    const QJsonObject server{ { QStringLiteral("command"), programPath() }, { QStringLiteral("args"), QJsonArray{ QStringLiteral("--mcp") } } };
+    const QJsonObject server{ { QStringLiteral("command"), AppIdentity::programPath() }, { QStringLiteral("args"), QJsonArray{ QStringLiteral("--mcp") } } };
     const QJsonObject root{ { QStringLiteral("mcpServers"), QJsonObject{ { QStringLiteral("dspi"), server } } } };
     return QString::fromUtf8(QJsonDocument(root).toJson()).trimmed();
 }

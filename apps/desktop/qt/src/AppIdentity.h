@@ -1,6 +1,8 @@
 #ifndef APPIDENTITY_H
 #define APPIDENTITY_H
 
+#include <QCoreApplication>   // -- FIX016 --
+#include <QDir>               // -- FIX016 --
 #include <QObject>
 #include <QString>
 #include <QtQml/qqmlregistration.h>
@@ -43,6 +45,14 @@ public:
     static QString firmwareUrl() { return QString::fromUtf8(AppIdentityNames::firmwareUrl); }
     static bool simulated() { return !qEnvironmentVariableIsEmpty("DSPI_SIM_SCENARIO"); }
     static QString windowTitle() { return displayName() + (simulated() ? QStringLiteral(" (simulated)") : QString()); }
+    // -- FIX016 -- (REVG F14, was AiController's and ClaudeDesktopController's own)
+    // What starts this app: the AppImage when it runs from one (its mount goes
+    // away), else this executable; native separators. An agent's configuration
+    // and the Claude Desktop extension start it with --mcp.
+    static QString programPath() {
+        const QString image = qEnvironmentVariable("APPIMAGE");
+        return QDir::toNativeSeparators(image.isEmpty() ? QCoreApplication::applicationFilePath() : image);
+    }
 };
 
 #endif // APPIDENTITY_H

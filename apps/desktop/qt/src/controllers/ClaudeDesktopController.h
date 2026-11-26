@@ -59,6 +59,11 @@ public:
     static QJsonObject manifest(const QString &program, const QString &platform);
     // The .mcpb: manifest.json and icon.png (`icon`, a PNG) in a zip
     static QByteArray bundle(const QJsonObject &manifest, const QByteArray &icon);
+    // -- FIX016 -- (REVG F14) The bundle's entry point, relative to it
+    // ("server/launch.sh", "server/launch.cmd" on win32), and its text: it
+    // starts `program` with --mcp
+    static QString launcherName(const QString &platform);
+    static QByteArray launcher(const QString &program, const QString &platform);
     // Claude Desktop's folder on `platform`: under the home folder on macOS and
     // Linux, under %APPDATA% on Windows; the Microsoft Store's install keeps it
     // in its package's folder (one of `packaged`, %LOCALAPPDATA%\Packages\Claude_*)

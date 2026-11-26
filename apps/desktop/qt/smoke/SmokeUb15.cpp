@@ -193,11 +193,36 @@ void desktopSection(SmokeDriver &d) {
     QFile f(file);
     const QByteArray bytes = f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
     const auto files = unzipStored(bytes);
-    d.check("ub15-desktop: the .mcpb is a zip of manifest.json and icon.png",
-            files.size() == 2 && files.count("manifest.json") && files.count("icon.png"));
+    // -- FIX016 -- (REVG F14) and the entry point the manifest names, inside it
+    const QByteArray entryName = C::launcherName(C::platform()).toUtf8();
+    d.check("ub15-desktop: the .mcpb is a zip of manifest.json, icon.png and its launcher",
+            files.size() == 3 && files.count("manifest.json") && files.count("icon.png") && files.count(entryName));
     const QJsonObject written = files.count("manifest.json") ? QJsonDocument::fromJson(files.at("manifest.json")).object() : QJsonObject();
     d.check("ub15-desktop: its manifest is this program's, with the icon",
             written.value("server").toObject() == server && written.value("icon").toString() == "icon.png");
+    // -- FIX016 -- (REVG F14) the MCPB rule: server.entry_point is relative to the bundle and in it
+    const QString entry = written.value("server").toObject().value("entry_point").toString();
+    d.check(QStringLiteral("fix016 F14: the entry point is relative and inside the bundle (%1)").arg(entry),
+            !entry.isEmpty() && !QDir::isAbsolutePath(entry) && !entry.contains(QLatin1String("..")) && !entry.contains(QLatin1Char(':'))
+                && files.count(entry.toUtf8()) && entry.toUtf8() == entryName);
+    const QByteArray launcherText = files.count(entryName) ? files.at(entryName) : QByteArray();
+    d.check("fix016 F14: the launcher starts this program with --mcp",
+            launcherText.contains(program.toUtf8()) && launcherText.contains("--mcp"));
+    {
+        const QJsonObject mcp = written.value("server").toObject().value("mcp_config").toObject();
+        QByteArray text = files.count("manifest.json") ? files.at("manifest.json") : QByteArray();
+        text += launcherText;
+        // What is left once the program's own path is taken out: no token, no
+        // environment, no user name or home folder
+        const QByteArray escaped = QJsonDocument(QJsonArray{ program }).toJson(QJsonDocument::Compact).mid(2).chopped(2);
+        text.replace(program.toUtf8(), "").replace(escaped, "");
+        const QString user = qEnvironmentVariable("USER", qEnvironmentVariable("USERNAME"));
+        const QString home = QDir::homePath();
+        d.check("fix016 F14: no token, no environment, no user name in the bundle",
+                mcp.value("env").toObject().isEmpty() && !text.contains("token") && !text.contains("Bearer")
+                    && !text.toLower().contains("dspi_mcp_") && (user.size() < 3 || !text.contains(user.toUtf8()))
+                    && (home.size() < 2 || !text.contains(home.toUtf8())));
+    }
     const QImage icon = files.count("icon.png") ? QImage::fromData(files.at("icon.png"), "PNG") : QImage();
     d.check("ub15-desktop: its icon is the app's, 512 px", icon.width() == 512 && icon.height() == 512);
     const QString python = QStandardPaths::findExecutable(QStringLiteral("python3"));
@@ -206,12 +231,17 @@ void desktopSection(SmokeDriver &d) {
     } else {
         QProcess p;
         p.start(python, { QStringLiteral("-I"), QStringLiteral("-c"),
+                          // -- FIX016 -- and the entry point's file, executable
                           QStringLiteral("import json,sys,zipfile; z=zipfile.ZipFile(sys.argv[1]); assert z.testzip() is None; "
-                                         "print(sorted(z.namelist()), json.loads(z.read('manifest.json'))['server']['mcp_config']['args'])"),
+                                         "m=json.loads(z.read('manifest.json')); e=m['server']['entry_point']; "
+                                         "print(sorted(z.namelist()), m['server']['mcp_config']['args'], e in z.namelist(), "
+                                         "oct((z.getinfo(e).external_attr >> 16) & 0o777))"),
                           file });
         p.waitForFinished(10000);
+        const QByteArray want = C::platform() == QLatin1String("win32") ? "['icon.png', 'manifest.json', 'server/launch.cmd'] ['--mcp'] True 0o644"
+                                                                        : "['icon.png', 'manifest.json', 'server/launch.sh'] ['--mcp'] True 0o755";
         d.check("ub15-desktop: Python's zipfile reads the .mcpb",
-                p.exitCode() == 0 && p.readAllStandardOutput().trimmed() == "['icon.png', 'manifest.json'] ['--mcp']");
+                p.exitCode() == 0 && p.readAllStandardOutput().trimmed() == want);
     }
 
     // ---- Nothing opens it: said, with the file
