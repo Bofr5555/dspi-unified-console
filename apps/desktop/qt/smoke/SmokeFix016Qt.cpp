@@ -5,7 +5,8 @@
 // - R2-QT: an agent's questions raised together, one sheet: every asked row of
 //   every question shows, or the grouped Allow is off; Allow answers exactly
 //   the rows shown (three calls of seven changes each, one asked: the third
-//   call's asked row was row 15, under "and 10 more").
+//   call's asked row was row 15, under "and 10 more"; with the server's
+//   12-row cap, FIX016 R2, they come as sheets that each show all they ask).
 #include "SmokeDriver.h"
 
 #include "AiController.h"
@@ -209,22 +210,37 @@ void groupedQuestions(SmokeDriver &d) {
     };
 
     // Three calls sent together, each one louder change (Out 1, 2, 3) and six quieter
-    // ones: one sheet of 22 rows, the third call's asked row beyond the twelfth
+    // ones: 22 rows in all, the third call's asked row beyond the twelfth. -- FIX016 R2 --
+    // the server keeps a sheet within the 12 rows it shows (GROUP_SHEET_ROWS), so what
+    // does not fit is the next sheet: each sheet's Allow answers exactly what it shows.
     std::vector<std::unique_ptr<Request>> sent;
     for (int k = 0; k < 3; ++k) sent.push_back(call(port, token, "dspi_apply_changes", changes({ -10.0 }, k, 6, -25.0)));
-    const bool three = d.waitFor(8000, [&] { return ai->confirmations().size() >= 3 && opened(sheet); });
-    armed();
-    d.spin(300);
-    const QStringList ids = sheet ? sheet->property("question").toString().split(QLatin1Char(','), Qt::SkipEmptyParts) : QStringList();
-    QStringList missing = missingAsked();
-    d.check(QStringLiteral("fix016 R2-QT: three calls raised together are one sheet (%1 questions)").arg(ids.size()), three && ids.size() == 3);
-    d.check(QStringLiteral("fix016 R2-QT: every asked row shows, or the grouped Allow is off (missing: %1)").arg(missing.join(QStringLiteral("; "))),
-            missing.isEmpty() || !allowOn());
-    d.check("fix016 R2-QT: three asked rows of 22 fit: the grouped Allow is on", missing.isEmpty() && allowOn());
-    d.check("fix016 R2-QT: the cut rows are said as not asked about",
-            textOf(overlay("AiConfirmSheet.more")).contains(QLatin1String("not asked about")));
-    d.grab(main, QStringLiteral("fix016-r2-grouped.png"));
-    d.check("fix016 R2-QT: its Allow answers the three calls, each change made", click(overlay("AiConfirmSheet.allow")) && d.waitFor(8000, [&] {
+    d.waitFor(8000, [&] { return ai->confirmations().size() >= 3 && opened(sheet); });
+    bool everyAskedShown = true, allowEach = true, grabbed = false;
+    int allowed = 0, sheetsAllowed = 0;
+    while (!ai->confirmations().isEmpty() && sheetsAllowed < 6) {
+        if (!d.waitFor(5000, [&] { return opened(sheet) && !sheet->property("question").toString().isEmpty(); })) break;
+        armed();
+        d.spin(300);
+        const QStringList ids = sheet->property("question").toString().split(QLatin1Char(','), Qt::SkipEmptyParts);
+        const QStringList missing = missingAsked();
+        if (!missing.isEmpty()) {
+            everyAskedShown = false;
+            std::printf("smoke: fix016 R2-QT: sheet %d hides asked rows: %s\n", sheetsAllowed + 1, qPrintable(missing.join(QStringLiteral("; "))));
+        }
+        if (!allowOn()) allowEach = false;
+        if (!grabbed) grabbed = (d.grab(main, QStringLiteral("fix016-r2-grouped.png")), true);
+        if (!click(overlay("AiConfirmSheet.allow"))) break;
+        allowed += int(ids.size());
+        ++sheetsAllowed;
+        d.waitFor(3000, [&] { return !opened(sheet) || sheet->property("question").toString().split(QLatin1Char(','), Qt::SkipEmptyParts) != ids; });
+    }
+    std::printf("smoke: fix016 R2-QT: three calls of 22 rows took %d sheet(s)\n", sheetsAllowed);
+    d.check(QStringLiteral("fix016 R2-QT: 22 rows do not fit one sheet: the server splits them (%1 sheets)").arg(sheetsAllowed),
+            sheetsAllowed >= 2 && allowed == 3);
+    d.check("fix016 R2-QT: every sheet shows every row it asks about", everyAskedShown);
+    d.check("fix016 R2-QT: every sheet that shows all it asks has its Allow on", allowEach);
+    d.check("fix016 R2-QT: each Allow answered its own calls, each change made", d.waitFor(8000, [&] {
                 for (const auto &r : sent)
                     if (!r->done) return false;
                 return ai->confirmations().isEmpty();
@@ -247,7 +263,7 @@ void groupedQuestions(SmokeDriver &d) {
         armed();
         d.spin(300);
         ++sheets;
-        missing = missingAsked();
+        const QStringList missing = missingAsked();
         QObject *host = d.object(QStringLiteral("AiHost"));
         const bool fits = host && host->property("askedFit").toBool(), grouped = host && host->property("grouped").toBool();
         if (!missing.isEmpty() && allowOn()) {
