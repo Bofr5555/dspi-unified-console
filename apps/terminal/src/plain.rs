@@ -62,6 +62,31 @@ pub(crate) fn wanted(flags: &[&str], term: Option<&str>, stdin_is_terminal: bool
         && (flags.contains(&"--plain") || (term == Some("dumb") && stdin_is_terminal))
 }
 
+// -- FIX016 -- (REVG F10b, agent C F5)
+/// The command given with `--plain` (its first word, or `-f`), which the
+/// plain mode would otherwise drop (`--plain` first) or ignore (`--plain`
+/// after it): the caller refuses the two together. `None` without `--plain`,
+/// with nothing but flags, or with a flag that is not the interface
+/// (`--version`).
+pub(crate) fn command_with_plain<'a>(flags: &[&'a str]) -> Option<&'a str> {
+    if !flags.contains(&"--plain") || flags.iter().any(|f| crate::NOT_A_SCRIPT.contains(f)) {
+        return None;
+    }
+    let mut value = false;
+    for f in flags {
+        if std::mem::take(&mut value) {
+            continue;
+        }
+        match *f {
+            "--theme" => value = true,
+            "-f" | "--file" => return Some(f),
+            w if !w.starts_with('-') => return Some(f),
+            _ => {}
+        }
+    }
+    None
+}
+
 /// What a line asked for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Step {
@@ -456,5 +481,26 @@ mod tests_wp_ub11 {
         // what is not the interface stays what it is
         assert!(!wanted(&["--help"], Some("dumb"), true));
         assert!(!wanted(&["--version", "--plain"], None, true));
+    }
+
+    // -- FIX016 -- (REVG F10b)
+    #[test]
+    fn fix016_plain_with_a_command_is_named_either_way_round() {
+        assert_eq!(
+            command_with_plain(&["--plain", "vol.user", "-20"]),
+            Some("vol.user")
+        );
+        assert_eq!(
+            command_with_plain(&["vol.user", "-20", "--plain"]),
+            Some("vol.user")
+        );
+        assert_eq!(command_with_plain(&["--plain", "-f", "x.dspi"]), Some("-f"));
+        assert_eq!(command_with_plain(&["--plain"]), None);
+        assert_eq!(
+            command_with_plain(&["--plain", "--theme", "calm", "--lite"]),
+            None
+        );
+        assert_eq!(command_with_plain(&["vol.user", "-20"]), None, "no --plain");
+        assert_eq!(command_with_plain(&["--version", "--plain"]), None);
     }
 }

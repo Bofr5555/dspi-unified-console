@@ -221,6 +221,16 @@ fn main() -> ExitCode {
     // A script beats every other reading of the arguments: `-f` is explicit,
     // and a non-terminal standard input with nothing else to do can only mean
     // someone is piping commands in.
+    // -- FIX016 -- (REVG F10b) `--plain` with a command: refused, never dropped or ignored
+    if let Some(cmd) = plain::command_with_plain(&flags) {
+        eprintln!(
+            "{COMMAND}: --plain takes its commands from standard input, one per line, not \
+             `{}` as well: run `{COMMAND} {}…` without --plain, or type it in the plain mode",
+            printable(cmd),
+            printable(cmd)
+        );
+        return ExitCode::from(exit::USAGE);
+    }
     // -- WP UB11 -- (UXP B11, D16) `--plain` with no command, before a piped
     // standard input is read as a script: the plain mode reads it line by line
     if plain::wanted(

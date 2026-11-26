@@ -231,3 +231,34 @@ fn fix016_a_scripts_guarded_recall_is_kept_and_the_code_is_the_first_failures() 
         "the line after the mistake ran: {out}"
     );
 }
+
+// -- FIX016 -- (REVG F10b, agent C F5) `--plain` with a command: refused with the usage code, the
+// command not dropped silently (`--plain` first) nor `--plain` ignored (after it)
+#[test]
+fn fix016_plain_with_a_command_is_refused_and_changes_nothing() {
+    for args in [
+        ["--demo", "--plain", "vol.user", "-20"],
+        ["--demo", "vol.user", "-20", "--plain"],
+    ] {
+        let o = run("fix016-plain-cmd", &args, "");
+        let out = text(&o.stdout);
+        let err = text(&o.stderr);
+        assert_eq!(
+            o.status.code(),
+            Some(1),
+            "{args:?}: the usage code: {out}\n{err}"
+        );
+        assert!(
+            err.contains("--plain takes its commands from standard input"),
+            "{args:?}: {err}"
+        );
+        assert!(
+            !out.contains("plain mode. Connected"),
+            "{args:?}: no greeting: {out}"
+        );
+        assert!(
+            !out.lines().any(|l| l.starts_with("vol.user")),
+            "{args:?}: nothing ran: {out}"
+        );
+    }
+}
