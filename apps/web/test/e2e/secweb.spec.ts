@@ -19,7 +19,7 @@ import { networkInterfaces } from "node:os";
 import { createInterface } from "node:readline";
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
 import { fingerprint } from "../../src/fleet/security";
-import { openPage } from "../nav";
+import { fleetOf, openOnHub, openPage, showThisComputer } from "../nav"; // -- WP UB6 -- the Fleet
 
 const DEMO = "DEMO0000DSPI0001";
 
@@ -84,6 +84,12 @@ const connection = (session: Locator) => session.getByRole("complementary", { na
 
 async function openDemo(page: Page, host: string): Promise<Locator> {
   const row = picker(page).getByRole("listitem").filter({ hasText: `Hub ${host}` });
+  // -- WP UB6 -- (UXP B6) the page's own hub lists its DSPis on its Fleet; another hub is an entry on This Computer
+  if (host === new URL(page.url()).host) {
+    await expect(fleetOf(page)).toBeVisible({ timeout: 20_000 });
+    return openOnHub(page, { host, serial: DEMO });
+  }
+  await showThisComputer(page);
   await expect(row).toHaveCount(1);
   await row.getByRole("button", { name: "Connect" }).click();
   const session = page.getByRole("article").last();
@@ -167,8 +173,10 @@ test.describe("SECWEB: the hub's https console", () => {
     // A ws:// hub kept from an http visit: on this page it is wss:// (or refused), never ws://.
     await withSavedHubs(page, [{ url: "ws://127.0.0.1:9", name: "Old" }]);
     await page.goto(`${base}/console/`);
+    await showThisComputer(page); // -- WP UB6 -- the page starts on the hub's Fleet
     await expect(picker(page).getByRole("listitem").filter({ hasText: "Hub 127.0.0.1:9" })).toHaveCount(1);
     probeOut(`accepted-${info.project.name}`, await probe(page));
+    await page.getByRole("tablist", { name: "Pages" }).getByRole("tab", { name: "Fleet" }).click();
     const session = await openDemo(page, `127.0.0.1:${hub!.port}`);
     await expect(connection(session)).toContainText("Connected");
     await expect(connection(session)).not.toContainText("(unsecured)");

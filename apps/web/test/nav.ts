@@ -172,3 +172,12 @@ export async function hubDetails(devices: Locator, name: string): Promise<Locato
   await expect(more).toHaveAttribute("aria-expanded", "true");
   return devices.locator("tbody").filter({ has: devices.page().getByRole("row", { name, exact: true }) });
 }
+
+/** -- WP UB6 -- This Computer (the device list) on a console with no DSPi open, from the Fleet a hub's page starts on. */
+export async function showThisComputer(page: Page): Promise<void> {
+  const list = page.getByRole("navigation", { name: "DSPi devices" });
+  const tab = page.getByRole("tablist", { name: "Pages" }).getByRole("tab", { name: "This Computer" });
+  await expect(list.or(fleetOf(page)).first()).toBeVisible({ timeout: 20_000 });
+  if (!(await list.isVisible())) await tab.click();
+  await expect(list).toBeVisible();
+}

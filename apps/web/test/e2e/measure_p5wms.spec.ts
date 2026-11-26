@@ -363,7 +363,7 @@ test.describe("passive", () => {
       const session = await hubSession(page, hub, false);
       await openPage(session, "Measure");
       const screen = session.getByRole("region", { name: "Measure" });
-      await expect(screen.getByRole("region", { name: "Passive microphone RTA" })).toContainText("hub's Viewer role");
+      await expect(screen.getByRole("region", { name: "Passive microphone RTA" })).toContainText(/hub's Viewer role|can view this DSPi but not change it/); // -- WP UB6 -- from the Fleet, the backend's view access says it first
       await passiveListens(page, screen, browserName);
       // Nothing plays: the generator stays idle (its own screen, which a Viewer may read).
       await openPage(session, "Signal Generator");
