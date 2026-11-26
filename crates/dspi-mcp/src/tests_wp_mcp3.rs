@@ -893,9 +893,11 @@ fn run_relay(port: u16, keeper: &mut MemoryTokenKeeper, lines: &[Value]) -> (Vec
     };
     relay::run(cfg, keeper, &mut input, &mut out, &mut err).unwrap();
     let out = String::from_utf8(out).unwrap();
+    // -- WP UAG -- the replies; the relay's own log notices (the pairing code) aside
     let replies = out
         .lines()
-        .map(|l| serde_json::from_str(l).unwrap())
+        .map(|l| serde_json::from_str::<Value>(l).unwrap())
+        .filter(|v| v["method"] != json!("notifications/message"))
         .collect();
     (replies, String::from_utf8(err).unwrap())
 }
@@ -954,6 +956,8 @@ fn wp_mcp3_the_relay_forwards_stdio_to_http() {
         "{replies:?}\n{err}"
     );
     assert_eq!(replies[0]["result"]["protocolVersion"], "2025-11-25");
+    // -- WP UAG -- the relay declares its log notice (the pairing code)
+    assert_eq!(replies[0]["result"]["capabilities"]["logging"], json!({}));
     assert!(replies[1]["result"]["tools"].is_array());
     assert_eq!(replies[2]["result"]["resultType"], "complete");
     assert_eq!(
@@ -1223,4 +1227,80 @@ fn wp_ffix_each_agent_program_on_the_computer_pairs_as_itself() {
     assert!(crate::relay::tokens_of("abcdef0123").is_empty());
     http.stop();
     drop(answerer);
+}
+
+// -- WP UAG -- (UXP A9) the pairing code where the person can check it: the
+// agent host's log (an MCP log notice) and, when a tool call starts the
+// pairing, that call's result, which the agent's chat shows at once
+#[test]
+fn wp_uag_the_relay_shows_the_pairing_code_in_the_log_and_the_chat() {
+    let (tx, rx) = mpsc::channel::<u64>();
+    let tx = Mutex::new(tx);
+    let listener: crate::http::Listener = Arc::new(move |e: &Event| {
+        if let Event::PairingRequested { id, .. } = e {
+            let _ = tx.lock().unwrap().send(*id);
+        }
+    });
+    let http = Arc::new(HttpServer::start(demo_server(), config(None), Some(listener)).unwrap());
+    let port = http.port();
+    let answerer = {
+        let http = Arc::clone(&http);
+        std::thread::spawn(move || {
+            if let Ok(id) = rx.recv_timeout(Duration::from_secs(30)) {
+                std::thread::sleep(Duration::from_millis(300));
+                let _ = http.pairing_answer(id, true);
+            }
+        })
+    };
+    let mut call = json!({"jsonrpc": "2.0", "id": "c", "method": "tools/call",
+                          "params": {"name": "dspi_get_overview", "arguments": {}}});
+    call["params"]["_meta"] = meta();
+    let mut again = call.clone();
+    again["id"] = json!("d");
+    let lines = [
+        call,
+        json!({"jsonrpc": "2.0", "id": 5, "method": "logging/setLevel", "params": {"level": "info"}}),
+        again,
+    ];
+    let input: String = lines.iter().map(|l| format!("{l}\n")).collect();
+    let mut input = std::io::Cursor::new(input.into_bytes());
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    let cfg = RelayConfig {
+        port,
+        timeout: Duration::from_secs(20),
+        ..RelayConfig::default()
+    };
+    let mut keeper = MemoryTokenKeeper::default();
+    relay::run(cfg, &mut keeper, &mut input, &mut out, &mut err).unwrap();
+    answerer.join().unwrap();
+    let all: Vec<Value> = String::from_utf8(out)
+        .unwrap()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    // The log notice first, with the code the app shows
+    assert_eq!(all[0]["method"], json!("notifications/message"), "{all:?}");
+    assert_eq!(all[0]["params"]["level"], json!("notice"));
+    let data = all[0]["params"]["data"].as_str().unwrap();
+    let code: String = data
+        .split_once("the code ")
+        .map(|(_, r)| r.chars().take_while(char::is_ascii_digit).collect())
+        .unwrap_or_default();
+    assert!(!code.is_empty(), "{data}");
+    assert!(String::from_utf8(err).unwrap().contains(&code));
+    // The call that started it: answered at once, naming the code, for the chat
+    assert_eq!(all[1]["id"], json!("c"));
+    assert_eq!(all[1]["result"]["isError"], json!(true));
+    let text = all[1]["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.contains(&format!("the code {code}")) && text.contains("click Allow"),
+        "{text}"
+    );
+    // The log level is the relay's own
+    assert_eq!(all[2], json!({"jsonrpc": "2.0", "id": 5, "result": {}}));
+    // The next call waits for the person's Allow, then goes through
+    assert_eq!(all[3]["id"], json!("d"));
+    assert_eq!(all[3]["result"]["isError"], json!(false), "{}", all[3]);
+    assert!(keeper.token.is_some());
+    assert_eq!(all.len(), 4, "{all:?}");
 }

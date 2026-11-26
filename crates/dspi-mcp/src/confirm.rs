@@ -91,6 +91,10 @@ pub struct Confirmation {
     /// It asks for test signals: Allow also grants them on its device for
     /// the task (`crate::grant`).
     pub grouped: bool,
+    // -- WP UAG -- (UXP A6)
+    /// The call's other changes in the app's words (`policy::Judging::rest`):
+    /// what the same Allow also does. The app's alone.
+    pub rest: Vec<String>,
 }
 
 impl Confirmation {
@@ -99,8 +103,10 @@ impl Confirmation {
         self.risks.iter().flat_map(|r| r.keys.clone()).collect()
     }
 
-    /// As JSON, for the app's sheet and the agent: numbers and the server's
-    /// words only. -- WP FIN015 -- (REVF S8) two counting origins, on
+    /// As JSON, for the app's sheet (agents read the risks through
+    /// `dspi_get_confirmation`, which builds its own): numbers and the
+    /// server's words, and (-- WP UAG --) the app's words of each risk
+    /// (`said`) and of the whole call (`batch`), which agents never read. -- WP FIN015 -- (REVF S8) two counting origins, on
     /// purpose: `risks[].output` counts from 1, as the risk's words and the
     /// agent do; `roles.rows[].output` is the wire output, from 0 (the app
     /// shows it as Out N+1), as the app's own speaker rows are.
@@ -111,7 +117,16 @@ impl Confirmation {
             "client_name": self.client_label,
             "tool": self.tool,
             "device": self.device,
-            "risks": self.risks.iter().map(Risk::to_json).collect::<Vec<_>>(),
+            "risks": self.risks.iter().map(|r| {
+                let mut v = r.to_json();
+                if let Some(o) = v.as_object_mut() {
+                    // -- WP UAG --
+                    o.insert("said".into(), json!(r.said));
+                    o.insert("channel".into(), json!(r.channel));
+                }
+                v
+            }).collect::<Vec<_>>(),
+            "batch": self.batch(), // -- WP UAG --
             "asked_ms": self.asked_ms,
             "expires_ms": self.expires_ms,
             "state": self.state.as_str(),
@@ -144,6 +159,57 @@ impl Confirmation {
                     t
                 }),
         })
+    }
+}
+
+// -- WP UAG -- (UXP A6)
+/// Folded rows name at most this many channels ("Left woofer, Right woofer,
+/// Sub: limiter off"); more read "9 outputs: limiter off".
+const FOLD_NAMES: usize = 3;
+
+impl Confirmation {
+    /// The whole call for the app's sheet, the asked rows first: `{said,
+    /// kind, risky}` each. Asked rows of one kind that differ only in their
+    /// channel fold into one ("Left woofer, Right woofer: limiter off").
+    fn batch(&self) -> Vec<Value> {
+        // (kind, channels, the words after them, or the whole row)
+        let mut rows: Vec<(&'static str, Vec<&str>, &str)> = Vec::new();
+        for r in &self.risks {
+            let kind = r.kind.as_str();
+            let split = r.output.and_then(|_| r.said.split_once(": "));
+            match split {
+                Some((ch, rest)) => {
+                    if let Some(row) = rows
+                        .iter_mut()
+                        .find(|(k, chs, w)| *k == kind && !chs.is_empty() && *w == rest)
+                    {
+                        if !row.1.contains(&ch) {
+                            row.1.push(ch);
+                        }
+                    } else {
+                        rows.push((kind, vec![ch], rest));
+                    }
+                }
+                None => rows.push((kind, Vec::new(), r.said.as_str())),
+            }
+        }
+        let mut out: Vec<Value> = rows
+            .into_iter()
+            .map(|(kind, chs, words)| {
+                let said = match chs.len() {
+                    0 => words.to_owned(),
+                    n if n > FOLD_NAMES => format!("{n} outputs: {words}"),
+                    _ => format!("{}: {words}", chs.join(", ")),
+                };
+                json!({"said": said, "kind": kind, "risky": true})
+            })
+            .collect();
+        out.extend(
+            self.rest
+                .iter()
+                .map(|said| json!({"said": said, "kind": null, "risky": false})),
+        );
+        out
     }
 }
 
@@ -220,11 +286,20 @@ impl Confirmations {
             args,
             result: None,
             request: None,
-            grouped, // -- WP ODEC --
+            grouped,          // -- WP ODEC --
+            rest: Vec::new(), // -- WP UAG --
         });
         self.events.push(ConfirmEvent::Asked(id));
         self.prune();
         id
+    }
+
+    // -- WP UAG --
+    /// Keep `rest`, the call's other changes in the app's words, with `id`.
+    pub(crate) fn set_rest(&mut self, id: u64, rest: Vec<String>) {
+        if let Some(c) = self.get_mut(id) {
+            c.rest = rest;
+        }
     }
 
     /// Confirmation `id`.
