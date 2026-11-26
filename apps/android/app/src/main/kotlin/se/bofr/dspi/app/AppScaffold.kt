@@ -28,7 +28,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -206,6 +208,14 @@ fun AppScaffold(
     // -- WP P1AN2 -- U5's notice line: every AlertHost's notices (no success modals) as the same snackbar
     val noticeScope = rememberCoroutineScope()
     val noticeLine: (String) -> Unit = remember(notices) { { t -> noticeScope.launch { notices.showSnackbar(t) } } }
+    // -- WP UAN -- (UXP A11) unplug and re-plug are no longer silent
+    val usbNotices = remember { UsbLossNotices() }
+    LaunchedEffect(strip) {
+        // In here, so the strip's next change (the DSPi back) replaces the loss's notice at once
+        usbNotices.next(strip)?.let { t ->
+            notices.showSnackbar(t, duration = if (t == USB_LOST_NOTICE) SnackbarDuration.Long else SnackbarDuration.Short)
+        }
+    }
     // -- WP P1AN2 -- the UI mode of this bridge's device (UI-MODES), never a write
     val modeModel = remember(bridge, modeStore) { UiModeModel(bridge, modeStore, noticeScope) }
     DisposableEffect(modeModel) { onDispose { modeModel.close() } }
@@ -218,6 +228,16 @@ fun AppScaffold(
         onMainThread { value = line } // -- WP FLAKE2 -- the write on the main thread (onMainThread)
     }
     val locked = uiMode == UiModes.LOCKED_USER
+    // -- WP UAN -- (UXP A11) a page a locked user may not open: the lock's line, with Unlock…, never nothing
+    val lockLineNow = rememberUpdatedState(lockLine)
+    val onLockRefused: () -> Unit = remember(notices, modeModel) {
+        {
+            noticeScope.launch {
+                val r = notices.showSnackbar(lockLineNow.value, actionLabel = UNLOCK_ENTRY, duration = SnackbarDuration.Short)
+                if (r == SnackbarResult.ActionPerformed) modeModel.openDialog()
+            }
+        }
+    }
     // -- WP P2AN -- the hub's alarms as notices, and Identify in the strip's device menu
     val alarmNotices = remember(bridge) { HubAlarmNotices(bridge, noticeScope, noticeLine) }
     LaunchedEffect(alarmNotices) { alarmNotices.run() }
@@ -297,7 +317,7 @@ fun AppScaffold(
                         LocalUiMode provides uiMode, // -- WP P1AN2 --
                         LocalNoticeLine provides noticeLine // -- WP P1AN2 --
                     ) {
-                        DspiNavHost(bridge, bootloaderLocator, remote = strip is ConnectionStrip.Remote, keys, history)
+                        DspiNavHost(bridge, bootloaderLocator, remote = strip is ConnectionStrip.Remote, keys, history, onLockRefused)
                     }
                 }
             }
@@ -319,11 +339,15 @@ private fun DspiNavHost(
     remote: Boolean,
     keys: ShortcutKeys,
     // -- WP AN42 --
-    history: UndoRedoModel
+    history: UndoRedoModel,
+    // -- WP UAN --
+    onLockRefused: () -> Unit = {}
 ) {
     // G1: every device-writing control is disabled while the bridge refuses writes
     val writes by bridge.writesAllowed.collectAsStateWithLifecycle()
-    CompositionLocalProvider(LocalWritesAllowed provides writes) { DspiRoutesHost(bridge, bootloaderLocator, remote, keys, history) }
+    CompositionLocalProvider(LocalWritesAllowed provides writes) {
+        DspiRoutesHost(bridge, bootloaderLocator, remote, keys, history, onLockRefused)
+    }
 }
 
 @Composable
@@ -333,7 +357,9 @@ private fun DspiRoutesHost(
     remote: Boolean,
     keys: ShortcutKeys,
     // -- WP AN42 --
-    history: UndoRedoModel
+    history: UndoRedoModel,
+    // -- WP UAN --
+    onLockRefused: () -> Unit
 ) {
     val nav = rememberNavController()
     // -- WP AN35 -- the shortcuts drive this NavHost while it is on screen
@@ -351,6 +377,10 @@ private fun DspiRoutesHost(
     val senderNow = rememberUpdatedState(sender)
     val allow: (String) -> Boolean = remember {
         { r -> (!lockedNow.value || UiModeModel.allowedWhenLocked(r)) && (!senderNow.value || allowedForAlinkSender(r)) }
+    }
+    // -- WP UAN -- (UXP A11) a tap the lock refuses says so (the alink sender's pages are simply not there)
+    val refused: (String) -> Unit = remember(onLockRefused) {
+        { r -> if (lockedNow.value && !UiModeModel.allowedWhenLocked(r)) onLockRefused() }
     }
     LaunchedEffect(sender) {
         if (sender) {
@@ -371,42 +401,52 @@ private fun DspiRoutesHost(
     }
     NavHost(navController = nav, startDestination = DspiRoutes.HOME) {
         // Each screen's back/navigate act only while its own entry is current (EntryNavigator)
-        screen(nav, allow, DspiRoutes.HOME) { _, go, back ->
+        screen(nav, allow, refused, DspiRoutes.HOME) { _, go, back ->
             if (sender) AlinkSenderScreen(bridge, go) else HomeScreen(bridge, go, back) // -- WP PGAND --
         }
-        screen(nav, allow, DspiRoutes.CHANNEL, listOf(navArgument("ch") { type = NavType.IntType })) { entry, go, back ->
+        screen(nav, allow, refused, DspiRoutes.CHANNEL, listOf(navArgument("ch") { type = NavType.IntType })) { entry, go, back ->
             ChannelScreen(bridge, entry.arguments?.getInt("ch") ?: 0, go, back)
         }
-        screen(nav, allow, DspiRoutes.GRAPH) { _, go, back -> GraphScreen(bridge, go, back) }
-        screen(nav, allow, DspiRoutes.MATRIX) { _, go, back -> MatrixMixerView(bridge, go, back) }
-        screen(nav, allow, DspiRoutes.TOOLS) { _, go, back -> ToolsScreen(bridge, go, back) }
+        screen(nav, allow, refused, DspiRoutes.GRAPH) { _, go, back -> GraphScreen(bridge, go, back) }
+        screen(nav, allow, refused, DspiRoutes.MATRIX) { _, go, back -> MatrixMixerView(bridge, go, back) }
+        screen(nav, allow, refused, DspiRoutes.TOOLS) { _, go, back -> ToolsScreen(bridge, go, back) }
         // -- WP AN31 -- a quick-strip long-press opens that tool's page directly
-        screen(nav, allow, DspiRoutes.TOOL, listOf(navArgument("tool") { type = NavType.StringType })) { entry, go, back ->
+        screen(nav, allow, refused, DspiRoutes.TOOL, listOf(navArgument("tool") { type = NavType.StringType })) { entry, go, back ->
             ToolsScreen(bridge, go, back, open = entry.arguments?.getString("tool"))
         }
-        screen(nav, allow, DspiRoutes.LIMITER, listOf(navArgument("out") { type = NavType.IntType })) { entry, go, back ->
+        screen(nav, allow, refused, DspiRoutes.LIMITER, listOf(navArgument("out") { type = NavType.IntType })) { entry, go, back ->
             OutputLimiterView(bridge, entry.arguments?.getInt("out") ?: 0, go, back)
         }
-        screen(nav, allow, DspiRoutes.PRESETS) { _, go, back -> PresetsScreen(bridge, go, back) }
+        screen(nav, allow, refused, DspiRoutes.PRESETS) { _, go, back -> PresetsScreen(bridge, go, back) }
         // -- WP P1AN1 --
         // -- WP P1DCFIX -- the app has no Simple/Advanced mode yet (P1AN2's mode switch passes the device's
         // mode here); until then the screen is Advanced, its Simple branch (recall and A/B) tested on its own
         // -- WP P1AN2 -- the device's mode: Simple (and the locked-user state) recall and A/B only
-        screen(nav, allow, DspiRoutes.SNAPSHOTS) { _, go, back ->
+        screen(nav, allow, refused, DspiRoutes.SNAPSHOTS) { _, go, back ->
             SnapshotsScreen(bridge, go, back, mode = snapshotsModeOf(LocalUiMode.current))
         }
-        screen(nav, allow, DspiRoutes.SETTINGS) { _, go, back -> SettingsScreen(bridge, go, back) }
+        screen(nav, allow, refused, DspiRoutes.SETTINGS) { _, go, back -> SettingsScreen(bridge, go, back) }
         // -- WP LKUI1 -- the hub's audio link installation, from Home's status chip
-        screen(nav, allow, DspiRoutes.SYSTEM) { _, go, back -> SystemScreen(bridge, go, back) }
-        screen(nav, allow, DspiRoutes.ANALYSIS) { _, go, back -> AnalysisScreen(bridge, go, back) }
+        screen(nav, allow, refused, DspiRoutes.SYSTEM) { _, go, back -> SystemScreen(bridge, go, back) }
+        screen(nav, allow, refused, DspiRoutes.ANALYSIS) { _, go, back -> AnalysisScreen(bridge, go, back) }
         // -- WP AN32 -- each Tools-menu entry opens its own analysis page
-        screen(nav, allow, DspiRoutes.ANALYSIS_PAGE, listOf(navArgument("page") { type = NavType.StringType })) { entry, go, back ->
+        screen(
+            nav,
+            allow,
+            refused,
+            DspiRoutes.ANALYSIS_PAGE,
+            listOf(
+                navArgument("page") {
+                    type = NavType.StringType
+                }
+            )
+        ) { entry, go, back ->
             AnalysisScreen(bridge, go, back, open = entry.arguments?.getString("page"))
         }
-        screen(nav, allow, DspiRoutes.FIRMWARE) { _, go, back -> FirmwareRoute(bridge, go, back, bootloaderLocator, remote) }
+        screen(nav, allow, refused, DspiRoutes.FIRMWARE) { _, go, back -> FirmwareRoute(bridge, go, back, bootloaderLocator, remote) }
         // -- WP AN19 --
-        screen(nav, allow, DspiRoutes.GETTING_STARTED) { _, go, back -> GettingStartedRoute(bridge, go, back) }
-        screen(nav, allow, DspiRoutes.WHATS_NEW) { _, _, back -> WhatsNewRoute(back) }
+        screen(nav, allow, refused, DspiRoutes.GETTING_STARTED) { _, go, back -> GettingStartedRoute(bridge, go, back) }
+        screen(nav, allow, refused, DspiRoutes.WHATS_NEW) { _, _, back -> WhatsNewRoute(back) }
     }
     OnboardingAtLaunch(nav) // -- WP AN19 --
 }
@@ -440,13 +480,15 @@ private fun NavGraphBuilder.screen(
     nav: NavHostController,
     // -- WP P1AN2 -- a route the locked-user state does not show is not opened
     allow: (String) -> Boolean,
+    // -- WP UAN -- and the tap is answered ([allow] said no)
+    refused: (String) -> Unit,
     route: String,
     arguments: List<NamedNavArgument> = emptyList(),
     content: @Composable (entry: NavBackStackEntry, go: (String) -> Unit, back: () -> Unit) -> Unit
 ) {
     composable(route, arguments) { entry ->
         val navigator = remember(nav, entry) { nav.navigatorFor(entry) }
-        content(entry, { r -> if (allow(r)) navigator.go(r) }, navigator::back)
+        content(entry, { r -> if (allow(r)) navigator.go(r) else refused(r) }, navigator::back)
     }
 }
 
@@ -530,13 +572,17 @@ private fun ConnectionStripBar(
         val compact = maxWidth < STRIP_COMPACT_BELOW
         // -- WP ANLINK -- no DSPi: the ways to one stay on the strip, a second line on a phone
         val noDevice = strip is ConnectionStrip.NoDevice
+        // -- WP UAN -- (UXP A11) a phone: Exit demo and Allow USB access as buttons on the bar, the
+        // "Always open" sentence on a line of its own
+        val onBar = compact && strip.actionsOnBar
+        val hint = strip.inlineHint.takeIf { compact }
         Column(Modifier.fillMaxWidth()) {
             Row(
                 Modifier.fillMaxWidth().padding(
                     start = 16.dp,
                     end = if (compact) 4.dp else 16.dp,
-                    top = 2.dp, // -- WP ANBAR -- thin: 2dp around its 32dp buttons
-                    bottom = if (compact && noDevice) 0.dp else 2.dp // -- WP ANLINK -- the actions' line below
+                    top = 0.dp, // -- WP ANBAR -- thin, -- WP UAN -- its 40dp buttons (UXP A12) are the bar's height
+                    bottom = 0.dp
                 ),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -574,12 +620,14 @@ private fun ConnectionStripBar(
                     }
                     if (unsecured) UnsecuredInfoButton(ink, ack = ack) // -- WP SECAN --, ANSEC
                     if (installerBadge) InstallerBadge(ink) // -- WP P1AN2 --
+                    // -- WP UAN --
+                    if (onBar) StripButtonInk(tint?.content) { actions.forEach { (label, act) -> StripTextButton(label, act) } }
                     history?.let { UndoRedoButtons(it, ink) }
                     // -- WP P1AN1 -- Snapshots first in the overflow: the bar keeps its one line
                     // -- WP P1AN2 -- the Mode entry after it
                     StripMenu(
                         // -- WP ANSEC -- and the acknowledgement of an unsecured hub (a wide bar: its info dialog)
-                        listOfNotNull(onSnapshots?.let { SNAPSHOTS_ENTRY to it }, modeEntry) + actions +
+                        listOfNotNull(onSnapshots?.let { SNAPSHOTS_ENTRY to it }, modeEntry) + actions.takeUnless { onBar }.orEmpty() +
                             listOfNotNull(ack.onAcknowledge?.let { UNSECURED_ACK_MENU to it }),
                         devices,
                         onChooseDevice,
@@ -607,15 +655,31 @@ private fun ConnectionStripBar(
                 }
             }
             if (compact && noDevice) {
-                FlowRow(Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, bottom = 2.dp)) { NoDeviceActions(onChooseDevice) }
+                FlowRow(Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp)) { NoDeviceActions(onChooseDevice) }
+            }
+            // -- WP UAN --
+            hint?.let { h ->
+                Text(
+                    h,
+                    Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 6.dp).testTag(STRIP_HINT_TAG),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = ink
+                )
             }
         }
     }
 }
 
 // -- WP ANBAR --
-/** How high the bar's buttons are drawn; their touch target stays 48dp. */
-internal val STRIP_BUTTON_HEIGHT = 32.dp
+/**
+ * How high the bar's buttons are drawn; their touch target stays 48dp. -- WP UAN -- (UXP A12) 40dp, was 32:
+ * no button on the bar is drawn (and laid out, what TalkBack's frame shows) under 40dp.
+ */
+internal val STRIP_BUTTON_HEIGHT = 40.dp
+
+// -- WP UAN --
+/** Test tag of a phone strip's own line for [USB_ALWAYS_OPEN_HINT]. */
+internal const val STRIP_HINT_TAG = "strip-hint"
 
 /** A text button on the bar: [STRIP_BUTTON_HEIGHT] high, growing with a large font. */
 @Composable

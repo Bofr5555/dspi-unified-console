@@ -84,7 +84,7 @@ internal fun UnsecuredInfoButton(
     ack: UnsecuredAckActions = UnsecuredAckActions()
 ) {
     var open by remember { mutableStateOf(false) }
-    IconButton(onClick = { open = true }, modifier = Modifier.size(32.dp).testTag(UNSECURED_INFO_TAG)) {
+    IconButton(onClick = { open = true }, modifier = Modifier.size(STRIP_BUTTON_HEIGHT).testTag(UNSECURED_INFO_TAG)) {
         Icon(DspiIcons.info, contentDescription = UNSECURED_INFO_LABEL, tint = tint, modifier = Modifier.size(18.dp))
     }
     // -- WP ANBAR -- the bar draws its buttons thin; the dialog's keep Material's 48dp

@@ -190,10 +190,9 @@ fun SnapshotsView(
             Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = onBack) { Text("‹ Back") }
                 Text("Snapshots", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                if (advanced) {
-                    TextButton(onClick = model::askCapture, enabled = connected && !busy, modifier = Modifier.testTag(CAPTURE_TAG)) {
-                        Text("Capture…")
-                    }
+                // -- WP UAN -- (UXP A11) Capture in Simple too: harmless, and what A/B needs (a locked user has no Snapshots)
+                TextButton(onClick = model::askCapture, enabled = connected && !busy, modifier = Modifier.testTag(CAPTURE_TAG)) {
+                    Text("Capture…")
                 }
             }
             LazyColumn(Modifier.fillMaxSize()) {
@@ -237,10 +236,7 @@ fun SnapshotsView(
                 when {
                     !connected -> item { Caption("No device connected.") }
                     items.isEmpty() -> item {
-                        Caption(
-                            "No snapshots of this device yet." +
-                                if (advanced) " Capture one to come back to these settings later." else ""
-                        )
+                        Caption("No snapshots of this device yet. Capture one to come back to these settings later.") // -- WP UAN --
                     }
                 }
                 items(items, key = { it.id }) { s ->

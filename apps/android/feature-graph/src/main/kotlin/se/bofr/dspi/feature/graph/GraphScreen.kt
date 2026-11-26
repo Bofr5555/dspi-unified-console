@@ -8,6 +8,7 @@
 // (docs/UPSTREAM-DEVIATIONS.md GRAPH).
 package se.bofr.dspi.feature.graph
 
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -29,6 +30,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -110,6 +113,15 @@ fun GraphScreen(bridge: DspiBridge, onNavigate: (String) -> Unit, onBack: () -> 
                 }
             }
         }
+        // -- WP UAN -- (UXP A12, B10) nothing edited: say how to start; editing: the gestures, once
+        if (edited < 0) {
+            Text(
+                GRAPH_PICK_HINT,
+                fontSize = 13.sp,
+                color = Color.White.copy(alpha = 0.75f),
+                modifier = Modifier.padding(4.dp).testTag(GRAPH_PICK_HINT_TAG)
+            )
+        }
         BodePlotView(
             bridge = bridge,
             modifier = Modifier.weight(1f).fillMaxSize(),
@@ -117,7 +129,13 @@ fun GraphScreen(bridge: DspiBridge, onNavigate: (String) -> Unit, onBack: () -> 
             editable = edited >= 0,
             isPopOut = true
         )
-        GraphLegend(bridge, Modifier.fillMaxWidth())
+        if (edited >= 0) GraphGestureHint()
+        // -- WP UAN -- (UXP B10) a pill chooses the channel edited here; a long-press shows or hides its curve
+        val appState = LocalAppState.current
+        GraphLegend(bridge, Modifier.fillMaxWidth(), chosen = edited.takeIf { it >= 0 }) { ch ->
+            if (follows) appState.updateSelection(ch) else picked = ch
+            if (!bridge.channelVisible(ch)) bridge.setChannelVisible(ch, true)
+        }
         if (edited >= 0) {
             Text(
                 "Open channel page",
@@ -130,5 +148,37 @@ fun GraphScreen(bridge: DspiBridge, onNavigate: (String) -> Unit, onBack: () -> 
                 }
             )
         }
+    }
+}
+
+// -- WP UAN -- (UXP A12, B10)
+/** What the graph page says while no channel is edited (it opened "Following: overview" in silence). */
+const val GRAPH_PICK_HINT = "Tap a channel below to edit its filters."
+
+/** Test tag of [GRAPH_PICK_HINT]. */
+const val GRAPH_PICK_HINT_TAG = "graph-pick-hint"
+
+/** The gestures, under the graph until the user says Got it (kept on this phone). */
+const val GRAPH_GESTURE_HINT = "Drag a dot to move a band · double-tap to add one · pinch to change its width · long-press for more."
+
+/** Test tag of [GRAPH_GESTURE_HINT]'s line. */
+const val GRAPH_GESTURE_HINT_TAG = "graph-gesture-hint"
+
+private const val HINT_PREFS = "dspi_hints"
+private const val HINT_GESTURES = "graphGestures"
+
+/** [GRAPH_GESTURE_HINT] with Got it, which hides it for good on this phone. */
+@Composable
+fun GraphGestureHint(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val prefs = remember(context) { context.getSharedPreferences(HINT_PREFS, Context.MODE_PRIVATE) }
+    var shown by remember { mutableStateOf(!prefs.getBoolean(HINT_GESTURES, false)) }
+    if (!shown) return
+    Row(modifier.fillMaxWidth().testTag(GRAPH_GESTURE_HINT_TAG), verticalAlignment = Alignment.CenterVertically) {
+        Text(GRAPH_GESTURE_HINT, fontSize = 12.sp, color = Color.White.copy(alpha = 0.75f), modifier = Modifier.weight(1f).padding(4.dp))
+        TextButton(onClick = {
+            prefs.edit().putBoolean(HINT_GESTURES, true).apply()
+            shown = false
+        }) { Text("Got it") }
     }
 }

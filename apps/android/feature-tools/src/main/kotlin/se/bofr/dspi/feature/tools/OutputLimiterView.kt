@@ -197,7 +197,7 @@ private fun LimiterSettings(
                 unprotected.joinToString(", ") { "OUT${it + 1}" } +
                     (if (unprotected.size == 1) " is" else " are") +
                     " above ${Installer.UNPROTECTED_GAIN_DB.toInt()} dB gain with no limiter.",
-                color = MacColors.orange
+                color = MacColors.warningText // -- WP UAN --
             )
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

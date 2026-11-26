@@ -19,6 +19,7 @@ import se.bofr.dspi.core.FilterParams
 import se.bofr.dspi.feature.graph.LocalPeqGraphSelection
 import se.bofr.dspi.feature.graph.PeqGraphSelection
 import se.bofr.dspi.feature.home.components.ChannelSettingsView
+import se.bofr.dspi.feature.home.components.CrossoverRows
 import se.bofr.dspi.feature.home.components.FilterListView
 import se.bofr.dspi.feature.home.components.InputChannelHeader
 import se.bofr.dspi.ui.BandFields
@@ -94,6 +95,16 @@ fun OutputChannelDetail(
         )
     Column(modifier, verticalArrangement = Arrangement.spacedBy(16.dp)) {
         ChannelSettingsView(bridge, outputIndex, onNavigate)
+        // -- WP UAN -- (UXP B10) the crossover in two rows, and the same for the stereo partner in one step
+        val connected = bridge.observeStatus { it.connected }
+        val card = bridge.outputCards().firstOrNull { it.left == outputIndex && it.right != null }
+        CrossoverRows(
+            xo = bands?.xover?.map { it.toFields() } ?: emptyList(),
+            connected = connected,
+            onSet = { band, type, freq -> bridge.setCrossover(ch, band, type.raw, freq) },
+            partnerName = card?.let { c -> sameForWords(c.title.isNotEmpty(), bridge.channelLabel(2 + c.right!!)) },
+            onSameForPartner = { card?.right?.let { r -> bridge.copyCrossover(ch, 2 + r) } }
+        )
         when (tab) {
             OutputChannelTab.PEQ ->
                 FilterListView(
@@ -121,3 +132,8 @@ fun OutputChannelDetail(
         }
     }
 }
+
+// -- WP UAN --
+/** The partner's button: "Same for the right side" for an L/R pair the routing says is one, else "Same for <its label>". */
+fun sameForWords(leftRightPair: Boolean, partnerLabel: String): String =
+    if (leftRightPair) "Same for the right side" else "Same for $partnerLabel"

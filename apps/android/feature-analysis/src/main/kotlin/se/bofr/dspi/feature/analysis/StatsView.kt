@@ -425,7 +425,7 @@ private fun StarvationSection(state: StatsUiState, buffers: StateFlow<BufferStat
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
-                    color = MacColors.red
+                    color = MacColors.dangerText // -- WP UAN --
                 )
                 Box(Modifier.width(6.dp))
             }

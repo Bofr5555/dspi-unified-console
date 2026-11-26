@@ -70,12 +70,15 @@ import androidx.compose.ui.input.pointer.isPrimaryPressed
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.util.Locale
@@ -208,6 +211,21 @@ internal fun nextHudField(field: PeqHudField, p: FilterParams, backwards: Boolea
     return order[((i + (if (backwards) -1 else 1)) % order.size + order.size) % order.size]
 }
 
+// -- WP UAN --
+/** Test tag of the value dialog's ± button (a gain's sign: the number pad has no minus on most keyboards). */
+const val PEQ_SIGN_TAG = "peq-value-sign"
+
+/** -- WP UAN -- [text] with its sign flipped: "3" -> "-3", "-3" -> "3", "+3" -> "-3"; blank stays blank. */
+internal fun flipSign(text: String): String {
+    val t = text.trim()
+    return when {
+        t.isEmpty() -> t
+        t.startsWith("-") -> t.drop(1)
+        t.startsWith("+") -> "-" + t.drop(1)
+        else -> "-$t"
+    }
+}
+
 /** The text a field opens with: the bare number, as macOS `beginEditing` seeds it. */
 internal fun hudEditSeed(field: PeqHudField, p: FilterParams): String = when (field) {
     PeqHudField.FREQ -> PeqValueText.shortFrequency(p.freq.toDouble())
@@ -250,6 +268,9 @@ fun PeqGraphEditorView(
     val density = LocalDensity.current.density
     val focus = remember { FocusRequester() }
     val gestures = remember(editor) { PeqTouchGestures(editor) }
+    // -- WP UAN -- the last press was a finger (or a stylus), on a phone-wide window
+    var touched by remember { mutableStateOf(false) }
+    val narrow = LocalConfiguration.current.screenWidthDp < PEQ_SHEET_BELOW_DP
     val currentZoom by rememberUpdatedState(onZoom)
     val currentZoomRange by rememberUpdatedState(onZoomRange)
     val currentDensity by rememberUpdatedState(density)
@@ -358,6 +379,7 @@ fun PeqGraphEditorView(
                                 val dens = currentDensity.toDouble()
                                 val p = PeqPoint(change.position.x / dens, change.position.y / dens)
                                 val mods = modsOf(ev.keyboardModifiers)
+                                if (ev.type == PointerEventType.Press) touched = change.type != PointerType.Mouse // -- WP UAN --
                                 if (change.type == PointerType.Mouse) {
                                     // A mouse gets the macOS targets (10 / 6 points).
                                     editor.hitRadius = PeqGraphEditor.Tuning.NODE_HIT_RADIUS
@@ -466,7 +488,10 @@ fun PeqGraphEditorView(
 
         PeqBandHandles(editor, handles.value, editor.bypassSupported)
         PeqReadouts(labels, w, h)
-        hud.value?.let { state -> PeqBandHud(editor, state) { editField = it } }
+        // -- WP UAN -- (UXP A12) a finger on a phone gets the band sheet; a mouse and a tablet the chip
+        hud.value?.let { state ->
+            if (touched && narrow) PeqBandSheet(editor, state) { editField = it } else PeqBandHud(editor, state) { editField = it }
+        }
         card.value?.let { origin -> PeqAddBandCard(editor, origin) }
 
         menu?.let { (items, at) ->
@@ -578,6 +603,17 @@ private fun PeqHudTextDialog(editor: PeqGraphEditor, field: PeqHudField, onField
         val next = now?.let { nextHudField(field, it, backwards) }
         if (next == null || next == field) close() else onField(next)
     }
+    // -- WP UAN --
+    val sign: (@Composable () -> Unit)? = if (field == PeqHudField.GAIN) {
+        {
+            TextButton(onClick = {
+                text = flipSign(text)
+                failed = false
+            }, modifier = Modifier.testTag(PEQ_SIGN_TAG)) { Text("±") }
+        }
+    } else {
+        null
+    }
     AlertDialog(
         onDismissRequest = close,
         title = { Text(title) },
@@ -591,7 +627,9 @@ private fun PeqHudTextDialog(editor: PeqGraphEditor, field: PeqHudField, onField
                     },
                     singleLine = true,
                     isError = failed,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    // -- WP UAN -- (UXP A12) the number pad, not the text keyboard; a gain's sign is the ± button
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+                    trailingIcon = sign,
                     keyboardActions = KeyboardActions(onDone = { if (apply()) close() }),
                     modifier =
                     Modifier.onPreviewKeyEvent { e ->

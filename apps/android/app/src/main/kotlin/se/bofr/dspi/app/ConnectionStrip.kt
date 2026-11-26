@@ -99,6 +99,48 @@ enum class RemoteAction(val label: String) {
 /** Android keeps a USB grant only until unplug; the "Always open" tick is what persists it. */
 const val USB_ALWAYS_OPEN_HINT = "Tick \"Always open\" in Android's dialog and it will not ask again."
 
+// -- WP UAN -- (UXP A11)
+/**
+ * A phone's strip shows these actions as buttons on the bar, not behind "⋮": the way out of the
+ * demo or a file, and USB access (the strip's one job then); DSPi Link's stay in the overflow.
+ */
+val ConnectionStrip.actionsOnBar: Boolean
+    get() = this is ConnectionStrip.Demo || this is ConnectionStrip.Document || this is ConnectionStrip.NeedsPermission
+
+/** The sentence a phone's strip shows on a line of its own ([USB_ALWAYS_OPEN_HINT]), not only on a long-press; null none. */
+val ConnectionStrip.inlineHint: String?
+    get() = USB_ALWAYS_OPEN_HINT.takeIf { (this is ConnectionStrip.NeedsPermission || this is ConnectionStrip.Info) && text.endsWith(it) }
+
+/** -- WP UAN -- The notice when the USB DSPi goes away (A11: a cable bump was silent). */
+const val USB_LOST_NOTICE = "DSPi disconnected. Changes not saved to the device are lost when it loses power."
+
+/** -- WP UAN -- The notice when it is back after [USB_LOST_NOTICE]. */
+const val USB_BACK_NOTICE = "DSPi reconnected over USB."
+
+/**
+ * -- WP UAN -- (UXP A11) The notices of a USB loss and return, from the strip's changes: the open
+ * DSPi going away says [USB_LOST_NOTICE], and the next open DSPi after it [USB_BACK_NOTICE].
+ * Choosing the demo, a file or DSPi Link is no loss, and forgets one.
+ */
+class UsbLossNotices {
+    private var last: ConnectionStrip? = null
+    private var lost = false
+
+    /** The notice [strip] brings after the one before it; null none. */
+    fun next(strip: ConnectionStrip): String? {
+        val before = last
+        last = strip
+        val gone = strip == ConnectionStrip.NoDevice || strip is ConnectionStrip.NeedsPermission || strip is ConnectionStrip.Info
+        val elsewhere = strip == ConnectionStrip.Demo || strip is ConnectionStrip.Document || strip is ConnectionStrip.Remote
+        return when {
+            strip == ConnectionStrip.Usb -> USB_BACK_NOTICE.takeIf { lost }.also { lost = false }
+            before == ConnectionStrip.Usb && gone -> USB_LOST_NOTICE.also { lost = true }
+            elsewhere -> null.also { lost = false }
+            else -> null
+        }
+    }
+}
+
 // -- WP AN5 --
 /**
  * CG10's wording for a [LinkPhase] (`link_phase_text`): the one source of the

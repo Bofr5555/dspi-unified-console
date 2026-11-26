@@ -219,9 +219,17 @@ interface Installer {
         /** S2: "an output above -10 dB gain has no limiter". */
         const val UNPROTECTED_GAIN_DB = -10f
 
-        /** The manifest's platform class whose default mode is Simple: this app's (UI-MODES section 5). */
+        /**
+         * This app's platform class in the manifest (UI-MODES section 5). -- WP UAN -- the one that is neither the
+         * desktop's nor the web's: it was found as the class whose default is Simple, which no class is since owner
+         * D9 (phones open in Advanced).
+         */
         fun platformOf(m: ModeManifest): String =
-            m.platforms.firstOrNull { p -> m.modes.any { it.id == SIMPLE && p in it.defaultOn } } ?: m.platforms.firstOrNull().orEmpty()
+            m.platforms.firstOrNull { it != DESKTOP_PLATFORM && it != WEB_PLATFORM } ?: m.platforms.firstOrNull().orEmpty()
+
+        /** -- WP UAN -- the manifest's other platform classes. */
+        private const val DESKTOP_PLATFORM = "desktop"
+        private const val WEB_PLATFORM = "web"
 
         const val SIMPLE = "simple"
         const val ADVANCED = "advanced"

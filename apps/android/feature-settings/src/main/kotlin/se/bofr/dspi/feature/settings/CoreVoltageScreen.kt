@@ -94,7 +94,7 @@ fun CoreVoltageScreen(bridge: DspiBridge, canWrite: Boolean, onBack: () -> Unit)
                 error?.let {
                     Text(
                         it,
-                        color = MacColors.orange,
+                        color = MacColors.warningText, // -- WP UAN --
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp).testTag(CORE_VOLTAGE_ERROR_TAG)
                     )
                 }

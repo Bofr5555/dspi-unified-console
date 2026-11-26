@@ -2,8 +2,8 @@
   "version": 1,
   "platforms": ["phone", "desktop", "web"],
   "modes": [
-    {"id": "simple", "label": "Simple", "defaultOn": ["phone"], "needsPinWhenSet": false},
-    {"id": "advanced", "label": "Advanced", "defaultOn": ["desktop", "web"], "needsPinWhenSet": false},
+    {"id": "simple", "label": "Simple", "defaultOn": [], "needsPinWhenSet": false},
+    {"id": "advanced", "label": "Advanced", "defaultOn": ["phone", "desktop", "web"], "needsPinWhenSet": false},
     {"id": "installer", "label": "Installer", "defaultOn": [], "needsPinWhenSet": true}
   ],
   "lockedUser": {

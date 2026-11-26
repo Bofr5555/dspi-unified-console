@@ -12,6 +12,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -54,10 +56,12 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextLayoutResult
@@ -757,7 +761,13 @@ internal const val GRAPH_HEIGHT_STEP = 25.0
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun GraphLegend(bridge: DspiBridge, modifier: Modifier = Modifier) {
+fun GraphLegend(
+    bridge: DspiBridge,
+    modifier: Modifier = Modifier,
+    // -- WP UAN -- (UXP B10) the graph page: a tap chooses the edited channel ([chosen]), a long-press shows or hides its curve
+    chosen: Int? = null,
+    onChoose: ((Int) -> Unit)? = null
+) {
     val stateRev by bridge.stateRevision.collectAsStateWithLifecycle()
     val magRev by bridge.magnitudesRevision.collectAsStateWithLifecycle()
     val connectedFlow = remember(bridge) { bridge.status.map { it.connected }.distinctUntilChanged() }
@@ -770,7 +780,8 @@ fun GraphLegend(bridge: DspiBridge, modifier: Modifier = Modifier) {
             val inputs = (0 until bridge.liveInputCount()).map { bridge.inputAppId(it) }
             val outputs =
                 (0 until bridge.numOutputChannels)
-                    .filter { bridge.outputEnabled(it) }
+                    // -- WP UAN -- (UXP A12) and not an unused output (the core's `hidden`: a playing one never is)
+                    .filter { bridge.outputEnabled(it) && !bridge.outputHidden(it) }
                     .map { bridge.rta.appChannel(DspiConstants.RTA_TAP_OUTPUT, it) }
             (inputs + outputs).filter { bridge.channelExists(it) }
         }
@@ -783,16 +794,37 @@ fun GraphLegend(bridge: DspiBridge, modifier: Modifier = Modifier) {
             val isVisible = remember(magRev, ch) { bridge.channelVisible(ch) }
             // The tap flips the CURRENT value, not the composed isVisible (audit G4).
             val color = channelColour(bridge, ch)
+            val toggle = { bridge.setChannelVisible(ch, !bridge.channelVisible(ch)) }
+            val isChosen = ch == chosen
+            // -- WP UAN -- choosing: "OUT1, tab, selected, curve shown" with Show/Hide curve as an action
+            val press = if (onChoose == null) {
+                // -- WP AN20 -- TalkBack: "OUT1, switch, on" (the curve shown)
+                Modifier.toggleable(value = isVisible, enabled = connected, role = Role.Switch) { toggle() }
+            } else {
+                Modifier.combinedClickable(
+                    enabled = connected,
+                    role = Role.Tab,
+                    onLongClickLabel = if (isVisible) "Hide curve" else "Show curve",
+                    onLongClick = toggle
+                ) { onChoose(ch) }.semantics {
+                    selected = isChosen
+                    stateDescription = if (isVisible) "curve shown" else "curve hidden"
+                }.testTag(GRAPH_LEGEND_PILL_TAG + ch)
+            }
             Row(
                 Modifier
-                    // -- WP AN20 -- TalkBack: "OUT1, switch, on" (the curve shown)
                     .clip(CircleShape)
-                    .background(if (isVisible) color.copy(alpha = 0.15f) else Color.Gray.copy(alpha = 0.1f))
-                    .border(1.dp, if (isVisible) color.copy(alpha = 0.5f) else Color.Transparent, CircleShape)
-                    .toggleable(value = isVisible, enabled = connected, role = Role.Switch) {
-                        bridge.setChannelVisible(ch, !bridge.channelVisible(ch))
-                    }
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                    .background(
+                        when {
+                            isChosen -> color.copy(alpha = 0.35f)
+                            isVisible -> color.copy(alpha = 0.15f)
+                            else -> Color.Gray.copy(alpha = 0.1f)
+                        }
+                    )
+                    .border(1.dp, if (isVisible && !isChosen) color.copy(alpha = 0.5f) else Color.Transparent, CircleShape)
+                    .then(press)
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                    .heightIn(min = if (onChoose == null) 0.dp else 32.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(Modifier.size(6.dp).clip(CircleShape).background(if (isVisible) color else Color.Gray.copy(alpha = 0.5f)))
@@ -807,6 +839,10 @@ fun GraphLegend(bridge: DspiBridge, modifier: Modifier = Modifier) {
         }
     }
 }
+
+// -- WP UAN --
+/** Test tag prefix of a choosing legend's pill; the app channel follows. */
+const val GRAPH_LEGEND_PILL_TAG = "graph-legend-"
 
 // -- WP P1EFIX3 --
 /** The graph's options button, as TalkBack says it. */
