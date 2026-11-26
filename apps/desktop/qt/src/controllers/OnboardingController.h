@@ -36,6 +36,14 @@ class QJSEngine;
 //           (restart the open device into its bootloader and install), reset()
 //   Without one, the step still tells a connected device's state and hands an
 //   update to the Firmware Update window (device.firmwareUpdate).
+// - -- WP UA4 -- A stage's `pc` block (getting_started.json, kept by the core
+//   only where this app is the console: windows_or_linux) replaces the
+//   stage's fields of the same name, so macOS and Android keep their words.
+//   A row may name a `layout` ("modern", "classic"): the wizard shows it in
+//   that layout only.
+// - -- WP UA4 -- The Overview's setup list (OverviewChecklist): per device
+//   (its serial), whether the person closed it and whether a measurement was
+//   seen, under onboarding/checklist/<serial>/.
 class OnboardingController : public QObject {
     Q_OBJECT
     QML_ELEMENT
@@ -55,6 +63,8 @@ class OnboardingController : public QObject {
     Q_PROPERTY(bool diagnosticsAvailable READ diagnosticsAvailable CONSTANT)
     Q_PROPERTY(bool savingDiagnostics READ savingDiagnostics NOTIFY savingDiagnosticsChanged)
     Q_PROPERTY(QObject *installer READ installer NOTIFY installerChanged)
+    // -- WP UA4 -- Moves when a device's setup list is closed or marked
+    Q_PROPERTY(int checklistRevision READ checklistRevision NOTIFY checklistChanged)
 public:
     OnboardingController(const AppContext &ctx, QObject *parent);
     static OnboardingController *create(QQmlEngine *, QJSEngine *);
@@ -89,6 +99,13 @@ public:
     // Advanced > Onboarding (developer): the next start runs setup from the
     // top and starts caught up on the notes again
     Q_INVOKABLE void resetOnboarding();
+    // -- WP UA4 -- The Overview's setup list of device `serial`: closed by the
+    // person (for good), and whether a measurement of it was seen
+    int checklistRevision() const { return m_checklistRevision; }
+    Q_INVOKABLE bool checklistClosed(const QString &serial) const;
+    Q_INVOKABLE void closeChecklist(const QString &serial);
+    Q_INVOKABLE bool measuredSeen(const QString &serial) const;
+    Q_INVOKABLE void noteMeasured(const QString &serial);
     // Help > Save Diagnostics...: a save dialog, then the core's bundle
     Q_INVOKABLE void saveDiagnostics();
     // The bundle to `path`, off the GUI thread (the smoke driver calls it)
@@ -99,6 +116,7 @@ signals:
     void whatsNewShownChanged();
     void installerChanged();
     void savingDiagnosticsChanged();
+    void checklistChanged();   // -- WP UA4 --
     // A message for the main window (the diagnostics' outcome)
     void notice(const QString &title, const QString &text, bool error);
 
@@ -106,6 +124,7 @@ private:
     AppContext m_ctx;
     bool m_wizard = false;
     bool m_saving = false;
+    int m_checklistRevision = 0;   // -- WP UA4 --
     QVariantMap m_gettingStarted;
     QVariantList m_releases;
     QVariantMap m_licence;

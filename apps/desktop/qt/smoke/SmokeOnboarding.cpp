@@ -9,6 +9,7 @@
 #include "AboutController.h"
 #include "BootloaderLocator.h"
 #include "FirmwareController.h"
+#include "LayoutController.h"
 #include "OnboardingController.h"
 #include "Registrar.h"
 #include "SettingsController.h"
@@ -96,9 +97,14 @@ QVariantMap qp17Stage(const QVariantMap &words, const char *id) {
 }
 
 // Every `text` (or plain string) of `list` is among `shown`
+// -- WP UA4 -- a row that names another layout is not shown in this one
 bool qp17AllShown(const QVariantList &list, const QStringList &shown) {
     if (list.isEmpty()) return false;
+    auto *layout = Registrar::instance<LayoutController>();
+    const QString here = layout && layout->modern() ? QStringLiteral("modern") : QStringLiteral("classic");
     for (const QVariant &v : list) {
+        const QString only = v.toMap().value(QStringLiteral("layout")).toString();
+        if (!only.isEmpty() && only != here) continue;
         const QString t = v.typeId() == QMetaType::QString ? v.toString() : v.toMap().value(QStringLiteral("text")).toString();
         if (t.isEmpty() || !shown.contains(t)) {
             std::printf("smoke:   not shown: %s\n", qPrintable(t));
