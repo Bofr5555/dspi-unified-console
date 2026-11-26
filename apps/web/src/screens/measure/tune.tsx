@@ -11,10 +11,13 @@ import { noticeRow } from "../../ui/texts";
 import type { MeasureTab, MeasureTabProps } from "./MeasureScreen";
 import { DocsTab } from "./docs";
 import { MeasureGraph } from "./graph";
-import { ROLES, displayName } from "./model";
+import { displayName } from "./model";
+import { baseOf } from "../settings/speakers/model"; // -- WP UB7 --
+import { useSpeakerLayout } from "../settings/speakers/use-layout"; // -- WP UB7 --
+import { LayoutSummary } from "../settings/speakers/LayoutSummary"; // -- WP UB7 --
 import { download } from "./setup";
 import { Glyph, NoticeRow } from "../../ui/design"; // -- WP WEB4 (INTD: ui/) --
-import { StepDots, Stepper } from "./parts"; // -- WP WEB4 -- -- WP WEB7 -- Stepper
+import { StepDots } from "./parts"; // -- WP WEB4 --
 import {
   CONFIRM_MS,
   checkWords,
@@ -56,6 +59,11 @@ export function TuneTab(props: MeasureTabProps) {
   const { desk, outputName } = props;
   const t = tuneDeskOf(desk);
   useTune(t, props);
+  // -- WP UB7 -- (UXP B7) the roles, speakers and groups are the speaker layout's (Qt's TuneSession)
+  const speakers = useSpeakerLayout(props.session);
+  const roles = speakers.loaded ? baseOf(speakers.view) : null;
+  const rolesKey = JSON.stringify(roles?.outputs.map((o) => [o.output, o.role, o.speaker, o.group]) ?? null);
+  useEffect(() => t.takeRoles(roles), [t, t.layout, rolesKey]);
   useEffect(() => {
     void t.enter();
     return () => void t.leave();
@@ -112,6 +120,8 @@ export function TuneTab(props: MeasureTabProps) {
           )}
           {l ? (
             <>
+              {/* -- WP UB7 -- (UXP B7) the speaker layout in one line, edited in Settings › Speakers; the outputs to tune as tick boxes, each with its feed */}
+              <LayoutSummary view={speakers.view} loaded={speakers.loaded} onEdit={props.openSpeakers} />
               <ul class="tune-layout m-rowlist m-outrows" aria-label="Outputs">
                 {l.outputs.map((o) => {
                   const on = !t.off.has(o.output);
@@ -120,32 +130,13 @@ export function TuneTab(props: MeasureTabProps) {
                       <label class="m-check m-outname">
                         <input type="checkbox" aria-label={`Tune ${outputName(o.output)}`} checked={on} disabled={!idle} onChange={(e) => t.setOn(o.output, (e.currentTarget as HTMLInputElement).checked)} /> {outputName(o.output)}
                       </label>
-                      <select aria-label={`Way of ${outputName(o.output)}`} class="m-combo m-way" value={o.role} disabled={!idle || !on} onChange={(e) => t.editOutput(o.output, { role: (e.currentTarget as HTMLSelectElement).value as typeof o.role })}>
-                        {ROLES.map((r) => (
-                          <option key={r.id} value={r.id}>
-                            {r.label}
-                          </option>
-                        ))}
-                      </select>
-                      <input class="m-speaker" aria-label={`Speaker of ${outputName(o.output)}`} value={o.speaker} size={4} maxLength={16} disabled={!idle || !on} onChange={(e) => t.editOutput(o.output, { speaker: (e.currentTarget as HTMLInputElement).value })} />
-                      <Stepper
-                        label={`Alignment group of ${outputName(o.output)}`}
-                        value={o.group}
-                        min={0}
-                        max={15}
-                        disabled={!idle || !on}
-                        onValue={() => undefined}
-                        onCommit={(g) => {
-                          if (Number.isInteger(g) && g >= 0 && g <= 15) t.editOutput(o.output, { group: g });
-                        }}
-                      />
                       <span class="m-caption m-feed">{feedWords(o)}</span>
                     </li>
                   );
                 })}
               </ul>
               <p class="m-caption" aria-label="Layout recognised">
-                {templateWords(l.template)} Each output's way, speaker and alignment group come from its crossover and its programme input; correct them here. One walked run measures each group.
+                {templateWords(l.template)} Untick an output to leave it out of this tune. One walked run measures each speaker's outputs together.
               </p>
               {l.notes.length ? (
                 <ul class="change-list notes">
@@ -174,9 +165,6 @@ export function TuneTab(props: MeasureTabProps) {
           </div>
           <p class="m-caption">Target: {desk.targetName ? desk.targetName : "the placement's default (our own curve)"}. Choose another on the Documents tab.</p>
           <div class="m-actions">
-            <button type="button" disabled={!idle} onClick={() => void t.loadLayout()}>
-              Propose from the Device
-            </button>
             <button type="button" class={src && !p ? "primary" : undefined} disabled={!idle || !src || !l} onClick={() => void t.propose()}>
               Propose a Tune
             </button>

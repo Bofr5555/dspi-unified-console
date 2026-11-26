@@ -41,6 +41,7 @@ import { RunPanel } from "./run";
 import { SetupPanel } from "./setup";
 import { WAT_TABS } from "./tune"; // -- WP P5WAT --
 import { SYSTEM_TABS } from "./system/SystemTab"; // -- WP ATWEB --
+import type { ChainTarget } from "../system/chain"; // -- WP UB7 --
 import { Glyph, NoticeRow } from "../../ui/design"; // -- WP WEB4 --
 import "./measure.css"; // -- WP WEB4 --
 
@@ -503,6 +504,8 @@ export interface MeasureTabProps {
   show: (id: string) => void;
   /** -- WP INTD -- Open another screen of the session (ScreenProps.go): Several units' "Hubs…". */
   go?: (screen: string) => void;
+  /** -- WP UB7 -- Settings › Speakers, the one place the speaker layout is edited. */
+  openSpeakers?: () => void;
 }
 
 export interface MeasureTab {
@@ -555,7 +558,7 @@ export function MeasureScreen(props: ScreenProps) {
   if (!snap) return null;
   // -- WP WEB7 -- (REVE D4) one Stop: on the Live tab the live view's own Stop Live is the stop
   const liveHere = tab.id === "live" && !!desk.live?.active && !desk.state?.active && !desk.passive;
-  const p: MeasureTabProps = { session, desk, ask: props.ask, blocked, outputName, outputs: rows.map((r) => r.index), show: setChosen, go: props.go };
+  const p: MeasureTabProps = { session, desk, ask: props.ask, blocked, outputName, outputs: rows.map((r) => r.index), show: setChosen, go: props.go, openSpeakers: props.open ? () => props.open?.({ screen: "settings", page: "speakers" } as unknown as ChainTarget) : undefined /* -- WP UB7 -- */ };
   return (
     <div class="measure-screen" role="region" aria-label="Measure">
       {/* -- WP WEB4 -- DL2's stop bar: an info notice with a secondary Stop; the error as an error notice */}

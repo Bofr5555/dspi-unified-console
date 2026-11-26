@@ -7,15 +7,11 @@ import { useEffect, useState } from "preact/hooks";
 import { useSessionState } from "../../../ui/components";
 import type { Session } from "../../../ui/session";
 import { outputLabel } from "../../main/model";
-import { noticeRow } from "../../../ui/texts";
-import { CLASS_WORDS, ROLE_WORDS, TWEETER_RULE, bannerOf, baseOf, evidenceWords, pillOf, stampWords, withRow, withoutRow, type SpeakerLayoutOutputRecord, type SpeakerLayoutRecord } from "./model";
+import { CLASS_WORDS, SUGGEST, TWEETER_RULE, bannerOf, baseOf, evidenceWords, stampWords, type SpeakerLayoutRecord } from "./model";
+import { SpeakerTable } from "./SpeakerTable"; // -- WP UB7 --
 import { useSpeakerLayout } from "./use-layout";
 import { Group } from "../../../ui/Group"; // -- WP WEB7 --
 import { Icon } from "../../../ui/icons"; // -- WP WEB7 --
-import { Pill } from "../../../ui/Pill"; // -- WP FIN015 --
-import { outputColour } from "../../eq/model"; // -- WP FIN015 --
-
-const ROLE_IDS = Object.keys(ROLE_WORDS) as SpeakerLayoutOutputRecord["role"][];
 
 /** The rows as the page compares them: output, role, speaker, group. */
 function same(a: SpeakerLayoutRecord | null, b: SpeakerLayoutRecord | null): boolean {
@@ -42,14 +38,6 @@ export function SpeakersPage(props: { session: Session }) {
   const confirmed = !!view.stored?.confirmedByUser && !edited;
   // -- WP ADETW -- the last detection's summary and evidence, under the rows
   const detection = view.stored?.detected ?? null;
-  const change = (o: number, patch: Partial<Omit<SpeakerLayoutOutputRecord, "output">>) => {
-    setDraft(withRow(draft, o, patch));
-    setStatus(null);
-  };
-  const use = (o: number, on: boolean) => {
-    setDraft(on ? withRow(draft, o, { speaker: view.proposal?.outputs.find((x) => x.output === o)?.speaker ?? "" }) : draft ? withoutRow(draft, o) : null);
-    setStatus(null);
-  };
   const confirm = async () => {
     if (!draft) return;
     const why = await keep(draft, true);
@@ -80,49 +68,20 @@ export function SpeakersPage(props: { session: Session }) {
         </p>
       ) : null}
       {ro ? <p class="note">{ro}: the speaker layout is shown, not changed.</p> : null}
-      <ul class="speakers-rows" aria-label="Speaker layout" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "10px" }}>
-        {rows.map((o) => {
-          // -- WP FIN015 -- (REVF D4) the channel pill and the label once, as Delay & Gain; the
-          // controls' names say both, as there
-          const label = outputLabel(s, snap.outputLabels, o);
-          const name = `OUT${o + 1} ${label}`;
-          const r = draft?.outputs.find((x) => x.output === o);
-          const off = s.outputEnabled?.[o] === false;
-          const pill = pillOf(draft, view.stored, o); // -- WP ADETW --
-          return (
-            <li key={o} aria-label={name} style={{ display: "flex", flexWrap: "wrap", gap: "4px 8px", alignItems: "center" }}>
-              <label class="speakers-who" style={{ flex: "1 1 12em", minWidth: 0, display: "inline-flex", alignItems: "center", gap: "8px" }}>
-                <input type="checkbox" aria-label={`${name} is in the layout`} disabled={!!ro} checked={!!r} onChange={(e) => use(o, (e.currentTarget as HTMLInputElement).checked)} />
-                <Pill text={`OUT${o + 1}`} colour={outputColour(s, o)} />
-                <span class="speakers-name" style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {label}
-                </span>
-                {off ? <span class="note">(off)</span> : null}
-              </label>
-              {pill ? (
-                <span class="speaker-pill" data-kind={pill.kind} aria-label={`${name}: ${pill.word}`} title={(pill.note && noticeRow(pill.note)?.reason) || pill.reason}>
-                  {pill.word}
-                </span>
-              ) : null}
-              <select aria-label={`Role of ${name}`} disabled={!!ro || !r} value={r?.role ?? "full"} onChange={(e) => change(o, { role: (e.currentTarget as HTMLSelectElement).value as SpeakerLayoutOutputRecord["role"] })}>
-                {ROLE_IDS.map((id) => (
-                  <option key={id} value={id}>
-                    {ROLE_WORDS[id]}
-                  </option>
-                ))}
-              </select>
-              <label class="note">
-                Speaker{" "}
-                <input type="text" aria-label={`Speaker of ${name}`} disabled={!!ro || !r} size={4} maxLength={64} value={r?.speaker ?? ""} onInput={(e) => change(o, { speaker: (e.currentTarget as HTMLInputElement).value })} />
-              </label>
-              <label class="note" title="The outputs of one speaker share a group: they are measured in one run and aligned to each other">
-                Group{" "}
-                <input type="number" aria-label={`Group of ${name}`} disabled={!!ro || !r} min={0} max={15} step={1} style={{ width: "4em" }} value={r?.group ?? 0} onInput={(e) => change(o, { group: Math.max(0, Math.min(15, Math.trunc(Number((e.currentTarget as HTMLInputElement).value) || 0))) })} />
-              </label>
-            </li>
-          );
-        })}
-      </ul>
+      {/* -- WP UB7 -- (UXP B7) the one table, with its headings */}
+      <SpeakerTable
+        s={s}
+        rows={rows}
+        label={(o) => outputLabel(s, snap.outputLabels, o)}
+        draft={draft}
+        stored={view.stored}
+        proposal={view.proposal}
+        readOnly={ro ?? ""}
+        onDraft={(next) => {
+          setDraft(next);
+          setStatus(null);
+        }}
+      />
       {hidden ? (
         <button type="button" onClick={() => setShowOff(true)} style={{ alignSelf: "flex-start" }}>
           Show the outputs that are off ({hidden})
@@ -176,7 +135,7 @@ export function SpeakersPage(props: { session: Session }) {
           Confirm
         </button>
         <button type="button" disabled={!!ro || !view.proposal || same(draft, view.proposal)} onClick={suggestion}>
-          Use the suggestion
+          {SUGGEST /* -- WP UB7 -- */}
         </button>
         <span class="note" role="status" aria-label="Speaker layout state">
           {/* -- WP ADETW -- every kept layout says how far it is trusted: confirmed, detected, or kept */}
