@@ -310,6 +310,8 @@ class DspiBridgeImpl(
     // -- WP P1AN2 --
     override val installer: Installer by lazy { InstallerImpl(this) }
 
+    override val speakers: SpeakerLayouts by lazy { SpeakerLayoutsImpl(this) } // -- WP UAN --
+
     // -- WP P2AN --
     override val hubServer: HubServer by lazy { HubServerImpl(this) }
 
@@ -1520,7 +1522,7 @@ class DspiBridgeImpl(
         if (map.outputOf(fromCh) < 0 || map.outputOf(toCh) < 0 || fromCh == toCh) return
         val from = map.wire(fromCh)
         val to = map.wire(toCh)
-        fire("setCrossover", Emit.CURVES) {
+        fire("copyCrossover", Emit.CURVES) {
             grouped(SAME_CROSSOVER_LABEL) {
                 for (band in 0 until MAX_XOVER_BANDS) {
                     val p = core.getState().xover[from][band]

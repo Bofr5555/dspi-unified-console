@@ -248,6 +248,8 @@ private fun SettingsDetail(
         SettingsCategory.INSTALLER -> InstallerSettingsTab(bridge, lockedUser = LocalUiMode.current == UiModes.LOCKED_USER)
         SettingsCategory.POWER_ON -> PowerOnSettingsTab(bridge, onOpen)
         SettingsCategory.EVENTS -> WritesExempt { EventsSettingsTab(bridge) } // -- WP P2AN -- read-only
+        // -- WP UAN -- the app's own files: the layout is kept on this phone, nothing is sent to the device
+        SettingsCategory.SPEAKERS -> WritesExempt { SpeakersSettingsTab(bridge) }
     }
 }
 

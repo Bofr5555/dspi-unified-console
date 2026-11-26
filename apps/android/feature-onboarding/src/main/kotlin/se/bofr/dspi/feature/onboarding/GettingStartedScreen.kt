@@ -34,6 +34,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -92,9 +93,12 @@ fun GettingStartedScreen(
     board: BoardStatus,
     onInstall: () -> Unit,
     onDone: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    // -- WP UAN -- (UXP B8) the Speakers step before Done (the shared step's place), drawn by the app
+    speakersStage: (@Composable () -> Unit)? = null,
+    speakersConfirmed: Boolean = false
 ) {
-    val stages = words.stages
+    val stages = remember(words, speakersStage != null) { withSpeakersStage(words.stages, speakersStage != null) }
     var index by rememberSaveable { mutableIntStateOf(0) }
     val stageIndex = index.coerceIn(0, (stages.size - 1).coerceAtLeast(0))
     val stage = stages.getOrNull(stageIndex)
@@ -124,6 +128,7 @@ fun GettingStartedScreen(
                 when {
                     stage == null -> Unit
                     stage.id == "board" -> BoardStage(stage, board, onInstall)
+                    stage.id == SPEAKERS_STAGE_ID && speakersStage != null -> speakersStage() // -- WP UAN --
                     else -> TextStage(stage)
                 }
             }
@@ -141,7 +146,8 @@ fun GettingStartedScreen(
                     Button(onClick = onDone) { Text(words.button("finish")) }
                 } else {
                     Button(onClick = { index = stageIndex + 1 }, modifier = Modifier.testTag(CONTINUE_TAG)) {
-                        Text(words.button("continue"))
+                        // -- WP UAN -- (owner D15) the Speakers step: Later by default, Continue once confirmed
+                        Text(if (stage?.id == SPEAKERS_STAGE_ID && !speakersConfirmed) SPEAKERS_LATER else words.button("continue"))
                     }
                 }
             }
@@ -214,6 +220,19 @@ private fun BoardStage(stage: OnboardingStage, board: BoardStatus, onInstall: ()
 }
 
 // -- WP UAN --
+/** The Speakers step's id (the shared assets/onboarding/speakers.json's). */
+const val SPEAKERS_STAGE_ID = "speakers"
+
+/** The footer's word on the Speakers step until the rows are confirmed (owner D15: Later by default). */
+const val SPEAKERS_LATER = "Later"
+
+/** [stages] with the Speakers step before Done ([with]), as the shared step is placed; once. */
+fun withSpeakersStage(stages: List<OnboardingStage>, with: Boolean): List<OnboardingStage> {
+    if (!with || stages.any { it.id == SPEAKERS_STAGE_ID }) return stages
+    val at = stages.indexOfFirst { it.id == "done" }.let { if (it < 0) stages.size else it }
+    return stages.take(at) + OnboardingStage(SPEAKERS_STAGE_ID, "Speakers", "Which output drives what?") + stages.drop(at)
+}
+
 /** Test tag of the wizard's Continue button. */
 const val CONTINUE_TAG = "getting-started-continue"
 

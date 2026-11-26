@@ -1062,6 +1062,10 @@ interface DspiBridge {
     /** Snapshots, A/B, safe apply, import preview and offline documents. Test doubles get [Snapshots.Unavailable]. */
     val snapshots: Snapshots get() = Snapshots.Unavailable
 
+    // -- WP UAN -- (UXP B8)
+    /** The speaker layout (roles) of the open device. Test doubles get [SpeakerLayouts.Unavailable]. */
+    val speakers: SpeakerLayouts get() = SpeakerLayouts.Unavailable
+
     // -- WP P1AN2 --
     /** The installer's lock and limits, the mode manifest, notices, protect all, AutoEQ preview. Test doubles: [Installer.Unavailable]. */
     val installer: Installer get() = Installer.Unavailable

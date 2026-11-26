@@ -116,6 +116,9 @@ class DspiApplication : Application() {
     /** -- WP P1AN2 -- the installer's limits profiles and PINs (`limits_set_dir`), app-private. */
     private fun limitsFolder(): String = java.io.File(filesDir, "limits").path
 
+    // -- WP UAN -- the core's speaker layouts, one subfolder per serial (as the limits)
+    private fun speakersFolder(): String = java.io.File(filesDir, "speakers").path
+
     // -- WP LKFAST -- the core's DSPi Link hub memory (a hub met without TLS, the hub bound last)
     private fun linkFolder(): String = java.io.File(filesDir, "dspi-link").path
 
@@ -131,6 +134,7 @@ class DspiApplication : Application() {
         bridge = DspiBridgeImpl(deviceCore, appScope, linkStore = linkStore, appVersion = version)
         // -- WP P1AN2 -- named before a device opens (the FFI thread runs it before the USB attach)
         appScope.launch { bridge.installer.setFolder(limitsFolder()) }
+        appScope.launch { bridge.speakers.setFolder(speakersFolder()) } // -- WP UAN -- (UXP B8) the speaker layouts
         val services = SharedServiceControl(AndroidServiceControl(this))
         val usb = AndroidUsbSession(this, bridge, appScope, service = services.client("usb"))
         session = usb
@@ -162,7 +166,12 @@ class DspiApplication : Application() {
                     log = { Log.i(TAG, it) },
                     onClose = { network.setSessionActive(false) },
                     findsHubs = { linkSettings.settings.value.findAutomatically } // -- WP LKFAST3 --
-                ).also { r -> appScope.launch { r.bridge.installer.setFolder(limitsFolder()) } } // -- WP P1AN2 --
+                ).also { r ->
+                    appScope.launch {
+                        r.bridge.installer.setFolder(limitsFolder()) // -- WP P1AN2 --
+                        r.bridge.speakers.setFolder(speakersFolder()) // -- WP UAN --
+                    }
+                }
             },
             unsecuredAcks = UnsecuredAckStore(PrefsKeyValue(this, "dspi_link_unsecured_acks")), // -- WP ANSEC --
             // -- WP LKFAST -- the user left the hub: no dial at the next start (a small file write)

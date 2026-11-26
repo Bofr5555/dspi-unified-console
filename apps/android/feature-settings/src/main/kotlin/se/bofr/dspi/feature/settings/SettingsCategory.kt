@@ -13,6 +13,9 @@ enum class SettingsCategory(val title: String, val tint: Long, val id: String) {
     OVERVIEW("Overview", 0xFF627080, "overview"),
     SPDIF_INPUT("Inputs", 0xFF04856F, "spdifInput"),
     OUTPUT_ASSIGNMENT("Outputs", 0xFF0278C7, "outputAssignment"),
+
+    // -- WP UAN -- (UXP B8) which output drives what
+    SPEAKERS("Speakers", 0xFF3C7A5A, "speakers"),
     I2S_CONFIG("I2S Configuration", 0xFFBA3822, "i2sConfig"),
     GLOBAL_PARAMS("Global Parameters", 0xFF807701, "globalParams"),
     CONTROL_SURFACES("Control Surfaces", 0xFF8354A0, "controlSurfaces"),
@@ -60,7 +63,8 @@ enum class SettingsCategory(val title: String, val tint: Long, val id: String) {
         val groups: List<Pair<String, List<SettingsCategory>>> = listOf(
             "Application" to listOf(GENERAL, ADVANCED, NETWORKING),
             "Display" to listOf(GRAPHING, SPECTRUM),
-            "System" to listOf(OVERVIEW, SPDIF_INPUT, OUTPUT_ASSIGNMENT, I2S_CONFIG, GLOBAL_PARAMS, EVENTS), // -- WP P2AN -- History
+            // -- WP P2AN -- History; -- WP UAN -- Speakers
+            "System" to listOf(OVERVIEW, SPDIF_INPUT, OUTPUT_ASSIGNMENT, SPEAKERS, I2S_CONFIG, GLOBAL_PARAMS, EVENTS),
             "Control" to listOf(CONTROL_SURFACES, CONTROL_INTERFACES, CHANNEL_GROUPS, MACROS, AUX_OUTPUTS),
             // -- WP P1AN2 --
             "Installer" to listOf(INSTALLER, POWER_ON)
