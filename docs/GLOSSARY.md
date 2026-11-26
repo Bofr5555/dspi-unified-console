@@ -2,6 +2,8 @@
 
 *WP P0U, 2026-11-12. The source of truth for the words every client shows.*
 
+*For users: the words page is [`docs/manual/words.md`](manual/words.md) (WP UFW); this file is the writers' list.*
+
 The parameter registry (`crates/dspi-proto/src/registry.rs`) gives each parameter a `label`, a `plain` line of help, a unit
 and a range. This file explains the words in it. Clients take labels, help lines, units and ranges from the core (the registry
 through `describe` on the web, `by_path(..)` in the Terminal) and follow this file where they still write their own text.

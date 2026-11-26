@@ -391,9 +391,10 @@ fn family_check(name: &str, lp: u8, hp: u8, anchored: bool) {
         let chains = family_chains(lp, hp, f1);
         let (_, aligned, xo) = tuned(lp, hp, f1).unwrap();
         let may_keep = f1 < 200.0 || !anchored;
+        // -- WP UFW -- the notes count the outputs from 1
         let held_note = |notes: &[String], low: u8, high: u8| {
             notes.iter().any(|n| {
-                n.contains(&format!("outputs {low} and {high}"))
+                n.contains(&format!("outputs {} and {}", low + 1, high + 1))
                     && n.contains("could not be settled")
             })
         };
@@ -520,7 +521,7 @@ fn wp_p5follow_bw3_at_120_hz_without_the_anchor_is_kept() {
         aligned
             .notes
             .iter()
-            .any(|n| n.contains("outputs 0 and 1") && n.contains("could not be settled")),
+            .any(|n| n.contains("outputs 1 and 2") && n.contains("could not be settled")), // -- WP UFW -- from 1
         "{:#?}",
         aligned.notes
     );
@@ -529,7 +530,7 @@ fn wp_p5follow_bw3_at_120_hz_without_the_anchor_is_kept() {
     assert!(
         xo.notes
             .iter()
-            .any(|n| n.contains("outputs 0 and 1") && n.contains("could not be settled")),
+            .any(|n| n.contains("outputs 1 and 2") && n.contains("could not be settled")), // -- WP UFW -- from 1
         "{:#?}",
         xo.notes
     );

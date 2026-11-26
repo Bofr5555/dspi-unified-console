@@ -1257,6 +1257,10 @@ pub(crate) fn changes(saved: &DspState, live: &DspState, sources: &[String]) -> 
     let mut d = Rows {
         out: Vec::new(),
         live,
+        outputs: dspi_session::output_label::output_labels(&crate::output_labels::source(live))
+            .into_iter()
+            .map(|l| l.label)
+            .collect(),
     };
     d.global(saved);
     d.loudness_and_crossfeed(saved);
@@ -1294,6 +1298,9 @@ pub(crate) fn changes(saved: &DspState, live: &DspState, sources: &[String]) -> 
 struct Rows<'a> {
     out: Vec<String>,
     live: &'a DspState,
+    /// -- WP UFW -- (UXP A10) each output's label as every page shows it
+    /// ("Out 1 · L"), in output order
+    outputs: Vec<String>,
 }
 
 impl Rows<'_> {
@@ -1325,8 +1332,13 @@ impl Rows<'_> {
         });
     }
 
-    /// The live label of wire channel `ch`, or `fallback`.
+    /// The live label of wire channel `ch`, or `fallback`: an output's is the
+    /// core's output label (-- WP UFW --), not the firmware's slot name.
     fn label(&self, ch: usize, fallback: impl FnOnce() -> String) -> String {
+        let output = ch.checked_sub(usize::from(self.live.num_input_channels));
+        if let Some(label) = output.and_then(|o| self.outputs.get(o)) {
+            return label.clone();
+        }
         channel_label(self.live, ch).unwrap_or_else(fallback)
     }
 
@@ -1601,7 +1613,9 @@ impl Rows<'_> {
         let l = self.live;
         let first_output = usize::from(l.num_input_channels);
         for i in 0..usize::from(l.num_output_channels) {
-            let name = self.label(first_output.saturating_add(i), || format!("Output {i}"));
+            let name = self.label(first_output.saturating_add(i), || {
+                format!("Out {}", i.saturating_add(1))
+            });
             let flag = |v: &[bool]| v.get(i).copied().unwrap_or(false);
             let num = |v: &[f32]| v.get(i).copied().unwrap_or(0.0);
             let group = |v: &[u8]| v.get(i).copied().unwrap_or(0);
@@ -1774,7 +1788,9 @@ impl Rows<'_> {
         }
 
         for i in 0..outputs {
-            let name = self.label(inputs.saturating_add(i), || format!("Output {i}"));
+            let name = self.label(inputs.saturating_add(i), || {
+                format!("Out {}", i.saturating_add(1))
+            });
             let flag = |v: &[bool]| v.get(i).copied().unwrap_or(false);
             let num = |v: &[f32]| v.get(i).copied().unwrap_or(0.0);
             let mut what = Vec::new();
@@ -3186,6 +3202,40 @@ mod tests {
         changes(saved, live, &[])
     }
 
+    /// -- WP UFW -- output `o`'s label as the pages show it
+    fn out_label(s: &DspState, o: usize) -> String {
+        dspi_session::output_label::output_labels(&crate::output_labels::source(s))[o]
+            .label
+            .clone()
+    }
+
+    // -- WP UFW -- (UXP A10) the unsaved list names an output as every page
+    // does ("Out 1 · L"), not by the firmware's slot name ("SPDIF 1 L")
+    #[test]
+    fn wp_ufw_an_output_row_says_the_pages_label() {
+        let mut saved = base();
+        saved.matrix_routing[0][0] = true;
+        let mut l = saved.clone();
+        l.output_gain_db[0] = -1.0;
+        l.output_muted[2] = true;
+        let got = rows(&saved, &l);
+        assert_eq!(got.len(), 2, "{got:?}");
+        assert!(
+            got[0].starts_with("Out 1 · L") && got[0].ends_with(" gain: 0.0 dB → -1.0 dB"),
+            "{got:?}"
+        );
+        assert_eq!(got[1], format!("{} muted", out_label(&l, 2)));
+        assert!(
+            got.iter()
+                .all(|r| !r.contains("SPDIF") && !r.contains("I2S")),
+            "{got:?}"
+        );
+        // A name the user gave stays the name
+        l.channel_names[2] = "Left woofer".into();
+        saved.channel_names[2] = "Left woofer".into();
+        assert_eq!(rows(&saved, &l)[0], "Left woofer gain: 0.0 dB → -1.0 dB");
+    }
+
     #[test]
     fn clean1_every_kind_of_row_in_the_consoles_words_and_order() {
         let saved = base();
@@ -3219,6 +3269,7 @@ mod tests {
         l.master_volume_db = -200.0;
         l.input_preamp_db[1] = -3.0;
         let tube_was = dspi_session::tube::type_name(1);
+        let out = |o| out_label(&l, o); // -- WP UFW --
         assert_eq!(
             rows(&saved, &l),
             [
@@ -3235,16 +3286,16 @@ mod tests {
                 "Subharm selectivity: all material → percussive".into(),
                 "Subharm sub ceiling: -3 dBFS → off".into(),
                 format!("Tube type: {tube_was} → Custom"),
-                "SPDIF 1 L limiter threshold: -1.0 → -3.0 dBFS".into(),
+                format!("{} limiter threshold: -1.0 → -3.0 dBFS", out(0)),
                 "Centre mode: Sinner → Off".into(),
                 "Leveller speed: Medium → Fast".into(),
                 // -- WP CG-SWS-a -- the firmware names inputs by the (new) source
                 "I2S 1 L delay: 0 ms → 1.25 ms".into(),
                 "2 crosspoints changed".into(),
-                "SPDIF 1 R muted".into(),
-                "SPDIF 1 R gain: 0.0 dB → -1.0 dB".into(),
+                format!("{} muted", out(1)),
+                format!("{} gain: 0.0 dB → -1.0 dB", out(1)),
                 "1 band changed on I2S 1 R".into(),
-                "2 crossover bands changed on PDM".into(),
+                format!("2 crossover bands changed on {}", out(4)),
                 "'' → 'Sub'".into(),
                 "1 pin assignment changed".into(),
                 "Input source: USB → I2S".into(),
@@ -3265,7 +3316,11 @@ mod tests {
             rows(&saved, &l),
             [
                 "Master Volume: -20.0 dB → -30.0 dB",
-                &format!("SPDIF 2 L limiter: {}", enabled(l.limiter_enabled[2])),
+                &format!(
+                    "{} limiter: {}",
+                    out_label(&l, 2),
+                    enabled(l.limiter_enabled[2])
+                ),
                 &format!(
                     "BCK pin: GPIO {} → GPIO {}",
                     saved.i2s_bck_pin, l.i2s_bck_pin
@@ -3341,18 +3396,11 @@ mod tests {
             .iter()
             .map(|r| r.trim_end_matches(" delay: 0 ms → 1 ms").to_owned())
             .collect();
-        assert_eq!(
-            names,
-            [
-                "USB 1",
-                "USB 2",
-                "SPDIF 1 L",
-                "SPDIF 1 R",
-                "SPDIF 2 L",
-                "SPDIF 2 R",
-                "PDM"
-            ]
-        );
+        // -- WP UFW -- an input by its firmware name, an output by the pages' label
+        let mut want = vec!["USB 1".to_owned(), "USB 2".to_owned()];
+        want.extend((0..5).map(|o| out_label(&l, o)));
+        assert_eq!(names, want);
+        assert_eq!(want[2..4], ["Out 1 · L", "Out 2 · R"]);
         // A name, when there is one.
         l.channel_names[6] = "Sub".into();
         let mut s = saved.clone();

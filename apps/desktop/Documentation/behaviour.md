@@ -520,7 +520,7 @@ and the hand runs), plus the keys seen only when a control was changed by hand. 
 |---|---|---|---|
 | `onboarding/setupDone` | bool | false | Getting Started finished or skipped |
 | `onboarding/whatsNewShown` | string | — | last app version whose What's New was shown |
-| `settingsWindow/lastPage` | string | `about` | last Settings page as a lower-case id; observed values `about` and `updates` (the other ids are not observed) |
+| `settingsWindow/lastPage` | string | `about` | last Settings page as a lower-case id; observed values `about` and `updates` (the other ids are not observed). -- WP UA5 -- This app: none; the last page the person chose (a fallback is not stored); without one Settings opens on Device › Speakers, on About while no device is open |
 | `sidebar/showMaster` | bool | false | volume mode: false = User Volume, true = Master (M47) |
 | `sidebar/width` | int | 270 | sidebar width, px |
 | `dashboard/cardsPerRow` | int | 0 | overview cards per row, 0 = automatic (M59) |

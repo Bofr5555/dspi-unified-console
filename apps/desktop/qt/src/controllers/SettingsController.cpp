@@ -58,7 +58,10 @@ const Page advancedPage{ "advanced", SettingsRegistry::Application, 30, QT_TRANS
                            QT_TRANSLATE_NOOP("SettingsPages", "Show Debug Information"),
                            QT_TRANSLATE_NOOP("SettingsPages", "Diagnostics"), QT_TRANSLATE_NOOP("SettingsPages", "Firmware"),
                            QT_TRANSLATE_NOOP("SettingsPages", "Serial Number"),
-                           QT_TRANSLATE_NOOP("SettingsPages", "Core Voltage") } };
+                           QT_TRANSLATE_NOOP("SettingsPages", "Core Voltage"),
+                           // -- WP UA5 -- the protocol rows and Raw Request…, from About
+                           QT_TRANSLATE_NOOP("SettingsPages", "Protocol"),
+                           QT_TRANSLATE_NOOP("SettingsPages", "Raw Request") } };
 const Page graphingPage{ "graphing", SettingsRegistry::Display, 10, QT_TRANSLATE_NOOP("SettingsPages", "Graphing"),
                          "chart-line", "GraphingPage",
                          { QT_TRANSLATE_NOOP("SettingsPages", "Graph Line Glow"),
@@ -92,8 +95,21 @@ const Registrar::Window settingsWindow("edit.settings", "SettingsWindow");
 const char *const kLastPageKey = "settingsWindow/lastPage";
 const char *const kDebugKey = "advanced/showDebugInfo";
 const char *const kFirstPage = "about";
+// -- WP UA5 -- Where Settings opens when no page was chosen yet: where the work
+// is (Device › Speakers); About only when no device page can show
+const char *const kLandingPage = "speakers";
 
 QString translated(const char *text) { return QCoreApplication::translate("SettingsPages", text); }
+
+// -- WP UA5 -- The Device group in the order of the work: the speakers first,
+// the hardware overview last; pages not named here follow by their own order
+int deviceRank(const SettingsRegistry::PageEntry *p) {
+    static const std::array<const char *, 6> order{ "speakers", "outputs", "inputs", "global", "i2s", "overview" };
+    if (p->group != SettingsRegistry::System) return p->order;
+    for (size_t i = 0; i < order.size(); ++i)
+        if (qstrcmp(p->id, order[i]) == 0) return int(i);
+    return int(order.size()) + p->order;
+}
 
 // The page entries of one group, in order
 std::vector<const SettingsRegistry::PageEntry *> groupPages(SettingsRegistry::Group group) {
@@ -101,7 +117,8 @@ std::vector<const SettingsRegistry::PageEntry *> groupPages(SettingsRegistry::Gr
     for (const auto &p : SettingsRegistry::pages())
         if (p.group == group) list.push_back(&p);
     std::stable_sort(list.begin(), list.end(), [](auto *a, auto *b) {
-        return a->order != b->order ? a->order < b->order : qstrcmp(a->id, b->id) < 0;
+        const int ra = deviceRank(a), rb = deviceRank(b);   // -- WP UA5 --
+        return ra != rb ? ra < rb : qstrcmp(a->id, b->id) < 0;
     });
     return list;
 }
@@ -119,9 +136,13 @@ SettingsController::SettingsController(const AppContext &ctx, QObject *parent)
 
     QSettings settings;
     m_showDebugInfo = settings.value(QLatin1String(kDebugKey), false).toBool();
-    m_current = settings.value(QLatin1String(kLastPageKey), QLatin1String(kFirstPage)).toString();
-    if (!entry(m_current)) m_current = QLatin1String(kFirstPage);
+    // -- WP UA5 -- the last page chosen, else the landing page (chosen by the app)
+    m_current = settings.value(QLatin1String(kLastPageKey)).toString();
+    m_appChosen = !entry(m_current);
+    if (m_appChosen) m_current = QLatin1String(entry(QLatin1String(kLandingPage)) ? kLandingPage : kFirstPage);
     m_history = { m_current };
+    // -- WP UA5 -- Help › Keyboard Shortcuts (the Modern shell shows the list)
+    ctx.shell->addHandler(QStringLiteral("help.shortcuts"), this, [this]() { emit shortcutsRequested(); });
 
     connect(ctx.device, &DeviceModel::snapshotApplied, this, &SettingsController::onSnapshot);
     // Help > About opens Settings on its About page
@@ -209,10 +230,11 @@ void SettingsController::hookDeviceInfo() {
     });
 }
 
-// -- WP LAY6 -- (was sidebarRows' own)
+// -- WP LAY6 -- (was sidebarRows' own). -- WP UA5 -- the System group is the
+// Device tab in Modern: one name for it in the list, the tab and the palette
 static const std::array<const char *, 4> kGroupTitles{ QT_TRANSLATE_NOOP("SettingsController", "Application"),
                                                        QT_TRANSLATE_NOOP("SettingsController", "Display"),
-                                                       QT_TRANSLATE_NOOP("SettingsController", "System"),
+                                                       QT_TRANSLATE_NOOP("SettingsController", "Device"),
                                                        QT_TRANSLATE_NOOP("SettingsController", "Control") };
 
 // -- WP LAY6 --
@@ -309,16 +331,25 @@ void SettingsController::setShowDebugInfo(bool on) {
 
 // ---- Navigation (the Mac's history: back and forward through visited pages) ----
 
-void SettingsController::navigate(const QString &id, bool record) {
+void SettingsController::navigate(const QString &id, bool record, bool chosen) {
     if (record) {
-        if (id == m_current) return;
+        if (id == m_current) {
+            // -- WP UA5 -- the person chose the page the app had shown
+            if (chosen && m_appChosen) {
+                m_appChosen = false;
+                QSettings().setValue(QLatin1String(kLastPageKey), id);
+            }
+            return;
+        }
         // A fresh navigation drops the forward entries
         while (m_history.size() > m_historyIndex + 1) m_history.removeLast();
         m_history.append(id);
         m_historyIndex = int(m_history.size()) - 1;
     }
     m_current = id;
-    QSettings().setValue(QLatin1String(kLastPageKey), id);
+    // -- WP UA5 -- only a page the person chose is remembered, not a fallback
+    m_appChosen = !chosen;
+    if (chosen) QSettings().setValue(QLatin1String(kLastPageKey), id);
     emit currentPageChanged();
     if (id == QLatin1String("overview") || id == QLatin1String("spectrum") || id == QLatin1String("advanced"))
         refreshDeviceFacts();
@@ -343,9 +374,30 @@ void SettingsController::forward() {
     ensureShown();   // -- WP QTSENDER --
 }
 
+bool SettingsController::canShow(const QString &id) const {
+    return isShown(id) && !senderLocked(entry(id));
+}
+
+// -- WP UA5 -- The page Settings opens on: the last page chosen, else Device ›
+// Speakers, else About (no device, or the alink sender)
+QString SettingsController::landingPage() const {
+    const QString last = QSettings().value(QLatin1String(kLastPageKey)).toString();
+    if (entry(last) && canShow(last)) return last;
+    if (canShow(QLatin1String(kLandingPage))) return QLatin1String(kLandingPage);
+    return QLatin1String(kFirstPage);
+}
+
 void SettingsController::ensureShown() {
-    // -- WP QTSENDER -- nor a page the sender greys
-    if (!isShown(m_current) || senderLocked(entry(m_current))) navigate(QLatin1String(kFirstPage), true);
+    // -- WP QTSENDER -- nor a page the sender greys. -- WP UA5 -- to the landing
+    // page, not remembered
+    if (!canShow(m_current)) navigate(landingPage(), true, false);
+}
+
+void SettingsController::land() {
+    // A page the app chose (About while no device was open) gives way to the
+    // landing page once it can show; a page the person chose stays
+    if (m_appChosen && landingPage() != m_current) navigate(landingPage(), true, false);
+    ensureShown();
 }
 
 void SettingsController::showPage(const QString &id) {

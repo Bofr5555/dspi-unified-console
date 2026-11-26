@@ -293,7 +293,8 @@ void perGeneration(Run &r, const Generation &g) {
     d.check(QStringLiteral("pgqt: %1: no request the generation must not get").arg(name), r.violations() == 0);
 }
 
-// Settings > About's rows on a paged device, and the raw dialog
+// Settings > Advanced's protocol rows on a paged device, and the raw dialog
+// (-- WP UA5 -- they were About's)
 void aboutPage(Run &r) {
     SmokeDriver &d = r.d;
     auto *s = Registrar::instance<SettingsController>();
@@ -303,18 +304,18 @@ void aboutPage(Run &r) {
     auto *w = qobject_cast<QQuickWindow *>(d.app().shell->openWindow(QStringLiteral("edit.settings")));
     if (!w) return;
     d.waitFor(3000, [&]() { return w->isVisible(); });
-    s->open(QStringLiteral("about"));
+    s->open(QStringLiteral("advanced"));
     d.spin(300);
-    d.waitFor(2000, [&]() { return visibleItem(w->contentItem(), QStringLiteral("About.raw")) != nullptr; });
+    d.waitFor(2000, [&]() { return visibleItem(w->contentItem(), QStringLiteral("Advanced.raw")) != nullptr; });
     QQuickItem *gen = visibleItem(w->contentItem(), QStringLiteral("DeviceInfoRows.generation"));
-    d.check(QStringLiteral("pgqt: Settings > About shows the device's generation row"),
+    d.check(QStringLiteral("pgqt: Settings > Advanced shows the device's generation row"),
             gen && gen->property("value").toString() == QLatin1String("paged: firmware 1.1.7 and later"));
-    d.check(QStringLiteral("pgqt: screenshot of About on G2b"), d.grab(w, QStringLiteral("pgqt-about-g2b.png")));
-    QQuickItem *button = visibleItem(w->contentItem(), QStringLiteral("About.raw"));
+    d.check(QStringLiteral("pgqt: screenshot of Advanced on G2b"), d.grab(w, QStringLiteral("pgqt-advanced-g2b.png")));
+    QQuickItem *button = visibleItem(w->contentItem(), QStringLiteral("Advanced.raw"));
     if (button) QMetaObject::invokeMethod(button, "clicked");
     // The dialog of the page that holds this button (a page shown earlier may linger)
     QQuickItem *page = button;
-    while (page && page->objectName() != QLatin1String("AboutPage")) page = page->parentItem();
+    while (page && page->objectName() != QLatin1String("AdvancedPage")) page = page->parentItem();
     QObject *dialog = page ? page->findChild<QObject *>(QStringLiteral("RawRequestDialog")) : nullptr;
     say(QStringLiteral("raw dialog"), QStringLiteral("button %1, page %2, dialog %3").arg(button != nullptr).arg(page != nullptr).arg(dialog != nullptr));
     d.check(QStringLiteral("pgqt: Raw Request... opens the dialog"),

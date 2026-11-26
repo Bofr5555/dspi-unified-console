@@ -478,7 +478,7 @@ fn wp_romode_the_mode_is_refused_while_a_guarded_apply_waits_and_the_way_back_st
     );
     let n = core.notice_for_error(e);
     assert_eq!(n.key, super::NOTICE_READ_ONLY_GUARD_PENDING);
-    assert_eq!(n.title, "A safe apply is waiting");
+    assert_eq!(n.title, "A trial is waiting"); // -- WP UFW -- (UXP D10)
     assert!(!core.client_read_only());
     // Turning it off is never refused.
     core.set_client_read_only(false).unwrap();

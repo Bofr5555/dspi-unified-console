@@ -58,9 +58,13 @@ QtObject {
             title: qsTr("&Device"),
             rows: [
                 // -- WP QP18 -- Commit and Revert get shortcuts (owner, 2026-11-12)
-                { id: "device.commit", text: qsTr("Commit Parameters…"), shortcut: "Ctrl+S", modern: ["topBar"] },
+                // -- WP UFW -- (UXP A10, D1) one word on every layout and client:
+                // Save to Device, as the top bar's button; nothing to save
+                // without a device. Factory Reset is the device's (its tab's
+                // menu), not one slip away from Save (UXP A3, C1)
+                { id: "device.commit", text: qsTr("Save to Device…"), shortcut: "Ctrl+S", enabled: () => DeviceModel.connected, modern: ["topBar"] },
                 { id: "device.revert", text: qsTr("Revert to Saved…"), shortcut: "Ctrl+Shift+R", modern: ["save.revert"] },
-                { id: "device.factoryReset", text: qsTr("Factory Reset…"), modern: ["save.reset"] },
+                { id: "device.factoryReset", text: qsTr("Factory Reset…"), modern: ["device.reset"] },
                 { separator: true },
                 // -- WP QP18 -- presets 1-9, mute and bypass from the keyboard (ShortcutController)
                 {
@@ -141,6 +145,10 @@ QtObject {
             title: qsTr("&Help"),
             rows: [
                 { id: "help.gettingStarted", text: qsTr("Getting Started…"), modern: ["appMenu.help"] },
+                // -- WP UFW -- (UXP A8) the manual, and the shortcut list (its
+                // dialog is UXP A5's: the row shows once it handles the id)
+                { id: "help.manual", text: qsTr("User Manual"), modern: ["appMenu.help"] },
+                { id: "help.shortcuts", text: qsTr("Keyboard Shortcuts"), optional: true, modern: ["appMenu.help"] },
                 { separator: true },
                 //: %1 is the app's name
                 { id: "help.whatsNew", text: qsTr("What's New in %1").arg(AppIdentity.displayName), modern: ["appMenu.help"] },
@@ -169,7 +177,8 @@ QtObject {
     //   appMenu  the app button's menu: the few global actions
     //   save     Save to Device ▾
     //   history  Undo ▾
-    //   device   the device switcher and a device tab's right-click menu
+    //   device   the device switcher and a device tab's right-click menu (the
+    //            switcher and Devices › This Computer show its first group)
     //   autoeq   Library > AutoEQ's ▾
     //   files    the Equaliser's Files ▾ (-- INTC (DL8 fold) --)
     //   channel, band, graph, slot   the right-click menu of a channel, a band
@@ -178,7 +187,7 @@ QtObject {
         appMenu: ["file", "transfer", "settings", "help", "end", "quit"],
         save: ["revert", "store", "reset"],
         history: ["step", "recent", "all"],
-        device: ["act", "tab"],
+        device: ["act", "reset", "tab"],   // -- WP UFW -- reset: Factory Reset, under a line
         autoeq: ["favorites", "database"],
         files: ["filters"],   // -- INTC --
         channel: ["name", "copy", "act", "clear"],
