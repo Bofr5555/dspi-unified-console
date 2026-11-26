@@ -4,12 +4,12 @@
 > `bofr-main`. Stock Weeb Labs firmware has no extension channel, so none of this is offered for it
 > ([`../FEATURES.md`](../FEATURES.md#firmware-stock-vs-fork)).
 
-*WP ATDOC, 2026-11-19: the integrator's page for PLAN-AT ([`docs/core-merge/PLAN-AT.md`](../core-merge/PLAN-AT.md)),
+*2026-11-19: the integrator's page for PLAN-AT ([`docs/core-merge/PLAN-AT.md`](../core-merge/PLAN-AT.md)),
 "the alink time-base contract and multi-unit measurement". State: the firmware side is on the fork's `bofr-main`
 (`4f7114c`: waves FW-A to FW-C, reviewed); the maths, the simulated world, the codecs, the fakes, the hub family, the
 hub's model and the client's session are on `main` (waves AT-A to AT-D part 1, reviewed: `11362bb3`, `915d1a65`,
-`1c5ac8ec`). The web and Qt screens (WP ATWEB, WP ATQT), the hub's guard of a system apply (WP ATGUARD) and the demo
-hub's simulated microphone (WP ATDEMO) are built too (wave AT-D part 2, review AT-D2). **Nothing of it has run on real
+`1c5ac8ec`). The web and Qt screens, the hub's guard of a system apply and the demo
+hub's simulated microphone are built too (wave AT-D part 2, review AT-D2). **Nothing of it has run on real
 boards yet** (ATHIL, [section 11](#11-what-the-hardware-must-still-confirm)). The single-unit measurement this builds on is
 [measurement.md](measurement.md); the user's page is [docs/manual/measurement.md section 10](../manual/measurement.md#10-measuring-several-units-together).*
 
@@ -165,7 +165,7 @@ the hub dies, each unit plays at most one more finite segment.
 default when the run fits one capture, else 3**; 2 to 8 when set. One config per unit per run, staged once (a config
 write restarts a running generator). Fewer than 3 passes are always timing unreliable.
 
-**Overlapped starts (WP ATOVL, the default where it is safe).** After that first interleaved pass (which fixes cycle
+**Overlapped starts (the default where it is safe).** After that first interleaved pass (which fixes cycle
 identity exactly as before: the first sweep is heard alone), every further pass starts every unit's walk together, unit
 B **heard a fixed 50 to 200 ms after unit A** (C as much after B, and so on), so each unit's j-th output plays with the
 others' j-th outputs: a *group*. Each group is deconvolved as one cut holding all its sweeps whole, and the capture
@@ -219,7 +219,7 @@ group of up to 16 units is opened at once.
 **A larger group is split into runs** that each repeat one **anchor output** (OD-ATk). The runs are sized as the
 session will lay them out (interleaved, the longer plan and the fallback) with the lateness the plan expects: each
 unit's smallest `out.delay` among its outputs in the run, from its own check, and 10 ms per segment for the play-out the
-plan cannot know yet (WP ATOVL, review AT-E). A group that fits one capture only without its lateness is split here,
+plan cannot know yet (review AT-E). A group that fits one capture only without its lateness is split here,
 before anything plays; a run that still does not fit when the engine's terms are read is refused before it plays, as
 before. Intercepts are kept relative to
 the anchor in each run. The anchor is user-selectable (`MeasureSystemSetup.anchor_serial`, `anchor_output`); by default
@@ -246,7 +246,7 @@ a sample-exact measured delay.
 
 **With a USB microphone whose clock wanders like the one measured in P5SPIKE** (bursts of 55-100 ppm for 0.25 to
 1.5 s, within ±50 µs), **interleaved passes read "timing unreliable"**: the per-cycle gate refuses every run. **Overlapped
-starts make that wander common to what plays together** (WP ATOVL, owner 2026-11-19): what a group measures (the
+starts make that wander common to what plays together** (owner 2026-11-19): what a group measures (the
 differences between its units) is judged on its own, its common delay taken out. For an overlapped run
 `timing_reliable` is that gate: every cycle within 10 µs of the fit after its group's common delay, no ambiguous
 arrival, and each repeat's phase, and its delay along the sweep, agreeing with the other repeats **against what the rest
@@ -256,7 +256,7 @@ that never played together (two outputs of one unit, or A's first output against
 gate, as with interleaved passes. So with a wandering microphone the units' j-th outputs are aligned to each other, and
 outputs of one unit are not offered.
 
-The simulated table (WP ATOVL, re-running ATE2E's study: two units, one output each, 1 s sweeps, a room, a 31 ppm
+The simulated table (re-running ATE2E's study: two units, one output each, 1 s sweeps, a room, a 31 ppm
 microphone, 30 seeds per row; P5SPIKE's bursts scaled by k, their bound with them; "reliable" is the run's gate,
 "offered" the cross-unit delay, the error against ATSIM's truth):
 
@@ -283,7 +283,7 @@ carries some of the earlier unit's room: ATHIL should compare one with an interl
 doubling of the units lower. The analysis keeps every cut's group whole, so its FFTs are as long as the group's span
 longer.
 
-**Each unit's expected lateness is planned for (WP ATLATE).** The analysis keeps each response from 100 ms before
+**Each unit's expected lateness is planned for.** The analysis keeps each response from 100 ms before
 where it looks for the run's first arrival to 100 ms after (its search span, the same whatever gap is set), less the
 response's own window. The planner reads the engine's terms before the walked run (each unit's play-out of a domain
 sample and its outputs' `out.delay`, which on USB-direct hold the streams' start offsets, about 21 ms per unit on the
@@ -348,7 +348,7 @@ refused.
 offered arrivals into the model (`system.set`, guarded by the revision: a model changed meanwhile is `conflict`), then
 `system.align` writes the units.
 
-**The hub guards the apply** (WP ATGUARD, [hub-api.md section 23.4](hub-api.md#23-measuring-several-units), cap
+**The hub guards the apply** ([hub-api.md section 23.4](hub-api.md#23-measuring-several-units), cap
 `system_apply_guard`). Before it files anything the core begins the hub's guard (`system.guard.begin`); the hub files
 the model itself and starts a countdown. Its length is the proposal's `guard_s`: the planned verify, 25 % longer, plus
 120 s, at most 590 s. Unless Keep confirms it in time, the hub sets the filed model back and aligns the units **by
@@ -388,7 +388,7 @@ unit).
 ## 10. Notices and the clients
 
 Every notice key the system measurement uses. Rows are in `assets/notices/notices.json`; the core's list is
-`NOTICE_KEYS` in `crates/dspi-core/src/measure.rs` (WP ATCORE).
+`NOTICE_KEYS` in `crates/dspi-core/src/measure.rs`.
 
 | Key | Title (the person reads) |
 |---|---|
@@ -418,7 +418,7 @@ Every notice key the system measurement uses. Rows are in `assets/notices/notice
 | `measure.system.nothing_offered` | Nothing to apply |
 | `measure.system.verify_failed` | The verify did not confirm the alignment |
 
-The screens' own rows (WP ATWEB; Qt uses the same) and the demo's (WP ATDEMO):
+The screens' own rows (Qt uses the same) and the demo's:
 
 | Key | Title |
 |---|---|
@@ -446,11 +446,11 @@ time base, domain, anchor, run ids, per output the arrival relative to the ancho
 
 | Client | State |
 |---|---|
-| Web | built (WP ATWEB): the Measure screen's "Several units" tab; the S/PDIF transport in the Installer's clock panel |
-| Qt | built (WP ATQT): Tools > Measure…, the "Several units" tab; the S/PDIF card in Window > System, "Clock and audio links" |
+| Web | built: the Measure screen's "Several units" tab; the S/PDIF transport in the Installer's clock panel |
+| Qt | built: Tools > Measure…, the "Several units" tab; the S/PDIF card in Window > System, "Clock and audio links" |
 | Terminal, Android, Swift | later (PLAN-AT "Later": web and Qt first). Android's System screen shows a unit fed by S/PDIF with its S/PDIF state and does not count it as an audio link unit; it has no S/PDIF editor |
 
-**Trying it without hardware** (WP ATDEMO). `uconsole --demo hub --alink --with-measure-units` attaches simulated units
+**Trying it without hardware**. `uconsole --demo hub --alink --with-measure-units` attaches simulated units
 on one time base (DEMO-TB-A, -B, -C, with C re-anchoring every 15 s), one on another (DEMO-TB-X) and an S/PDIF source
 with a follower in lock error, and gives the hub a simulated room. That hub alone offers the cap
 `system_measure_demo_mic`; with the simulated microphone on (`measure_system_sim_set`), the core reads what the room
@@ -479,7 +479,7 @@ Everything above is proven on fakes, simulations and the firmware's unit tests o
   lateness the planner plans for, section 7).
 - Part B: one system measurement with the web or Qt client on two units, a cable pulled mid-run, an Admin apply with the
   summed check, Revert; or, with a wandering microphone, "timing unreliable" with the wander shown.
-- **Overlapped starts** (WP ATOVL, section 5): two units with the owner's microphone overlapped (the result says
+- **Overlapped starts** (section 5): two units with the owner's microphone overlapped (the result says
   "overlapped starts, 50 ms apart" and the delay is offered), the same pair interleaved for comparison (the delay and,
   below 300 Hz, the later unit's response), and a third unit 20 ms further than its terms (measured again interleaved).
 

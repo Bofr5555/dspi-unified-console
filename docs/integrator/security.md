@@ -1,6 +1,6 @@
 # Security
 
-*WP SECDOC, 2026-11-16. The user-facing summary of the security plan
+*2026-11-16. The user-facing summary of the security plan
 ([`docs/core-merge/PLAN-SEC.md`](../core-merge/PLAN-SEC.md): threat model, design, decisions). Where this page and the
 code disagree, the code is right and the page is the bug.*
 
@@ -75,7 +75,7 @@ macOS (all through the one Rust core, which does the pinning), `uconsole`, and t
   asked for no PIN, so no unencrypted or unchecked session opens in a pinned hub's name. What no client can do is
   recognise a known hub that answers under another id, or under none: that is a first contact, shown with its id, the
   key on the PIN prompt or the red "(unsecured)" bar.
-- **A token goes only to the hub it belongs to** (WP LINKFIX, 2026-11-19; fail closed). Records are kept by the hub's
+- **A token goes only to the hub it belongs to** (2026-11-19; fail closed). Records are kept by the hub's
   id, and a client dialling by address sends no token before the hello names the hub and its record is read. The core
   enforces it too: `link_connect` with a bare `v1` token and no expected hub id fails with `token_without_hub_id`
   before anything is dialled (pair again, or dial with the hub's id), so a plaintext token never goes to whoever
@@ -88,7 +88,7 @@ macOS (all through the one Rust core, which does the pinning), `uconsole`, and t
 - QR code (phones): the link carries the key and the PIN out of band, so pairing by QR cannot be intercepted. A
   `dspi://pair` link is a hint, never a bypass: its key is checked against the TLS key, and the pairing screen still
   shows the hub and fingerprint and needs a tap.
-- Native clients pair with a PAKE (`auth.pair2`, SPAKE2 bound to the TLS session, WP SECPAKE): a man in the middle who
+- Native clients pair with a PAKE (`auth.pair2`, SPAKE2 bound to the TLS session): a man in the middle who
   relays the TLS session learns nothing that lets it test PINs offline, and fails at its first guess. Browsers cannot
   reach the TLS session's keys and keep `auth.pair` over TLS (with the fingerprint check).
 - 5 wrong PINs from anywhere close the window (the hub says so: open it again knowingly), and
@@ -111,7 +111,7 @@ upstream compatibility mode (below). Our clients still connect to them, and say 
   fine on a trusted local network or over a VPN, but on any other network someone could read or change what is sent,
   including the pairing PIN and settings. Where the hub can do TLS it says how to turn it on, or that compatibility mode
   is on. (The text is the core's notice table, `dlink.unsecured`, `dlink.unsecured.info`, `dlink.unsecured.compat`.)
-  *Android (WP ANSEC, 2026-11-21):* the bar is amber (a warning tone with AA contrast in light and dark), not red, and
+  *Android (2026-11-21):* the bar is amber (a warning tone with AA contrast in light and dark), not red, and
   the user can acknowledge it per hub ("I understand, don't highlight this hub" in the info dialog, or the strip's
   overflow on a phone). An acknowledged hub's bar has the normal colours but still ends in "(unsecured)" with its info
   button. The acknowledgement is kept per hub id (and, for a typed hub, its address) and dropped when that hub is
@@ -227,7 +227,6 @@ Details: hub-api.md sections 8 and 13.
 
 ### The hub's firmware rollout
 
-<!-- WP P3FRZ (PLAN-P3 F6 and section 3, OD-P2b, OD-P3e, OD-P3g, OD-P3n) -->
 A hub started with `--rollout` ([hub.md](hub.md)) can update the firmware of the DSPis on its own USB with nobody at
 the rack: an Admin starts it from a console, the hub does one device at a time, exports its settings to the hub's
 snapshots first, checks the device after it restarts, and raises the `rollout_failed` alarm when it does not come

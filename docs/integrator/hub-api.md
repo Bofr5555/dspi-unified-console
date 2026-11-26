@@ -1,9 +1,9 @@
 # The hub API
 
-*WP P2DOC, 2026-11-15: the contract of PRO phase 2 ([`docs/core-merge/PLAN-P2.md`](../core-merge/PLAN-P2.md));
-phase 3's fleet families, WP P3DOC ([`docs/core-merge/PLAN-P3.md`](../core-merge/PLAN-P3.md)). Status: **v1 frozen
-2026-11-16** (WP P3FRZ; OD-P2a, OD-P3l): additive only; a breaking change is `/api/v2/` and new message types
-(section 1.2). Each family's section says what built it; a section still marked **draft** is the shape its WP
+*2026-11-15: the contract of PRO phase 2 ([`docs/core-merge/PLAN-P2.md`](../core-merge/PLAN-P2.md));
+phase 3's fleet families ([`docs/core-merge/PLAN-P3.md`](../core-merge/PLAN-P3.md)). Status: **v1 frozen
+2026-11-16** (OD-P2a, OD-P3l): additive only; a breaking change is `/api/v2/` and new message types
+(section 1.2). Each family's section says what built it; a section still marked **draft** is the shape its work
 implements, not a promise that the hub answers it today.*
 
 The hub ([hub.md](hub.md)) keeps running with no console open. This page is everything another program can ask it beyond
@@ -42,10 +42,8 @@ Reference: `crates/dspi-hub` (one module per family, registered as a service in 
 | 20 | [Group writes and bulk apply](#20-group-writes-and-bulk-apply) | `group.param.*`, `group.preset.load`, `group.apply*` | `group_params`, `group_apply` | P3GP (20.2), P3BA (20.3); text P3DOC | built (P3GP, P3BA; text P3DOC) |
 | 21 | [Firmware rollout](#21-firmware-rollout) | `fw.image.*`, `fw.rollout.*` (TLS only) | `rollout` | P3RO (writer P3PB); text P3DOC | built (P3RO; the writer P3PB) |
 | 22 | [Measurement documents](#22-measurement-documents) | `measure.doc.*` | `hub_measure` | P5HUB; text P5MDOC | built (P5HUB) |
-<!-- WP ATHUB -->
 | 23 | [Measuring several units](#23-measuring-several-units) | `system.measure.*`, `system.guard.*` (23.4) | `system_measure`, `system_apply_guard` | ATHUB, ATGUARD | built (ATHUB, ATGUARD) |
 
-<!-- WP P3FRZ: slot for P3WGR's and P3WRO's own marks on rows 19 to 21 (their web screens), added by them or at merge -->
 The web console's screens for rows 19 and 20 (groups, the action bar, bulk apply, fleet history) are P3WGR's, and row 21's
 (the image store and the rollout) P3WRO's: built, merged 2026-11-16 (review p3d).
 
@@ -100,20 +98,17 @@ hub without it answers `unknown_type` (an older hub) or `unsupported`. Caps of t
 | `group_apply` | section 20.3 | with `groups` and the hub's snapshots |
 | `rollout` | section 21 | only with `uconsole hub --rollout`, on a hub that serves TLS (21.1) |
 | `hub_measure` | section 22 | on a hub with a data folder (`ServiceConfig::measure`, on by default; P5HUB) |
-| `system_measure` | section 23 (WP ATHUB) | always, to a Link 1.3 client (a 1.2-style client neither sees it nor is served) |
-<!-- WP PGDOC -->
-| `legacy_devices` | section 3.1 and 17 (PLAN-PG, WP PGHDEV): this hub lists and forwards to devices on 1.1.6-generation firmware, which a DSPi Link 1.3 hub does not | always |
-| `system_apply_guard` | section 23.4 (WP ATGUARD: `system.guard.*`) | always |
+| `system_measure` | section 23 | always, to a Link 1.3 client (a 1.2-style client neither sees it nor is served) |
+| `legacy_devices` | section 3.1 and 17 (PLAN-PG): this hub lists and forwards to devices on 1.1.6-generation firmware, which a DSPi Link 1.3 hub does not | always |
+| `system_apply_guard` | section 23.4 (`system.guard.*`) | always |
 
-<!-- WP P3FRZ -->
-<!-- WP PGDOC -->
 **The DSPi Link minor.** Since PGHDEV the hub says `proto.minor` **3** (DSPi Link 1.3) in its `hello` and in
 `GET /dspi/v1/info`, and reads the client's own `hello.proto.minor` (missing: 2). That minor decides how a page-0
 request to a device on 1.1.7 firmware is served (section 17); everything else on this page is the same for both.
 (`dspi_link::messages::PROTO_MINOR`, still 2, is the 1.2 constant and is no longer what the hub sends; the hub sends
 `HUB_PROTO_MINOR`.)
 
-**v1 frozen 2026-11-16** (OD-P2a, OD-P3l; WP P3FRZ, after PRO phase 3's hub and core families merged): **additive
+**v1 frozen 2026-11-16** (after PRO phase 3's hub and core families merged): **additive
 only**. Within v1 a family only gains fields, messages, caps and codes (phase 3 added none to section 1.6); nothing
 changes meaning, nothing is removed, and a client ignores what it does not know (section 1.1). A breaking change is
 `/api/v2/` for REST and new message types (or a new cap, `param_api_2`) on DSPi Link, never a silent one. REST v1's
@@ -243,8 +238,7 @@ each of them with every secret replaced by `set` or `not set`.
 
 ## 2. Encryption and pairing
 
-*State: built (SECSRV, SECDISC, SECCORE, SECPAIR, SECWEB; text WP SECDOC, which replaces P2DOC's "On an unencrypted
-network"). `crates/dspi-hub/src/server.rs` (the port, modes, `426`, 4003, `/info`), `auth.rs` (pairing, `tls_only`,
+*State: built (SECSRV, SECDISC, SECCORE, SECPAIR, SECWEB). `crates/dspi-hub/src/server.rs` (the port, modes, `426`, 4003, `/info`), `auth.rs` (pairing, `tls_only`,
 idle expiry, `auth.rotate`), `tls_identity.rs` (the key), `crates/dspi-link/src/tls.rs` and `credential.rs` (the pin, the
 credential, the pairing link). Why and what users see: [security.md](security.md); the switches:
 [hub.md](hub.md), Encryption.*
@@ -299,13 +293,12 @@ the pin it should see; that is a hint for display, never trust: the pin that cou
   terminal). A client that takes a link connects with `k` as the pin, so the TLS key must match it before the PIN is
   sent (`hub_key_unverified` otherwise); it still shows the hub's name and fingerprint and asks for a tap. The core's
   parser: `dspi_link::credential::parse_pair_link`, `link_parse_pair_link` in the bindings.
-- **`auth.pair2`** (WP SECPAKE): PAKE pairing for native clients, SPAKE2 with the PIN as the password, the hub's id and
+- **`auth.pair2`**: PAKE pairing for native clients, SPAKE2 with the PIN as the password, the hub's id and
   the client's name as the identities, the transcript bound to the TLS session (exporter label `EXPORTER-dspi-pair`).
   Both sides confirm a MAC before the token is issued, so a man in the middle who relays two TLS legs fails at its first
   guess and learns nothing to search offline; 5 failures end the window as for `auth.pair`. Browsers, which cannot
   reach the TLS exporter, and upstream clients keep `auth.pair`. Its messages are SECPAKE's block below.
 
-<!-- WP SECPAKE -->
 #### PAKE pairing: `auth.pair2`
 
 *State: built (SECPAKE; PLAN-SEC OD-SECc (3)). Code: `crates/dspi-link/src/pake.rs` (both sides), the hub's
@@ -359,7 +352,6 @@ sees lets it test no other PIN offline. Five failed confirmations end the window
 
 **After a key rotation** (section 2.4, `hello.hub.key_next`) the core's client, once it has accepted the new key, calls
 `auth.rotate` in the same connect and stores the fresh token (PLAN-SEC 4.9).
-<!-- /WP SECPAKE -->
 
 - Limits, unchanged in kind: a PIN works for 2 minutes; 5 wrong PINs from anywhere end the window, and from one address
   (an IPv6 /64) within 60 s shut that address out for 60 s. Wrong tokens are counted in a ledger of their own, so a client
@@ -464,8 +456,7 @@ The file is written atomically, 0600 on Unix, one record per line inside one JSO
 record by record: the hub keeps the whole file aside as `inventory.json.bad-<unix seconds>`, keeps what it could read, and
 writes the file again. The diagnostics bundle carries it as `hub/inventory.json`.
 
-<!-- WP PGDOC -->
-The record also carries, additively (WP PGZERO), **`board_id`** (the platform's board id, below; absent until the hub
+The record also carries, additively, **`board_id`** (the platform's board id, below; absent until the hub
 has seen it) and **`model`**, the name clients show for it: "DSPi", "DSPi Zero" or "Unknown board". They are not the
 `board` string above, which is the board name `EXT_IDENTIFY` reports.
 
@@ -540,7 +531,6 @@ found the uptime gone backwards). A field the firmware does not give, or not yet
 newest read of any field), so two records 2 s apart usually carry the same uptime, and the uptime moves in 60 s
 steps.
 
-<!-- WP P3DOC -->
 **For the health board** (*built: P3HB*, PLAN-P3 F7, OD-P3m). A record gains three fields, each absent when the device or
 the hub has nothing for it; no cap changes (`health` as before), and a client that does not know them ignores them
 (section 1.1):
@@ -568,7 +558,7 @@ silence. An embedder turns the service on with `ServiceConfig::health` (`HealthC
 
 One shared log per device in `events/`, in the event log's own file format and lock rule ([event-log.md](event-log.md)),
 so a diagnostics bundle and `event_log_export` read it unchanged. The writer is `EventStore`
-(`crates/dspi-session/src/events/store.rs`, built in WP P2EVW). The hub writes what it sees: attach and detach,
+(`crates/dspi-session/src/events/store.rs`). The hub writes what it sees: attach and detach,
 notifications with the writing session and its name, clip events, temperature and counter steps, resets with their
 reason, firmware changes, recalls, identify, schedule runs, alarms.
 
@@ -1033,7 +1023,7 @@ serial), each with a device block (`identifiers: ["dspi_<serial>"]`, the device'
 
 *State: built (P2RS). `crates/dspi-hub/src/rest.rs`, the `/api/v1/` route and body read in `server.rs`, the client
 kind in `auth.rs` and `store.rs`; tests `crates/dspi-hub/tests/wp_p2rs_rest.rs`. **TLS: SECSRV** (PLAN-SEC): the
-mirror is read and answered over the server's stream seam, so WP SECSRV serves it over TLS on the same port, adds the
+mirror is read and answered over the server's stream seam, so the hub serves it over TLS on the same port, adds the
 `Host` check on every route and gives `plaintext_ok` its effect (built; section 2.1).*
 
 ### 14.1 API keys
@@ -1052,7 +1042,7 @@ consoles, the same `auth.revoke` and `auth.set_role`. `auth.list` rows gain `kin
   `unauthenticated`, and a console's token is no REST bearer (`401`).
 - The 65th client of either kind is refused: `auth.mint` answers `conflict`, a PIN pairing `busy` (spec 7.3). Revoke
   one first.
-- `plaintext_ok` (OD-SECk; WP SECDOC): on a hub with `--tls on`, a key without it is refused over plaintext with
+- `plaintext_ok` (OD-SECk): on a hub with `--tls on`, a key without it is refused over plaintext with
   `426` `tls_required`, and one minted with it works there too (for a legacy script on a trusted network). With
   `require` no key works over plaintext; with upstream compatibility or `off` every key does (section 2.1). Keys minted
   before TLS have it false.
@@ -1110,7 +1100,7 @@ are percent-decoded (`device%3A3`).
 | `POST /api/v1/alarms/{id}/ack` | `alarm.ack` (P2AL's) |
 | `GET /api/v1/health?serial=` | `health.get` |
 
-<!-- WP P3DOC --> **The fleet's endpoints** (*built: P3RS*, `rest.rs`, tests `crates/dspi-hub/tests/wp_p3rs_rest.rs`;
+**The fleet's endpoints** (*built: P3RS*, `rest.rs`, tests `crates/dspi-hub/tests/wp_p3rs_rest.rs`;
 PLAN-P3 OD-P3l), within v1 and additive, each onto a message of sections 19 to 21 with its role, checks, answer and codes. `{id}` is a group's id (`g1`), `{run}` a bulk apply's run,
 `{rollout}` a rollout's id:
 
@@ -1240,7 +1230,7 @@ At a running hub's prompt (a terminal) the person at the hub's machine types `in
 `schedule` (the rules and their next runs) and `api-key new <name> [viewer|control|admin]`, `api-key list`,
 `api-key revoke <cid>`. The reads go as a viewer principal named `Hub console`.
 
-<!-- WP P3TM --> Groups, firmware and the rollout at the prompt, as the person at the hub's machine (`Hub console`; the
+Groups, firmware and the rollout at the prompt, as the person at the hub's machine (`Hub console`; the
 reads as a viewer, the rest as an admin, each command a principal session of its own). Nothing the prompt sends
 crosses a network, so its session counts as encrypted and the rollout's TLS-only family serves it; every other rule
 of the family applies (roles, the checks of step 1, the firmware guard with nobody to type, the image store's checks):
@@ -1314,7 +1304,7 @@ only those two.
 - [`examples/home-assistant.yaml`](examples/home-assistant.yaml): Home Assistant's `rest_command` and REST sensors for a
   hub without a broker (MQTT discovery, section 13, is the better fit where there is one).
 
-<!-- WP P3TM --> A firmware update with nobody at the rack, on the hub's machine (run by
+A firmware update with nobody at the rack, on the hub's machine (run by
 `apps/terminal/src/hub/tests_wp_p3tm.rs` against an in-process hub with a fake BOOTSEL scan and writer):
 
 ```text
@@ -1334,7 +1324,7 @@ for about 30 s. From a console elsewhere, an admin uses `uconsole api` over TLS 
 exit status 3); a control or viewer console gets `denied` (5) for `fw.rollout.start`, and may read
 `fw.rollout.status` and `fw.image.list`.
 
-<!-- WP SECDOC --> All three examples work against a hub that requires TLS, and are run so by
+All three examples work against a hub that requires TLS, and are run so by
 `apps/terminal/tests/wp_secdoc_examples.rs` (and over plaintext by `wp_p2tm_examples.rs`):
 
 - [`examples/hub_curl.sh`](examples/hub_curl.sh): curl, pinned to the hub's key with `--pinnedpubkey`.
@@ -1346,7 +1336,7 @@ exit status 3); a control or viewer console gets `denied` (5) for `fw.rollout.st
 Without TLS (`--tls off`, upstream compatibility, a key minted `plaintext_ok`) anything on the port can be read by
 someone on the same network, API keys included: then keep the hub on a network you trust.
 
-<!-- WP P3FRZ --> `hub_curl.sh SERIAL GROUP` and `hub_rest.py` also use the fleet's endpoints of v1 (section 14.2): the
+`hub_curl.sh SERIAL GROUP` and `hub_rest.py` also use the fleet's endpoints of v1 (section 14.2): the
 groups, a group's master volume with a per-member offset and its rows, and the firmware images and rollouts (read
 only; skipped with a note on a hub without `--rollout`). `apps/terminal/tests/wp_p3frz_examples.rs` runs both against
 a `uconsole --demo hub --rest --rollout` that requires TLS, with a group and an image, and checks that a `POST` on
@@ -1356,7 +1346,6 @@ a `uconsole --demo hub --rest --rollout` that requires TLS, with a group and an 
 
 *State: built (P2DOC). What this hub does that DSPi Link 1.2 does not define. Everything else is additive (new message
 types under new caps, new fields), which the spec allows (spec 10).*
-<!-- WP PGDOC -->
 *Since PGHDEV the hub says DSPi Link 1.3; its departures from 1.3 for the two firmware generations are section 17.1.*
 
 | Spec | It says | This hub | Why |
@@ -1370,7 +1359,6 @@ types under new caps, new fields), which the spec allows (spec 10).*
 Unchanged: `device.list` and its 60 s grace (the inventory is a separate family), every `/dspi/` path, every DSPi Link 1.2
 message's meaning, `fw.install` (`unsupported`), and the binary frames.
 
-<!-- WP PGDOC -->
 ### 17.1 Both firmware generations, both DSPi Link versions (PLAN-PG)
 
 *State: built (PGHUB0, PGHPOL, PGHDEV; `crates/dspi-hub/src/device.rs` `route`, `policy.rs`, `polls.rs`). PLAN-PG
@@ -1399,7 +1387,7 @@ devices of both firmware generations to clients of both versions. Where that dep
 ## 18. Every message
 
 *State: built (P2DOC). Every request type `t` and event of phase 2, with its least role and its section. Phase 3's rows
-(WP P3DOC, at the end) say which WP built each.*
+are at the end.*
 
 | `t` | Kind | Role | Cap | § |
 |---|---|---|---|---|
@@ -1449,14 +1437,13 @@ devices of both firmware generations to clients of both versions. Where that dep
 | `auth.mint` | request | admin | `api_keys` | 14.1 |
 | `auth.list` (gains `kind`, `plaintext_ok`) | existing | admin | `api_keys` | 14.1 |
 | `auth.pair` (gains `ok.hub_key`) | existing | | | 2.2 |
-| `auth.pair2` (WP SECPAKE) | request, before authentication, TLS only | (pairs as `control`) | `pair2` | 2.2 |
+| `auth.pair2` | request, before authentication, TLS only | (pairs as `control`) | `pair2` | 2.2 |
 | `auth.token` (gains `ok.hub_key`) | existing | | | 2.3 |
 | `auth.rotate` | request | viewer | | 2.3 |
 | `hello.hub.key_next` | field | | | 2.4 |
 | `hub.stats` | request | admin | `hub_stats` | 15 |
 | `hub.rename` | request | admin | `hub_stats` | 15 |
 | `fw.install` | existing | | | stays `unsupported` |
-<!-- WP P3DOC: phase 3's rows, draft until the WP in the last column builds them -->
 | `health.get` (gains `counters`, `clip_per_min`, `last_change`) | existing | viewer | `health` | 5 (built: P3HB) |
 | `schedule.set` (`targets` take `group:<id>`) | existing | admin | `schedule`, `groups` | 19.3 (built: P3GR) |
 | `group.list` | request | viewer | `groups` | 19.2 (built: P3GR) |
@@ -1476,7 +1463,6 @@ devices of both firmware generations to clients of both versions. Where that dep
 | `fw.rollout.status` | request, TLS only | viewer | `rollout` | 21.3 (built: P3RO) |
 | `fw.rollout.cancel` | request, TLS only | admin | `rollout` | 21.3 (built: P3RO) |
 | `fw.rollout.changed` | event, encrypted sessions only | | `rollout`, `serial`, `step` | 21.3 (built: P3RO; `serial`, `step`: P3CC) |
-<!-- WP P5MDOC: phase 5's rows; built by P5HUB -->
 | `measure.doc.list` | request | viewer | `hub_measure` | 22.2 (built: P5HUB) |
 | `measure.doc.get` | request | viewer | `hub_measure` | 22.2 (built: P5HUB) |
 | `measure.doc.put` | request | control | `hub_measure` | 22.2 (built: P5HUB) |
@@ -1484,7 +1470,6 @@ devices of both firmware generations to clients of both versions. Where that dep
 | `measure.doc.note` | request | control | `hub_measure` | 22.2 (built: P5HUB) |
 | `measure.doc.delete` | request | admin | `hub_measure` | 22.2 (built: P5HUB) |
 | `measure.doc.changed` | event | | `hub_measure` | 22.2 (built: P5HUB) |
-<!-- WP ATHUB: PLAN-AT's rows -->
 | `system.measure.open` | request | control | `system_measure` | 23.2 (built: ATHUB) |
 | `system.measure.stage` | request | control, the session's owner | `system_measure` | 23.2 (built: ATHUB) |
 | `system.measure.run` | request | control, the session's owner | `system_measure` | 23.2 (built: ATHUB) |
@@ -1492,7 +1477,6 @@ devices of both firmware generations to clients of both versions. Where that dep
 | `system.measure.abort` | request | control (any principal of control or admin) | `system_measure` | 23.2 (built: ATHUB) |
 | `system.measure.close` | request | control, the session's owner | `system_measure` | 23.2 (built: ATHUB) |
 | `system.measure.aborted` | event, to the session's owner | | `system_measure` | 23.3 (built: ATHUB) |
-<!-- WP ATGUARD -->
 | `system.guard.begin` | request | admin | `system_apply_guard` | 23.4 (built: ATGUARD) |
 | `system.guard.confirm` | request | admin, the guard's owner | `system_apply_guard` | 23.4 (built: ATGUARD) |
 | `system.guard.cancel` | request | admin, the guard's owner | `system_apply_guard` | 23.4 (built: ATGUARD) |
@@ -1501,7 +1485,7 @@ devices of both firmware generations to clients of both versions. Where that dep
 
 ## 19. Groups
 
-*State: built (P3GR, `crates/dspi-hub/src/groups.rs`; text WP P3DOC). PLAN-P3 F3, OD-P3a, OD-P3b. Sections 19 to 21
+*State: built (P3GR, `crates/dspi-hub/src/groups.rs`). PLAN-P3 F3, OD-P3a, OD-P3b. Sections 19 to 21
 are PRO phase 3 ([`docs/core-merge/PLAN-P3.md`](../core-merge/PLAN-P3.md)): the fleet in the web console.*
 
 A group is a named set of devices, kept by the hub: a name, a note and members, nothing more. A group has no role of its
@@ -1613,7 +1597,7 @@ A schedule rule's `targets` (section 12) may hold `group:<id>` beside serials, 1
 
 *State: built (20.2: P3GP, `crates/dspi-hub/src/api/group.rs`, cap `group_params`, tests
 `crates/dspi-hub/tests/wp_p3gp_group_params.rs`; 20.3: P3BA, `crates/dspi-hub/src/api/bulk.rs`, cap `group_apply`, tests
-`crates/dspi-hub/tests/wp_p3ba_bulk_apply.rs`; text WP P3DOC). PLAN-P3 F4, F5, OD-P3c, OD-P3d. Section 19.1 applies.*
+`crates/dspi-hub/tests/wp_p3ba_bulk_apply.rs`). PLAN-P3 F4, F5, OD-P3c, OD-P3d. Section 19.1 applies.*
 
 ### 20.1 Addressing and rows
 
@@ -1727,7 +1711,7 @@ One snapshot or document applied to every member, each with its own way back.
 ## 21. Firmware rollout
 
 *State: built (P3RO, `crates/dspi-hub/src/rollout.rs`, `rollout/steps.rs`, `rollout/images.rs`, feature `rollout`; the
-PICOBOOT writer: P3PB, `crates/dspi-core/src/picoboot.rs`; text WP P3DOC, the built details P3RO). PLAN-P3 F6 and section 1.1, OD-P2b, OD-P3e to OD-P3i, OD-P3n, OD-P3o, OD-P3r. Section 19.1 applies.*
+PICOBOOT writer: P3PB, `crates/dspi-core/src/picoboot.rs`). PLAN-P3 F6 and section 1.1, OD-P2b, OD-P3e to OD-P3i, OD-P3n, OD-P3o, OD-P3r. Section 19.1 applies.*
 
 The hub updates the firmware of a DSPi on its own USB with nobody at the rack: one device at a time, its settings
 exported first, the firmware guard asked with nobody to type, the device verified after it restarts, and an alarm when it
@@ -1913,7 +1897,6 @@ What the code does where the text above leaves room, or is stricter than it:
   `alarm.rules.set` says. Each step has a notice row `rollout.<step>` (`hub_rollout_step_notice`).
 - **The core's calls (P3CC):** `dspi_core::hub_server::fleet` has a typed call for every message of sections 19 to 21
   (`hub_groups`, `hub_group_set`, ..., `hub_rollout_cancel`), through C, UniFFI and the web binding.
-<!-- WP PGDOC -->
 - **Both firmware generations and boards without BOOTSEL (PGFWUP, PGFLASH; PLAN-PG sections 1.8 and 1.9).** Step 1
   reads the device as an update target (`firmware_target`, as the principal's child): its board (8 platform bytes and
   the USB descriptor), its lineage (`EXT_LIST`) and its generation. **A board without BOOTSEL** (a DSPi-Zero, an
@@ -1935,10 +1918,10 @@ What the code does where the text above leaves room, or is stricter than it:
 
 ## 22. Measurement documents
 
-*State: built (P5HUB, `crates/dspi-hub/src/measurements.rs`; text WP P5MDOC, settled by P5HUB). PRO phase 5
+*State: built (P5HUB, `crates/dspi-hub/src/measurements.rs`). PRO phase 5
 ([`docs/core-merge/PLAN-P5.md`](../core-merge/PLAN-P5.md)): measurement and auto-tune. The documents themselves are
 [measurement.md section 7](measurement.md#7-the-documents); this section is only how the hub keeps and serves them.
-Clients (WP P5FIN, 2026-11-19): built in Qt's Documents tab (P5QUI) and the Terminal's `uconsole measure docs` and
+Clients (2026-11-19): built in Qt's Documents tab (P5QUI) and the Terminal's `uconsole measure docs` and
 `show` (P5TM), both through `measure_docs_merged`; and in the web's Documents tab (P5WAT). The user's view is
 [docs/manual/measurement.md section 8](../manual/measurement.md#8-documents).*
 
@@ -2014,12 +1997,11 @@ store id, `serial` empty for a `mic` or `target`, `bytes` the filed size).
 - **Diagnostics:** the bundle carries the store's index only, as `hub/measurements.json` (each document's kind, name,
   serial and size), never a document, a note or a curve.
 
-<!-- WP ATHUB -->
 ## 23. Measuring several units
 
 *State: built (ATHUB, `crates/dspi-hub/src/system/measure.rs`). PLAN-AT ([`docs/core-merge/PLAN-AT.md`](../core-merge/PLAN-AT.md)
 section 1.5): one microphone, several DSPi units, one time base. The client's core owns the microphone, the plan, the
-analysis, the per-unit safety judgement and the documents (`dspi_core::measure::system`, WP ATCORE); the hub owns the
+analysis, the per-unit safety judgement and the documents (`dspi_core::measure::system`); the hub owns the
 units' side: it reads their time bases, stages their generator configs, schedules each unit's start on the shared sample
 counter, watches every unit and aborts on its own. The bodies are one set of serde types,
 `dspi_measure::system::messages`, which the hub serves and the core sends; device replies travel raw, as the unit sent
@@ -2104,7 +2086,7 @@ list. Bodies are `dspi_measure::system::messages`' types at the top level of the
 |---|---|---|---|
 | `system.measure.open` | control | `units`: serials (1 to 16, each once); `lease_ms` (clamped to 500..5000, default 2000) | `OpenReply`: `session`, `time_base`, `domain`, `lease_ms`, `units`: `{serial, time_base, role, state, d, arm_lead_ms, outputs, t, origin_offset, t_minus_output, disturbances}` |
 | `system.measure.stage` | the owner | `session`, `serial`, `config`: the 36 bytes as an array | `serial`, `samples`: the segment's length at the domain's rate |
-| `system.measure.run` | the owner | `session`, `segments`: `{unit, offset}` in time order (a summed run: one offset, distinct units), `lead_ms` (at most 10 000), `summed` (optional, default false: the segments are one summed run of distinct units whose offsets may differ by at most 1 s, so each output's arrival is brought together; one outside those rules is refused with `bad_schedule`), `overlapped` (optional, default false, WP ATOVL: a walked run with overlapped starts: different units' segments may overlap, a unit's own never and still the lead apart, two units or more, at most 120 s; `summed` and `overlapped` together are refused; an older hub refuses such a run with `bad_schedule`) | `RunReply`: `t0`, `segments`: `{unit, t, t_unit}` |
+| `system.measure.run` | the owner | `session`, `segments`: `{unit, offset}` in time order (a summed run: one offset, distinct units), `lead_ms` (at most 10 000), `summed` (optional, default false: the segments are one summed run of distinct units whose offsets may differ by at most 1 s, so each output's arrival is brought together; one outside those rules is refused with `bad_schedule`), `overlapped` (optional, default false: a walked run with overlapped starts: different units' segments may overlap, a unit's own never and still the lead apart, two units or more, at most 120 s; `summed` and `overlapped` together are refused; an older hub refuses such a run with `bad_schedule`) | `RunReply`: `t0`, `segments`: `{unit, t, t_unit}` |
 | `system.measure.status` | the owner | `session` (renews the lease) | `status`: `StatusReply` `{t, hub_us, units}`, each unit `{unit, siggen, timeline, time_base_entry, output_frames, output_peaks_dbfs, clipped, limiter_gr_db, events}` (raw bytes as arrays; `events` every watched packet since the last `status`, at most 64) |
 | `system.measure.abort` | any control or admin principal (stopping test audio is never a privilege) | `session`, `reason` (logged) | `AbortReply`: `units`: `{unit, stopped, error?}`; `broadcast`: `sender`, `spdif_source` or `none` |
 | `system.measure.close` | the owner | `session` | `{}`; `CANCEL_ALL` (and `STOP_NOW` during a run) on every unit, the locks released |
@@ -2126,7 +2108,6 @@ sticky clip flag is set; the hub never clears them (health's clip counts are the
   (`STOP_NOW`: an earlier unit's start may already have come) and cancels every unit's queue: what was staged is spent,
   stage again.
 
-<!-- WP ATGUARD -->
 ### 23.4 The guard of a system apply
 
 *State: built (ATGUARD, `crates/dspi-hub/src/system/guard.rs`; bodies `dspi_measure::system::messages::guard`).* What
@@ -2170,7 +2151,6 @@ was set back: the model changed meanwhile, or could not be saved). Every end is 
 connection reads what happened. Codes: `denied` (not admin, or another session's guard), `busy`, `conflict` (no such
 guard pending, it is being reverted, or another session's `system.set` while one is pending), `bad_request`.
 
-<!-- WP FEATUI -->
 ## 24. Presence: who works on the devices beside the people
 
 *State: built (FEATUI, `crates/dspi-hub/src/presence.rs`). Cap `presence`, always on, in memory only. A console that runs

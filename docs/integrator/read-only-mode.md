@@ -1,7 +1,7 @@
 # The client read-only mode
 
 A client asks the core to refuse every write, for watching a unit that must not
-change and for testing against one (WP ROMODE). Reference:
+change and for testing against one. Reference:
 `crates/dspi-core/src/read_only.rs`.
 
 **It is a client-side diagnostic, not a security boundary.** The client turns
@@ -24,7 +24,7 @@ to protect an installation, never this flag.
 It belongs to the core, not to a connection: it stays across a disconnect and
 a reconnect, for every device the core opens, until it is turned off.
 
-Turning it **on** is refused while a guarded apply (a safe apply) waits for Keep
+Turning it **on** is refused while a guarded apply (a trial) waits for Keep
 or Revert, since its way back would be refused too and leave the device on the
 trial: `InvalidArgument` with the `read_only.guard_pending` row
 (`notice_for_error`; C returns false, the web call fails with that `noticeKey`).

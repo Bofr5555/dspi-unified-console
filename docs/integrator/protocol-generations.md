@@ -1,6 +1,6 @@
 # Both protocol generations: what a client of the core needs to know
 
-*WP PGDOC, 2026-11-19. The design is [`docs/core-merge/PLAN-PG.md`](../core-merge/PLAN-PG.md) (sections 1.1 to 1.11);
+*2026-11-19. The design is [`docs/core-merge/PLAN-PG.md`](../core-merge/PLAN-PG.md) (sections 1.1 to 1.11);
 this page is what a program calling the core (C ABI, UniFFI, wasm, `uconsole`) has to know about it, as built after
 wave PG-D (revised at the PG-D part 2 review). The user's page is [docs/manual/notices.md](../manual/notices.md); the hub's surface is
 [hub-api.md](hub-api.md) (sections 3.1, 17 and 21). Where this page and the code disagree, the code is right.*
@@ -30,7 +30,7 @@ firmware's result code (`VC_ERR_*`, 0x10 to 0x1A) as `DspiError::Refused { statu
 |---|---|
 | `generation` | `Unknown`, `Legacy` or `Paged` |
 | `protocol_major`, `protocol_minor` | the paged protocol's version; 0 and 0 on a legacy device |
-| `pages` | `[{page, revision}]`, ascending; empty on a legacy device. A paged device reached through the hub's in-process paths (`LocalTransport`, `PrincipalTransport`) lists them too: they pass the attachment's discovery on (WP LINKFIX) |
+| `pages` | `[{page, revision}]`, ascending; empty on a legacy device. A paged device reached through the hub's in-process paths (`LocalTransport`, `PrincipalTransport`) lists them too: they pass the attachment's discovery on |
 | `ext_envelope` | `NoChannel`, `Legacy` (0x00) or `Tunnel` (0xE010) |
 | `board_id`, `board_name` | 0 "DSPi" (a Pico), 1 "DSPi Zero", anything else "Unknown board" (0xFF: a USB product string this build does not know, or a board that could not be read) |
 | `device_kind` | `Dsp`, or `AlinkSender` (section 4) |
@@ -71,12 +71,12 @@ STORE) and the tunnel on page 0xE0, and page 0 kept for legacy hosts. The core c
 - recognised only after the connect's bulk read failed (a device whose image reads is a DSP, whatever it is called);
 - **legacy**: by its USB product string ("DSPi Audio Link Sender", "DSPi Link Sender"), or without one (MIDI, behind
   a hub) by `REQ_GET_PLATFORM` naming 0 output channels;
-- **paged** (WP PGSENDER): by the connection's discovery, all of: (1) the same identity rule on `SYS.PLATFORM` (the
+- **paged**: by the connection's discovery, all of: (1) the same identity rule on `SYS.PLATFORM` (the
   1.1.6 layout), (2) the tunnel `0xE010` on page 0xE0 (this fork's firmware), (3) no `STORE.ALL_PARAMS` GET in its
   command bitmaps (no bulk image), (4) no page listed but SYS (0x01), STORE (0x02) and 0xE0. Anything else is not the
   sender (fail closed): a paged DSP stays a DSP, a paged device without the tunnel or with any other page fails to open
   as before, and so does a paged connection that carries no discovery. Our hub's in-process and principal
-  connections pass the attachment's discovery on (WP LINKFIX), so the sender opens through them too; there the rule
+  connections pass the attachment's discovery on, so the sender opens through them too; there the rule
   has no product string, so the platform's 0 outputs decide, as over DSPi Link. Our hub applies the same rule at
   attach (with the USB product string) and asks the sender nothing of the DSP model: no image read (`device.snapshot`
   answers `busy` at once), no poll of what its bitmaps do not list (`unsupported`, page-0 polls included). Since its command bitmaps hold nothing of the DSP model, the adapter refuses every DSP request
@@ -103,7 +103,7 @@ STORE) and the tunnel on page 0xE0, and page 0 kept for legacy hosts. The core c
   its board (PGHIL), so the paged rule is tested against its fake and the firmware's host tests only; a sender build
   that lists any page beyond the three (a debug build's diagnostics page 0xF0 too) is not recognised (the firmware
   spec states this page set in `extension_channel_spec.md` 1.3.5 from IMGKIND). Our hub tells the paged sender apart
-  at attach (WP LINKFIX, above).
+  at attach (above).
 
 ## 5. Updates: the update check and the write gate
 

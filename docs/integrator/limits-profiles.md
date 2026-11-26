@@ -1,6 +1,6 @@
 # Limits profiles
 
-PRO1 S1, built in WP P1LM. An installer narrows the ranges a system may be
+An installer narrows the ranges a system may be
 driven through, per device, so the people who use it afterwards cannot push
 it past what it was set up for. The core enforces it; each client adds a
 Limits page in Installer mode (`docs/UI-MODES.md`).
@@ -150,7 +150,7 @@ one that brings it closer passes, so it can be put right a step at a time.
 | `limits_profile_document() -> String` ("" with none) | `dspi_limits_profile_document` | `limitsProfile -> {text}` |
 | `limits_clear()` | `dspi_limits_clear` | `limitsClear` |
 | `limits_status() -> LimitsStatus {active, serial, state, noticeKey, detail, lastHeld}` | `dspi_limits_status` | `limitsStatus` |
-| `limits_field_ranges() -> [LimitFieldRange {key, perOutput, unit, min, max, step}]` (free function, WP P1EFIX) | `dspi_limits_field_ranges` (no core handle) | `limitsFieldRanges` |
+| `limits_field_ranges() -> [LimitFieldRange {key, perOutput, unit, min, max, step}]` (free function) | `dspi_limits_field_ranges` (no core handle) | `limitsFieldRanges` |
 
 Every client's limits editor takes each field's range, step and unit from
 `limits_field_ranges` (one table, no copies in the clients); a profile is held to the
@@ -160,7 +160,7 @@ device's own line is shorter (21 or 42 ms) and is checked by the core on each wr
 The notices (`notice_for_key`): `limit_exceeded`, `limits.fell_back`,
 `limits.unreadable`, `limits.scope`.
 
-### From a script: `uconsole limits` (WP P1TM)
+### From a script: `uconsole limits`
 
 | Command | Core call |
 |---|---|
@@ -175,7 +175,7 @@ limits set FILE`, or `--installer-pin -` with the PIN as a line of standard inpu
 A wrong PIN exits 3, a missing one 1. A plain `uconsole import` (the session path)
 is held to the same profile (`preset_file::apply_limited`) before it is written.
 
-Every other write of the Terminal goes through the core too (WP TMCORE):
+Every other write of the Terminal goes through the core too:
 `uconsole set`, `uconsole eq`, `undo`/`redo`, scripts of them (`-f`, standard
 input), `uconsole raw out`/`war`, `ext xfeed-map`, `cs import`, `autoeq apply <id> CH`
 and the interface (the TUI). Its session runs on the core's link, and its writes

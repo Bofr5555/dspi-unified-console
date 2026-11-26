@@ -118,7 +118,7 @@ boundary. Then:
   sender, and the op is not `unmute`: one write, no control-path latency;
 - **to each unit** (`EXT_APPLY_AT_FRAME`) otherwise.
 
--- WP HWLK1F -- **Units without the audio link.** A unit whose firmware has no
+**Units without the audio link.** A unit whose firmware has no
 audio link (its `EXT_LIST` names no 0x8000 block, or `EXT_ALINK_INFO` stalls: a
 K340 on bofr-main 470a127, stock firmware) takes no frame. Its ops are written at
 once with its own commands (`mute`/`unmute` the user mute, `preset_load`,
@@ -186,7 +186,7 @@ nothing is written and the answer is `denied`, naming the op.
 | `usb_lock_error` | critical when the unit mutes, a warning when it plays | a USB-direct unit in phase lock that cannot be in step (*lock error*, below: STATUS flags bit 6 at a read, or an `0xE3` `LOCK_ERROR`): "USB-direct unit Rear L/R can't lock — muted (the host's rate is out of range)" | the flag gone at a read, an `0xE3` `LOCK_OK`, or the unit gone (`unit_offline` then) |
 | `usb_setting_restored` | warning | the hub's poll put a USB-direct unit's lock-error action back to the installation's (it had been changed on the unit, e.g. with `set_alink_usb_on_lock_error`): "The hub restored the installation's lock-error action on Rear L/R (mute): the unit had play unaligned" | acknowledged, or the next restore of that unit (kept with the cleared ones) |
 | `usb_realign_failed` | warning | "Keep USB-direct units aligned" could not write a unit's speaker delays (offline, not writable, a refused write), naming the units and why; tried again at most once a minute, each try counted | a later re-align of every moved unit, or no offset moved any more |
-| `spdif_lost` | critical | an S/PDIF follower's time base, or the one a source sends, is not running: `EXT_ALINK_SPDIF_STATUS.state` none, acquiring or holdover at a read, or an `0xE4` to one of them (WP ATHUBM, below) | locked again, at a read or an `0xE4` |
+| `spdif_lost` | critical | an S/PDIF follower's time base, or the one a source sends, is not running: `EXT_ALINK_SPDIF_STATUS.state` none, acquiring or holdover at a read, or an `0xE4` to one of them (below) | locked again, at a read or an `0xE4` |
 | `spdif_lock_error` | critical when the unit mutes, a warning when it plays | an S/PDIF follower in lock error (STATUS flags bit 3 at a read, or an `0xE4` to `LOCK_ERROR`): "S/PDIF unit Rear can't lock — muted (this S/PDIF source does not carry a DSPi time base)" | locked again, an `0xE4` `LOCK_OK`, or the flag gone at a read |
 | `time_base_lost` | critical | a USB-direct unit's time base leaves `LOCKED` (an `0xE4` to none, acquiring or holdover). Lock error stays `usb_lock_error` (`0xE3`); the line's `0xE4` raises and clears `alink_lost` as its `0xE1` does | an `0xE4` back to `LOCKED` |
 
@@ -208,7 +208,7 @@ named like I1's, judged by the hub's roles, with no REST mirror yet.
 | `t` | Role | Request | Answer |
 |---|---|---|---|
 | `system.get` | any | | `model`, `revision`, `role` (this session's, now) |
-| `system.set` | admin | `model`, optional `revision` (the one it was edited from) | `revision`, `warnings` (WP HWLK1F: units without the audio link; the model is kept); `bad_request` with the reason; `conflict` when `revision` is given and the hub has a newer one |
+| `system.set` | admin | `model`, optional `revision` (the one it was edited from) | `revision`, `warnings` (units without the audio link; the model is kept); `bad_request` with the reason; `conflict` when `revision` is given and the hub has a newer one |
 | `system.status` | any | | `revision`, `observed` (by serial), `alignment`, `alarms`, `role` |
 | `system.align` | admin | `apply` (false: compute only) | `alignment`, `applied`, `writes` |
 | `system.scene.apply` | control, op by op | `scene` | `plan` (`frame`, `path`, `ops`, `leadFrames`, `systemMute`, `systemFlags`), `writes`, `frameAfterWrites`, `onTime` |
@@ -224,7 +224,7 @@ Events to every session: `system.changed` (`revision`) after a `system.set`,
 request within that time gets `rate_limited`, because each read costs every
 unit's worker five or more transfers.
 
--- WP SW3 -- `observed` also carries each unit's `stats` (the rest of
+`observed` also carries each unit's `stats` (the rest of
 `EXT_ALINK_STATUS`: `lineClass`, `channels`, `lockCount`, `crc8Errors`,
 `bitSlips`, `superframeErrors`, `vcxoPpm`, `fillFrames`) and a receiver's
 `trimScan` from `EXT_ALINK_DIAG` (`state`, `trimLo`, `trimHi`, `trimUsed`,
@@ -241,14 +241,14 @@ Each write result is `{serial, element, what, result}` with `result` one of
 `ok`, `unchanged`, `skipped` (not reachable or out of range), `refused` (the
 device stalled it), `locked` (a client holds the device's lock), `denied`,
 `timeout`, `no_device`; for a scene also `applied_now`, `unsupported` and
-`no_frame` (above). -- WP HWLK1F -- A `skipped` alignment write carries `reason`:
+`no_frame` (above). A `skipped` alignment write carries `reason`:
 `not connected`, `no audio link (firmware)`, `limits unknown` or `out of range`;
 a scene's op applied at once carries `no audio link (firmware)`. The clients say
 what an alignment did: "Nothing was written: skipped on K (no audio link
 (firmware))." when nothing was (also when every write failed: "Nothing was
 written: 2 writes failed; …"), else the units written and those skipped.
 
--- WP HWLK1F -- `observed` carries `alink`: `present` (`EXT_ALINK_INFO`
+`observed` carries `alink`: `present` (`EXT_ALINK_INFO`
 answers), `none` (the firmware has no audio link, as above) or null (not told).
 -- fixup hwlk1f -- `none` comes only from the firmware's own answer: the device
 stalls `EXT_ALINK_INFO` (a stall, not a bus fault, a short or malformed reply or
@@ -287,7 +287,7 @@ Example model (one sender, a fan-out, two units in one room):
 Field names are camelCase; an unknown field is refused. Ids are unique across
 the whole model and may not contain `:`.
 
-## USB-direct units (WP AUSB1)
+## USB-direct units
 
 A home-theatre install can feed a few speakers per DSPi straight from a central
 computer over (active) USB cables, with no audio link cable: the firmware's
@@ -297,7 +297,7 @@ USB-direct block (DSPi-bofr `extension_channel_spec.md` 2.9, bofr-main ebdf538:
 (mode 1, rate lock) and, in mode 2 (phase lock), plays every USB sample D samples
 after it arrived, so every unit of one host plays sample-aligned.
 
--- WP AUSB3 -- Setting one up (cables, hubs, isolators, the computer's PipeWire
+Setting one up (cables, hubs, isolators, the computer's PipeWire
 configuration, which `uconsole usb-direct generate` writes together with a model
 for the hub): [usb-direct-home-theater.md](usb-direct-home-theater.md).
 
@@ -332,7 +332,7 @@ for the hub): [usb-direct-home-theater.md](usb-direct-home-theater.md).
   model gets `start_offset_no_outputs`). Only units at one stream rate are
   equalised: one at another rate (96 kHz next to 48 kHz) gets `usb_rate_differs`
   and keeps its offset.
-- **Start offsets move** (WP FIXM1). Every time the host reopens a stream (ALSA or
+- **Start offsets move**. Every time the host reopens a stream (ALSA or
   PipeWire closing and opening the device, a player starting) and every time a
   unit anchors again (a bus reset, a mode or D change, an automatic re-anchor),
   the stream is placed anew and its start offset changes, while the speaker delays
@@ -343,7 +343,7 @@ for the hub): [usb-direct-home-theater.md](usb-direct-home-theater.md).
   offsets changed — Align again (… moved since the last alignment …)", which every
   client shows (the core's view sets `alignNeeded`; the web's Alignment panel has
   an "Align again…" button). Offsets are relative, so streams that all moved
-  together raise nothing. -- WP AUSB2 -- An alignment that changes a unit's mode or
+  together raise nothing. An alignment that changes a unit's mode or
   D re-anchors it: the hub then waits (up to 3 s) until the units it re-anchored
   are phase-locked with their streams placed again, reads the start offsets again
   and writes the speaker delays from those, so "Align again" does not follow the
@@ -357,14 +357,13 @@ for the hub): [usb-direct-home-theater.md](usb-direct-home-theater.md).
   speaker delays again itself (nothing else, so nothing re-anchors and the audio
   link units are untouched) and records it as the alarm `usb_realigned`. A unit it
   cannot write (offline, out of range, a refused write) stays in the issue and is
-  the alarm `usb_realign_failed`; it is tried again at most once a minute. --
-  WP AUSB2 -- This runs from the hub's own poll, never from a client's
+  the alarm `usb_realign_failed`; it is tried again at most once a minute. This runs from the hub's own poll, never from a client's
   `system.status` (which only reads).
-- **The hub's own poll** (WP AUSB2). While the model has USB-direct units the hub
+- **The hub's own poll**. While the model has USB-direct units the hub
   reads the installation every 5 s by itself, as its own session: it raises and
   clears their alarms, keeps them aligned when asked, and writes their lock-error
   action. A client's `system.status` reads the same and writes nothing.
-- **Lock error** (WP AUSB2; the fork's WP USB3b, `extension_channel_spec.md`
+- **Lock error** (the fork's `extension_channel_spec.md`
   2.9.2). A unit in phase lock that cannot be in step (its host's rate out of
   range, a rate or D that cannot phase-lock, a phase error still being pulled in)
   is in *lock error*. What it does is a per-unit setting, the model's
@@ -378,7 +377,7 @@ for the hub): [usb-direct-home-theater.md](usb-direct-home-theater.md).
   it has just read, so nothing re-anchors, and records it as the alarm
   `usb_setting_restored` (the installation wins over a change made on the unit).
   A refusal is told apart by writing the same settings again with the unit's own
-  action: taken, the firmware lacks the setting (before WP USB3b: the hub
+  action: taken, the firmware lacks the setting (before that firmware change: the hub
   remembers it until the unit attaches again, does not ask again, and the
   alignment says `usb_lock_error_unsupported`, "Height: its firmware cannot play
   unaligned in lock error, so it mutes"); refused too, the unit refuses its
@@ -414,7 +413,7 @@ for the hub): [usb-direct-home-theater.md](usb-direct-home-theater.md).
   (not the largest S: S of different units differ by their origins), plus a lead
   counted from that read that covers the audio link's writes and each USB-direct
   op's write and read-back, at most 1.92 s ahead (`plan.usbFrame`, `plan.usbOps`,
-  `plan.usbLeadSamples`). -- WP AUSB2 -- When the reads after the USB-direct
+  `plan.usbLeadSamples`). When the reads after the USB-direct
   unit's and the writes before its op would take longer than 1.92 s (slow reads
   over a Link path, units that stall), a bus frame could already be past when
   written, and the unit would take its next occurrence, up to 2 s late: the hub
@@ -448,10 +447,10 @@ for the hub): [usb-direct-home-theater.md](usb-direct-home-theater.md).
   true}`) opens one on its own.
 - **Not done.** All USB-direct units of a hub are taken to be on one USB host
   (one SOF): units on two host controllers count different bus frames, and the hub
-  does not tell them apart yet. -- WP AUSB2 -- Qt and Android now set the mode,
+  does not tell them apart yet. Qt and Android now set the mode,
   the lock-error action and "Keep USB-direct units aligned" too (Admin).
 
-## S/PDIF units and measured arrivals (WP ATHUBM)
+## S/PDIF units and measured arrivals
 
 Between DSPi units, S/PDIF carries the same time base as the audio link: a
 **source** stamps its own frame counter F in the S/PDIF user bits, and every
@@ -549,11 +548,10 @@ ignored with a log line and left in the file until a new one is set.
 
 - Measuring latencies (SYS2 3.5's click and scope or cross-correlation): enter
   `measuredLatencyUs` by hand for now. Measured arrivals per speaker
-  (`measuredArrivalUs`, WP ATHUBM) come from the system measurement (PLAN-AT,
-  WP ATCORE).
-- S/PDIF (WP ATHUBM): no relay (a follower re-emitting on S/PDIF), no scenes at
+  (`measuredArrivalUs`) come from the system measurement (PLAN-AT).
+- S/PDIF: no relay (a follower re-emitting on S/PDIF), no scenes at
   F on the S/PDIF time base, and the clients' system editors do not offer the
-  S/PDIF transport yet (WP ATWEB, ATQT).
+  S/PDIF transport yet.
 - Several senders in one model work for alignment and per-unit scenes; the
   superframe path is taken only when every unit is behind the one sender. The
   engine converts microseconds at the rate most units report, so a minority
@@ -563,8 +561,8 @@ ignored with a log line and left in the file until a new one is set.
 - A periodic poll: alarms follow events and `system.status` reads. A client that
   shows the system calls `system.status` every few seconds.
 - The native clients' System view and "Clock and audio links" panel: the web console has
-  them (WP SW3, `apps/web/README.md`); Qt and Android have them over the core's
-  typed calls (WP LKUI1: `alink_system_view`, `alink_system_save` with the revision,
+  them (`apps/web/README.md`); Qt and Android have them over the core's
+  typed calls (`alink_system_view`, `alink_system_save` with the revision,
   `alink_system_align`, `alink_system_recall`; C `dspi_alink_system_*`), without the
   slot matrix, link stats, trim scan, system mute toggle or alarm acknowledge
   (`docs/PARITY.md` section 2.I). Swift is pending.

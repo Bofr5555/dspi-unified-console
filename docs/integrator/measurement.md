@@ -1,7 +1,7 @@
 # Measurement and auto-tune
 
-*WP P5MDOC, 2026-11-16: the contract of PRO phase 5 ([`docs/core-merge/PLAN-P5.md`](../core-merge/PLAN-P5.md)). Status
-(WP P5FIN, 2026-11-19): **built**, every section, on `main` (waves P5-A to P5-D). The P5-E batch (P5WAT, P5HOLD,
+*2026-11-16: the contract of PRO phase 5 ([`docs/core-merge/PLAN-P5.md`](../core-merge/PLAN-P5.md)). Status
+(2026-11-19): **built**, every section, on `main` (waves P5-A to P5-D). The P5-E batch (P5WAT, P5HOLD,
 P5QUI2, P5DAYTON) is built too (reviewed 2026-11-19, `work/review-p5e/REPORT.md`). Section 10 says which client offers what. The user's
 page is [docs/manual/measurement.md](../manual/measurement.md).*
 

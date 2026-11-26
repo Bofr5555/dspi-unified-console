@@ -361,7 +361,7 @@ file's `onLockError`, the Installer's "When it can't lock"):
 Either way the hub raises the alarm `usb_lock_error` ("... can't lock — muted"
 or "... playing unaligned", with the cause), critical when the unit mutes, a
 warning when it plays, and clears it when the unit is in step. Firmware before
-WP USB3b cannot play unaligned; the hub says so (`usb_lock_error_unsupported`).
+The fork's firmware before its USB lock-error change cannot play unaligned; the hub says so (`usb_lock_error_unsupported`).
 
 Not a lock error: the short mute while a unit anchors, and a *holdover* (up to
 10 s without USB frames, the unit keeps its timeline and plays on when they

@@ -1,6 +1,6 @@
 # The installer's PIN, the lock and the mode manifest
 
-*WP P1LK (PRO1 S4 and U7). Owner decisions OD-P1c, OD-P1d, OD-P1e (2026-11-13). The design is
+*Decided 2026-11-13; the locked user's source and the speaker layout's rule 2026-11-26. The design is
 [`docs/UI-MODES.md`](../UI-MODES.md); the profile the lock lives in is [limits-profiles.md](limits-profiles.md).*
 
 ## The rule that comes first
@@ -22,12 +22,16 @@ every write passes as it does without this feature. A console never invents a lo
   setter, `write_param`, an undo or a redo (refused as `locked`; an undo group is undone whole or not at all), an
   import, a snapshot recall, an A/B toggle, a flash save, a factory reset and the signal generator are all refused
   alike. A preset slot load passes, and the limits hold after it (it only narrows). A revert of a guarded apply passes
-  too. **The analyser runs** while locked (its configuration push and STOP change no audio; decided in WP P1DKFIX),
-  on the hub as well.
+  too. **The analyser runs** while locked (its configuration push and STOP change no audio), on the hub as well.
+- **The speaker layout is the installer's** under the lock: `speaker_layout_set` and the roles an agent states from
+  the user's words are refused (`locked`) before anything is kept, whether the console or the hub holds the lock, and
+  pass once unlocked with the PIN. The roles are what the tweeter's high-pass floor, the preset load guard and the
+  measurement floor trust, so a locked user or an agent cannot turn a tweeter into a woofer. Every client shows its
+  speaker page read-only under the lock.
 - What the lock covers is the profile's `lockedPages` (screen ids of the manifest); `installer_lock_cover(pages)`
   sets it. The write check does not depend on which pages: a covered lock allows only the writes above.
 - **Unlocking lasts for the session** of this core, per device (a reconnect keeps it), until `installer_lock()`.
-- **The lock is on this console, not on the DSPi** (OD-P1d). The firmware has no store for it: the same DSPi on
+- **The lock is on this console, not on the DSPi.** The firmware has no store for it: the same DSPi on
   another console, a control surface or the UART is open. The unlock dialog shows the notice
   `installer_lock.scope` in one line. It is a UI lock, not a security boundary; on a hub, the hub's roles are.
 - **Repeated wrong PINs** (`wrong_pin`): 3 are free; each further one opens a refusal window of 30 s, doubling up to
@@ -39,9 +43,9 @@ every write passes as it does without this feature. A console never invents a lo
 - A PIN has 4 to 64 characters, with no space at either end. Checking one takes 0.1 to 1 s (PBKDF2): call the PIN
   calls off the UI thread.
 
-## A forgotten PIN (OD-P1c)
+## A forgotten PIN
 
-1. **On a hub** an Admin clears it (P1HL).
+1. **On a hub** an Admin clears it.
 2. **The recovery code**, shown once by `installer_pin_set` (`XXXXX-XXXXX-XXXXX-XXXXX`, 100 bits), for the hand-over
    note (notice `installer_lock.recovery`). `installer_unlock` takes it in place of the PIN (case, spaces and dashes
    do not matter); `lockState.recovered` is then true and the client should ask for a new PIN. Setting a new PIN makes
@@ -59,7 +63,6 @@ Beside the profile, in the device's folder, written atomically:
 |---|---|
 | `limits.pin.json` | the PIN's hash: `{version, kdf: "pbkdf2-sha256", iterations, salt, hash}` |
 | `limits.recovery.json` | the recovery code's hash, the same shape |
-
 | `limits.tries.json` | the wrong PINs since the last good one and the refusal window's end (ms since the epoch) |
 
 **Naming another limits folder keeps the lock.** `limits_set_dir` is refused (`pin_required`) while the open device's
@@ -75,7 +78,7 @@ source in the core); the hub keeps a managed device's lock.
 
 ## A device on a hub: one lock, the hub's
 
-A hub (P1HL) keeps its own installer PIN per device and judges every Control client's writes against it over DSPi
+A hub keeps its own installer PIN per device and judges every Control client's writes against it over DSPi
 Link (`docs/integrator/hub.md`). On a device reached through a hub, **the core defers to the hub's lock** so the user
 sees one lock and one prompt:
 
@@ -92,10 +95,10 @@ sees one lock and one prompt:
   is attached over USB, and on a hub that holds no PIN for it.
 
 **Who may change the hub's copy: an Admin of the hub.** A console paired with the hub's PIN is a Control client, and
-no pairing gives more (WP PAIRADM). To make a console an Admin, on the hub's machine find its number with
+no pairing gives more. To make a console an Admin, on the hub's machine find its number with
 `uconsole hub clients` and run `uconsole hub role <cid> admin` (with the hub stopped), or type `clients` and
 `role <cid> admin` at the running hub's prompt, where it applies at once. Below Admin the Installer page is read-only
-and says so in the notice row `installer.hub_role` (`installer_target().readOnlyKey`, WP HUBADMIN).
+and says so in the notice row `installer.hub_role` (`installer_target().readOnlyKey`).
 
 The hub's other named refusals keep their notice too: a limit is `LimitExceeded { code: <the limit> }`, an image a
 Control client may not write is `DspiError::ImageRefused` (`image_refused`), a write the hub could not judge because
@@ -104,22 +107,29 @@ it could not read the device is `DspiError::LimitsUnknown` (`limits_unknown`).
 ## Modes
 
 `mode_manifest()` is `assets/modes/modes.json` as a typed record: the modes (Simple, Advanced, Installer) with their
-default platform classes (all three, `phone`, `desktop` and `web`, Advanced since owner D9, 2026-11-25), the locked-user state (its screens, its
+default platform classes (all three, `phone`, `desktop` and `web`, Advanced since 2026-11-25; iPhone and iPad too), the locked-user state (its screens, its
 Settings and its writes), the screens in order (`layer: "pro"` for a Pro screen a client shows once built) and the
 operations per mode. A client renders what it is given.
 
 `mode_resolve(platform, chosen)` decides the mode a client shows, in this order:
 
 1. the locked-user state: `locked_user`, `reason: "locked"`, no switch;
-2. a mode the hub pins (`mode_set_pinned`, from P1HL's `mode.pinned`): `reason: "pinned"`, no switch;
+2. a mode the hub pins (`mode_set_pinned`, from the hub's `mode.pinned`): `reason: "pinned"`, no switch;
 3. the user's choice (`chosen`, kept per device by the client): `reason: "chosen"`;
 4. the platform class's default: `reason: "default"`.
 
 When the mode asked for is the Installer, a PIN is set and the console is not unlocked, `needsPin` is true and the
 mode is the default meanwhile; with no PIN set `needsPin` is never true. `openModes` lists the modes the switch offers
 without a prompt; `screens`, `firstScreen` and `operations` are the chosen mode's for that platform class. A mode
-never writes and never grants a permission. Qt keeps its Window > Mode… entry hidden and reaches the Installer pages
-from Settings > Installer (OD-P1e).
+never writes and never grants a permission. Qt offers **Mode…** (the uConsole menu in Modern, Window › Mode… in
+Classic) and reaches the Installer pages from Settings › Installer too.
+
+**How the clients show the locked user.** The locked-user state's first screen is Home: the device, the volume with
+Mute, the source and the presets. Nothing the lock refuses is offered in Qt's Modern layout, the web console and
+Android: in Modern the other pages are read-only with a notice and **Go to Home**, and Save, Undo, the shortcuts and
+the palette's rows that would write are off; the web console shows Home alone, with the lock's banner and Unlock;
+Android shows the lock's line with **Unlock…** on a page or a tap the lock refuses. Qt's Classic layout stays live
+and the core refuses what the lock covers after the click.
 
 ## The calls
 
@@ -141,7 +151,7 @@ recovered, note, contact, scopeNoticeKey, detail, heldBy, hubPinnedMode`. Errors
 `locked`, `pin_required`, `wrong_pin`, `wait` or `no_pin`; C and the web reply `"code": "installer_lock"` and the
 notice key `installer_lock.<code>`.
 
-## From a script: `uconsole lock` (WP P1TM)
+## From a script: `uconsole lock`
 
 | Command | Core call |
 |---|---|
@@ -158,9 +168,9 @@ input); a new PIN from two prompts, `DSPI_NEW_INSTALLER_PIN` or `--new-pin -`
 (the next line). Exit codes: 0 done, 1 no PIN to be had, 3 a wrong PIN or the
 refusal window (`retryAfterMs`). The Terminal's own folder is
 `<local data dir>/uconsole/limits`, so a PIN set there is kept for that console
-only. A PIN typed at a terminal is not echoed (WP P1EFIX).
+only. A PIN typed at a terminal is not echoed.
 
-**Every write of the Terminal is held (WP TMCORE).** The Terminal's session runs
+**Every write of the Terminal is held.** The Terminal's session runs
 on the core's link, so the lock holds all of its writes, not only the commands that
 were written for the core: `uconsole set`, `uconsole eq`, `undo`/`redo`, scripts of
 them, `uconsole raw out`/`war`, `ext xfeed-map`, `ext vreg`, `cs import`, the
@@ -175,13 +185,13 @@ uconsole: Locked by the installer: only volume, mute, source and presets can be 
       Give the installer's PIN: on a terminal it asks; in a script set DSPI_INSTALLER_PIN or pass --installer-pin - with the PIN as a line of standard input.
 ```
 
-With the PIN every writing command goes through (WP TMCOREF): `DSPI_INSTALLER_PIN`,
+With the PIN every writing command goes through: `DSPI_INSTALLER_PIN`,
 `--installer-pin -` (one line of standard input; for a script on standard input, its
 first line), or the no-echo prompt on a terminal. The unlock lasts for that command.
 In the interface, `:unlock` (also offered when a write meets the lock) asks for the
 PIN without showing it, and the unlock lasts until the connection ends.
 
-**The bootloader and a firmware write are installer actions** (WP TMCOREF, every
+**The bootloader and a firmware write are installer actions** (every
 client): `enter_bootloader_confirmed` and, with the device still
 open, `flash_confirmed` are refused while locked (`installer_lock`, code `locked`, or
 `hub` when the hub holds the lock), before the confirmation token is spent. A
