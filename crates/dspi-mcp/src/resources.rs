@@ -127,8 +127,9 @@ device the app shows is used. A device that is not open may be a known one
 - A change for several devices (night mode on every DSPi): put each device's changes in one
   `dspi_apply_changes` and send those calls together, as parallel tool calls in one turn, not
   one after another. The questions they raise come up in the app as one sheet, a row per device
-  and change, answered at once (the user may answer them one by one). At most 3 of your
-  questions wait at a time.
+  and change, answered at once (the user may answer them one by one). At most 8 of your
+  questions wait at a time. Effects have a tool each: send every device's effect calls in
+  that same turn.
 
 ## Saving
 - Changes are live at once, and not saved: a device forgets them when it is switched off or

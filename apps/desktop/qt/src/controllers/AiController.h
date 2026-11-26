@@ -73,7 +73,9 @@ class AiController : public QObject {
     // The relay that asks to pair: { id, name, code, secondsLeft }, {} for none
     Q_PROPERTY(QVariantMap pairing READ pairing NOTIFY pairingChanged)
     // The changes that wait for the user, oldest first: [{ id, client, title,
-    // device, risks: [text], riskLines: [text with its kind's label] }]
+    // device, risks: [text], riskLines: [text with its kind's label], group (-- WP UB5 --
+    // the server's group: the questions one agent raised together, one sheet) }]; only
+    // groups the server has sealed, which take no more questions
     Q_PROPERTY(QVariantList confirmations READ confirmations NOTIFY confirmationsChanged)
     // How long the oldest of them waits for the answer still
     Q_PROPERTY(int confirmationSecondsLeft READ confirmationSecondsLeft NOTIFY secondsChanged)
@@ -101,6 +103,11 @@ class AiController : public QObject {
     // -- WP UAG -- (UXP A7) the console's newest refusal of an agent's call, for a few
     // seconds: { agent, text ("Kept Right tweeter's high-pass at 1 kHz"), device }; {} for none
     Q_PROPERTY(QVariantMap refusal READ refusal NOTIFY refusalChanged)
+    // -- WP UB5 -- (UXP B5) What agents changed that is not saved on the device yet, while
+    // agents are on: { agent, count (settings), devices (how many), text ("Changed 12
+    // settings, not saved yet"), save (the button's word) }; {} for none. It goes when the
+    // device is saved, its preset loaded or its changes put back, or the device closes.
+    Q_PROPERTY(QVariantMap unsaved READ unsaved NOTIFY unsavedChanged)
     // What agents changed in the last moments: [{ device, path, indices }]
     Q_PROPERTY(QVariantList recentTouches READ recentTouches NOTIFY recentTouchesChanged)
     Q_PROPERTY(QString url READ url NOTIFY settingsChanged)
@@ -260,6 +267,10 @@ public:
     bool working() const { return m_working; }
     QVariantMap work() const { return m_workShown; }
     QVariantMap refusal() const { return m_refusal; }   // -- WP UAG --
+    QVariantMap unsaved() const;   // -- WP UB5 --
+    // -- WP UB5 -- Save to Device for `unsaved`: that device's save question, or Save All's
+    // with more than one
+    Q_INVOKABLE void saveUnsaved();
     static constexpr int kRefusalMs = 4000;               // -- WP UAG -- how long the strip says it
     QVariantList recentTouches() const;
     // The device the strip is about becomes the one shown; its agent's measurement
@@ -328,6 +339,7 @@ public:
 
 signals:
     void rememberedChanged();   // -- WP FEATUI --
+    void unsavedChanged();      // -- WP UB5 --
     void stateChanged();
     void settingsChanged();
     void clientsChanged();
@@ -441,7 +453,8 @@ private:
         QString heading;
         QVariantList batch;      // {said, risky} per row, the asked ones first
         bool flash = false;      // written to the device's memory: no Undo
-        qint64 askedMs = 0;      // -- WP UAG -- (UXP D2) when, on the server's clock: questions raised together are one sheet
+        qint64 askedMs = 0;      // -- WP UAG -- (UXP D2) when, on the server's clock
+        quint64 group = 0;       // -- WP UB5 -- (UXP D2) the server's group: one sheet, sealed before it is read
         QDateTime ends;
         bool operator==(const Waiting &o) const { return id == o.id; }   // a question never changes
     };
@@ -450,6 +463,16 @@ private:
     static QString questionHeading(const QString &client, const QString &kind, const QString &channel,
                                    const QString &device);   // -- WP UAG --
     QSet<quint64> m_answered;   // answered here, not read as ended yet
+    QTimer m_sealTimer;         // -- WP UB5 -- reads the questions again once their group seals
+    // -- WP UB5 -- (UXP B5) by device id: the settings agents changed there since it was last
+    // clean (path and indices), the newest agent's name, and whether its preset was seen unsaved
+    struct AgentUnsaved {
+        QString agent;
+        QSet<QString> keys;
+        bool dirtySeen = false;
+    };
+    QHash<QString, AgentUnsaved> m_agentUnsaved;
+    void noteUnsaved();
     QJsonArray m_activity;      // oldest first, as the server gives it
     QHash<QString, QPair<QString, QString>> m_undo;   // row key: its undo state and note
     QStringList m_undoQueue;

@@ -35,8 +35,10 @@ use crate::policy::{Risk, WriteKey};
 
 /// How long a confirmation waits for the user (MCPDES 3.3).
 pub const CONFIRM_HOLD_MS: u64 = 120_000;
-/// The most confirmations one client may have waiting at once.
-pub const WAITING_PER_CLIENT: usize = 3;
+/// The most confirmations one client may have waiting at once. -- WP UB5 --
+/// (UXP B5) 8, was 3: one sheet shows those raised together (night mode on
+/// three devices is six questions: loudness and the leveller on each).
+pub const WAITING_PER_CLIENT: usize = 8;
 /// Ended confirmations kept for `dspi_get_confirmation`.
 const ENDED_KEPT: usize = 64;
 // -- WP UB5 -- (UXP D2)

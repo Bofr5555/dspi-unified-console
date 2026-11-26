@@ -294,3 +294,27 @@ fn wp_ub5_a_refusal_names_the_place_where_the_user_does_it() {
     // Still the words the earlier tests and agents know
     assert!(NO_POLICY_TEXT.contains("does not let agents"));
 }
+
+#[test]
+fn wp_ub5_night_mode_on_three_devices_fits_one_sheet() {
+    // Six questions raised together (loudness and the leveller on three
+    // devices): one group; a ninth waits for the answers
+    let (set, core) = demo("ub5-six");
+    for o in 0..9 {
+        core.set_output_gain(o, -20.0).unwrap();
+    }
+    let mut s = server_of(&set, ConfirmMode::AskRisky);
+    let c = s.connect();
+    let ids: Vec<u64> = (1..=8u8)
+        .map(|o| raise_at(&mut s, c, 1_000 + u64::from(o) * 10, o))
+        .collect();
+    assert_eq!(sheet_at(&mut s, 2_000), ids);
+    let r = call_at(
+        &mut s,
+        c,
+        2_100,
+        "dspi_set_gain",
+        json!({"output": 9, "gain_db": -3.0}),
+    );
+    assert_eq!(r["isError"], json!(true), "{r}");
+}

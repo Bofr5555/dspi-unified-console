@@ -23,6 +23,7 @@
 #include "PeqEditorController.h"   // -- WP SHOWFIX --
 #include "SidebarController.h"     // -- WP SHOWFIX --
 #include "UnitsMeasureController.h"   // -- WP AIVIS --
+#include "UnsavedGuard.h"             // -- WP UB5 --
 #include "Snapshot.h"
 
 #include "AppIdentity.h"
@@ -170,6 +171,9 @@ AiController::AiController(const AppContext &ctx, QObject *parent) : QObject(par
     connect(this, &AiController::stateChanged, this, &AiController::refreshWork);
     connect(this, &AiController::confirmationsChanged, this, &AiController::refreshWork);
     connect(ctx.registry, &DeviceRegistry::devicesChanged, this, &AiController::refreshWork);
+    // -- WP UB5 -- (UXP B5) an agent's changes, until the device is saved; said while agents are on
+    connect(ctx.registry, &DeviceRegistry::devicesChanged, this, &AiController::noteUnsaved);
+    connect(this, &AiController::stateChanged, this, &AiController::unsavedChanged);
     // -- WP ODEC -- a follow the rate limit held off, tried once it allows
     m_followTimer.setSingleShot(true);
     connect(&m_followTimer, &QTimer::timeout, this, [this] {
@@ -177,6 +181,9 @@ AiController::AiController(const AppContext &ctx, QObject *parent) : QObject(par
         const FollowAt at = std::exchange(m_followPendingAt, FollowAt());   // -- WP SHOWFIX --
         if (!device.isEmpty()) followTo(device, at);
     });
+    // -- WP UB5 -- (UXP D2) the questions of a group, once the server sealed it
+    m_sealTimer.setSingleShot(true);
+    connect(&m_sealTimer, &QTimer::timeout, this, &AiController::readConfirmations);
     // -- WP SHOWFIX -- (finding 10) a question's device, once an input rests
     m_questionTimer.setSingleShot(true);
     connect(&m_questionTimer, &QTimer::timeout, this, &AiController::followQuestion);
@@ -742,14 +749,23 @@ void AiController::readConfirmations() {
                  if (!isOk(reply)) return;
                  QList<Waiting> list;
                  QSet<quint64> there;
+                 qint64 sealsIn = -1;   // -- WP UB5 --
                  for (const QJsonValue &v : reply.value(QLatin1String("value")).toArray()) {
                      const QJsonObject c = v.toObject();
+                     // -- WP UB5 -- (UXP D2) a group the server may still add to is not shown: it is
+                     // read again once it seals, and never grows after
+                     if (!c.value(QLatin1String("sealed")).toBool(true)) {
+                         const qint64 in = c.value(QLatin1String("seals_in_ms")).toInteger();
+                         sealsIn = sealsIn < 0 ? in : qMin(sealsIn, in);
+                         continue;
+                     }
                      Waiting w;
                      w.id = quint64(c.value(QLatin1String("confirmation_id")).toInteger());
                      w.client = str(c, "client_name");
                      w.title = str(c, "title");
                      w.device = str(c, "device");
                      w.askedMs = c.value(QLatin1String("asked_ms")).toInteger();   // -- WP UAG --
+                     w.group = quint64(c.value(QLatin1String("group")).toInteger(qint64(w.id)));   // -- WP UB5 --
                      for (const QJsonValue &r : c.value(QLatin1String("risks")).toArray()) {
                          // -- WP UAG -- (UXP A6) the change in the screen's words: the first asked one heads the sheet
                          if (w.heading.isEmpty())
@@ -799,6 +815,7 @@ void AiController::readConfirmations() {
                  }
                  m_answered.intersect(there);
                  if (!list.isEmpty()) m_tick.start();
+                 if (sealsIn >= 0) m_sealTimer.start(int(qBound<qint64>(0, sealsIn, 2000)) + 30);   // -- WP UB5 --
                  // Only a change: the rows' buttons are armed anew with each
                  if (list == m_waiting) return;
                  m_waiting = list;
@@ -838,9 +855,67 @@ QVariantList AiController::confirmations() const {
             { QStringLiteral("flash"), w.flash },
             { QStringLiteral("agent"), agentName(w.client) },
             { QStringLiteral("askedMs"), double(w.askedMs) },   // -- WP UAG -- (UXP D2)
+            { QStringLiteral("group"), double(w.group) },       // -- WP UB5 -- (UXP D2) the server's sheet
         });
     }
     return out;
+}
+
+// -- WP UB5 -- (UXP B5) An agent's changes are saved, or gone, once the device's preset turns clean
+// after it was seen unsaved (a save, a preset load, the changes put back): they are no longer said
+void AiController::noteUnsaved() {
+    bool changed = false;
+    for (auto it = m_agentUnsaved.begin(); it != m_agentUnsaved.end();) {
+        DeviceSession *session = m_ctx.registry->session(it.key());
+        const bool dirty = session && m_ctx.registry->dirty(session);
+        if (!session || (it->dirtySeen && !dirty)) {
+            it = m_agentUnsaved.erase(it);
+            changed = true;
+            continue;
+        }
+        changed = changed || dirty != it->dirtySeen;
+        it->dirtySeen = dirty;
+        ++it;
+    }
+    if (changed) emit unsavedChanged();
+}
+
+QVariantMap AiController::unsaved() const {
+    if (!m_running) return {};
+    qsizetype count = 0;
+    QString agent, device;
+    int devices = 0;
+    for (auto it = m_agentUnsaved.cbegin(); it != m_agentUnsaved.cend(); ++it) {
+        if (!it->dirtySeen || it->keys.isEmpty()) continue;
+        count += it->keys.size();
+        agent = it->agent;
+        device = it.key();
+        ++devices;
+    }
+    if (!devices) return {};
+    //: The agent strip, after an AI agent's work: %n settings it changed that the device has not saved
+    QString text = devices > 1 ? tr("Changed %n settings on %1 devices, not saved yet", "", int(count)).arg(devices)
+                               : tr("Changed %n settings, not saved yet", "", int(count));
+    if (devices == 1 && m_ctx.registry->sessions().size() > 1) text += QStringLiteral(" · ") + deviceTitle(device);
+    return QVariantMap{ { QStringLiteral("agent"), agent },
+                        { QStringLiteral("count"), int(count) },
+                        { QStringLiteral("devices"), devices },
+                        { QStringLiteral("deviceId"), devices == 1 ? device : QString() },
+                        { QStringLiteral("text"), text },
+                        { QStringLiteral("save"), devices > 1 ? tr("Save All…") : tr("Save to Device") } };
+}
+
+void AiController::saveUnsaved() {
+    const QVariantMap u = unsaved();
+    if (u.isEmpty()) return;
+    const QString device = u.value(QStringLiteral("deviceId")).toString();
+    if (device.isEmpty()) {
+        if (auto *guard = Registrar::instance<UnsavedGuard>()) guard->askSaveAll();
+        return;
+    }
+    // The save question of that device, as the top bar's Save to Device asks it
+    if (device != m_ctx.registry->activeId()) m_ctx.registry->activate(device);
+    m_ctx.shell->trigger(QStringLiteral("device.commit"));
 }
 
 // -- WP UAG -- (UXP A7) The strip stops saying the refusal
@@ -1700,6 +1775,23 @@ void AiController::tell(const QList<QJsonObject> &rows) {
             const QVariantList indices = t.value(QLatin1String("indices")).toArray().toVariantList();
             m_touches.append({ device, str(t, "path"), indices, now });
             emit touched(device, str(t, "path"), indices);
+        }
+        // -- WP UB5 -- (UXP B5) what it leaves unsaved on the device, a setting once; a save, a preset
+        // load or a revert to saved leaves nothing of it
+        if (!device.isEmpty()) {
+            static const QStringList saved{ QStringLiteral("dspi_preset_save"), QStringLiteral("dspi_preset_load"),
+                                            QStringLiteral("dspi_revert_to_saved") };
+            if (saved.contains(str(e, "tool"))) {
+                if (m_agentUnsaved.remove(device)) emit unsavedChanged();
+            } else if (!e.value(QLatin1String("touched")).toArray().isEmpty()) {
+                AgentUnsaved &u = m_agentUnsaved[device];
+                u.agent = agentName(str(e, "client_name"));
+                for (const QJsonValue &v : e.value(QLatin1String("touched")).toArray())
+                    u.keys.insert(str(v.toObject(), "path") + QLatin1Char(' ')
+                                  + QString::fromUtf8(QJsonDocument(v.toObject().value(QLatin1String("indices")).toArray()).toJson(QJsonDocument::Compact)));
+                noteUnsaved();
+                emit unsavedChanged();
+            }
         }
         // -- WP UAG -- (UXP A7) a preset load is one sentence of its own (the preset, what the limits
         // held), not "the last: Master volume −127.0 dB" of its quiet steps, and has no Undo
