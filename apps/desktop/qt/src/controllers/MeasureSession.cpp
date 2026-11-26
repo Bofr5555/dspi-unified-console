@@ -887,7 +887,10 @@ void MeasureSession::refreshSim() {
 // ---- The microphone --------------------------------------------------------------------
 
 void MeasureSession::setMicChoice(const QString &choice) {
-    m_micChosen = true;
+    // -- FIX016 -- (R1-QT) the simulated microphone is the demo's own default: a
+    // person who picks it has not chosen against it, so it comes back when the
+    // demo opens again (refreshSim clears it while the demo is closed)
+    m_micChosen = choice != QLatin1String("sim");
     if (choice == m_micChoice) return;
     m_micChoice = choice;
     emit micChanged();
