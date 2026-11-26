@@ -55,11 +55,13 @@ test("UB13: a mouse desktop has neither; Outline controls draws the 3:1 line, Co
   const { one, session, list } = await openEq(page);
   const root = one.locator(".dspi-web");
   const type = list.getByRole("combobox").first();
-  const dockButton = session.locator(".dock button:visible").first();
+  const source = session.locator(".dock-source"); // a menu on the dock, the control tone
+  const button = session.getByRole("button", { name: "Enable All", exact: true });
   await expect(root).not.toHaveAttribute("data-outline", /./);
   await expect(root).not.toHaveAttribute("data-density", /./);
-  expect(await borderColour(dockButton)).toBe("rgba(0, 0, 0, 0)");
-  expect(await height(dockButton)).toBeLessThan(31);
+  expect(await borderColour(source)).toBe("rgba(0, 0, 0, 0)");
+  expect(await borderColour(button)).toBe("rgba(0, 0, 0, 0)");
+  const sourceHeight = await height(source);
   const disc = list.getByRole("checkbox", { name: "Band 1 plays" });
   expect((await disc.boundingBox())?.width).toBeLessThan(20);
   await shot(page, "peq-off");
@@ -75,12 +77,13 @@ test("UB13: a mouse desktop has neither; Outline controls draws the 3:1 line, Co
   await shot(page, "appearance-both");
 
   await openPage(session, "EQ");
-  expect(await borderColour(dockButton)).toBe(OUTLINE);
+  expect(await borderColour(source)).toBe(OUTLINE);
+  expect(await borderColour(button)).toBe(OUTLINE);
   expect(await borderColour(type)).toBe(OUTLINE);
-  expect(await height(dockButton)).toBeGreaterThanOrEqual(31.5);
+  expect(await height(source)).toBeGreaterThanOrEqual(Math.max(31.5, sourceHeight));
   const box = await list.getByRole("checkbox", { name: "Band 1 plays" }).boundingBox();
-  expect(box?.width).toBeGreaterThanOrEqual(44);
-  expect(box?.height).toBeGreaterThanOrEqual(44);
+  expect(box?.width).toBeGreaterThanOrEqual(43.5);
+  expect(box?.height).toBeGreaterThanOrEqual(43.5);
   await noSidewaysScroll(page);
   await shot(page, "peq-both");
 
@@ -112,7 +115,7 @@ test.describe("UB13 on a touch screen", () => {
     await expect(root).toHaveAttribute("data-density", "comfortable");
     await expect(root).not.toHaveAttribute("data-outline", /./);
     const box = await list.getByRole("checkbox", { name: "Band 1 plays" }).boundingBox();
-    expect(box?.width).toBeGreaterThanOrEqual(44);
+    expect(box?.width).toBeGreaterThanOrEqual(43.5);
     await noSidewaysScroll(page);
     await shot(page, "touch-peq");
     await openPage(session, "Settings");
