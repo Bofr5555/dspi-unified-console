@@ -622,6 +622,47 @@ void routingToABareTweeter(SmokeDriver &d) {
 }
 // ==== end F5 ====
 
+// ==== F6 ====
+// ---- F6: a sub fed from one side is no louder once it gets both
+void sumNoLouder(SmokeDriver &d) {
+    auto *ls = Registrar::instance<LayoutSetupController>();
+    DeviceModel *device = d.app().device;
+    if (!ls || !device->state() || device->state()->num_output_channels < 5 || device->state()->num_input_channels < 2) {
+        d.check("fix016 F6: the controller, five outputs and two inputs", false);
+        return;
+    }
+    DeviceSetup setup(d);
+    setup.layout(QJsonArray{ way(4, "sub", "Sub", 2) });
+    setup.bare({ 4 }, false);
+    device->write(QStringLiteral("fix016 sub"), [](FfiCore *c) { return dspi_set_matrix_route(c, 0, 4, true, -12.0f, false); });
+    d.waitIdle();
+    device->refresh();
+    d.waitIdle();
+    // Mono content (L = R) reaches the sub at the sum of its crosspoints' gains
+    const auto mono = [&] {
+        double sum = 0;
+        for (int i = 0; i < setup.inputs; ++i)
+            if (device->state()->matrix_routing[i][4]) sum += std::pow(10.0, double(device->state()->matrix_gain[i][4]) / 20.0);
+        return sum > 0 ? 20.0 * std::log10(sum) : -200.0;
+    };
+    const double before = mono();
+    const QStringList notes = ls->plan().value(QStringLiteral("routeNotes")).toStringList();
+    const QString refusal = ls->apply({}, false, true);
+    d.waitIdle();
+    device->refresh();
+    d.waitIdle();
+    const double after = mono();
+    std::printf("smoke: fix016 F6: the sub on mono content %.2f dB before, %.2f dB after (L %.2f, R %.2f)\n", before, after,
+                double(device->state()->matrix_gain[0][4]), double(device->state()->matrix_gain[1][4]));
+    d.check(QStringLiteral("fix016 F6: the sub fed L at −12 dB, routed from the layout, is no louder on mono content (%1 → %2 dB)")
+                .arg(before, 0, 'f', 2).arg(after, 0, 'f', 2),
+            refusal.isEmpty() && before < -11.9 && after <= before + 0.1);
+    d.check("fix016 F6: and fed from both sides, alike", device->state()->matrix_routing[0][4] && device->state()->matrix_routing[1][4]
+            && std::abs(device->state()->matrix_gain[0][4] - device->state()->matrix_gain[1][4]) < 0.05f);
+    d.check(QStringLiteral("fix016 F6: the sheet said so (%1)").arg(notes.join(QStringLiteral(" | "))),
+            std::any_of(notes.begin(), notes.end(), [](const QString &n) { return n.contains(QLatin1String("no louder than before")); }));
+}
+// ==== end F6 ====
 
 
 void fix016Section(SmokeDriver &d) {
@@ -631,6 +672,7 @@ void fix016Section(SmokeDriver &d) {
     speakersUnderTheLock(d);   // R4-QT
     modernUnderTheLock(d);   // F8
     routingToABareTweeter(d);   // F5
+    sumNoLouder(d);   // F6
 }
 
 const SmokeDriver::Section fix016("fix016-qt", 1000, &fix016Section);

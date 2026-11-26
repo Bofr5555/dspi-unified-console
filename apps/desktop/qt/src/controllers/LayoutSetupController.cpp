@@ -62,6 +62,11 @@ double defaultHz(const QString &lower, const QString &upper) {
 }
 
 // "1 kHz", "1.5 kHz", "80 Hz"
+// -- FIX016 -- "−18.0 dB"
+QString dbText(double db) {
+    return QStringLiteral("%1 dB").arg(QString::number(db, 'f', 1).replace(QLatin1Char('-'), QChar(0x2212)));
+}
+
 QString hzText(double hz) {
     if (hz >= 1000) return LayoutSetupController::tr("%1 kHz").arg(QString::number(hz / 1000.0, 'g', 3));
     return LayoutSetupController::tr("%1 Hz").arg(std::lround(hz));
@@ -364,8 +369,27 @@ QVariantList LayoutSetupController::routePlan(const QJsonObject &layout, QString
             notes->append(tr("%1: its speaker's name says no side, so its routes stay as they are.").arg(outputTitle(o)));
             continue;
         }
+        QList<QPair<int, float>> src = sources(side);
+        // -- FIX016 -- (F6) a sum (a centre or a sub fed from both sides) never plays
+        // louder than the output did: on mono content its halves add up, so each
+        // half is −6 dB below what fed the output before (all its crosspoints'
+        // gains summed), and never above −6 dB. Equal halves keep L and R alike;
+        // raising the half that was there to −6 dB instead would make the output
+        // louder on its own side.
+        if (src.size() > 1) {
+            double before = 0;
+            for (int i = 0; i < inputs && i < MAX_INPUTS; ++i)
+                if (s->matrix_routing[i][o]) before += std::pow(10.0, double(s->matrix_gain[i][o]) / 20.0);
+            if (before > 0) {
+                const float cap = float(std::min<double>(kSumDb, 20.0 * std::log10(before / 2.0)));
+                for (auto &f : src) f.second = std::min(f.second, cap);
+                if (cap < kSumDb - 0.05f)
+                    //: %1 an output ("Sub · 5"), %2 a gain ("−18.0 dB")
+                    notes->append(tr("%1 gets both sides at %2 each, so it plays no louder than before.").arg(outputTitle(o), dbText(cap)));
+            }
+        }
         QVariantList from;
-        for (const auto &[input, gain] : sources(side)) {
+        for (const auto &[input, gain] : src) {
             from.append(QVariantMap{ { QStringLiteral("input"), input }, { QStringLiteral("gainDb"), gain } });
             feeds[input] << outputTitle(o);
         }
@@ -573,10 +597,14 @@ QString LayoutSetupController::apply(const QVariantList &values, bool crossovers
                 want.insert(f.toMap().value(QStringLiteral("input")).toInt(), f.toMap().value(QStringLiteral("gainDb")).toFloat());
             // A new crosspoint takes the output's polarity
             const bool inverted = cc->outputPolarity(o) == 1;
+            const bool sum = want.size() > 1;   // -- FIX016 -- (F6)
             for (int i = 0; i < inputs && i < MAX_INPUTS; ++i) {
                 const bool on = s->matrix_routing[i][o];
                 if (want.contains(i) && !on) routes.push_back({ uint8_t(i), uint8_t(o), true, want.value(i), inverted });
                 else if (!want.contains(i) && on) routes.push_back({ uint8_t(i), uint8_t(o), false, s->matrix_gain[i][o], s->matrix_invert[i][o] });
+                // -- FIX016 -- (F6) a sum's half that was there louder than the plan's comes down to it
+                else if (sum && on && s->matrix_gain[i][o] > want.value(i) + 0.05f)
+                    routes.push_back({ uint8_t(i), uint8_t(o), true, want.value(i), s->matrix_invert[i][o] });
             }
         }
     }
