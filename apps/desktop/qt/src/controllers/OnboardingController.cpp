@@ -78,11 +78,29 @@ void withSpeakersStep(QVariantMap &wizard) {
     wizard.insert(QStringLiteral("stages"), stages);
 }
 
+// -- WP UA4 -- The words only this app says (OnboardingController.h): a
+// stage's `pc` block, there where the core kept it, over the stage
+void withPcWords(QVariantMap &wizard) {
+    QVariantList stages = wizard.value(QStringLiteral("stages")).toList();
+    for (QVariant &v : stages) {
+        QVariantMap stage = v.toMap();
+        const QVariantMap pc = stage.take(QStringLiteral("pc")).toMap();
+        for (auto it = pc.cbegin(); it != pc.cend(); ++it) stage.insert(it.key(), it.value());
+        v = stage;
+    }
+    wizard.insert(QStringLiteral("stages"), stages);
+}
+
+QString checklistKey(const QString &serial, const char *what) {
+    return QStringLiteral("onboarding/checklist/%1/%2").arg(serial.isEmpty() ? QStringLiteral("-") : serial, QLatin1String(what));
+}
+
 } // namespace
 
 OnboardingController::OnboardingController(const AppContext &ctx, QObject *parent) : QObject(parent), m_ctx(ctx) {
     // Compiled into the core: no device, no lock, fine on this thread
     m_gettingStarted = coreJson(dspi_onboarding_getting_started_json, 16384).object().toVariantMap();
+    withPcWords(m_gettingStarted);   // -- WP UA4 --
     withSpeakersStep(m_gettingStarted);
     m_releases = coreJson(dspi_onboarding_whats_new_json, 16384).array().toVariantList();
     // Newest first whatever the file's order (the Mac's rule); -- WP UFW -- the
@@ -183,8 +201,35 @@ void OnboardingController::resetOnboarding() {
     s.remove(QLatin1String(kSetupDoneKey));
     s.remove(QLatin1String(kWhatsNewKey));
     s.remove(QLatin1String(kAppNotesKey));   // -- WP UFW --
+    s.remove(QStringLiteral("onboarding/checklist"));   // -- WP UA4 --
+    ++m_checklistRevision;
     emit whatsNewShownChanged();
     emit wizardShownChanged();
+    emit checklistChanged();
+}
+
+// ---- -- WP UA4 -- The Overview's setup list ------------------------------------
+
+bool OnboardingController::checklistClosed(const QString &serial) const {
+    return QSettings().value(checklistKey(serial, "closed"), false).toBool();
+}
+
+void OnboardingController::closeChecklist(const QString &serial) {
+    if (checklistClosed(serial)) return;
+    QSettings().setValue(checklistKey(serial, "closed"), true);
+    ++m_checklistRevision;
+    emit checklistChanged();
+}
+
+bool OnboardingController::measuredSeen(const QString &serial) const {
+    return QSettings().value(checklistKey(serial, "measured"), false).toBool();
+}
+
+void OnboardingController::noteMeasured(const QString &serial) {
+    if (measuredSeen(serial)) return;
+    QSettings().setValue(checklistKey(serial, "measured"), true);
+    ++m_checklistRevision;
+    emit checklistChanged();
 }
 
 // ---- Help > Save Diagnostics... ----------------------------------------------

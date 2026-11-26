@@ -6,6 +6,9 @@ import UConsole
 // (assets/onboarding/speakers.json): the proposal, or the stored layout,
 // pre-filled; Confirm keeps it as the person's layout. GettingStarted shows
 // the stage's title and paragraphs above it.
+// -- WP UA4 -- (UXP A4, owner D15) The wizard's footer is the one primary:
+// Later while the table is as it came, Confirm and Continue once the person
+// edited it (`touched`); Confirm here is the quiet way to keep it and stay.
 ColumnLayout {
     id: step
     objectName: "SpeakersStep"
@@ -13,6 +16,14 @@ ColumnLayout {
     readonly property var sc: SpeakersController
     readonly property var buttons: stage.buttons || {}
     readonly property bool confirmed: sc.status === "confirmed" && !sc.edited
+    // -- WP UA4 -- the person changed the table on this step since it was
+    // last kept (or since the step showed)
+    property bool touched: false
+    onConfirmedChanged: if (confirmed) touched = false
+    Connections {
+        target: DeviceRegistry
+        function onActiveIdChanged() { step.touched = false }
+    }
     spacing: Theme.spacing
 
     Component.onCompleted: sc.reload()
@@ -29,6 +40,7 @@ ColumnLayout {
     SpeakersTable {
         visible: DeviceModel.connected
         Layout.fillWidth: true
+        onChangedByUser: step.touched = true   // -- WP UA4 --
     }
     Text {
         objectName: "SpeakersStep.state"
@@ -46,7 +58,6 @@ ColumnLayout {
         AppButton {
             objectName: "SpeakersStep.confirm"
             text: step.buttons.confirm || ""
-            primary: !step.confirmed
             enabled: step.sc.editable && step.sc.loaded && !step.confirmed
             onClicked: step.sc.confirm()
         }
@@ -54,11 +65,15 @@ ColumnLayout {
             objectName: "SpeakersStep.suggestion"
             text: step.buttons.suggestion || ""
             enabled: step.sc.editable && step.sc.loaded
-            onClicked: step.sc.useSuggestion()
+            onClicked: {
+                step.sc.useSuggestion()
+                step.touched = true   // -- WP UA4 -- the person chose it
+            }
         }
     }
     Text {
-        visible: !step.confirmed
+        objectName: "SpeakersStep.later"   // -- WP UA4 --
+        visible: !step.confirmed && DeviceModel.connected
         Layout.fillWidth: true
         text: step.stage.later || ""
         font: Theme.fontSmall
