@@ -139,3 +139,22 @@ fn ub11_without_plain_a_piped_input_is_still_a_script() {
     assert_eq!(o.status.code(), Some(0), "{}", text(&o.stderr));
     assert!(!out.contains("plain mode"), "{out}");
 }
+
+#[test]
+fn ub11_an_ab_in_plain_takes_its_answers_and_the_next_command_still_runs() {
+    let o = run(
+        "ab",
+        &["--demo", "--plain"],
+        "snapshot save Before\nout.gain 0 -6\nab Before\nt\nb\nvol.user -23\nquit\nquit\n",
+    );
+    let out = text(&o.stdout);
+    let err = text(&o.stderr);
+    assert_eq!(o.status.code(), Some(0), "{out}\n{err}");
+    assert!(out.contains("On A (A)"), "the compare began on A: {out}");
+    assert!(out.contains("On B (Before)"), "t switched: {out}");
+    assert!(out.contains("Kept B (Before)"), "b kept B: {out}");
+    assert!(
+        out.lines().any(|l| l.starts_with("vol.user -23")),
+        "the line after the compare ran: {out}"
+    );
+}
