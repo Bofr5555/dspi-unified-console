@@ -53,7 +53,7 @@ Two promises, kept apart (OD-ATr):
 
 What is offered is written into **the hub's system model**, never directly to the units: each measured speaker gets
 `measuredArrivalUs` and the hub's own alignment engine (`system.align`) turns it into output delays
-([audio-link.md, measured arrivals](audio-link.md#spdif-units-and-measured-arrivals-wp-athubm)). Applying needs Admin.
+([audio-link.md, measured arrivals](audio-link.md#spdif-units-and-measured-arrivals)). Applying needs Admin.
 
 The measurement never names a transport: the core and the hub talk to "a unit with a time base". The contract a
 transport has to meet is the firmware's `alink_protocol_spec.md` "Time bases" section (C1 to C6: the counter, fixed
@@ -497,7 +497,7 @@ Everything above is proven on fakes, simulations and the firmware's unit tests o
 |---|---|
 | The plan, decisions, WPs | [`docs/core-merge/PLAN-AT.md`](../core-merge/PLAN-AT.md) |
 | The hub's messages | [hub-api.md section 23](hub-api.md#23-measuring-several-units) |
-| The hub's model: S/PDIF units, measured arrivals | [audio-link.md](audio-link.md#spdif-units-and-measured-arrivals-wp-athubm) |
+| The hub's model: S/PDIF units, measured arrivals | [audio-link.md](audio-link.md#spdif-units-and-measured-arrivals) |
 | The single-unit measurement | [measurement.md](measurement.md) |
 | The wire (time base, timeline, S/PDIF block, ops 9/10) | the fork's `Documentation/Features/alink_protocol_spec.md` and `extension_channel_spec.md` 2.10, 2.11; codecs `crates/dspi-proto/src/ext/timebase.rs` |
 | The analyser, the planner, the chain | `crates/dspi-measure/src/system/` |

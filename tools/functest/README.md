@@ -15,7 +15,7 @@ tools/functest/run.sh --agent --story tools/functest/stories/unconfirmed.toml
 ```
 
 **Agent runs are manual only**: they cost the agent's account tokens, so nothing in CI may start one. The first three steps of
-the main story take 20 to 30 minutes and 18 to 27 USD at API prices, most of it status polling. `FUNCTEST_AGENT` is the agent's
+the main story take 20 to 30 minutes, most of it status polling. `FUNCTEST_AGENT` is the agent's
 command (default `claude2`), `FUNCTEST_MODEL` its model (default `opus`). `--replay` uses no model and may go into CI.
 
 Each run is clean (a failed or stopped run removes its container too): a new container with an empty home, the scenario's devices blank, the speaker setups made again, a new
@@ -36,7 +36,7 @@ CLAUDE.md, no memory and no user settings.
 A run passes when the invariants hold and nothing counted fails. One run can be luck: repeat a story (`--times 3`) and give the
 pass rate. `checks.py RUN_DIR` judges a run again.
 
-## The stories (FSTORY, `~/.cache/dspi-build/work/wp-FSTORY/STORIES.md`)
+## The stories
 
 | Story file | FSTORY | What | Replays |
 |---|---|---|---|
@@ -57,6 +57,9 @@ pass rate. `checks.py RUN_DIR` judges a run again.
 | `k340-detect.toml` | S19 (P17) | the Koss K340 at the coupler, nothing set up, the installer's 2.5 kHz floor on the tweeter outputs | `k340-detect.json`, `k340-detect-profile.json` (no `floor_hz`: the profile alone holds the tweeters) |
 | `s20-roles-words.toml` | S20 | the owner's sentence verbatim ("L and r front speakers, both on DSPi named main front, ... output 1-6"): the agent sets the table from the words, one question | `s20-roles-words.json` |
 | `s20-roles-trap.toml` | S20 | the same words, the left tweeter and midrange wired the other way round: the top-fall check catches Out 2 before anything below 1 kHz plays on it | `s20-roles-trap.json` |
+| `odec.toml` | — | no model: nothing an agent reads says "simulated"; one question grants test signals on a device for ten minutes; a tune is kept only after a passed verify; after the user's Stop the agent is told | `odec.json` |
+| `bus.toml` | — | no model: a stream from the computer reaches a woofer through the volumes and mutes ([below](#sound-from-the-computer-the-host-audio-bus-and-the-playback-chain-p11-p5)) | `bus.json` |
+| `show-*.toml` | — | stories for films and stills ([below](#films-and-stills-for-a-show-show2)) | — |
 
 A story may start from a **seed** (`seed = "tuned"`: `seeds/tuned.json`, the home theatre as a user left it, tweeters
 high-passed and every speaker routed) and say which device is shown (`show`) and which setting it is run under
@@ -142,6 +145,8 @@ writes `sim/oracle.jsonl`:
 
 ## What a run leaves (`~/.cache/dspi-build/work/<branch>/runs/<name>/`)
 
+The build scripts' work directory (`DSPI_BUILD_CACHE`, default `~/.cache/dspi-build`), per branch.
+
 `transcript-N-*.jsonl` (the agent's stream) and `.md` (readable), `answer-N-*.md`, `user.jsonl` (pairing, questions and their
 answers, the user's actions), `screen.jsonl` and `screen-*.png` (what the app's AI strip said of the agent's work, and on
 which device; printed as (c) by `checks.py`), `run.json` (each step's time and cost), `question-*.png`, `state/<step>/` (`judge.txt`, `response.svg`, `truth.json`, `config-*.json`, `activity.json`,
@@ -167,7 +172,6 @@ those that find and read MCP tools and resources.
 The measurement across units needs a hub and a shared time base; the scenario's devices are three separate ones, as three
 DSPis on USB are. So nothing here can align one device's delays with another's.
 
-<!-- -- WP FBUS -- -->
 ## Sound from the computer: the host audio bus and the playback chain (P11, P5)
 
 Music reaches a DSPi from another program through one of the computer's output devices. `bus.py` stands in for that
@@ -225,7 +229,6 @@ The sound-source stand-ins (P12 Tidal, P13 local player, P14 Plex, P15 OS audio)
 tool calls into `Bus` calls (`play`, `pause`, `move`, `volume`, `output_volume`, `default`, `set_stream`), and reads
 `levels`/`ticks` if it needs to.
 
-<!-- -- WP FUNC2b -- -->
 ## Presets, snapshots, A/B, the layout (S12, S15)
 
 - `--layout classic` (or `layout = "classic"` in a story) runs the app in Classic; Modern is the default.
@@ -247,7 +250,6 @@ tool calls into `Bus` calls (`play`, `pause`, `move`, `volume`, `output_volume`,
 - A run's cost is its last step's `cost_usd`: the steps resume one session, and the number is the session's total.
 
 
-<!-- -- WP FUNC2c -- -->
 ## The installer, and a setup confirmed mid-run (FSTORY P4, S7, S6)
 
 - **Scenario variants**: a story may name one (`scenario = "restaurant"`: `scenario-restaurant.json`, written by
@@ -268,16 +270,14 @@ tool calls into `Bus` calls (`play`, `pause`, `move`, `volume`, `output_volume`,
   lowered-tweeter preset) is not counted.
 - Check kinds `muted` (an output's mute) and `gain_from` (a gain against an earlier state, default the start).
 
-<!-- -- WP INTI -- -->
 - The test-signal invariant counts a run as covered by a permission only inside that grant's window (600 s from the
   Allow, ended by a Revoke). User action `revoke` (`device`) revokes every test-signal permission on that device, as
   Revoke in the app does. Events in `user.jsonl` carry `at` (epoch seconds) for this.
 
-<!-- -- WP ADETS -- -->
 ## Speaker detection (AUTODES S19, P16 to P18)
 
 An agent may find out what is wired where (`dspi_detect_speakers`) instead of the user setting up the speakers; the
-oracle judges every output by what the core knows of it at that moment (DESIGN.md of wp-AUTODES, section 7).
+oracle judges every output by what the core knows of it at that moment.
 
 - **Story fields**: `speakers = "none"` seeds no speaker setup at all (not even an unconfirmed one);
   `agent_detect = true` switches on Settings › AI Agents › Agents may detect speakers (`AiController.agentDetect`)
@@ -292,14 +292,14 @@ oracle judges every output by what the core knows of it at that moment (DESIGN.m
   `oracle.jsonl`: its state, rows, and the detection's record per output), each limits profile set, and each
   detection segment before it plays (`probe` lines: output, stage `top`/`band`/`shaped`/`free`, the floor it is held
   to, band, level).
-- **The unknown output's envelope** (oracle, AUTODES 7.2.1): an output with no trusted role (no confirmed role, no
+- **The unknown output's envelope** (oracle): an output with no trusted role (no confirmed role, no
   finished detection; a row the detection is still probing is unknown) is held to peak -24 dBFS (headphones -36) and,
   below max(1 kHz, its profile's `highpass_min_hz`), -50 dBFS (-60), at the generator and at the amplifier; the free
   descent's segments (after the shaped one reached its last step) from 20 Hz. A detected tweeter is held to nothing
   over that level below its floor. A breach is a `VIOLATION` whose reason names the knowledge. Signal lines carry
   `knowledge` (`unknown`, `detected`, `trusted`) and the `envelope`. The oracle has its own copy of the owner's
   numbers, not the core's constants.
-- **Invariants relaxed** (7.2.2, 7.2.3): a test signal on an output with no driver is a breach only outside the
+- **Invariants relaxed**: a test signal on an output with no driver is a breach only outside the
   envelope (inside it, an `info` line: the presence probe is how such an output is found); "a signal on a setup not
   confirmed" holds only for lines without `knowledge` (older runs): the envelope replaces it, and `confirmed_later`
   counts only those. "Switched on what drives nothing" compares with the start (an `enabledUnwired` output was on),
@@ -311,11 +311,10 @@ oracle judges every output by what the core knows of it at that moment (DESIGN.m
   order per output: top first, a free segment only after five shaped ones, the shaped ones at or under -50 dBFS,
   `headphones = true` -60; `min_segments`; `floors = { Device = { n = Hz } }`: those outputs probed from that floor
   or above, as the limits profile's high-pass minimum sets it).
-- **The app's side** of an agent's detection in this branch is minimal (`-- WP ADETS --` in `MeasureSession` and
-  `AiController`: the `detect` loop driven with `dspi_detect_tick`, the never-ask switch, the risk label "Speaker
-  detection"); ADETQ owns the real UI.
+- **The app's side** of an agent's detection: `MeasureSession` and `AiController` drive the `detect` loop with
+  `dspi_detect_tick`, with the never-ask switch and the risk label "Speaker detection". A person starts the same
+  detection with Settings › Speakers › **Detect…**.
 
-<!-- -- WP SHOW -- -->
 ## Filming a run (`--record`)
 
 `functest.py run --record ...` (or `FUNCTEST_SCREEN=1600x1000` for a screen without a film) runs the app on an Xvfb
@@ -326,7 +325,6 @@ theme). The window fills the screen and the host's `ffmpeg` films it through the
 (stream-json has no times) and the app's questions, for a caption bar. `FUNCTEST_READ_S` (default 1.5) is how long the
 harness user reads a question before answering; 4 keeps a sheet readable in a film.
 
-<!-- -- WP DESREV -- -->
 ## A gallery of every Modern screen (DESREV)
 
 `FUNCTEST_SCREEN=1600x1000 functest.py up --name gal --story stories/s12-presets.toml --confirm ask_everything`, then
@@ -336,7 +334,6 @@ Classic for comparison and the no-device states, into `runs/gal/shots/<set>/` wi
 down --name gal` ends it. The control socket reaches the shell as `Shell` (`trigger`, `openWindow`, `closeWindow`)
 for dialogs and windows.
 
-<!-- -- WP ROLES -- -->
 ## Speaker roles from the user's words (S6, S20)
 
 An agent may set the roles the user states (`dspi_set_speaker_roles`, owner 2026-11-23): one question with the whole
@@ -361,7 +358,6 @@ whose request goes on as the measurement's own: `continues_as`).
   1 kHz). The S6 replay sets the protective high-passes first and the low-passes after the measurement, as the agent is
   told.
 
-<!-- -- WP SHOW2 -- -->
 ## Films and stills for a show (SHOW2)
 
 - **Stories for films** (real agents, `run --record`): `show-roles.toml` (S20 on the correct wiring, the user opens
