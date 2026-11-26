@@ -709,6 +709,9 @@ enum Target {
         // -- WP AUSB1 -- an alink USB-direct unit
         #[serde(default, rename = "usbDirect")]
         usb_direct: bool,
+        // -- WP UB12 -- the capture as it is, not the tuned example (tests of a new board)
+        #[serde(default)]
+        blank: bool,
     },
     // -- WP WB4a --
     Usb(usb::UsbTarget),
@@ -742,6 +745,7 @@ fn open(h: u32, core: &DspiCore, target: Target) -> CallResult {
             read_only,
             alink,
             usb_direct,
+            blank,
         } => {
             if read_only {
                 core.open_demo_wire(READ_ONLY_DEMO_WIRE)?;
@@ -751,6 +755,8 @@ fn open(h: u32, core: &DspiCore, target: Target) -> CallResult {
             } else if alink {
                 // -- WP SW1 --
                 core.open_demo_alink()?;
+            } else if blank {
+                core.open_demo_blank()?; // -- WP UB12 --
             } else {
                 core.open_demo()?;
             }

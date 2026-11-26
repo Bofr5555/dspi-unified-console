@@ -32,6 +32,8 @@ export type DeviceTarget =
       alink?: boolean;
       /** -- WP AUSB1 -- the demo as an alink USB-direct unit */
       usbDirect?: boolean;
+      /** -- WP UB12 -- the capture as it is (a new board), not the tuned example */
+      blank?: boolean;
     }
   /**
    * A DSPi on USB (WebUSB, WB4a): the serial the page's picker or
