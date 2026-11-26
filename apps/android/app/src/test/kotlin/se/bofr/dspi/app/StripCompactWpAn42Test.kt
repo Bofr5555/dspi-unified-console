@@ -74,7 +74,8 @@ class StripCompactWpAn42Test {
             useUnmergedTree = true
         )
             .assertExists()
-        assertEquals(0, rule.onAllNodes(hasText("Exit demo")).fetchSemanticsNodes().size)
+        // -- WP UAN -- (UXP A11) Exit demo is a button on the bar, no longer behind the overflow
+        rule.onNode(hasText("Exit demo") and inStrip).assertIsDisplayed()
         rule.onNodeWithTag(DEVICE_LIST_TAG).assertDoesNotExist()
         rule.onNodeWithTag(UNDO_BUTTON_TAG).assertIsDisplayed()
         rule.onNodeWithTag(REDO_BUTTON_TAG).assertIsDisplayed()
@@ -83,7 +84,8 @@ class StripCompactWpAn42Test {
         rule.runOnUiThread { Snapshot.sendApplyNotifications() }
         rule.mainClock.advanceTimeBy(3_000)
         rule.onNodeWithText("✓ Demo (no device)").assertIsDisplayed()
-        rule.onNodeWithText("Exit demo").assertIsDisplayed().performClick()
+        assertEquals("not in the menu too", 1, rule.onAllNodes(hasText("Exit demo")).fetchSemanticsNodes().size)
+        rule.onNode(hasText("Exit demo") and inStrip).performClick()
         assertEquals(1, exits)
     }
 

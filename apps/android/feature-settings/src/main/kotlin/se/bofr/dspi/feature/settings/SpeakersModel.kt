@@ -56,8 +56,8 @@ object SpeakerWords {
     const val SAFETY = "A tweeter or a mid gets the protection of its role: a preset that would leave it without its high-pass " +
         "is held, and it is measured only with one. An output with an active high-pass at 1 kHz or above is treated as a " +
         "tweeter, whatever its role here."
-    const val MEASURE = "Measuring and auto-tune are in the desktop and web consoles; they use the roles kept here for this DSPi " +
-        "on this phone."
+    const val MEASURE = "Measuring and auto-tune are in the desktop and web consoles. The roles you confirm here are kept in this " +
+        "app for this DSPi."
     const val CONFIRMED = "Confirmed. You can change it here at any time."
     const val DETECTED = "Found by the speaker detection, not confirmed yet: its roles protect the outputs already. Check them and confirm."
     const val UNCONFIRMED = "Not confirmed: a suggestion from the filters and routing. Check it and confirm it; until then no role " +
