@@ -34,10 +34,10 @@
 //! of [`DspiCore::preset_changes`]) with "now" (B), so a top-bar A | B works
 //! from the first edit with nothing captured by hand. Only what a preset
 //! holds differs between its sides: the listening volume and mute, the
-//! external mute, the master volume outside "with preset" mode, the output
-//! configuration outside "with preset" mode and the settings outside the
-//! image stay as they are live on every toggle (a toggle never jumps the
-//! volume). It ends when its baseline is replaced (a load, a save, a revert,
+//! external mute, the master volume (-- FIX016 -- also in "with preset"
+//! mode: master volume is not compared), the output configuration outside
+//! "with preset" mode and the settings outside the image stay as they are
+//! live on every toggle (a toggle never jumps the volume). It ends when its baseline is replaced (a load, a save, a revert,
 //! a factory reset), except that a save or revert of the same preset while
 //! on A keeps it, so the edits on B are not lost by a save on A.
 
@@ -56,7 +56,9 @@ const CAPTURED_A_NOTE: &str = "Captured for an A/B compare";
 const CAPTURED_NOTE: &str = "Captured by an A/B toggle";
 // -- WP UB34 -- the sides of a compare of "as saved" against "now"
 const SAVED_A_NAME: &str = "As saved";
-const SAVED_A_NOTE: &str = "The active preset as saved on the device";
+// -- FIX016 -- (REVG F1) and says what it leaves out
+const SAVED_A_NOTE: &str =
+    "The active preset as saved on the device. Master volume is not compared";
 const SAVED_B_NAME: &str = "Now";
 const SAVED_B_NOTE: &str = "The device's settings when the compare began";
 /// The refusal of [`DspiCore::ab_start_saved`] with no saved state known.
@@ -560,9 +562,12 @@ fn saved_mark(inner: &crate::Inner) -> SavedMark {
 
 /// `preset`'s settings where a preset holds them, `live`'s everywhere else:
 /// the listening volume and mute, the external mute, the sub solo, the
-/// persistence modes, the master volume unless it travels with presets and
-/// the output configuration unless it does (what a preset load leaves alone,
-/// and what [`DspiCore::preset_changes`] does not count).
+/// persistence modes, the master volume and the output configuration unless
+/// it travels with presets (what a preset load leaves alone, and what
+/// [`DspiCore::preset_changes`] does not count). -- FIX016 -- (REVG F1) The
+/// master volume is not compared even when it travels with presets: a
+/// toggle never jumps the volume (saved −10 dB under a live −40 dB was +30 dB
+/// on one click).
 pub(crate) fn preset_on_live(preset: &DspState, live: &DspState) -> DspState {
     use crate::presets::WITH_PRESET;
     let mut s = preset.clone();
@@ -576,9 +581,7 @@ pub(crate) fn preset_on_live(preset: &DspState, live: &DspState) -> DspState {
     s.subharm_solo = live.subharm_solo;
     s.master_volume_mode = live.master_volume_mode;
     s.output_config_mode = live.output_config_mode;
-    if live.master_volume_mode != WITH_PRESET {
-        s.master_volume_db = live.master_volume_db;
-    }
+    s.master_volume_db = live.master_volume_db; // -- FIX016 -- (REVG F1) never compared
     if live.output_config_mode != WITH_PRESET {
         s.output_pins.clone_from(&live.output_pins);
         s.output_types.clone_from(&live.output_types);
@@ -683,3 +686,7 @@ mod tests_wp_p1ab;
 #[cfg(test)]
 #[allow(clippy::arithmetic_side_effects)]
 mod tests_wp_ub34;
+
+// -- FIX016 --
+#[cfg(test)]
+mod tests_fix016_f1;
