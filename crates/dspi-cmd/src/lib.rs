@@ -304,11 +304,7 @@ fn parse_crosspoint(indices: &[u8], tokens: &[&str]) -> Result<Value, ParseError
     let gain: f32 = match tokens.get(1) {
         None => 0.0,
         // -- WP DL3 -- not "nan" or "inf", which `f32::parse` takes.
-        Some(t) => t
-            .parse::<f32>()
-            .ok()
-            .filter(|f| f.is_finite())
-            .ok_or_else(|| bad(t, "a gain in dB"))?,
+        Some(t) => number(t).ok_or_else(|| bad(t, "a gain in dB"))?, // -- WP UTM --
     };
     let invert = match tokens.get(2) {
         None => false,
@@ -369,12 +365,12 @@ fn parse_packet(d: &ParamDesc, indices: &[u8], tokens: &[&str]) -> Result<Value,
         if let Some((key, value)) = token.split_once('=') {
             pairs.push((
                 key.to_ascii_lowercase(),
-                value.trim_matches('"').to_string(),
+                thousands(value.trim_matches('"')), // -- WP UTM --
             ));
             continue;
         }
 
-        let word = token.to_ascii_lowercase();
+        let word = thousands(&token.to_ascii_lowercase()); // -- WP UTM --
 
         // A bare field name that holds a yes or no means yes.
         if let Some(f) = spec.field(&word)
@@ -489,15 +485,11 @@ fn parse_eq(tokens: &[&str], ctx: &Context) -> Result<Command, ParseError> {
         match tokens.get(i) {
             None => Ok(default),
             // -- WP DL3 -- `f32::parse` takes "nan" and "inf"; no band field holds them.
-            Some(t) => t
-                .parse::<f32>()
-                .ok()
-                .filter(|f| f.is_finite())
-                .ok_or_else(|| ParseError::BadValue {
-                    path: "eq".into(),
-                    value: (*t).into(),
-                    expected: "a finite number".into(),
-                }),
+            Some(t) => number(t).ok_or_else(|| ParseError::BadValue {
+                path: "eq".into(),
+                value: (*t).into(),
+                expected: "a finite number".into(),
+            }),
         }
     };
 
@@ -577,6 +569,41 @@ fn parse_band(token: &str, ctx: &Context) -> Result<u8, ParseError> {
     })
 }
 
+// -- WP UTM -- (UXP A13) `1k` on every line, as the `;` page commands read it
+/// A finite number, with `k` or `K` for thousands: `1k`, `2.5k`, `-6`, `80`.
+/// Not "nan" or "inf", which `f32::parse` takes and no parameter holds.
+pub fn number(raw: &str) -> Option<f32> {
+    let (head, scale) = match raw.strip_suffix(['k', 'K']) {
+        Some(head) => (head, 1000.0),
+        None => (raw, 1.0),
+    };
+    head.parse::<f32>()
+        .ok()
+        .map(|v| v * scale)
+        .filter(|v| v.is_finite())
+}
+
+// -- WP UTM --
+/// A whole number, also as thousands (`48k`, `1.5k`); `2.5005k` is not one.
+fn whole(raw: &str) -> Option<i64> {
+    if let Ok(n) = raw.parse() {
+        return Some(n);
+    }
+    let head = raw.strip_suffix(['k', 'K'])?.parse::<f64>().ok()?;
+    let n = head * 1000.0;
+    (n.is_finite() && n.fract() == 0.0 && n.abs() < 1e15).then_some(n as i64)
+}
+
+// -- WP UTM --
+/// A packet field's word with thousands written out (`2.5k` is `2500`), for
+/// the packet's own encoder; any other word as it is.
+fn thousands(word: &str) -> String {
+    match word.strip_suffix(['k', 'K']).map(str::parse::<f64>) {
+        Some(Ok(v)) if (v * 1000.0).is_finite() => (v * 1000.0).to_string(),
+        _ => word.to_string(),
+    }
+}
+
 pub fn parse_value(d: &ParamDesc, raw: &str) -> Result<Value, ParseError> {
     let bad = |expected: &str| ParseError::BadValue {
         path: d.path.into(),
@@ -613,7 +640,8 @@ pub fn parse_value(d: &ParamDesc, raw: &str) -> Result<Value, ParseError> {
         // `tokenize` has already taken the quoting off, so a `"` here is part of
         // the name.
         Kind::Text { .. } => Value::Text(raw.to_string()),
-        Kind::Int { .. } => Value::Int(raw.parse().map_err(|_| bad("a whole number"))?),
+        // -- WP UTM -- `48k`
+        Kind::Int { .. } => Value::Int(whole(raw).ok_or_else(|| bad("a whole number"))?),
         Kind::Mask => Value::Mask(match raw.strip_prefix("0x") {
             Some(hex) => u32::from_str_radix(hex, 16).map_err(|_| bad("a hex mask"))?,
             None => raw.parse().map_err(|_| bad("a mask"))?,
@@ -626,12 +654,7 @@ pub fn parse_value(d: &ParamDesc, raw: &str) -> Result<Value, ParseError> {
             parse_packet(d, &[], &tokens)?
         }
         // -- WP DL3 -- `f32::parse` takes "nan" and "inf"; no parameter holds them.
-        _ => Value::Float(
-            raw.parse::<f32>()
-                .ok()
-                .filter(|f| f.is_finite())
-                .ok_or_else(|| bad("a finite number"))?,
-        ),
+        _ => Value::Float(number(raw).ok_or_else(|| bad("a finite number"))?),
     })
 }
 
@@ -1534,5 +1557,46 @@ mod tests_wp_dl3 {
         assert!(p("set out.delay 1 21.5").is_ok());
         assert!(p("eq usb.1 1 peak 1000 0.7 -3").is_ok());
         assert!(p("mix 0 8 on -6").is_ok());
+    }
+}
+
+// -- WP UTM --
+#[cfg(test)]
+mod tests_wp_utm {
+    use super::*;
+
+    fn p(line: &str) -> Result<Command, ParseError> {
+        let ctx = Context {
+            channel_slugs: vec!["in.1".into(), "in.2".into(), "out.1".into(), "out.2".into()],
+            num_inputs: 2,
+            num_outputs: 2,
+            max_bands: 10,
+        };
+        let tokens = tokenize(line);
+        let refs: Vec<&str> = tokens.iter().map(String::as_str).collect();
+        parse(&refs, &ctx)
+    }
+
+    /// UXP A13: `:eq in.1 1 peak 1k -3` was refused while `;` took `1k`.
+    #[test]
+    fn utm_every_line_reads_k_as_thousands() {
+        let Ok(Command::SetBand { freq, .. }) = p("eq in.1 1 peak 1k 1.4 -3") else {
+            panic!("1k is a frequency");
+        };
+        assert_eq!(freq, 1000.0);
+        let Ok(Command::SetBand { freq, .. }) = p("eq in.1 1 peak 2.5K") else {
+            panic!("2.5K is a frequency");
+        };
+        assert_eq!(freq, 2500.0);
+        assert_eq!(number("1k"), Some(1000.0));
+        assert_eq!(number("-6"), Some(-6.0));
+        for word in ["k", "nank", "infk", "1kk", "peak"] {
+            assert_eq!(number(word), None, "{word}");
+        }
+        assert_eq!(whole("48k"), Some(48_000));
+        assert_eq!(whole("1.5k"), Some(1500));
+        assert_eq!(whole("2.5005k"), None);
+        assert_eq!(thousands("2.5k"), "2500");
+        assert_eq!(thousands("peak"), "peak");
     }
 }
