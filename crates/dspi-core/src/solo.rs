@@ -24,9 +24,14 @@
 //!   [`DspiCore::disconnect`] puts the mutes back first, best effort.
 //! - No undo: starting, moving and ending a solo are not journalled.
 //!
-//! Known limit: a connection lost without a close (the app killed, a Link
-//! session gone) leaves the outputs it muted muted on the device, in the
-//! live state only; the next connect reads them as muted.
+//! -- FIX016 -- (REVG F3) A connection that goes without the solo's end (a
+//! device unplugged, a Link session lost, another open replacing it) leaves
+//! the outputs it muted muted on the device; the core remembers them by
+//! serial ([`remember_lost`]) and the next connect of that serial unmutes
+//! them before it reads the baseline ([`lift_lost`]), so they never count as
+//! the user's mutes, unsaved or saved. Known limit: a core that ends with the
+//! solo running (the app killed, a web page reloaded) cannot: the next one
+//! reads them as muted.
 
 use dspi_proto::value::Value;
 
@@ -72,6 +77,61 @@ pub(crate) fn lift(inner: &mut Inner) -> Result<()> {
         if let Some(solo) = solo_mut(inner) {
             solo.muted.retain(|&m| m != o);
         }
+    }
+}
+
+// -- FIX016 -- (REVG F3)
+/// Remember what the solo of `conn`, taken out of `inner` without its end,
+/// still holds muted on the device, for the next connect of its serial.
+pub(crate) fn remember_lost(inner: &mut Inner, conn: Option<&Connection>) {
+    let Some(conn) = conn.filter(|c| !c.solo.muted.is_empty()) else {
+        return;
+    };
+    inner.lost_solo.retain(|(s, _)| *s != conn.serial);
+    inner
+        .lost_solo
+        .push((conn.serial.clone(), conn.solo.muted.clone()));
+}
+
+// -- FIX016 -- (REVG F3)
+/// On a connect, with its image just read into `inner.state` and before the
+/// baseline is taken: unmute on the device the outputs a lost connection's
+/// solo left muted on this serial, and show them unmuted. An output whose
+/// write fails stays remembered for the next connect. Allowed under the
+/// installer lock, as the solo is.
+pub(crate) fn lift_lost(inner: &mut Inner) {
+    let Some(serial) = inner.conn.as_ref().map(|c| c.serial.clone()) else {
+        return;
+    };
+    let Some(at) = inner.lost_solo.iter().position(|(s, _)| *s == serial) else {
+        return;
+    };
+    let (_, muted) = inner.lost_solo.swap_remove(at);
+    let _lock = crate::limits::LockScope::allow();
+    let mut left = Vec::new();
+    let mut changed = false;
+    for o in muted {
+        if usize::from(o) >= inner.state.output_muted.len() {
+            continue;
+        }
+        match write_mute(inner, o, false) {
+            Ok(()) => {
+                if let Some(m) = inner.state.output_muted.get_mut(usize::from(o)) {
+                    changed |= *m;
+                    *m = false;
+                }
+            }
+            Err(e) => {
+                log::warn!("a lost solo's mute of output {o} could not be lifted: {e}");
+                left.push(o);
+            }
+        }
+    }
+    if changed && inner.state.bulk_valid {
+        inner.state.bulk_raw = state::encode_bulk(&inner.state);
+    }
+    if !left.is_empty() {
+        inner.lost_solo.push((serial, left));
     }
 }
 
@@ -220,3 +280,7 @@ impl DspiCore {
 #[cfg(test)]
 #[path = "solo/tests_wp_gap2.rs"]
 mod tests_wp_gap2;
+// -- FIX016 --
+#[cfg(test)]
+#[path = "solo/tests_fix016_f3.rs"]
+mod tests_fix016_f3;

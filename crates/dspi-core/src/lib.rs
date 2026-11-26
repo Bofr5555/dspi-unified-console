@@ -572,6 +572,12 @@ pub(crate) struct Inner {
     /// Counts the baselines captured: an A/B compare of "as saved" against
     /// "now" ends when the baseline it was made from is replaced.
     pub(crate) baseline_epoch: u64,
+    // -- FIX016 -- (REVG F3)
+    /// The outputs a solo held muted on a device whose connection went
+    /// without the solo's end (unplugged, a Link session lost, replaced by
+    /// another open), by serial: the next connect of that serial unmutes
+    /// them before its baseline is taken (`solo::lift_lost`).
+    pub(crate) lost_solo: Vec<(String, Vec<u8>)>,
     /// The notification monitor's log (WP C7).
     pub(crate) monitor: monitor::MonitorLog,
     /// The analyser's state and worker (WP C9).
@@ -1044,6 +1050,7 @@ impl Inner {
             baseline: None,
             baseline_of: None,
             baseline_epoch: 0,
+            lost_solo: Vec::new(), // -- FIX016 --
             monitor: monitor::MonitorLog::default(),
             rta: rta::RtaState::default(),
             cs: cs::CsState::default(),

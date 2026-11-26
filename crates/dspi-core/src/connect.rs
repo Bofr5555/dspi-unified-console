@@ -160,6 +160,9 @@ impl DspiCore {
         conn.wire = wire;
         conn.fresh_image = false;
         inner.state = next;
+        // -- FIX016 -- (REVG F3) a solo's mutes left by a lost connection go
+        // first: never the user's, never in the baseline, never saved
+        crate::solo::lift_lost(inner);
         // -- WP SWAPFIX -- a re-read keeps the unsaved-changes baseline
         presets::keep_or_capture_baseline_locked(inner);
         Ok(())
