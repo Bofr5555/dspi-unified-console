@@ -9,6 +9,7 @@ Row {
     id: row
     property var question
     property string prefix
+    property bool allowEnabled: true   // -- FIX016 -- (R2)
     readonly property bool armed: !arming.running
     signal answered(bool allow)
     spacing: Theme.spacingSmall
@@ -33,7 +34,7 @@ Row {
         objectName: row.prefix + ".allow"
         text: qsTr("Allow")
         primary: true
-        enabled: row.armed
+        enabled: row.armed && row.allowEnabled   // -- FIX016 --
         onClicked: row.answered(true)
     }
 }

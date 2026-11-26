@@ -51,10 +51,34 @@ Item {
         const devices = group.map(c => c.device).filter((d, i, all) => all.indexOf(d) === i)
         return devices.reduce((all, d) => all.concat(group.filter(c => c.device === d)), [])
     }
-    readonly property var rows: !front ? []
+    // -- FIX016 -- (R2) every asked row of the whole group first, each device once
+    // above its questions' asked rows; then the rest, the changes not asked about.
+    // Only the rest is ever cut. A group whose asked rows do not fit on one sheet
+    // has no grouped Allow: its questions are answered one by one, so one Allow
+    // never answers a row the sheet did not show.
+    readonly property var askedPart: !front ? []
         : grouped ? byDevice.reduce((all, c, i) => all.concat(i > 0 && byDevice[i - 1].device === c.device ? []
-                                                              : [{ said: c.device, risky: false, head: true }], rowsOf(c)), [])
-        : rowsOf(front)
+                                                              : [{ said: c.device, risky: false, head: true }],
+                                                              rowsOf(c).filter(r => r.risky)), [])
+        : rowsOf(front).filter(r => r.risky)
+    readonly property bool manyDevices: grouped && byDevice.some(c => c.device !== byDevice[0].device)
+    readonly property var restPart: !front ? []
+        : grouped ? byDevice.reduce((all, c) => all.concat(rowsOf(c).filter(r => !r.risky).map(r => manyDevices
+                                        //: A change not asked about on a sheet of several devices: %1 the device, %2 the change
+                                        ? Object.assign({}, r, { said: qsTr("%1 · %2").arg(c.device).arg(r.said) }) : r)), [])
+        : rowsOf(front).filter(r => !r.risky)
+    readonly property var rows: askedPart.concat(restPart)
+    readonly property int askedCount: askedPart.filter(r => !r.head).length
+    readonly property bool askedFit: askedPart.length <= rowsShown
+    // What the sheet shows: every asked row, then as many of the rest as there is room for
+    // (a grouped sheet's rest under a line of its own)
+    readonly property var restShown: restPart.slice(0, Math.max(0, rowsShown - askedPart.length - (grouped ? 1 : 0)))
+    readonly property var shownRows: askedPart.concat(grouped && restShown.length
+                                                      ? [{ said: qsTr("Also in these calls, not asked about:"), risky: false, head: true }] : [],
+                                                      restShown)
+    readonly property int unshown: restPart.length - restShown.length
+    // The grouped Allow answers every question of the group: only when all their asked rows show
+    readonly property bool allowOk: !grouped || askedFit
     // What a question's Allow leaves to do afterwards (-- WP UAG --: one function for one or a group)
     function afterOf(c) {
         // -- WP FEATUI -- (FUNC1 section 4) sound cannot be undone: a test signal is not promised an undo
@@ -143,7 +167,11 @@ Item {
                  : qsTr("Allow this change?")
         // -- WP UAG -- (UXP D2) exactly the questions shown
         // -- WP UB5 -- all of them at once (answering one by one changed `group` under the loop)
-        onAnswered: allow => AiController.answerAll(host.group.map(c => c.id), allow)
+        allowEnabled: host.allowOk   // -- FIX016 -- (R2)
+        onAnswered: allow => {
+            if (allow && !host.allowOk) return   // -- FIX016 -- (R2) never rows the sheet did not show
+            AiController.answerAll(host.group.map(c => c.id), allow)
+        }
 
         // -- WP UAG -- (UXP A6, C11) who asks, where the heading does not say it: the detection's and the roles'
         // questions (the agent's name without the "AI ·" the sheet already shows)
@@ -174,17 +202,38 @@ Item {
         AppButton {
             objectName: "AiConfirmSheet.oneByOne"
             visible: host.grouped
+            primary: !host.allowOk   // -- FIX016 -- (R2) then the way to answer
             text: qsTr("Answer One by One")
             onClicked: host.oneByOne = true
         }
+        // -- FIX016 -- (R2) why the grouped Allow is off
+        SheetText {
+            objectName: "AiConfirmSheet.tooMany"
+            visible: host.grouped && !host.allowOk
+            color: Theme.warning
+            //: %1 how many changes the agent asks about, more than one sheet shows
+            text: qsTr("These questions ask about %1 changes, more than one sheet shows. Answer them one by one, so you see each change you allow.").arg(host.askedCount)
+        }
         // -- WP UAG -- (UXP A6) the whole call in the screen's words, the asked rows marked
-        Column {
+        // -- FIX016 -- (R2) in a view that scrolls when one question's asked rows are
+        // more than the window has room for (none of them is cut)
+        Flickable {
+            id: rowsView
+            objectName: "AiConfirmSheet.rows"
             width: parent.width
-            spacing: 4
+            height: Math.min(rowsColumn.implicitHeight, Math.max(160, confirmSheet.hostHeight * 0.45))
+            contentHeight: rowsColumn.implicitHeight
+            clip: true
+            interactive: contentHeight > height
+            boundsBehavior: Flickable.StopAtBounds
             visible: host.detailsShown
+        Column {
+            id: rowsColumn
+            width: rowsView.width
+            spacing: 4
             Repeater {
                 // -- WP ROLES -- (the speaker roles' question shows its table below instead)
-                model: host.front && !host.front.roleCells.length ? host.rows.slice(0, host.rowsShown) : []
+                model: host.front && !host.front.roleCells.length ? host.shownRows : []   // -- FIX016 -- (R2)
                 delegate: Item {
                     id: row
                     required property var modelData
@@ -215,10 +264,13 @@ Item {
                 }
             }
             SheetText {
-                visible: host.rows.length > host.rowsShown && !(host.front && host.front.roleCells.length)
+                objectName: "AiConfirmSheet.more"
+                visible: host.unshown > 0 && !(host.front && host.front.roleCells.length)
                 leftPadding: Theme.spacing + Theme.spacingLarge
-                text: qsTr("and %1 more").arg(Math.max(0, host.rows.length - host.rowsShown))
+                //: %1 how many changes of the calls are not shown; none of them is asked about
+                text: qsTr("and %1 more changes not asked about").arg(host.unshown)   // -- FIX016 -- (R2)
             }
+        }
         }
         // -- WP ROLES -- the whole table of speaker roles from the person's words, then the rest
         Grid {
