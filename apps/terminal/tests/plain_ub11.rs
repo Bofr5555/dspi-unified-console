@@ -145,21 +145,89 @@ fn ub11_without_plain_a_piped_input_is_still_a_script() {
     assert!(!out.contains("plain mode"), "{out}");
 }
 
+// -- FIX016 -- (REVG F10) a script's lines are commands, never answers: its `ab` ends where `--keep`
+// says (it took `t` and `b` from the next lines before, and so swallowed the script's commands)
 #[test]
-fn ub11_an_ab_in_plain_takes_its_answers_and_the_next_command_still_runs() {
+fn ub11_an_ab_in_plain_keeps_the_side_asked_and_the_next_command_still_runs() {
     let o = run(
         "ab",
         &["--demo", "--plain"],
-        "snapshot save Before\nout.gain 0 -6\nab Before\nt\nb\nvol.user -23\nquit\nquit\n",
+        "snapshot save Before\nout.gain 0 -6\nab Before --keep b\nvol.user -23\nquit\nquit\n",
     );
     let out = text(&o.stdout);
     let err = text(&o.stderr);
     assert_eq!(o.status.code(), Some(0), "{out}\n{err}");
     assert!(out.contains("On A (A)"), "the compare began on A: {out}");
-    assert!(out.contains("On B (Before)"), "t switched: {out}");
-    assert!(out.contains("Kept B (Before)"), "b kept B: {out}");
+    assert!(out.contains("Kept B (Before)"), "--keep b kept B: {out}");
     assert!(
         out.lines().any(|l| l.starts_with("vol.user -23")),
         "the line after the compare ran: {out}"
+    );
+}
+
+// -- FIX016 -- (REVG F10, reviewer C's probe) `ab` in a piped script takes no answers: it keeps the side
+// it is on, a blank line does not toggle it, every later line runs and the writes happen
+#[test]
+fn fix016_a_scripts_ab_takes_no_answers_and_every_line_runs() {
+    let o = run(
+        "fix016-ab",
+        &["--demo", "--plain"],
+        "snapshot save Before\nout.gain 0 -6\nab Before\n\nvol.user -23\nout.gain 1 -4\nquit\n",
+    );
+    let out = text(&o.stdout);
+    let err = text(&o.stderr);
+    assert_eq!(o.status.code(), Some(0), "nothing failed: {out}\n{err}");
+    assert!(out.contains("On A (A)"), "the compare began on A: {out}");
+    assert!(!out.contains("On B"), "a blank line does not toggle: {out}");
+    assert!(out.contains("Kept A (A)"), "the side it is on: {out}");
+    assert!(
+        !err.contains("type t, d, a, b or q"),
+        "no line taken as an answer: {err}"
+    );
+    for write in ["vol.user -23", "out.gain 1 -4"] {
+        assert!(
+            out.lines().any(|l| l.starts_with(write)),
+            "`{write}` ran: {out}"
+        );
+    }
+    // `quit` asked once with the changes unsaved, then the input ended
+    assert!(
+        out.contains("Type save to keep them on the device"),
+        "{out}"
+    );
+    assert!(out.contains("They are not saved to the device."), "{out}");
+}
+
+// -- FIX016 -- (REVG F10) a guarded recall in a script is kept at once (nothing waits out its
+// countdown or reverts at the end), the next lines run, and the code is the first failure's
+#[test]
+fn fix016_a_scripts_guarded_recall_is_kept_and_the_code_is_the_first_failures() {
+    let o = run(
+        "fix016-guard",
+        &["--demo", "--plain"],
+        "snapshot save Before\nout.gain 0 -6\nsnapshot recall Before --guard 10\nsideways 3\nvol.user -24\nquit\n",
+    );
+    let out = text(&o.stdout);
+    let err = text(&o.stderr);
+    assert_eq!(
+        o.status.code(),
+        Some(1),
+        "the first failure's (sideways): {out}\n{err}"
+    );
+    assert!(
+        out.lines().any(|l| l.starts_with("Kept")),
+        "the recall kept: {out}"
+    );
+    assert!(
+        !err.contains("Type keep or revert"),
+        "no line taken as an answer: {err}"
+    );
+    assert!(
+        err.contains("no parameter or command called `sideways`"),
+        "{err}"
+    );
+    assert!(
+        out.lines().any(|l| l.starts_with("vol.user -24")),
+        "the line after the mistake ran: {out}"
     );
 }

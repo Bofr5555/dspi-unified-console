@@ -149,7 +149,9 @@ Device), `params`, `help` and the shell's `snapshot`, `ab`, `diff`, `lock`,
 `limits`, `status` and `measure docs`/`show`/`export`, on the same session.
 `quit` asks once when something is unsaved. With standard input piped
 (`uconsole --plain < session.txt`) there is no prompt, a mistake does not stop
-the rest, and the exit code is the first failure's.
+the rest, and the exit code is the first failure's. A script's lines are its
+commands, never answers: `ab` keeps the side it is on (`ab NAME --keep b` ends
+on B) and a guarded recall is kept at once, and the next line runs.
 
 ## Building
 

@@ -410,6 +410,26 @@ pub(crate) fn stdin_answers() -> std::sync::MutexGuard<'static, Receiver<String>
 static STDIN_LINES: std::sync::OnceLock<std::sync::Mutex<Receiver<String>>> =
     std::sync::OnceLock::new();
 
+// -- FIX016 -- (REVG F10)
+/// Standard input is the plain mode's script, not a person: its lines are the
+/// next commands, so an `ab` or a guard's countdown takes no answers from it.
+static SCRIPT_INPUT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+// -- FIX016 -- (REVG F10)
+/// The plain mode reads a script (standard input is not a person): from now
+/// on [`script_input`] says so.
+pub(crate) fn set_script_input() {
+    SCRIPT_INPUT.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+// -- FIX016 -- (REVG F10)
+/// Whether standard input's lines are a script's commands ([`set_script_input`]):
+/// an `ab` keeps the side it is on, a guard keeps what it applied, as their
+/// `--keep` would, and the script goes on with its next line.
+pub(crate) fn script_input() -> bool {
+    SCRIPT_INPUT.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 // -- WP UB11 --
 /// Whether [`stdin_answers`]'s reader runs: then every line is its to read,
 /// and [`ask`] and [`ask_secret`] take theirs from it.
@@ -723,6 +743,18 @@ fn revert_notice_text(key: &str) -> Vec<String> {
 
 /// Run a guarded apply's countdown on standard input and report it.
 pub(crate) fn guard_on_stdin(core: &DspiCore, started: GuardedApply, json: bool) -> u8 {
+    // -- FIX016 -- (REVG F10) the plain mode's script: its next lines are commands, not
+    // answers; kept at once (nothing waits out the countdown, nothing reverts at its end)
+    if script_input() {
+        if !json {
+            for line in started.changes.iter().chain(&started.notes) {
+                println!("  {}", printable(line));
+            }
+            eprintln!("{COMMAND}: in a script nothing answers the way back: kept");
+        }
+        let ended = core.apply_confirm().unwrap_or_else(|_| core.apply_status());
+        return report_guard(&ended, json);
+    }
     let show = interactive() && !json;
     if !json {
         for line in started.changes.iter().chain(&started.notes) {

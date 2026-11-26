@@ -9,7 +9,9 @@
 //! Every line of standard input is read by `pro::stdin_answers`'s one
 //! reader, so an `ab`, a guard's countdown, a confirmation or the
 //! installer's PIN asked in between take their answers from the same
-//! stream and never swallow the next command.
+//! stream and never swallow the next command. -- FIX016 -- (REVG F10) With
+//! standard input a script, its lines are commands only: `ab` keeps the side
+//! it is on and a guard keeps what it applied (`pro::script_input`).
 #![warn(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -78,6 +80,10 @@ pub(crate) fn run(target: &Target, flags: &[&str]) -> u8 {
         Err(code) => return code,
     };
     let interactive = pro::interactive();
+    // -- FIX016 -- (REVG F10) a script's lines are its commands: no `ab` or guard answers from them
+    if !interactive {
+        pro::set_script_input();
+    }
     let (opened, target) = match open(target, interactive) {
         Ok(o) => o,
         Err(code) => return code,
