@@ -754,7 +754,7 @@ internal fun MuteButton(bridge: DspiBridge, muted: Boolean, connected: Boolean) 
     IconButton(
         onClick = { bridge.setUserMute(!muted) },
         enabled = connected,
-        modifier = Modifier.testTag(HOME_MUTE_TAG).semantics {
+        modifier = Modifier.size(48.dp).testTag(HOME_MUTE_TAG).semantics {
             role = Role.Switch
             stateDescription = if (muted) "Muted" else "Not muted"
         }

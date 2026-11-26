@@ -131,7 +131,7 @@ class SnapshotsWpP1dcfixTest {
         assertFalse(textShown("Import Snapshot File"))
         // Advanced has them, the timeout at the default 30 s
         show { SnapshotsView(m, SnapshotsMode.ADVANCED, onBack = {}) }
-        pumpUntil("advanced") { shown(CAPTURE_TAG) }
+        pumpUntil("advanced") { shown(SAFE_APPLY_TIMEOUT_TAG) } // -- WP UAN -- Capture shows in Simple too
         rule.onNodeWithTag(SAFE_APPLY_TIMEOUT_TAG).assertExists()
         assertTrue(textShown("Rollback time: 30 s"))
         assertTrue(textShown("Recall with rollback"))
