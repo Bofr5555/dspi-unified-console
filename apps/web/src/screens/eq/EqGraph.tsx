@@ -27,7 +27,7 @@ import { memo } from "preact/compat";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { FilterParams } from "../../core/protocol";
 import type { Curves } from "./curves";
-import { dotRadius, draw, type Scene, type SceneBand } from "./draw";
+import { dotRadius, draw, phaseExtent, type Scene, type SceneBand } from "./draw";
 import type { BandEdits } from "./edits";
 import { PopupMenu, type PopupItem } from "./Menu";
 // -- WP WEBM4 -- the band and graph menus' rows are actions.json's
@@ -156,6 +156,8 @@ export const EqGraph = memo(function EqGraph(props: GraphProps) {
     freqs,
     others: props.others,
     main: { curve: curves?.chains[0] ?? null, colour: props.colour, offset: props.offset },
+    // -- WP GAP1 -- the Phase chip (Settings › Graphing): the edited channel's, on its own axis
+    phase: look.showPhase && curves?.phase?.length ? { curve: curves.phase, extent: phaseExtent(g.dbTop, g.dbBottom) } : null,
     bands: graphBands.map<SceneBand>((b) => {
       const p = bands[b]!;
       const d = dot(b, p);

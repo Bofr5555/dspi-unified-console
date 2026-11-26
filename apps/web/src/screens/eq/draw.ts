@@ -25,6 +25,11 @@ export interface Scene {
   others: { curve: number[]; colour: string; offset: number; dashed?: boolean }[]; // -- WP P1WB2 -- dashed: an AutoEQ preview
   /** The edited channel's combined curve and its level shift (gain or trim). */
   main: { curve: number[] | null; colour: string; offset: number } | null;
+  /**
+   * -- WP GAP1 -- The edited channel's phase in degrees (the Phase chip), on its own axis from
+   * `+extent` at the top to `-extent` at the bottom; none while the chip is off.
+   */
+  phase?: { curve: number[]; extent: number } | null;
   bands: SceneBand[];
   marquee: { x0: number; y0: number; x1: number; y1: number } | null;
   /** Dots large enough for a finger. */
@@ -160,6 +165,38 @@ export function draw(ctx: CanvasRenderingContext2D, s: Scene): void {
     ctx.shadowBlur = 0; // -- WP WB6I --
   }
 
+  // -- WP GAP1 -- its phase: dotted, in the text colour, on its own axis (Qt's BodePlot)
+  if (s.phase && s.phase.extent > 0 && s.main?.curve) {
+    const { curve, extent } = s.phase;
+    const lw = look?.lineWidth ?? 2;
+    const py = (deg: number) => ((extent - deg) / (2 * extent)) * g.height;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, g.width, g.height);
+    ctx.clip();
+    ctx.lineWidth = lw * 0.9;
+    ctx.lineCap = "round";
+    ctx.setLineDash([0.1, lw * 3]);
+    ctx.strokeStyle = theme.text;
+    ctx.beginPath();
+    for (let i = 0; i < curve.length && i < freqs.length; i++) {
+      const px = xOf(g, freqs[i]!);
+      if (i === 0) ctx.moveTo(px, py(curve[i]!));
+      else ctx.lineTo(px, py(curve[i]!));
+    }
+    ctx.stroke();
+    ctx.restore();
+    // Its scale at the right: ±extent, ±extent/2 and 0 (Qt's BodeTicks.phase)
+    ctx.fillStyle = theme.text;
+    ctx.font = "10px system-ui, sans-serif";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    for (const tick of phaseTicks(extent)) {
+      ctx.fillText(tick.text, g.width - LABEL_INSET, Math.min(Math.max(tick.at * g.height, LABEL_INSET + 5), g.height - LABEL_INSET - 18));
+    }
+    ctx.textAlign = "start";
+  }
+
   // The dots, the selected ones on top.
   const r = dotRadius(s.coarse);
   const order = [...s.bands].sort((a, b) => Number(a.selected) - Number(b.selected) || Number(a.hovered) - Number(b.hovered));
@@ -207,3 +244,17 @@ export function draw(ctx: CanvasRenderingContext2D, s: Scene): void {
 
 /** -- WP WEB3 -- How far inside the plot its axis labels are drawn (§12). */
 const LABEL_INSET = 6;
+
+// -- WP GAP1 --
+/** The phase axis follows the dB zoom: ±180° at the default 50 dB span (Qt's `phaseTop`). */
+export function phaseExtent(dbTop: number, dbBottom: number): number {
+  return (180 * (dbTop - dbBottom)) / 50;
+}
+
+/** The phase scale's ticks ({at: 0..1 down the plot, text}): ±extent, ±extent/2 and 0, as Qt's BodeTicks.phase. */
+export function phaseTicks(extent: number): { at: number; text: string }[] {
+  return [1, 0.5, 0, -0.5, -1].map((share) => {
+    const deg = Math.round(share * extent);
+    return { at: (1 - share) / 2, text: deg === 0 ? "0°" : `${deg > 0 ? "+" : "\u2212"}${Math.abs(deg)}°` };
+  });
+}

@@ -77,7 +77,7 @@ test("EQ phase, crossfeed pairs, output polarity", async ({ page }) => {
   await page.waitForTimeout(800);
   await maybe("output pairs", () => panel.getByText("Output Pairs", { exact: true }).scrollIntoViewIfNeeded(T));
   await shot(page, "crossfeed");
-  if (await maybe("outputs menu", () => panel.getByRole("button", { name: /^Crossfeed outputs/ }).click(T))) {
+  if (await maybe("outputs menu", () => panel.getByRole("group", { name: "Crossfeed outputs" }).getByRole("button", { name: /^Default/ }).click(T))) {
     await page.waitForTimeout(300);
     await shot(page, "crossfeed-outputs-menu");
     if (await maybe("custom", () => page.getByRole("menuitem", { name: /^Custom/ }).click(T))) {

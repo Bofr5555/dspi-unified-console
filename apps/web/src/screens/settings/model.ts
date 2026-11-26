@@ -28,6 +28,10 @@ export interface GraphPrefs {
   dbCenter: number;
   minFreq: number;
   maxFreq: number;
+  // -- WP GAP1 -- Qt's Graphing switches: the edited channel's phase over the graph (the Phase chip)
+  showPhase: boolean;
+  /** The phase continuous rather than within ±180°. */
+  phaseUnwrapped: boolean;
 }
 
 /** How the analyser draws and what it asks the device for (the Console's Spectrum tab). */
@@ -73,6 +77,8 @@ export const DEFAULT_PREFS: Prefs = {
     dbCenter: 0,
     minFreq: 20,
     maxFreq: 20000,
+    showPhase: false, // -- WP GAP1 --
+    phaseUnwrapped: false,
   },
   spectrum: { graphOpacity: 1, showPeakHold: true, smoothing: true, floorDb: -90, ceilingDb: 6, fftOrder: 10, avgMs: 125, peakDecay: 12 },
   debug: false,
@@ -105,6 +111,8 @@ export function tidyPrefs(raw: unknown): Prefs {
     dbCenter: Math.round(num(g.dbCenter, dg.dbCenter, -40, 20)),
     minFreq: oneOf(g.minFreq, MIN_FREQS, dg.minFreq),
     maxFreq: oneOf(g.maxFreq, MAX_FREQS, dg.maxFreq),
+    showPhase: bool(g.showPhase, dg.showPhase), // -- WP GAP1 --
+    phaseUnwrapped: bool(g.phaseUnwrapped, dg.phaseUnwrapped),
   };
   const spectrum: SpectrumPrefs = {
     graphOpacity: num(s.graphOpacity, ds.graphOpacity, 0.3, 1),

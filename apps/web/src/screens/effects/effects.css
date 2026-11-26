@@ -50,6 +50,20 @@
 .dspi-web .fx-panel button.quiet { min-height: 22px; padding: 0 0.45rem; border: 0; background: none; color: var(--muted); font-size: 11px; }
 .dspi-web .fx-panel button.quiet:hover { background: var(--control-hover); color: var(--text); }
 
+/* -- WP GAP1 -- the crossfeed's pair map (Qt's CrossfeedPairMap): the Outputs menu on its row, the
+   K340 question, the Custom editor on the control tone without an outline (DL1) */
+.dspi-web .fx-pairmap { display: flex; flex-direction: column; gap: 4px; }
+.dspi-web .fx-pairmap-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 28px; }
+.dspi-web .fx-pairmap-row .fx-help { margin: 0; }
+.dspi-web .fx-pairmap-offer { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.dspi-web .fx-pairmap-offer .fx-help { flex: 1 1 12rem; margin: 0; }
+.dspi-web .fx-pairmap-editor { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; padding: 8px; border-radius: 6px; background: var(--control); }
+.dspi-web .fx-pairmap-pair { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.dspi-web .fx-pairmap-pair .fx-help { margin: 0; }
+.dspi-web .fx-pairmap-name { min-width: 46px; font-size: 12px; }
+.dspi-web .fx-pairmap-pair select { min-width: 0; max-width: 14rem; }
+.dspi-web .fx-pairmap-buttons { display: flex; justify-content: flex-end; gap: 6px; }
+
 @media (max-width: 1000px) {
   .dspi-web .fx-cols { grid-template-columns: minmax(0, 1fr); }
 }

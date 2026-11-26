@@ -224,6 +224,30 @@ export interface DeviceSnapshot {
   outputLabels?: OutputLabel[];
   /** The dashboard's output cards (`DspiCore::output_cards`). */
   outputCards?: OutputCard[];
+  // -- WP GAP1 --
+  /** Each output's polarity from the routes that feed it (`dspi_core::output_polarity`). */
+  outputPolarity?: OutputPolarity[];
+}
+
+// -- WP GAP1 --
+/** An output's polarity: no route feeds it, every feeding route as it comes, every one inverted, or some. */
+export type OutputPolarity = "none" | "normal" | "inverted" | "mixed";
+
+/** One crossfeed pair's outputs, 0-based (`crates/dspi-wasm/src/pair_map.rs`). */
+export interface CrossfeedPair {
+  left: number;
+  right: number;
+}
+
+/** The crossfeed's output pair map (Qt's ExtController). */
+export interface CrossfeedPairMapView {
+  /** The firmware has the extension's pair map. */
+  supported: boolean;
+  pairCount: number;
+  pairs: CrossfeedPair[];
+  choice: "default" | "k340" | "custom";
+  /** The pair mask that goes with the K340 map (both of its pairs). */
+  k340Mask: number;
 }
 
 /**
@@ -529,7 +553,16 @@ export interface CoreMethods extends HubFleetMethods /* -- WP P3CC -- */, AlinkM
    * Each chain's combined magnitude (dB) on the grid, and each band's own
    * curve and dot level. Bands need not be the device's (a drag in progress).
    */
-  curves: { params: { chains?: FilterParams[][]; bands?: FilterParams[] }; result: { chains: number[][]; bands: BandCurve[] } };
+  // -- WP GAP1 -- the crossfeed's output pair map: read, checked, written (one undo step)
+  crossfeedPairMap: { params: undefined; result: CrossfeedPairMapView };
+  crossfeedPairsValid: { params: { pairs: CrossfeedPair[] }; result: boolean };
+  setCrossfeedPairMap: { params: { choice: "default" | "k340" } | { pairs: CrossfeedPair[] }; result: CrossfeedPairMapView };
+  curves: {
+    // -- WP GAP1 -- `phase` (with `unwrap`) and `groupDelay`: the first chain's, on the same grid
+    params: { chains?: FilterParams[][]; bands?: FilterParams[]; phase?: boolean; unwrap?: boolean; groupDelay?: boolean };
+    /** `phase` in degrees (within ±180 unless unwrapped), `groupDelay` in ms: only when asked. */
+    result: { chains: number[][]; bands: BandCurve[]; phase?: number[]; groupDelay?: number[] };
+  };
   // -- WP CG34 -- the filter types' names, the core's one table (the Console's band-list names)
   /** Every type the firmware defines, PEQ 0..13 then crossovers 32..63: `{code: 4, name: "High Cut (12dB)"}`. */
   filterTypeNames: { params: undefined; result: { code: number; name: string }[] };
